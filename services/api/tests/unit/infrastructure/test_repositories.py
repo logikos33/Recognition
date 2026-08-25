@@ -634,16 +634,6 @@ class TestTrainingRepository:
         result = self.repo.get_models_by_user(uid)
         assert len(result) == 1
 
-    def test_activate_model(self) -> None:
-        model_id = uuid4()
-        uid = uuid4()
-        self.pool.mock_cursor.fetchone.return_value = {
-            "id": model_id, "is_active": True,
-        }
-        self.pool.mock_cursor.rowcount = 1
-        result = self.repo.activate_model(model_id, uid)
-        assert result["is_active"] is True
-
 
 class TestAlertRepository:
     """Testes para AlertRepository."""
@@ -674,7 +664,7 @@ class TestAlertRepository:
             {"id": uuid4(), "confidence": 0.9, "acknowledged": False},
             {"id": uuid4(), "confidence": 0.8, "acknowledged": True},
         ]
-        result = self.repo.get_by_camera(cam_id, "11111111-2222-3333-4444-555555555555")
+        result = self.repo.get_by_camera(cam_id, tenant_id=str(uuid4()))
         assert len(result) == 2
 
     def test_get_unacknowledged_with_camera(self) -> None:
@@ -698,7 +688,7 @@ class TestAlertRepository:
         self.pool.mock_cursor.fetchone.return_value = {
             "id": alert_id, "acknowledged": True,
         }
-        result = self.repo.acknowledge(alert_id, "tenant-a")
+        result = self.repo.acknowledge(alert_id, tenant_id=str(uuid4()))
         assert result["acknowledged"] is True
 
     def test_count_by_camera(self) -> None:

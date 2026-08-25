@@ -120,8 +120,12 @@ class TestRunQualityTrainingPipelineDisabled:
         assert "task-086" in failed_calls[-1].kwargs.get("error_message", "")
 
         # Progresso final é um evento de erro, não de sucesso.
+        # Assinatura: _publish_progress(job_id, tenant_schema, step, ...) — o
+        # tenant_schema entrou no canal (quality:training_progress:{schema}:{job})
+        # para o bridge emitir só na room do tenant.
         error_progress = [
-            c for c in mock_publish.call_args_list if c.args[1] == "error"
+            c for c in mock_publish.call_args_list
+            if c.args[1] == _TENANT_SCHEMA and c.args[2] == "error"
         ]
         assert error_progress
 

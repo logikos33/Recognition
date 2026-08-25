@@ -1,0 +1,1227 @@
+{
+ "domain": "edge-fleet",
+ "overview": "Frota edge (Jetson no site do cliente) e tudo que a liga à nuvem: onboarding (site → enrollment token one-time → POST /edge/enroll com chave pública RS256 → heartbeat periódico), canal de controle outbound (fila public.edge_commands consumida por polling do box + ack), canais de dados do box (config/poll com ETag, frames de treino, snapshots de câmera, segmentos HLS do live view, alvo OTA) e observabilidade (saúde derivada de heartbeats, telemetria espelhada no Dashboard Integrado, painel oculto /monitoring superadmin que conversa com o box via comandos monitoring.*). Front atual sustenta: painel de frota em /admin/observability?tab=edge (overview, sites/health, heartbeats, summary), /epi/sites (listar sites e alternar deployment_mode), /epi/edge-observability (curvas de treino + telemetria edge histórica e ao vivo via SocketIO) e /monitoring (superadmin: frota multi-tenant, query/snapshot/logtail por comando com poll, limiares, detecções). Todo o lado device (enroll, heartbeat, config, comandos, frames, live view, OTA) é BACKEND-ONLY; onboarding/gestão de sites, tokens, devices, gateway e console de comandos/eventos são capacidades sem UI (GAP).",
+ "endpoints": [
+  {
+   "method": "POST",
+   "path": "/api/devices/claim",
+   "auth": "public (rate limit 10/min por IP via limiter.limit)",
+   "tenant": "public.tenant_id (tenant sai da linha device_claim_codes, nunca do body)",
+   "envelope": "success/error — 200 | 400 | 404 (código inválido/expirado/usado — mensagem única anti-enumeração) | 500",
+   "request": "body {code* (8 chars, alfabeto sem 0/1/I/O; normaliza maiúsc./traços), device_name?≤255}",
+   "response": "data {enrollment_token (JWT HS256 flask-jwt token_type=device_enrollment, 24h), tenant_id, expires_in_hours=24}",
+   "tables": [
+    "public.device_claim_codes"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "Beco sem saída: ninguém chama (nem edge-sync-agent nem scripts) e o enrollment_token emitido (HS256 flask-jwt) NÃO é aceito por POST /api/v1/edge/enroll, que só consome hash de public.enrollment_tokens",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/api/app/api/v1/devices/routes.py:97",
+    "services/api/app/core/device_auth.py:53 (generate_enrollment_token → JWT HS256 sem consumidor)"
+   ],
+   "behavior_notes": "Single-use (UPDATE condicional used_at). Fluxo pretendido: claim-codes (admin) → claim (device) → enroll; o 3º passo não existe para este token. Rate limit compartilhado por IP.",
+   "risks": "Dois mecanismos de enrollment coexistem; este está desconectado — confundir o novo front."
+  },
+  {
+   "method": "POST",
+   "path": "/api/devices/claim-codes",
+   "auth": "jwt (flask jwt_required) + permission:devices:manage (has_permission no corpo; default admin/superadmin) + rate limit 10/min",
+   "tenant": "public.tenant_id (get_tenant_id do JWT)",
+   "envelope": "success/error — 201 | 403 | 500",
+   "request": "sem body",
+   "response": "data {claim_code (plaintext, exibido 1x), claim_id, expires_at, expires_in_minutes=15}",
+   "tables": [
+    "public.device_claim_codes"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "Sem consumidor no front; faz par com /api/devices/claim, cujo token não é aceito por /edge/enroll — fluxo morto até o backend religar claim→enroll",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/api/app/api/v1/devices/routes.py:47"
+   ],
+   "behavior_notes": "Plaintext só na resposta de criação (banco guarda SHA-256). TTL 15 min. Prefixo /api (sem /v1) — diverge dos vizinhos edge/*.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/dashboard/edge-telemetry",
+   "auth": "jwt (flask jwt_required; sem checagem de role/permission)",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error — 200 | 400 (window inválido)",
+   "request": "query window[=1h] ∈ {15m,1h,6h,24h}, site_id?",
+   "response": "data {window, samples[]: {site_id, label, sampled_at, payload{cpu_pct,gpu_pct,...livre}}, count}",
+   "tables": [
+    "public.edge_telemetry_samples"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "",
+   "evidence": [
+    "apps/frontend/src/services/dashboardEdgeService.ts:92",
+    "apps/frontend/src/pages/DashboardIntegradoPage.tsx:248"
+   ],
+   "behavior_notes": "Histórico; o 'ao vivo' vem por SocketIO namespace /monitor evento 'edge_telemetry' (hook useEdgeTelemetrySocket). Janela é whitelist. Página /epi/edge-observability.",
+   "risks": "Emit SocketIO 'edge_telemetry' é broadcast no namespace /monitor sem room por tenant (socket_bridge.py:232-236) e o hook não filtra tenant_id → telemetria cross-tenant ao vivo."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/dashboard/edge-telemetry",
+   "auth": "jwt (flask jwt_required; sem checagem de role/permission)",
+   "tenant": "public.tenant_id (tenant do JWT; site_id do body NÃO é validado contra o tenant)",
+   "envelope": "success/error — 200 | 400",
+   "request": "body {site_id?, samples*[] ≤5000: {sampled_at*, label?, payload?{}}}",
+   "response": "data {inserted}",
+   "tables": [
+    "public.edge_telemetry_samples"
+   ],
+   "side_effects": [
+    "Redis publish edge_telemetry:{tenant_id} (1 msg/amostra, best-effort) → bridge emite SocketIO 'edge_telemetry' em /monitor"
+   ],
+   "label": "BACKEND-ONLY",
+   "label_reason": "Produtor HTTP = script de seed services/api/scripts/seed_dashboard_observability.py (telemetria real do Jetson em docs/edge/evidence/mm-2026-07-17/telemetry_mm.jsonl, chunks de 500); o box NÃO chama esta rota — o heartbeat alimenta a mesma tabela por chamada interna (edge/routes.py:172-215 _bridge_heartbeat_to_telemetry → DashboardEdgeService.ingest_edge_telemetry). Front não chama.",
+   "evidence": [
+    "services/api/scripts/seed_dashboard_observability.py:148-150 (_post '/api/v1/dashboard/edge-telemetry')",
+    "services/api/app/api/v1/edge/routes.py:172-215 (bridge interno do heartbeat — mesmo serviço, sem HTTP)",
+    "grep: sem consumidor em apps/frontend/src nem em services/edge-sync-agent",
+    "services/api/app/api/v1/dashboard_edge/routes.py:105"
+   ],
+   "behavior_notes": "Qualquer usuário JWT do tenant pode inserir telemetria arbitrária (sem role; site_id do body não é validado contra o tenant). Empty-state de DashboardIntegradoPage.tsx:386 instrui a usar esta rota.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/dashboard/training-metrics",
+   "auth": "jwt (flask jwt_required)",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error — 200",
+   "request": "query models? (csv de nomes)",
+   "response": "data {models: {<model_name>: [{epoch, framework, metrics{ap5095,ap50,ap_small,...,losses}}]}}",
+   "tables": [
+    "public.model_training_metrics"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "",
+   "evidence": [
+    "apps/frontend/src/services/dashboardEdgeService.ts:80",
+    "apps/frontend/src/pages/DashboardIntegradoPage.tsx:236"
+   ],
+   "behavior_notes": "Ordem: GET .../models primeiro (lista) → GET curvas com ?models=a,b (seleção). Tabela vazia no DEV (0 linhas) — UI mostra empty-state.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/dashboard/training-metrics",
+   "auth": "jwt (flask jwt_required) + require_training_role('write') (training:write: superadmin/admin/trainer ou override em public.user_permission_overrides; senão 403)",
+   "tenant": "public.tenant_id (model_name tem de existir em trained_models do tenant → senão 404, C-01)",
+   "envelope": "success/error — 200 | 400 | 403 | 404",
+   "request": "body {model_name*, framework?, epochs*[]: {epoch*(int), metrics{}}}",
+   "response": "data {model_name, upserted}",
+   "tables": [
+    "public.model_training_metrics",
+    "public.trained_models",
+    "public.users",
+    "public.user_permission_overrides"
+   ],
+   "side_effects": [],
+   "label": "BACKEND-ONLY",
+   "label_reason": "Único produtor é o script de seed services/api/scripts/seed_dashboard_observability.py (POST com dados reais versionados em docs/edge/train_metrics/*.jsonl — 'via do seed legítimo', D-107); a pipeline de treino (training_service/tasks) NÃO publica curvas aqui (grep: nenhum outro chamador de ModelTrainingMetricsRepository fora de dashboard_edge e do bridge do heartbeat). Front não chama.",
+   "evidence": [
+    "services/api/scripts/seed_dashboard_observability.py:125-127 (_post '/api/v1/dashboard/training-metrics')",
+    "grep: sem consumidor em apps/frontend/src; sem chamador na pipeline de treino",
+    "services/api/app/api/v1/dashboard_edge/routes.py:64"
+   ],
+   "behavior_notes": "Upsert por (tenant_id, model_name, epoch). Guard ADR-0061: model_name precisa ser um trained_models.name real do tenant (TrainingRepository.model_name_exists_for_tenant — JOIN users, cobre tenant_id NULL legado). DashboardIntegradoPage.tsx:315 cita o caminho relativo scripts/seed_dashboard_observability.py — o arquivo existe sob services/api/scripts/.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/dashboard/training-metrics/models",
+   "auth": "jwt (flask jwt_required)",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error — 200",
+   "request": "sem params",
+   "response": "data {models[]: {model_name, framework, last_epoch, epoch_count, ap5095, ap_small}}",
+   "tables": [
+    "public.model_training_metrics"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "",
+   "evidence": [
+    "apps/frontend/src/services/dashboardEdgeService.ts:72",
+    "apps/frontend/src/pages/DashboardIntegradoPage.tsx:220"
+   ],
+   "behavior_notes": "Primeiro passo do fluxo de comparação de curvas.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/edge/cameras/<camera_id>/snapshot",
+   "auth": "device_scope:snapshot:write (RS256 auto-assinado pelo device; require_device_scope → 401/403)",
+   "tenant": "public.tenant_id (tenant/site do enrollment em g.device_ctx; câmera cross-tenant → 404)",
+   "envelope": "success/error — 201 | 404 | 413 | 422 | 502 (storage)",
+   "request": "path camera_id; multipart file* (JPEG ≤5MB; Content-Length rejeita antes de parsear; leitura em chunks 64KB)",
+   "response": "data {r2_key}",
+   "tables": [
+    "public.cameras"
+   ],
+   "side_effects": [
+    "R2 upload snapshots/{tenant}/{camera}/{ts}.jpg",
+    "Redis camera_snapshot_state.write_ready (cache lido por GET /api/cameras/<id>/snapshot, best-effort)"
+   ],
+   "label": "BACKEND-ONLY",
+   "label_reason": "Consumido pelo edge-sync-agent ao cumprir comando capture_snapshot",
+   "evidence": [
+    "services/edge-sync-agent/app/snapshot_executor.py:68",
+    "services/edge-sync-agent/app/snapshot_executor.py:194"
+   ],
+   "behavior_notes": "Faz parte do fluxo assíncrono: UI (cameras) pede refresh → API cria edge_command capture_snapshot → box executa → POST aqui → UI lê GET /api/cameras/<id>/snapshot (cache Redis). Falha é espelhada por PATCH /edge/commands/<id> (failed) em camera_snapshot_state.write_failed.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/commands",
+   "auth": "jwt_required_custom + role ∈ {admin,superadmin} (get_role() inline; senão 403)",
+   "tenant": "public.tenant_id (filtra tenant_id+site_id; site de outro tenant → lista vazia 200, não 404)",
+   "envelope": "success/error — 200 | 403 | 422 | 500",
+   "request": "query site_id* , status?, limit[=50]≤200",
+   "response": "data {commands[]: {id, command_type, payload, status, command_id, created_at, dispatched_at, completed_at}, count}",
+   "tables": [
+    "public.edge_commands"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Console de comandos do site (histórico/status dos comandos enviados ao box) não tem UI; agente usa só /pending e PATCH",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts, deployments (command_poller.py:136 usa '/api/v1/edge/commands' só como BASE do PATCH de ack, não GET)",
+    "services/api/app/api/v1/edge_commands/routes.py:174"
+   ],
+   "behavior_notes": "Sem paginação por cursor (só limit). Não valida posse do site (retorna vazio). Status possíveis: pending|dispatched|done|failed|expired.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/edge/commands",
+   "auth": "jwt_required_custom + role ∈ {admin,superadmin} (inline; senão 403)",
+   "tenant": "public.tenant_id (tenant do JWT; site_id do body NÃO é validado como pertencente ao tenant)",
+   "envelope": "success/error — 201 (created) | 200 (duplicate: {created:false}) | 403 | 422 | 500 (site_id não-UUID → DataError, ou UUID de site inexistente → FK edge_commands.site_id→edge_sites viola → ambos caem no except genérico, edge_commands/routes.py:129-131)",
+   "request": "body {site_id*, command_type*, payload?{}, command_id? (idempotência; default token_hex(16))}",
+   "response": "201: data {command{id,status,created_at}, command_id, created:true} | 200: data {command_id, created:false, reason:'duplicate'}",
+   "tables": [
+    "public.edge_commands"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Envio manual de comando ao box (ex.: update_camera_config) sem UI; monitoring/snapshot criam comandos por repo direto, não por esta rota",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/api/app/api/v1/edge_commands/routes.py:103"
+   ],
+   "behavior_notes": "Idempotente por (tenant_id, command_id) — reenvio devolve 200 created:false. command_type livre; o box reconhece: update_camera_config, monitoring.*, capture_snapshot, run_propagation (command_poller.py) — outros são ack 'failed' reason unsupported. Box faz poll ~60s em idle. [PR #526] site_id do body é resolvido por (site_id, tenant do JWT) → 404 cross-tenant.",
+   "risks": "SEGURANÇA (C-01): não valida que site_id pertence ao tenant do JWT e o device lê pendentes só por site_id (edge_command_repository.list_pending sem tenant) → admin de um tenant pode enfileirar comando para box de outro tenant (precisa do UUID do site)."
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/edge/commands/<command_id>",
+   "auth": "device_scope:commands:write",
+   "tenant": "public.tenant_id (tenant do enrollment; UPDATE WHERE command_id AND tenant_id → cross-tenant 404)",
+   "envelope": "success/error — 200 | 404 | 422 | 500",
+   "request": "path command_id (texto, não UUID); body {status* ∈ {done,failed,expired}, result?{}}",
+   "response": "data {command{id, status, completed_at, command_type, payload}}",
+   "tables": [
+    "public.edge_commands",
+    "public.propagation_jobs"
+   ],
+   "side_effects": [
+    "Redis camera_snapshot_state.write_failed quando capture_snapshot falha (best-effort)",
+    "PropagationRepository.apply_callback_failed quando run_propagation falha (best-effort)"
+   ],
+   "label": "BACKEND-ONLY",
+   "label_reason": "Ack do box após executar comando",
+   "evidence": [
+    "services/edge-sync-agent/app/command_poller.py:136"
+   ],
+   "behavior_notes": "Seta dispatched_at=COALESCE(now) e completed_at em done/failed. Não há transição 'dispatched' explícita pelo GET /pending.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/commands/pending",
+   "auth": "device_scope:commands:read",
+   "tenant": "public.tenant_id (filtra SÓ por site_id do enrollment — sem tenant_id no SQL)",
+   "envelope": "success/error — 200 | 500",
+   "request": "query limit[=50]≤200",
+   "response": "data {commands[]: {id, command_type, payload, command_id, created_at}, count}",
+   "tables": [
+    "public.edge_commands"
+   ],
+   "side_effects": [],
+   "label": "BACKEND-ONLY",
+   "label_reason": "Polling do edge-sync-agent",
+   "evidence": [
+    "services/edge-sync-agent/app/command_poller.py:135"
+   ],
+   "behavior_notes": "Poll ~60s em idle; acelera ao atender monitoring.*. Não marca dispatched — comando segue 'pending' até o PATCH. [PR #526] list_pending filtra por (site_id, tenant_id) do token do device.",
+   "risks": "list_pending sem filtro de tenant (ver risco do POST /api/v1/edge/commands)."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/config/poll",
+   "auth": "device_scope:config:read",
+   "tenant": "public.tenant_id (site/tenant do enrollment)",
+   "envelope": "raw:jsonify — 200 {cameras[], config_version} | 304 (If-None-Match == ETag, corpo vazio) | 500 error()",
+   "request": "header If-None-Match?",
+   "response": "raw {cameras[]: {id, name, host, port, channel, subtype, rtsp_substream_url, rtsp_url_override, fps_target, quality_preset, collection_subtype, is_active, module_code}, config_version}; headers ETag, Cache-Control: no-cache",
+   "tables": [
+    "public.cameras"
+   ],
+   "side_effects": [],
+   "label": "BACKEND-ONLY",
+   "label_reason": "ConfigPoller do edge-sync-agent",
+   "evidence": [
+    "services/edge-sync-agent/app/config_poller.py:53"
+   ],
+   "behavior_notes": "Desvio proposital de envelope (consumidor aplica chaves de 1º nível). Versionamento por conteúdo (sha256[:16] do payload); o mesmo hash é comparado com heartbeat.config_version_applied (ADR-0058). NUNCA expõe credenciais (C-05).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/edge/devices/<device_pk>/revoke",
+   "auth": "jwt + permission:edge:manage (has_permission no corpo; default admin/superadmin; get_role() antes → 401 se claim ausente)",
+   "tenant": "public.tenant_id (UPDATE WHERE id AND tenant_id → cross-tenant 404)",
+   "envelope": "success/error — 200 | 401 | 403 | 404",
+   "request": "path device_pk (UUID de device_tokens.id, não device_id); body {reason?}",
+   "response": "data {revoked:true, device_id, revoked_at}",
+   "tables": [
+    "public.device_tokens"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Revogar device (corte imediato: heartbeat passa a 403) sem UI",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/api/app/api/v1/edge/routes.py:1535"
+   ],
+   "behavior_notes": "Idempotente (revogar já revogado → 200). Device revogado pode ser re-enrolado com token novo (enroll_device ON CONFLICT WHERE revoked=true).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/edge/enroll",
+   "auth": "enrollment_token (one-time, hash SHA-256 em public.enrollment_tokens; sem JWT)",
+   "tenant": "public.tenant_id (tenant/site vêm da linha do token — C-01)",
+   "envelope": "success/error — 201 | 401 (token inválido/expirado/usado) | 409 (device_id ativo / duplicado) | 422 INVALID_PAYLOAD",
+   "request": "body {enrollment_token*, device_id*, device_name?, public_key_pem*} (EnrollmentRequest pydantic)",
+   "response": "data {tenant_id, site_id, device_id, scopes[] (todos os DeviceTokenScope)}",
+   "tables": [
+    "public.enrollment_tokens",
+    "public.device_tokens"
+   ],
+   "side_effects": [],
+   "label": "BACKEND-ONLY",
+   "label_reason": "Chamado pelo edge-sync-agent e scripts de enrollment",
+   "evidence": [
+    "services/edge-sync-agent/app/auth/enrollment.py:86",
+    "scripts/edge/enroll_device.py:46",
+    "scripts/edge_artery_probe.py:211"
+   ],
+   "behavior_notes": "Transação atômica: consome token (used_at) + upsert device. Device auto-assina RS256 depois (não há device_token emitido pela nuvem — ADR-0019 reconciliação). Re-enroll só se revogado.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/edge/enrollment-tokens/<token_id>/revoke",
+   "auth": "jwt + permission:edge:manage (has_permission no corpo; default admin/superadmin; get_role() antes → 401 se claim ausente)",
+   "tenant": "public.tenant_id (cross-tenant → 404)",
+   "envelope": "success/error — 200 | 401 | 403 | 404 | 409 (já usado)",
+   "request": "path token_id",
+   "response": "data {revoked:true, token_id}",
+   "tables": [
+    "public.enrollment_tokens"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Gestão de tokens de enrollment sem UI",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/api/app/api/v1/edge/routes.py:1304"
+   ],
+   "behavior_notes": "Revogação = expires_at=now(). Já expirado → 200 no-op (idempotente). Já usado → 409.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/events",
+   "auth": "jwt_required_custom (sem checagem de role/permission)",
+   "tenant": "public.tenant_id (tenant_id+site_id; site de outro tenant → lista vazia 200)",
+   "envelope": "success/error — 200 | 422 | 500",
+   "request": "query site_id*, limit[=100]≤500, before? (cursor ISO em received_at), event_type?",
+   "response": "data {events[]: {id, device_id, camera_id, module, event_type, payload, evidence_r2_key, occurred_at, received_at, dedup_key}, count}",
+   "tables": [
+    "public.edge_events"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Timeline de eventos do box (detection/camera_offline/model_loaded…) sem UI; hoje tabela vazia no DEV porque o produtor está quebrado (ver findings)",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/api/app/api/v1/edge_events/routes.py:74"
+   ],
+   "behavior_notes": "Paginação por cursor temporal 'before' (received_at <). Sem filtro por camera_id.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/edge/events/ingest",
+   "auth": "device_scope:events:write",
+   "tenant": "public.tenant_id (tenant/site/device do enrollment)",
+   "envelope": "success/error — 200 | 422",
+   "request": "header X-Batch-Id?; body {events[] ≤500: {event_type*, camera_id?, module?, payload?{}, evidence_r2_key?, occurred_at?}}",
+   "response": "data {ingested, submitted, batch_id}",
+   "tables": [
+    "public.edge_events"
+   ],
+   "side_effects": [],
+   "label": "BACKEND-ONLY",
+   "label_reason": "Ingest único de eventos do edge (único canal detecções→cloud). Cliente REAL desde PR #529: services/edge-sync-agent/app/uploader.py.",
+   "evidence": [
+    "services/edge-sync-agent/app/uploader.py:45 (aponta para /api/v1/edge/detections — rota INEXISTENTE; nenhum código chama /events/ingest)"
+   ],
+   "behavior_notes": "Dedup por (tenant_id, dedup_key) onde dedup_key = batch_id + sha256(evento) — sem X-Batch-Id o batch_id é uuid4 por request, logo reenvio sem header NÃO deduplica. _VALID_EVENT_TYPES declarado e não aplicado (aceita qualquer event_type). [PR #529 / ADR-0064] Cliente real: uploader.py (a cada 30s, lote ≤500, X-Batch-Id determinístico = sha256 dos ids do buffer; corpo {events:[{event_type,camera_id,payload,occurred_at}]}; 200 → mark_sent, qualquer outro status/erro → mark_failed + backoff 30/60/120/300s). Auth device RS256 escopo events:write; tenant/site/device vêm do token (C-01), corpo nunca escolhe tenant; dedup (tenant_id, X-Batch-Id+sha256(evento)) ON CONFLICT DO NOTHING em public.edge_events. NÃO publica em Redis (não alimenta det:* nem SocketIO). Fonte no edge: detection_relay.py (det:*/detections:* do Redis local, só has_violation=true), opt-in EDGE_REDIS_URL; publicador no box ainda pendente (fora do repo). Tetos: _VALID_EVENT_TYPES não validado; camera_id não-UUID → 500 e lote reenviado para sempre (sem dead-letter); dedup por composição de lote.",
+   "risks": "Artéria edge→cloud de eventos quebrada: Uploader POSTa em URL inexistente (404 eterno + backoff); edge_events=0 linhas no DEV; /monitoring/sites/<id>/detections sempre vazio."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/edge/frames",
+   "auth": "device_scope:frames:write",
+   "tenant": "public.tenant_id (camera_id e recorder_id têm de ser do tenant do device → 404)",
+   "envelope": "success/error — 201 | 404 | 413 | 422 | 500 | 502 (storage)",
+   "request": "multipart file* (jpg/jpeg ≤10MB) + form camera_id* (UUID), recorder_id* (UUID), captured_at? (ISO 8601), module_code?[=epi]",
+   "response": "data {frame_id, r2_key}",
+   "tables": [
+    "public.cameras",
+    "public.recorders",
+    "public.training_frames"
+   ],
+   "side_effects": [
+    "R2 upload training-images/{tenant}/nvr/{recorder}/{uuid}.jpg",
+    "INSERT training_frames source=nvr (pool de anotação)"
+   ],
+   "label": "BACKEND-ONLY",
+   "label_reason": "Coletor de frames e replay_miner do edge-sync-agent",
+   "evidence": [
+    "services/edge-sync-agent/app/collector/frame_uploader.py:43",
+    "services/edge-sync-agent/app/collector/replay_miner.py:9"
+   ],
+   "behavior_notes": "Storage antes do banco; falha de storage → 502 distinguível; linha não gravada após upload → objeto órfão logado. Alimenta o estúdio de anotação (domínio training).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/edge/heartbeat",
+   "auth": "device_token inline (Bearer RS256 auto-assinado; lookup device_tokens; revogado → 403; claims≠enrollment → 403; exige escopo heartbeat:write)",
+   "tenant": "public.tenant_id (tenant/site/device do enrollment, nunca dos claims)",
+   "envelope": "success/error — 201 | 401 | 403 | 422 INVALID_PAYLOAD",
+   "request": "body Heartbeat pydantic {device_id*, status* (healthy|degraded|critical), cpu_pct?, mem_pct?, gpu_pct?, gpu_mem_pct?, disk_pct?, inference_fps?, inference_latency_ms?, cameras_online?, cameras_total?, queue_depth?, upload_kbps?, download_kbps?, gpu_temp_c?, cpu_temp_c?, decode_fps?, decode_pct?, dropped_frames?, last_error?, edge_version?, config_version_applied?}",
+   "response": "data {id, received_at}",
+   "tables": [
+    "public.device_tokens",
+    "public.edge_heartbeats",
+    "public.cameras",
+    "public.edge_telemetry_samples"
+   ],
+   "side_effects": [
+    "UPDATE device_tokens.last_seen_at",
+    "bridge best-effort → INSERT edge_telemetry_samples + Redis publish edge_telemetry:{tenant_id} → SocketIO 'edge_telemetry' /monitor",
+    "log WARNING rate-limitado de divergência de config (ADR-0058)"
+   ],
+   "label": "BACKEND-ONLY",
+   "label_reason": "HeartbeatLoop/telemetry do edge-sync-agent e scripts de prova",
+   "evidence": [
+    "services/edge-sync-agent/app/heartbeat.py:118",
+    "services/edge-sync-agent/app/telemetry/__main__.py:57",
+    "scripts/edge_artery_probe.py:243"
+   ],
+   "behavior_notes": "Fonte da verdade de 'online' (OFFLINE_THRESHOLD em core/edge_offline.py) usada por /sites/health, /overview, detalhe de site. 46k linhas no DEV.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/edge/live-view/<camera_id>/segment",
+   "auth": "device_scope:stream:write + rate limit dedicado 3600/min por IP (scope edge-live-ingest)",
+   "tenant": "public.tenant_id (câmera do tenant do device → 404)",
+   "envelope": "success/error — 201 | 404 | 413 | 422 | 429 | 500",
+   "request": "path camera_id (UUID); multipart file* (≤5MB) + form filename* (regex ^[a-zA-Z0-9_.-]+$, ex. stream.m3u8/segmentN.ts)",
+   "response": "data {stored:true, still_wanted (bool — há espectador ativo)}",
+   "tables": [
+    "public.cameras"
+   ],
+   "side_effects": [
+    "Redis binário SETEX epi:edge_hls:{camera_id}:{filename} TTL 30s (lido por serve_hls no domínio cameras/streams)"
+   ],
+   "label": "BACKEND-ONLY",
+   "label_reason": "SegmentPusher do edge-sync-agent (live view por push)",
+   "evidence": [
+    "services/edge-sync-agent/app/live_view/segment_pusher.py:73"
+   ],
+   "behavior_notes": "LV-3: resposta carrega still_wanted (epi:stream:{id}:active existe?) — box para de empurrar quando ninguém assiste. Sem storage persistente; expira sozinho.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/live-view/wanted",
+   "auth": "device_scope:stream:write",
+   "tenant": "public.tenant_id (câmeras do site do device)",
+   "envelope": "success/error — 200 | 500",
+   "request": "sem params",
+   "response": "data {camera_ids[]}",
+   "tables": [
+    "public.cameras"
+   ],
+   "side_effects": [
+    "Redis EXISTS epi:stream:{camera_id}:active (pipeline)"
+   ],
+   "label": "BACKEND-ONLY",
+   "label_reason": "live_view_loop/segment_pusher do edge-sync-agent",
+   "evidence": [
+    "services/edge-sync-agent/app/live_view/segment_pusher.py:47",
+    "services/edge-sync-agent/app/live_view/live_view_loop.py:20"
+   ],
+   "behavior_notes": "'Tem alguém assistindo' = POST /stream/start (UI) criou a chave E serve_hls renova a cada segmento pedido.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/overview",
+   "auth": "jwt + permission:edge:manage (has_permission no corpo; default admin/superadmin; get_role() antes → 401 se claim ausente)",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error — 200 | 401 | 403",
+   "request": "sem params",
+   "response": "data {sites_total, sites_por_status{status:n}, devices_total, devices_online, devices_revoked, sites_offline}",
+   "tables": [
+    "public.edge_sites",
+    "public.device_tokens",
+    "public.edge_heartbeats"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "",
+   "evidence": [
+    "apps/frontend/src/services/edgeService.ts:151",
+    "apps/frontend/src/modules/admin/pages/observability/EdgeFleetPanel.tsx:393"
+   ],
+   "behavior_notes": "Cards do painel de frota (/admin/observability?tab=edge). Polling via usePolling. Regra de offline idêntica a /sites/health (OFFLINE_THRESHOLD_SECONDS); sites 'provisioning' não contam como offline.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/sites",
+   "auth": "jwt + permission:edge:manage (has_permission no corpo; default admin/superadmin; get_role() antes → 401 se claim ausente)",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error — 200 | 401 | 403",
+   "request": "sem params",
+   "response": "data {sites[]: {id, tenant_id, name, description, location, deployment_mode, status, created_at, created_by}}",
+   "tables": [
+    "public.edge_sites"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "",
+   "evidence": [
+    "apps/frontend/src/services/edgeService.ts:176",
+    "apps/frontend/src/pages/epi/EpiSitesPage.tsx:52"
+   ],
+   "behavior_notes": "Sem paginação. Tela /epi/sites lista e permite alternar deployment_mode (PATCH).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/edge/sites",
+   "auth": "jwt + permission:edge:manage (has_permission no corpo; default admin/superadmin; get_role() antes → 401 se claim ausente)",
+   "tenant": "public.tenant_id (created_by = user do JWT)",
+   "envelope": "success/error — 201 | 400 | 401 | 403",
+   "request": "body {name*, location?, deployment_mode* ∈ {cloud,edge,hybrid}} (description não é aceito na criação)",
+   "response": "data {site{id, tenant_id, name, description, location, deployment_mode, status, created_at, created_by}}",
+   "tables": [
+    "public.edge_sites"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Criar site edge (passo 1 do onboarding de um cliente/planta) não tem UI",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/api/app/api/v1/edge/routes.py:1085"
+   ],
+   "behavior_notes": "Status inicial = 'active' (DEFAULT do banco, migration 065; a rota não envia status). Ordem do onboarding: criar site → gerar enrollment token → enrolar box → heartbeat aparece em /sites/health.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/sites/<site_id>",
+   "auth": "jwt + permission:edge:manage (has_permission no corpo; default admin/superadmin; get_role() antes → 401 se claim ausente)",
+   "tenant": "public.tenant_id (cross-tenant → 404)",
+   "envelope": "success/error — 200 | 401 | 403 | 404",
+   "request": "path site_id",
+   "response": "data {site{…_serialize_site, device_count, derived_health (offline|healthy|degraded|critical), last_heartbeat_at}}",
+   "tables": [
+    "public.edge_sites",
+    "public.device_tokens",
+    "public.edge_heartbeats"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Página de detalhe do site (cabeçalho com saúde + nº devices) sem UI; o painel atual monta detalhe só com heartbeats/summary",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/api/app/api/v1/edge/routes.py:1132"
+   ],
+   "behavior_notes": "",
+   "risks": ""
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/edge/sites/<site_id>",
+   "auth": "jwt + permission:edge:manage (has_permission no corpo; default admin/superadmin; get_role() antes → 401 se claim ausente)",
+   "tenant": "public.tenant_id (cross-tenant → 404; tenant_id do body é descartado)",
+   "envelope": "success/error — 200 | 400 | 401 | 403 | 404",
+   "request": "body parcial {name?, location?, status? ∈ {active,inactive,maintenance,provisioning}, deployment_mode? ∈ {cloud,edge,hybrid}}",
+   "response": "data {site{…_serialize_site}}",
+   "tables": [
+    "public.edge_sites"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "",
+   "evidence": [
+    "apps/frontend/src/services/edgeService.ts:190",
+    "apps/frontend/src/pages/epi/EpiSitesPage.tsx:69"
+   ],
+   "behavior_notes": "Front atual só envia deployment_mode (toggle). Enum inválido → 400 (não 422). Body vazio/sem campos editáveis → no-op: repo devolve o site atual sem UPDATE (update_site).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/sites/<site_id>/devices",
+   "auth": "jwt + permission:edge:manage (has_permission no corpo; default admin/superadmin; get_role() antes → 401 se claim ausente)",
+   "tenant": "public.tenant_id (site cross-tenant → 404)",
+   "envelope": "success/error — 200 | 401 | 403 | 404",
+   "request": "path site_id",
+   "response": "data {devices[]: {id (pk p/ revoke), device_id, device_name, revoked, last_seen_at, enrolled_at}} (sem public_key/fingerprint — C-05)",
+   "tables": [
+    "public.edge_sites",
+    "public.device_tokens"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Lista de devices do site (com revogar) sem UI tenant-scoped; só o /monitoring superadmin mostra devices",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/api/app/api/v1/edge/routes.py:1503"
+   ],
+   "behavior_notes": "Inclui revogados (flag). 'id' é o device_pk usado por POST /devices/<device_pk>/revoke.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/sites/<site_id>/enrollment-tokens",
+   "auth": "jwt + permission:edge:manage (has_permission no corpo; default admin/superadmin; get_role() antes → 401 se claim ausente)",
+   "tenant": "public.tenant_id (site cross-tenant → 404)",
+   "envelope": "success/error — 200 | 401 | 403 | 404",
+   "request": "path site_id",
+   "response": "data {tokens[]: {id, created_at, expires_at, used_at, used_by_device_id, status ∈ {active,used,expired}}} (sem hash/plaintext)",
+   "tables": [
+    "public.edge_sites",
+    "public.enrollment_tokens"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Gestão de tokens de enrollment por site sem UI",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/api/app/api/v1/edge/routes.py:1272"
+   ],
+   "behavior_notes": "Status derivado no servidor (_derive_token_status).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/edge/sites/<site_id>/enrollment-tokens",
+   "auth": "jwt + permission:edge:manage (has_permission no corpo; default admin/superadmin; get_role() antes → 401 se claim ausente)",
+   "tenant": "public.tenant_id (site cross-tenant → 404)",
+   "envelope": "success/error — 201 | 401 | 403 | 404",
+   "request": "path site_id; sem body",
+   "response": "data {token (plaintext, exibido UMA vez), token_id, site_id, expires_at (+24h), used_at:null}",
+   "tables": [
+    "public.edge_sites",
+    "public.enrollment_tokens"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Gerar token one-time para enrolar o box só existe via curl de runbook (docs/edge/DIAGNOSTICO_OBSERVABILIDADE_2026-07-21.md:128)",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/api/app/api/v1/edge/routes.py:1224"
+   ],
+   "behavior_notes": "Plaintext só nesta resposta (banco guarda SHA-256). TTL 24h, single-use. É o caminho de enrollment REAL (o de claim-codes está desconectado).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/sites/<site_id>/heartbeat-summary",
+   "auth": "jwt + permission:edge:manage (has_permission no corpo; default admin/superadmin; get_role() antes → 401 se claim ausente)",
+   "tenant": "public.tenant_id (site cross-tenant → 404)",
+   "envelope": "success/error — 200 | 401 | 403 | 404",
+   "request": "path site_id; query window[=24h] ('30m'|'24h'|'7d'|segundos; clamp 1s..7d)",
+   "response": "data {site_id, window_seconds, heartbeat_count, avg_inference_fps, max_inference_fps, avg_inference_latency_ms, uptime_pct, last_status, last_received_at, derived_status}",
+   "tables": [
+    "public.edge_sites",
+    "public.edge_heartbeats"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "",
+   "evidence": [
+    "apps/frontend/src/services/edgeService.ts:168",
+    "apps/frontend/src/modules/admin/pages/observability/EdgeFleetPanel.tsx:426"
+   ],
+   "behavior_notes": "Front atual não envia window (usa 24h). Chamado junto com /heartbeats ao abrir o detalhe do site no painel.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/sites/<site_id>/heartbeats",
+   "auth": "jwt + permission:edge:manage (has_permission no corpo; default admin/superadmin; get_role() antes → 401 se claim ausente)",
+   "tenant": "public.tenant_id (site cross-tenant → 404)",
+   "envelope": "success/error — 200 | 401 | 403 | 404",
+   "request": "path site_id; query limit[=100]≤500, before? (ISO, cursor exclusivo em received_at)",
+   "response": "data {heartbeats[]: {id, received_at, status, inference_fps, cameras_online, cameras_total, cpu_pct, gpu_pct, queue_depth, gpu_temp_c, decode_pct, edge_version, cpu_temp_c, decode_fps, dropped_frames, config_version_applied}}",
+   "tables": [
+    "public.edge_sites",
+    "public.edge_heartbeats"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "",
+   "evidence": [
+    "apps/frontend/src/services/edgeService.ts:161",
+    "apps/frontend/src/modules/admin/pages/observability/EdgeFleetPanel.tsx:425"
+   ],
+   "behavior_notes": "Série temporal paginada por cursor 'before' (front atual não pagina — pega os 100 mais recentes para o gráfico). Ordem: mais recente primeiro.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/sites/health",
+   "auth": "jwt + permission:edge:manage (has_permission no corpo; default admin/superadmin; get_role() antes → 401 se claim ausente)",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error — 200 | 401 | 403",
+   "request": "sem params",
+   "response": "data {sites[]: {site_id, name, deployment_mode, derived_status, last_heartbeat_at, inference_fps, cameras_online, cameras_total, cpu_pct, gpu_pct, gpu_mem_pct, queue_depth, gpu_temp_c, decode_pct, edge_version, decode_fps}}",
+   "tables": [
+    "public.edge_sites",
+    "public.edge_heartbeats"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "",
+   "evidence": [
+    "apps/frontend/src/services/edgeService.ts:156",
+    "apps/frontend/src/modules/admin/pages/observability/EdgeFleetPanel.tsx:401"
+   ],
+   "behavior_notes": "No painel é FALLBACK quando GET /api/v1/admin/observability/edge-fleet (superadmin, multi-tenant) falha. Registrada antes de /sites/<site_id> para evitar colisão de rota. derived_status: offline se sem heartbeat ou stale > OFFLINE_THRESHOLD.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/edge/software/target",
+   "auth": "device_scope:config:read",
+   "tenant": "public.tenant_id (device do enrollment; device≠tenant → 404)",
+   "envelope": "success/error — 200 | 404",
+   "request": "sem params",
+   "response": "data {channel (device_tokens.channel, fallback 'dev'), target_ref|null}",
+   "tables": [
+    "public.device_tokens",
+    "public.edge_software_channels"
+   ],
+   "side_effects": [],
+   "label": "BACKEND-ONLY",
+   "label_reason": "Cliente OTA do edge-sync-agent",
+   "evidence": [
+    "services/edge-sync-agent/app/ota/client.py:27"
+   ],
+   "behavior_notes": "Nuvem só indica; o agente decide atualizar. Canal é atribuído por admin (PUT /admin/software-channels/<channel> — domínio admin). target_ref null = sem atualização.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/monitoring/commands/<command_id>",
+   "auth": "jwt + superadmin(404) (require_superadmin_or_404: não-superadmin → 404)",
+   "tenant": "global (sem filtro de tenant — override C-01 consciente, só command_type LIKE 'monitoring.%')",
+   "envelope": "success/error — 200 | 404 | 500",
+   "request": "path command_id (mon-q-*/mon-s-*/mon-l-*)",
+   "response": "data {state ∈ {pending,dispatched,done,failed,expired}, result|null, command_id, created_at, completed_at}",
+   "tables": [
+    "public.edge_commands"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "",
+   "evidence": [
+    "apps/frontend/src/services/monitoringService.ts:78",
+    "apps/frontend/src/services/monitoringService.ts:82",
+    "apps/frontend/src/pages/monitoring/SiteMonitor.tsx:128",
+    "apps/frontend/src/pages/monitoring/LogtailModal.tsx:67"
+   ],
+   "behavior_notes": "Continuação de query/snapshot/logtail que voltaram 'pending'. Front faz poll a cada 2,5s (usePolling) até done/failed. Comando não-monitoring → 404.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/monitoring/sites",
+   "auth": "jwt + superadmin(404) (require_superadmin_or_404: não-superadmin → 404)",
+   "tenant": "global (todos os tenants — override C-01 consciente)",
+   "envelope": "success/error — 200 | 500",
+   "request": "sem params",
+   "response": "data {sites[]: {id, tenant_id, name, description, location, deployment_mode, status, created_at, tenant_name, tenant_slug, devices[]: {device_id, device_name, last_seen_at, channel, edge_version, last_heartbeat_at, last_heartbeat_status, target_ref, divergent|null}}, count}",
+   "tables": [
+    "public.edge_sites",
+    "public.tenants",
+    "public.device_tokens",
+    "public.edge_heartbeats",
+    "public.edge_software_channels"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "",
+   "evidence": [
+    "apps/frontend/src/services/monitoringService.ts:54",
+    "apps/frontend/src/pages/monitoring/EdgeMonitoringPage.tsx:43"
+   ],
+   "behavior_notes": "Página oculta /monitoring (superadmin; outros recebem redirect igual a rota inexistente). divergent = edge_version != target_ref (null se faltar dado). Só devices não revogados.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/monitoring/sites/<site_id>/detections",
+   "auth": "jwt + superadmin(404) (require_superadmin_or_404: não-superadmin → 404)",
+   "tenant": "global (site de qualquer tenant; site_id malformado/inexistente → 404)",
+   "envelope": "success/error — 200 | 404 | 422 | 500",
+   "request": "path site_id; query window_minutes[=60] (1..43200)",
+   "response": "data {cameras[]: {camera_id|null, last_occurred_at, last_received_at, detections_in_window, ingest_lag_s, chain{detection_to_ingest_s, ingest_to_notification_s:null}}, window_minutes, count}",
+   "tables": [
+    "public.edge_sites",
+    "public.tenants",
+    "public.edge_events"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "",
+   "evidence": [
+    "apps/frontend/src/services/monitoringService.ts:103",
+    "apps/frontend/src/pages/monitoring/SiteMonitor.tsx:206"
+   ],
+   "behavior_notes": "Poll 30s no SiteMonitor. Depende de edge_events event_type='detection' — hoje vazio (produtor quebrado, ver findings). ingest_to_notification_s sempre null (não ligado).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/monitoring/sites/<site_id>/logtail",
+   "auth": "jwt + superadmin(404) (require_superadmin_or_404: não-superadmin → 404)",
+   "tenant": "global (comando criado no tenant do site)",
+   "envelope": "success/error — 200 (state done|failed|pending) | 404 | 422 | 500",
+   "request": "path site_id; body {unit* (≤128 chars, ex. edge-sync-agent), lines[=200] (1..500)}",
+   "response": "data {state, result? (done/failed), command_id}",
+   "tables": [
+    "public.edge_sites",
+    "public.tenants",
+    "public.edge_commands",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "INSERT edge_commands monitoring.logtail (command_id mon-l-*)",
+    "audit_log edge_monitoring.logtail SEMPRE (sem dedup)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "",
+   "evidence": [
+    "apps/frontend/src/services/monitoringService.ts:96",
+    "apps/frontend/src/pages/monitoring/LogtailModal.tsx:40"
+   ],
+   "behavior_notes": "Síncrono até MONITORING_WAIT_S (10s, poll DB 0,5s); sem resposta → state pending e o front continua via GET /commands/<id>. 1ª chamada pending é o caso normal (box poll ~60s).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/monitoring/sites/<site_id>/query",
+   "auth": "jwt + superadmin(404) (require_superadmin_or_404: não-superadmin → 404)",
+   "tenant": "global (comando criado no tenant do site)",
+   "envelope": "success/error — 200 (state done|failed|pending) | 404 | 422 | 500",
+   "request": "path site_id; body {window* ∈ {2h,24h,7d,30d}, layers?[str], max_points? (1..10000)} — from_epoch/to_epoch enviados pelo front são IGNORADOS",
+   "response": "data {state, result? (MonitoringResult produzido no box: samples[], device_ts, collector…), command_id}",
+   "tables": [
+    "public.edge_sites",
+    "public.tenants",
+    "public.edge_commands",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "INSERT edge_commands monitoring.query (mon-q-*)",
+    "audit_log edge_monitoring.query com dedup 15 min por (user,site,action) — por worker"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "",
+   "evidence": [
+    "apps/frontend/src/services/monitoringService.ts:64",
+    "apps/frontend/src/pages/monitoring/SiteMonitor.tsx:96"
+   ],
+   "behavior_notes": "Fluxo comando→espera→pending→poll GET /commands/<id> a cada 2,5s. Payload de result é definido pelo box (monitoring/handlers.py), não pela API.",
+   "risks": "Drift de contrato: monitoringService.ts:62-63 envia from_epoch/to_epoch que a rota não lê (monitoring/routes.py:247-268)."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/monitoring/sites/<site_id>/snapshot",
+   "auth": "jwt + superadmin(404) (require_superadmin_or_404: não-superadmin → 404)",
+   "tenant": "global (comando criado no tenant do site)",
+   "envelope": "success/error — 200 (state done|failed|pending) | 404 | 500",
+   "request": "path site_id; body {} (ignorado)",
+   "response": "data {state, result? (1 amostra ao vivo), command_id}",
+   "tables": [
+    "public.edge_sites",
+    "public.tenants",
+    "public.edge_commands",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "INSERT edge_commands monitoring.snapshot (mon-s-*)",
+    "audit_log edge_monitoring.snapshot (dedup 15 min)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "",
+   "evidence": [
+    "apps/frontend/src/services/monitoringService.ts:72",
+    "apps/frontend/src/pages/monitoring/SiteMonitor.tsx:170"
+   ],
+   "behavior_notes": "Espera MONITORING_SNAPSHOT_WAIT_S (8s). Front dispara a cada 10s (pausa com aba oculta) e não empilha se já há comando em voo. Não confundir com snapshot de câmera (capture_snapshot, domínio cameras).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/monitoring/sites/<site_id>/thresholds",
+   "auth": "jwt + superadmin(404) (require_superadmin_or_404: não-superadmin → 404)",
+   "tenant": "global (site de qualquer tenant)",
+   "envelope": "success/error — 200 | 404 | 500",
+   "request": "path site_id",
+   "response": "data {thresholds{chave: número|bool} ({} se nunca configurado), updated_at, updated_by}",
+   "tables": [
+    "public.edge_sites",
+    "public.tenants",
+    "public.edge_monitoring_thresholds"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "",
+   "evidence": [
+    "apps/frontend/src/services/monitoringService.ts:86",
+    "apps/frontend/src/pages/monitoring/EdgeMonitoringPage.tsx:77"
+   ],
+   "behavior_notes": "Chaves conhecidas pelo front: ram_pct_warn/crit, temp_warn/crit_c, disk_min_free_gb, heartbeat_max_min, gw_loss_warn_pct, api_rtt_warn_ms, restarts_warn, swap_warn_pct, alert_power_mode (bool) — apps/frontend/src/types/monitoring.ts:252-265. Defaults são do cliente; o backend aceita qualquer chave numérica/bool (≤64).",
+   "risks": ""
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/monitoring/sites/<site_id>/thresholds",
+   "auth": "jwt + superadmin(404) (require_superadmin_or_404: não-superadmin → 404)",
+   "tenant": "global (grava tenant_id do site)",
+   "envelope": "success/error — 200 | 404 | 422 | 500",
+   "request": "path site_id; body {thresholds* {str: número|bool}, ≤64 chaves}",
+   "response": "data {thresholds, updated_at}",
+   "tables": [
+    "public.edge_sites",
+    "public.tenants",
+    "public.edge_monitoring_thresholds",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "audit_log edge_monitoring.thresholds_updated SEMPRE com old/new"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "",
+   "evidence": [
+    "apps/frontend/src/services/monitoringService.ts:90",
+    "apps/frontend/src/pages/monitoring/EdgeMonitoringPage.tsx:94"
+   ],
+   "behavior_notes": "Upsert por site_id (substitui o objeto inteiro, não faz merge).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/site-gateways/<site_id>",
+   "auth": "jwt_required_custom (sem checagem de role/permission — qualquer usuário do tenant)",
+   "tenant": "public.tenant_id (WHERE tenant_id AND site_id → cross-tenant 404)",
+   "envelope": "success/error — 200 | 404 | 500",
+   "request": "path site_id",
+   "response": "data {gateway{id, kind, model, wg_public_key, wg_endpoint, lan_subnet, status, last_seen, config{}, created_at, updated_at}}",
+   "tables": [
+    "public.site_gateways"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Configuração de rede do site (MikroTik/WireGuard, ADR-0020) sem UI; tabela vazia no DEV",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/api/app/api/v1/site_gateways/routes.py:32"
+   ],
+   "behavior_notes": "1 gateway por site. 'config' é JSONB livre. [PR #526] passa a exigir gateways:manage (mesmo gate do PUT).",
+   "risks": "Leitura aberta a qualquer role do tenant expõe wg_public_key/endpoint/lan_subnet/config."
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/site-gateways/<site_id>",
+   "auth": "jwt_required_custom + permission:gateways:manage (has_permission no corpo; default admin/superadmin)",
+   "tenant": "public.tenant_id (tenant do JWT gravado; site_id NÃO validado como do tenant)",
+   "envelope": "success/error — 200 | 403 | 422 | 500",
+   "request": "path site_id; body {kind[=mikrotik] ∈ {mikrotik,generic}, model?, wg_public_key?, wg_endpoint?, lan_subnet?, config?{}}",
+   "response": "data {gateway{id, kind, status, created_at, updated_at}} (parcial — não devolve os campos enviados)",
+   "tables": [
+    "public.site_gateways"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Cadastro/edição do gateway do site sem UI",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/api/app/api/v1/site_gateways/routes.py:46"
+   ],
+   "behavior_notes": "Upsert ON CONFLICT (site_id). Não valida formato de wg_public_key/endpoint/subnet. Cria com status 'provisioning' (DEFAULT do banco, migration 072). [PR #526] valida posse do site (404) e upsert só atualiza linha do mesmo tenant.",
+   "risks": "SEGURANÇA (C-01): ON CONFLICT (site_id) DO UPDATE sem cláusula de tenant e sem checar posse do site → admin de um tenant pode sobrescrever o gateway do site de outro tenant (precisa do UUID)."
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/site-gateways/<site_id>/status",
+   "auth": "jwt_required_custom + permission:gateways:manage",
+   "tenant": "public.tenant_id (UPDATE WHERE tenant_id AND site_id → cross-tenant 404)",
+   "envelope": "success/error — 200 | 403 | 404 | 422 | 500",
+   "request": "path site_id; body {status* ∈ {provisioning,active,inactive,error}}",
+   "response": "data {gateway{id, status, last_seen}}",
+   "tables": [
+    "public.site_gateways"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Marcar status do gateway na tela de rede do site; docstring original previa o edge como chamador, mas exige JWT de usuário (device não consegue) — hoje sem consumidor",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/api/app/api/v1/site_gateways/routes.py:73"
+   ],
+   "behavior_notes": "Também atualiza last_seen=NOW(). Contrato 'edge confirma provisionamento' não existe (B4).",
+   "risks": ""
+  }
+ ],
+ "flows": [
+  {
+   "name": "Onboarding de site + enrollment do box",
+   "description": "Admin cria o site, gera token one-time (plaintext exibido 1x, TTL 24h), instala o token no box; o box gera keypair RSA e chama /enroll (tenant/site vêm do token); a partir daí auto-assina JWT RS256 com escopos e começa o heartbeat. Device revogado pode ser re-enrolado com token novo. Listar/revogar tokens e devices completa o ciclo.",
+   "endpoints": [
+    "POST /api/v1/edge/sites",
+    "POST /api/v1/edge/sites/<site_id>/enrollment-tokens",
+    "GET /api/v1/edge/sites/<site_id>/enrollment-tokens",
+    "POST /api/v1/edge/enrollment-tokens/<token_id>/revoke",
+    "POST /api/v1/edge/enroll",
+    "POST /api/v1/edge/heartbeat",
+    "GET /api/v1/edge/sites/<site_id>/devices",
+    "POST /api/v1/edge/devices/<device_pk>/revoke"
+   ]
+  },
+  {
+   "name": "Fluxo de claim code (desconectado)",
+   "description": "Admin gera claim code (15 min) → device troca por enrollment_token HS256 → (inexistente) ninguém aceita esse token; /edge/enroll só aceita tokens de public.enrollment_tokens. Não usar no novo front até o backend religar.",
+   "endpoints": [
+    "POST /api/devices/claim-codes",
+    "POST /api/devices/claim"
+   ]
+  },
+  {
+   "name": "Saúde da frota (tenant)",
+   "description": "Painel: overview (contagens) + sites/health (último heartbeat por site com derived_status) em polling; ao abrir um site, heartbeats (série, cursor before) + heartbeat-summary (janela 24h/7d). Detalhe do site agrega device_count e saúde. Regra de offline única (OFFLINE_THRESHOLD).",
+   "endpoints": [
+    "GET /api/v1/edge/overview",
+    "GET /api/v1/edge/sites/health",
+    "GET /api/v1/edge/sites/<site_id>",
+    "GET /api/v1/edge/sites/<site_id>/heartbeats",
+    "GET /api/v1/edge/sites/<site_id>/heartbeat-summary",
+    "GET /api/v1/edge/sites",
+    "PATCH /api/v1/edge/sites/<site_id>"
+   ]
+  },
+  {
+   "name": "Canal de controle cloud→edge (comandos)",
+   "description": "Nuvem enfileira comando (admin via POST, ou handlers internos: capture_snapshot, run_propagation, update_camera_config, monitoring.*); box faz GET /pending (~60s em idle, acelera após monitoring.*), executa e faz PATCH done/failed/expired com result. Idempotência por command_id. Console JWT lista por site/status.",
+   "endpoints": [
+    "POST /api/v1/edge/commands",
+    "GET /api/v1/edge/commands/pending",
+    "PATCH /api/v1/edge/commands/<command_id>",
+    "GET /api/v1/edge/commands"
+   ]
+  },
+  {
+   "name": "Monitoramento do box via comando (superadmin /monitoring)",
+   "description": "Lista frota multi-tenant com divergência OTA; por site: query (janela 2h–30d), snapshot ao vivo (a cada 10s) e logtail (unit+lines) viram comandos monitoring.* — a API espera até 8–10s; se pending, o front faz poll de GET /commands/<id> a cada 2,5s até done/failed. Limiares por site (GET/PUT, auditado) e detecções por câmera (lag de ingest) completam o painel. Não-superadmin recebe 404 em tudo.",
+   "endpoints": [
+    "GET /api/v1/monitoring/sites",
+    "POST /api/v1/monitoring/sites/<site_id>/query",
+    "POST /api/v1/monitoring/sites/<site_id>/snapshot",
+    "POST /api/v1/monitoring/sites/<site_id>/logtail",
+    "GET /api/v1/monitoring/commands/<command_id>",
+    "GET /api/v1/monitoring/sites/<site_id>/thresholds",
+    "PUT /api/v1/monitoring/sites/<site_id>/thresholds",
+    "GET /api/v1/monitoring/sites/<site_id>/detections"
+   ]
+  },
+  {
+   "name": "Config e OTA do device",
+   "description": "Box faz GET /config/poll com If-None-Match (304 se nada mudou; config_version por hash do payload); reporta config_version_applied no heartbeat (divergência logada). OTA: GET /software/target devolve target_ref do canal do device (admin atribui canal/target no domínio admin); o agente decide atualizar.",
+   "endpoints": [
+    "GET /api/v1/edge/config/poll",
+    "POST /api/v1/edge/heartbeat",
+    "GET /api/v1/edge/software/target"
+   ]
+  },
+  {
+   "name": "Dados do box para a nuvem (frames, snapshot, live view, eventos)",
+   "description": "Frames de treino (multipart, camera_id+recorder_id do tenant) → R2 + training_frames (alimenta anotação). Snapshot de câmera: comando capture_snapshot → box sobe JPEG → cache Redis lido por GET /api/cameras/<id>/snapshot. Live view por push: box consulta /live-view/wanted (espectador ativo) e empurra .ts/.m3u8 (TTL 30s) que serve_hls entrega ao player; resposta do push já diz still_wanted. Eventos em lote com dedup (produtor hoje aponta para URL errada).",
+   "endpoints": [
+    "POST /api/v1/edge/frames",
+    "POST /api/v1/edge/cameras/<camera_id>/snapshot",
+    "GET /api/v1/edge/live-view/wanted",
+    "POST /api/v1/edge/live-view/<camera_id>/segment",
+    "POST /api/v1/edge/events/ingest",
+    "GET /api/v1/edge/events"
+   ]
+  },
+  {
+   "name": "Dashboard Integrado (telemetria edge + curvas de treino)",
+   "description": "Heartbeat do box é espelhado em edge_telemetry_samples e publicado no Redis → SocketIO /monitor evento 'edge_telemetry' (ao vivo); histórico por GET edge-telemetry (janela whitelist). Curvas: GET models (lista) → GET training-metrics?models= (comparação). Os dois POST de ingest só têm como produtor o seed script services/api/scripts/seed_dashboard_observability.py (dados estáticos); o box não os chama.",
+   "endpoints": [
+    "POST /api/v1/dashboard/edge-telemetry",
+    "GET /api/v1/dashboard/edge-telemetry",
+    "POST /api/v1/dashboard/training-metrics",
+    "GET /api/v1/dashboard/training-metrics/models",
+    "GET /api/v1/dashboard/training-metrics"
+   ]
+  },
+  {
+   "name": "Gateway de rede do site (MikroTik/WireGuard)",
+   "description": "1 gateway por site: PUT cria/atualiza (kind, chave WG, endpoint, subnet, config), GET lê, PATCH status. Sem UI e sem caminho para o edge confirmar provisionamento.",
+   "endpoints": [
+    "GET /api/v1/site-gateways/<site_id>",
+    "PUT /api/v1/site-gateways/<site_id>",
+    "PATCH /api/v1/site-gateways/<site_id>/status"
+   ]
+  }
+ ],
+ "tables_by_scope": {
+  "public": [
+   "public.audit_log",
+   "public.cameras",
+   "public.device_claim_codes",
+   "public.device_tokens",
+   "public.edge_commands",
+   "public.edge_events",
+   "public.edge_heartbeats",
+   "public.edge_monitoring_thresholds",
+   "public.edge_sites",
+   "public.edge_software_channels",
+   "public.edge_telemetry_samples",
+   "public.enrollment_tokens",
+   "public.model_training_metrics",
+   "public.propagation_jobs",
+   "public.recorders",
+   "public.site_gateways",
+   "public.tenants",
+   "public.trained_models",
+   "public.training_frames",
+   "public.user_permission_overrides",
+   "public.users"
+  ],
+  "tenant_schema": [],
+  "not_in_dev": []
+ },
+ "findings": [
+  {
+   "severity": "P1",
+   "text": "[CORRIGIDO em PR #529 / ADR-0064] Artéria de eventos edge→cloud quebrada: services/edge-sync-agent/app/uploader.py:45 POSTa em /api/v1/edge/detections (rota inexistente na API) enquanto o ingest real é POST /api/v1/edge/events/ingest (edge_events/routes.py:32) — nenhum código chama o ingest; public.edge_events tem 0 linhas no DEV e GET /monitoring/sites/<id>/detections (monitoring/routes.py:423) fica sempre vazio. docs/API_CONTRACT_MAP.md:238 afirma que o uploader já aponta para /events/ingest — drift doc×código."
+  },
+  {
+   "severity": "P1",
+   "text": "[CORRIGIDO em PR #526] risk:security C-01 — POST /api/v1/edge/commands (edge_commands/routes.py:103) não valida que site_id pertence ao tenant do JWT, e o device lê pendentes só por site_id (edge_command_repository.py:34 list_pending sem tenant_id) → admin de um tenant consegue enfileirar comando para o box de outro tenant conhecendo o UUID do site."
+  },
+  {
+   "severity": "P1",
+   "text": "[CORRIGIDO em PR #526] risk:security C-01 — PUT /api/v1/site-gateways/<site_id> (site_gateways/routes.py:46 + site_gateway_repository.py:39 ON CONFLICT (site_id) DO UPDATE sem cláusula de tenant) permite a um admin sobrescrever o gateway do site de outro tenant; GET não exige permissão e expõe wg_public_key/endpoint/lan_subnet/config a qualquer role."
+  },
+  {
+   "severity": "P1",
+   "text": "[CORRIGIDO em PR #524 / ADR-0063] risk:security — SocketIO 'edge_telemetry' é emitido em broadcast no namespace /monitor sem room por tenant (core/socket_bridge.py:232-236) e o hook apps/frontend/src/hooks/useEdgeTelemetrySocket.ts:56 não filtra tenant_id → telemetria ao vivo cross-tenant no Dashboard Integrado."
+  },
+  {
+   "severity": "P1",
+   "text": "Fluxo de claim code é beco sem saída: POST /api/devices/claim (devices/routes.py:97) emite JWT HS256 token_type=device_enrollment (device_auth.py:53) que nenhuma rota consome; POST /api/v1/edge/enroll (edge/routes.py:1345) só aceita hash de public.enrollment_tokens. Dois mecanismos de enrollment, um morto. Blueprint ainda em /api (sem /v1)."
+  },
+  {
+   "severity": "P2",
+   "text": "Drift de contrato front→back: apps/frontend/src/services/monitoringService.ts:62-63 envia from_epoch/to_epoch em POST /monitoring/sites/<id>/query, mas monitoring/routes.py:247-268 só lê window/layers/max_points — campos silenciosamente ignorados."
+  },
+  {
+   "severity": "P2",
+   "text": "POST /api/v1/edge/commands com site_id não-UUID (DataError) ou UUID de site inexistente (FK edge_commands.site_id → edge_sites, migration 071) cai no except genérico → 500 (edge_commands/routes.py:129-131) em vez de 422/404; idem GET /api/v1/edge/events e GET /api/v1/edge/commands com site_id não-UUID (edge_events/routes.py:74-96, edge_commands/routes.py:174-197)."
+  },
+  {
+   "severity": "P2",
+   "text": "GET /api/v1/edge/commands e GET /api/v1/edge/events não validam posse do site: site de outro tenant devolve lista vazia 200 (não 404) — aceitável por não vazar, mas diverge do padrão 404 das rotas /edge/sites/<id>/*."
+  },
+  {
+   "severity": "P2",
+   "text": "GET /api/v1/edge/config/poll devolve jsonify cru (sem envelope success/data) com ETag/304 — desvio documentado e proposital; qualquer cliente novo precisa tratar 304 e não esperar 'data'."
+  },
+  {
+   "severity": "P2",
+   "text": "Ingest de telemetria POST /api/v1/dashboard/edge-telemetry (dashboard_edge/routes.py:105) aceita de qualquer usuário JWT, sem role, e não valida site_id contra o tenant; sem produtor real (heartbeat alimenta por serviço interno)."
+  },
+  {
+   "severity": "P2",
+   "text": "Dedup de eventos em POST /edge/events/ingest depende do header X-Batch-Id; sem ele batch_id=uuid4 por request e reenvio não deduplica (edge_events/routes.py:37-51). _VALID_EVENT_TYPES (linha 22) é declarado e nunca aplicado."
+  },
+  {
+   "severity": "P2",
+   "text": "docs/API_CONTRACT_MAP.md desatualizado neste domínio: linha 237 diz que GET /edge/commands não checa role (código exige admin, S5); linha 432 diz que PATCH /site-gateways/<id>/status é 'usado pelo device edge' (exige JWT de usuário + gateways:manage; device não consegue chamar — B4)."
+  },
+  {
+   "severity": "P3",
+   "text": "Empty-states de apps/frontend/src/pages/DashboardIntegradoPage.tsx:315 e :386 apontam para o seed e para os POST de ingest: o script EXISTE (services/api/scripts/seed_dashboard_observability.py — caminho relativo 'scripts/…' só resolve a partir de services/api/) e POSTa dados ESTÁTICOS versionados (docs/edge/train_metrics/*.jsonl, docs/edge/evidence/mm-2026-07-17/telemetry_mm.jsonl); nenhum produtor de produto publica curvas de treino (model_training_metrics = 0 linhas no DEV) e a telemetria real chega pelo heartbeat (bridge interno), não pelo POST. A instrução ao usuário final ('ingira via POST …') é orientação de dev, não UX."
+  },
+  {
+   "severity": "P3",
+   "text": "Painel de frota tenant (EdgeFleetPanel.tsx:393-403) usa GET /api/v1/edge/sites/health apenas como fallback de GET /api/v1/admin/observability/edge-fleet — dois contratos para a mesma lista; o novo front deve escolher um por papel (superadmin multi-tenant vs admin do tenant)."
+  },
+  {
+   "severity": "P3",
+   "text": "Monitoring: PUT thresholds substitui o objeto inteiro (sem merge) e o padrão de chaves é só do cliente (types/monitoring.ts:252-265) — o backend aceita qualquer chave numérica/bool (≤64)."
+  }
+ ],
+ "design_needs": [
+  "Tela 'Sites edge' do tenant com criação de site (nome, localização, modo cloud/edge/hybrid), edição de status/modo e detalhe com saúde derivada, nº de devices e último heartbeat (hoje só existe lista + toggle de modo).",
+  "Assistente de onboarding do box dentro do detalhe do site: gerar token de enrollment (exibir plaintext uma única vez, copiar, mostrar expiração 24h), listar tokens com status ativo/usado/expirado e revogar; instruções do passo no box.",
+  "Lista de devices do site com último contato, versão do agente, status do heartbeat e ação 'Revogar acesso' (com motivo) + indicação de que um device revogado pode ser re-enrolado com token novo.",
+  "Console de comandos do site: histórico por status (pendente/executado/falhou/expirado), resultado (JSON), e envio manual de comandos suportados (recarregar config de câmeras, captura de snapshot, diagnóstico) — com UX de 'o box só acorda a cada ~60s' (estado pendente + acompanhamento).",
+  "Timeline de eventos do box por site (detecção, câmera offline/online, modelo carregado, stream iniciado/parado) com filtro por tipo e paginação por cursor — depende do backend consertar o produtor (uploader → /events/ingest).",
+  "Tela de rede do site (gateway MikroTik/WireGuard): cadastrar/editar chave pública WG, endpoint, sub-rede LAN e configuração, com status de provisionamento (provisionando/ativo/inativo/erro) — visível só para quem gerencia gateways.",
+  "Unificar o painel de frota: uma visão multi-tenant para superadmin (com divergência OTA por device, canal e target) e uma visão do tenant para admin, ambas com a mesma regra de 'offline' e a mesma série de heartbeats paginável (cursor 'before', janela do resumo selecionável 24h/7d).",
+  "Painel de observabilidade do box (hoje /monitoring oculto): manter o padrão comando→pendente→acompanhar (spinner 'acordando o box', poll até resposta), snapshot ao vivo pausando com aba oculta, logtail por unit, limiares editáveis por site e detecções por câmera com lag de ingest; o cliente não deve enviar campos que a API ignora (from/to epoch).",
+  "Dashboard Integrado: telemetria ao vivo deve chegar filtrada por tenant (exigir correção do backend/socket antes de expor a mais de um tenant) e os empty-states devem refletir produtores reais (heartbeat do box), não o seed script de dev (services/api/scripts/seed_dashboard_observability.py) nem os POST de ingest.",
+  "Não construir UI sobre o fluxo de claim code (pareamento por código curto) enquanto o backend não ligar claim→enroll; se o produto quiser 'parear com código', o caminho hoje é o token de enrollment por site."
+ ]
+}

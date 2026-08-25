@@ -1,0 +1,1437 @@
+{
+ "domain": "cameras-streams",
+ "overview": "Domínio que sustenta o cadastro e a operação das câmeras IP (CRUD em public.cameras com senha Fernet, probe/teste de conectividade, arquivar/restaurar, config de FPS/qualidade/coleta com propagação ao edge via edge_commands), a atribuição de modelo por câmera (duas famílias: cameras.model_{módulo}_id e model_deployments com geometria/histórico/rollback), módulo ativo/agenda, retenção por câmera, snapshot de triagem (refresh→poll, capturado pelo edge e servido do R2) e o live view HLS (POST /stream/start → URL com token de playback no path → serve_hls público lendo segmentos do Redis empurrados pelo edge, com 425/410 como sinais de retry/renovação). Inclui ainda gravadores NVR/DVR (/api/v1/recorders: CRUD, teste, timeline, extração de frames via Celery) sem UI, 8 aliases /api/v1/cameras duplicados e o status de workers Celery (/api/streams/status). Fluxos do front atual: CamerasPage (lista, onboarding probe→criar, wizard salvar→testar, iniciar/parar, arquivar/restaurar, FPS, modelo por módulo), CameraTriagePage (snapshot + renomear/confirmar posição/ativar), grade de monitoramento (stream/info → useLiveView → hls.js), TrainingPage (escopo de modelo por câmera) e fueling (feed demo × real).",
+ "endpoints": [
+  {
+   "method": "GET",
+   "path": "/api/cameras",
+   "auth": "jwt (+override global para role admin/superadmin via _is_admin → UserRepository)",
+   "tenant": "mixed(public.tenant_id para roles comuns; role admin/superadmin → CameraRepository.get_all() SEM filtro de tenant)",
+   "envelope": "success/error 200|500",
+   "request": "sem params/body; query string ignorada (MonitoringPage envia ?module=<x> sem efeito)",
+   "response": "data.cameras[]: {id,tenant_id,name,location,description,manufacturer,host,port,username,channel,subtype,live_view_subtype,rtsp_url_override,is_active,last_seen,last_error,last_tested_at,updated_at,created_at,fps_target,quality_preset,site_id,retention_days,detection_stream_url,video_codec,max_auth_failures,position_confirmed,codec_detected,collection_subtype,active_module} (sem senha); data.gateway_status{status}; data.inference_status{status}",
+   "tables": [
+    "public.cameras",
+    "public.users"
+   ],
+   "side_effects": [
+    "Redis GET service:gateway:health / service:inference:health (gateway extinto → sempre offline)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Lista usada em 9 telas/componentes (grade, dashboard, wizard de cenário, contagem, investigação, fueling, triagem).",
+   "evidence": [
+    "apps/frontend/src/components/camera-grid/CameraGrid.tsx:59",
+    "apps/frontend/src/components/dashboard/KPIRow.tsx:43",
+    "apps/frontend/src/components/scenario/ModelScenarioWizard.tsx:112",
+    "apps/frontend/src/pages/CamerasPage.tsx:78",
+    "apps/frontend/src/pages/CountingPage.tsx:95",
+    "apps/frontend/src/pages/DashboardPage.tsx:50",
+    "apps/frontend/src/pages/epi/InvestigationPage.tsx:238",
+    "apps/frontend/src/pages/fueling/FuelingPage.tsx:308",
+    "apps/frontend/src/services/cameraService.ts:168",
+    "apps/frontend/src/pages/CameraTriagePage.tsx:80"
+   ],
+   "behavior_notes": "Sem paginação/filtros (lista inteira). Senha nunca retornada. Para role admin/superadmin a lista é GLOBAL (todos os tenants): superadmin sem 'assumir contexto' vê câmeras de outros tenants e /stream/info delas responde 404 → CameraCell resolve via /v1/admin/inventory e oferece banner 'assumir contexto'. CamerasPage exibe gateway_status (sempre offline). KPIRow espera campo stream_status que não existe na resposta (cai em is_active). MonitoringPage filtra por c.module_code, campo ausente na resposta (vem active_module) → abas de módulo não filtram. [PR #525] override global só para superadmin; admin de tenant é escopado ao próprio tenant; cross-tenant → 404 (antes 403/200).",
+   "risks": "risk:security — role 'admin' (admin de tenant, não só superadmin) recebe câmeras de TODOS os tenants (get_all sem WHERE tenant_id); mesmo override vale em get/update/delete/test/start."
+  },
+  {
+   "method": "POST",
+   "path": "/api/cameras",
+   "auth": "jwt (sem gate de permissão — cameras:write existe no registry mas não é aplicado)",
+   "tenant": "public.tenant_id (tenant_id do JWT grava em cameras.tenant_id; user_id = criador)",
+   "envelope": "success/error 201|400 (ValidationError via handler global)|409 (limite do plano)|500",
+   "request": "body: name*, host*, manufacturer[=generic], port[=554] 1-65535, channel[=1] 1-64, subtype[=0]{0,1}, live_view_subtype[=1]{0,1}, username[=admin], password, location, description, site_id, detection_stream_url, video_codec{h264,h265}, max_auth_failures[=5]",
+   "response": "data = câmera criada {id,tenant_id,name,location,description,manufacturer,host,port,username,channel,subtype,live_view_subtype,rtsp_url_override,is_active,last_seen,last_error,last_tested_at,updated_at,created_at,fps_target,quality_preset,site_id,retention_days,detection_stream_url,video_codec,max_auth_failures,position_confirmed,codec_detected,collection_subtype,active_module} (sem senha)",
+   "tables": [
+    "public.cameras",
+    "public.platform_feature_flags",
+    "public.tenants",
+    "public.plans"
+   ],
+   "side_effects": [
+    "senha cifrada com Fernet(CAMERA_SECRET_KEY) antes de gravar"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Chamado pelo wizard de onboarding (probe→salvar) e pelo CameraWizard (salvar→testar).",
+   "evidence": [
+    "apps/frontend/src/components/cameras/CameraOnboardingWizard.tsx:92",
+    "apps/frontend/src/components/cameras/CameraWizard.tsx:85",
+    "apps/frontend/src/services/cameraService.ts:178"
+   ],
+   "behavior_notes": "Etapa final do wizard (POST /cameras/probe antes). Com flag de plataforma enforce_plan_limits ON → 409 quando COUNT(cameras do tenant) ≥ COALESCE(tenants.contract_cameras, plans.max_cameras). site_id é opcional no contrato mas OBRIGATÓRIO na prática para edge (sem ele a câmera fica invisível ao config_poll/live view). Front mapeia ip→host, path→rtsp_url_override. Qualquer role autenticada consegue criar.",
+   "risks": "BUG front: CameraOnboardingWizard.tsx:106 checa res.status==='success' (envelope real é success:true) → câmera é criada (201) mas a UI mostra 'Erro ao salvar câmera' e não fecha → risco de duplicatas ao repetir."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/cameras/<camera_id>",
+   "auth": "jwt (+override admin/superadmin via _is_admin; cameras:delete não aplicado)",
+   "tenant": "public.tenant_id — cross-tenant 404",
+   "envelope": "success/error 200|404|500",
+   "request": "path: camera_id",
+   "response": "data {deleted: true}",
+   "tables": [
+    "public.cameras",
+    "public.users"
+   ],
+   "side_effects": [
+    "DELETE físico em public.cameras. FKs declaradas nas migrations: ON DELETE CASCADE em counting_sessions (049), operations (047), demo_videos (037); SET NULL em demo_events (084); NO ACTION em training_frames.camera_id (094), model_deployments (100), model_drift_metrics (101) → 500 se a câmera já tiver frames/deployments. alerts/camera_events: FK criada sobre ip_cameras (002/004) — indeterminado se sobreviveu ao 013_consolidate_cameras (DEV não exporta constraints)."
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Front removeu o botão de propósito (issue #428, cameraService.ts comenta) — exclusão definitiva administrativa continua no back sem tela nem confirmação forte.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "apps/frontend/src/services/cameraService.ts:189-193 (comentário: UI não alcança DELETE)"
+   ],
+   "behavior_notes": "Destrutivo e silencioso (CASCADE). Falha por FK quando há frames de treino. O caminho de produto é POST /archive. [PR #525] override global só para superadmin; admin de tenant é escopado ao próprio tenant; cross-tenant → 404 (antes 403/200).",
+   "risks": "Qualquer role autenticada do tenant pode apagar (sem gate cameras:delete); erro de FK vira 500 genérico."
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>",
+   "auth": "jwt (+override admin/superadmin via _is_admin)",
+   "tenant": "public.tenant_id — cross-tenant responde 403 (viola C-01: deveria ser 404)",
+   "envelope": "success/error 200|403|404|500",
+   "request": "path: camera_id (uuid)",
+   "response": "data = câmera (SELECT * menos password_encrypted — inclui também model_epi_id/model_quality_id/model_counting_id, schedule_rules, brand, model, ip, rtsp_substream_url, substream_ok, probe_status, notes, module_code, active_model_id)",
+   "tables": [
+    "public.cameras",
+    "public.users"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "cameraService.get existe (cameraService.ts:173) mas nenhuma página/componente o chama; detalhe de câmera é necessidade plausível de produto (tela de detalhe/diagnóstico).",
+   "evidence": [
+    "apps/frontend/src/services/cameraService.ts:173 (wrapper sem chamador)",
+    "grep: sem chamada de cameraService.get em pages/components"
+   ],
+   "behavior_notes": "Retorna mais colunas que a lista (SELECT *). 403 em cross-tenant para não-admin (inconsistente com o resto do domínio, que usa 404). [PR #525] override global só para superadmin; admin de tenant é escopado ao próprio tenant; cross-tenant → 404 (antes 403/200).",
+   "risks": "C-01: 403 vaza existência da câmera de outro tenant."
+  },
+  {
+   "method": "PUT",
+   "path": "/api/cameras/<camera_id>",
+   "auth": "jwt (+override admin/superadmin via _is_admin; cameras:write não aplicado)",
+   "tenant": "public.tenant_id — cross-tenant 404",
+   "envelope": "success/error 200|400|404|500",
+   "request": "path: camera_id; body (≥1 campo): name, location, description, manufacturer, host, port, username, password, channel, subtype, live_view_subtype, rtsp_url_override, is_active, detection_stream_url, video_codec, max_auth_failures, site_id, position_confirmed, collection_subtype",
+   "response": "data = câmera atualizada {id,tenant_id,name,location,description,manufacturer,host,port,username,channel,subtype,live_view_subtype,rtsp_url_override,is_active,last_seen,last_error,last_tested_at,updated_at,created_at,fps_target,quality_preset,site_id,retention_days,detection_stream_url,video_codec,max_auth_failures,position_confirmed,codec_detected,collection_subtype,active_module}",
+   "tables": [
+    "public.cameras",
+    "public.users"
+   ],
+   "side_effects": [
+    "re-cifra senha se enviada"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Usado pelo CameraWizard (edição) e pela triagem (renomear, confirmar posição, ativar/arquivar via is_active).",
+   "evidence": [
+    "apps/frontend/src/components/cameras/CameraWizard.tsx:86",
+    "apps/frontend/src/pages/CameraTriagePage.tsx:143",
+    "apps/frontend/src/pages/CameraTriagePage.tsx:160",
+    "apps/frontend/src/pages/CameraTriagePage.tsx:186",
+    "apps/frontend/src/services/cameraService.ts:183"
+   ],
+   "behavior_notes": "Body vazio/sem campo conhecido → 400 'Nenhum campo para atualizar'. Campo que exista só numa das duas allow-lists (service × repository) é descartado em silêncio (200 sem mudança). retention_days, fps_target, quality_preset, active_module, schedule_rules e model_* NÃO passam por aqui (rotas próprias). Validação de faixa: port 1-65535, channel 1-64, subtype/live_view_subtype ∈ {0,1}, video_codec ∈ {h264,h265}, max_auth_failures ≥1. [PR #525] override global só para superadmin; admin de tenant é escopado ao próprio tenant; cross-tenant → 404 (antes 403/200).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/cameras/<camera_id>/archive",
+   "auth": "jwt (sem override admin; sem gate de permissão)",
+   "tenant": "public.tenant_id — cross-tenant 404",
+   "envelope": "success/error 200|404|500",
+   "request": "path: camera_id",
+   "response": "data.camera {id, name, is_active:false}",
+   "tables": [
+    "public.cameras"
+   ],
+   "side_effects": [
+    "frames da câmera saem da fila de anotação e do export de dataset (efeito lido por outros domínios)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Botão 'Arquivar' na CamerasPage (ConfirmDialog).",
+   "evidence": [
+    "apps/frontend/src/pages/CamerasPage.tsx:108",
+    "apps/frontend/src/services/cameraService.ts:196"
+   ],
+   "behavior_notes": "Reversível via POST /restore. Equivale a PUT {is_active:false} (a triagem usa o PUT).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/available-models",
+   "auth": "jwt",
+   "tenant": "public.tenant_id — câmera fora do tenant → 404",
+   "envelope": "success/error 200|404|500",
+   "request": "path: camera_id",
+   "response": "data {camera_id, active_module, models[]: {id, name, r2_key, active, created_at}}",
+   "tables": [
+    "public.cameras",
+    "public.trained_models",
+    "public.users"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "Duplicado: o front lista modelos por GET /training/models (CameraModelAssignment) e GET /api/v1/models (CameraModelScope); ninguém chama available-models.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Lista todos os trained_models do tenant (JOIN users.tenant_id), sem filtrar por módulo.",
+   "risks": ""
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/cameras/<camera_id>/config",
+   "auth": "jwt (+override role admin/superadmin lido do JWT)",
+   "tenant": "public.tenant_id — 404",
+   "envelope": "success/error 200|400|404|500",
+   "request": "path: camera_id; body (≥1): fps_target{1,5,10,15,30}, quality_preset{low,medium,high}, collection_subtype{0,1}",
+   "response": "data = câmera {id,tenant_id,name,location,description,manufacturer,host,port,username,channel,subtype,live_view_subtype,rtsp_url_override,is_active,last_seen,last_error,last_tested_at,updated_at,created_at,fps_target,quality_preset,site_id,retention_days,detection_stream_url,video_codec,max_auth_failures,position_confirmed,codec_detected,collection_subtype,active_module} + propagation{queued: bool, reason: 'no_site'|'error'|null}",
+   "tables": [
+    "public.cameras",
+    "public.edge_commands"
+   ],
+   "side_effects": [
+    "INSERT public.edge_commands command_type=update_camera_config (best-effort; consumido pelo edge-sync-agent command_poller → ConfigPoller.apply_camera_config)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "CameraFpsConfig (CamerasPage e MonitoringPage).",
+   "evidence": [
+    "apps/frontend/src/components/cameras/CameraFpsConfig.tsx:176",
+    "apps/frontend/src/services/cameraService.ts:230"
+   ],
+   "behavior_notes": "PATCH parcial via COALESCE. Propagação cloud→edge é assíncrona e best-effort: a UI só recebe propagation.queued (sem callback de aplicação). Eixos independentes: fps_target/quality_preset (operação) × collection_subtype (coleta de frames). [PR #525] override global só para superadmin; admin de tenant é escopado ao próprio tenant; cross-tenant → 404 (antes 403/200).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/effective-model",
+   "auth": "jwt",
+   "tenant": "mixed(public.tenant_id para a câmera; tenant_schema para {schema}.models no ramo 'inherited')",
+   "envelope": "success/error 200|404|500",
+   "request": "path: camera_id",
+   "response": "data {camera_id, model_id|null, module, source: 'override'|'inherited'}",
+   "tables": [
+    "public.cameras",
+    "{schema}.models"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Nenhuma tela mostra 'qual modelo está valendo nesta câmera' (override × herdado do módulo); necessidade plausível na ficha da câmera.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Resolve cameras.model_{active_module}_id (override) senão {schema}.models WHERE module AND active. NÃO considera public.model_deployments (que o worker prioriza) — pode divergir do que roda de fato.",
+   "risks": "Três fontes de verdade de modelo por câmera (model_{module}_id, model_deployments, {schema}.models.active) sem reconciliação."
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/health-context",
+   "auth": "jwt (qualquer papel do tenant)",
+   "tenant": "public.tenant_id — 404",
+   "envelope": "success/error 200|404|500",
+   "request": "path: camera_id",
+   "response": "data {has_telemetry, site_id|null, derived_status|null, received_at|null, metrics{gpu_pct,gpu_mem_pct,cpu_pct,inference_fps,inference_latency_ms,queue_depth,cameras_online,cameras_total,gpu_temp_c,decode_pct}|null, fps_demand_total, cameras_active_count}",
+   "tables": [
+    "public.cameras",
+    "public.edge_heartbeats"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "CameraFpsConfig busca telemetria do site para o aviso health-aware de FPS.",
+   "evidence": [
+    "apps/frontend/src/components/cameras/CameraFpsConfig.tsx:147",
+    "apps/frontend/src/services/cameraService.ts:239"
+   ],
+   "behavior_notes": "Sem site_id → 200 has_telemetry=false (front cai em heurística). Front também cai em heurística em qualquer erro.",
+   "risks": "P1: chama EdgeHeartbeatRepository.get_last_heartbeat_for_site, método que NÃO existe (repo só tem get_last_heartbeat_per_site*) → AttributeError → 500 para toda câmera com site_id; testes unitários mockam o repo e passam."
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/model",
+   "auth": "jwt",
+   "tenant": "n.a. — sem checagem de tenant nem de existência da câmera",
+   "envelope": "success/error 200|500",
+   "request": "path: camera_id",
+   "response": "data {camera_id, model_key|null}",
+   "tables": [],
+   "side_effects": [
+    "Redis GET camera:model:{camera_id} (chave que nenhum código escreve → sempre null)"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "Legado Redis-only; chave nunca gravada; sem consumidor.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Sempre devolve model_key=null.",
+   "risks": "Sem escopo de tenant (aceita qualquer camera_id)."
+  },
+  {
+   "method": "PUT",
+   "path": "/api/cameras/<camera_id>/model",
+   "auth": "jwt + role admin/superadmin (checagem inline get_role → 403 AuthorizationError)",
+   "tenant": "public.tenant_id — 404",
+   "envelope": "success/error 200|400|403|404|422|500",
+   "request": "path: camera_id; body {model_id: uuid|null}",
+   "response": "data {camera_id, module, model_id|null, models{epi,quality,counting}}",
+   "tables": [
+    "public.cameras",
+    "public.trained_models",
+    "public.users"
+   ],
+   "side_effects": [
+    "Redis PUBLISH camera:model_change:{camera_id} (worker de inferência invalida detector)"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "Duplicado de PUT /models (módulo explícito), que é o que o front usa.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Módulo vem de cameras.active_module (basic/none → 422). Valida module_code do modelo.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/model-config",
+   "auth": "jwt",
+   "tenant": "public.tenant_id — 404",
+   "envelope": "success/error 200|404|500",
+   "request": "path: camera_id; query module[=epi]",
+   "response": "data.deployment: {id, tenant_id, model_id, camera_id, module_code, config{roi?,line?,classes[],thresholds?}, status, deployed_by, created_at, deactivated_at} | null",
+   "tables": [
+    "public.cameras",
+    "public.model_deployments"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Aba 'Modelos por câmera' (CameraModelScope na TrainingPage) lê 1 por câmera ativa.",
+   "evidence": [
+    "apps/frontend/src/components/training/CameraModelScope.tsx:149"
+   ],
+   "behavior_notes": "deployment=null significa 'sem deployment' (worker usa detector padrão do ambiente). Fluxo: GET /api/v1/models (só com ONNX) → GET /api/v1/models/<id> (classes) → GET model-config → POST model-config. Não há rota de 'desativar'.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/cameras/<camera_id>/model-config",
+   "auth": "jwt + permission:training:approve (default só superadmin; override em public.user_permission_overrides)",
+   "tenant": "public.tenant_id — 404",
+   "envelope": "success/error 201|400|403|404|500",
+   "request": "path: camera_id; body {model_id*, module_code[=epi], config{roi?, line?, classes*(≥1), thresholds?}}",
+   "response": "data.deployment (novo registro ativo)",
+   "tables": [
+    "public.cameras",
+    "public.trained_models",
+    "public.model_deployments",
+    "public.user_permission_overrides"
+   ],
+   "side_effects": [
+    "Redis PUBLISH camera:model_change:{camera_id}"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Botão salvar da aba 'Modelos por câmera'.",
+   "evidence": [
+    "apps/frontend/src/components/training/CameraModelScope.tsx:192"
+   ],
+   "behavior_notes": "Upsert com histórico: desativa o ativo (status=inactive, deactivated_at) e cria novo — nunca UPDATE no lugar. Geometria validada (geometry_validation). Modelo deve pertencer ao tenant (registry). Coexiste com cameras.model_{module}_id (PUT /models) — o worker prioriza model_deployments.",
+   "risks": "Gate training:approve é superadmin-only por default: admin do tenant não consegue salvar escopo de modelo sem override."
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/model-config/history",
+   "auth": "jwt",
+   "tenant": "public.tenant_id — 404",
+   "envelope": "success/error 200|404|500",
+   "request": "path: camera_id; query module (opcional; ausente = todos)",
+   "response": "data {deployments[]: {…mesmo shape do deployment…}, total}",
+   "tables": [
+    "public.cameras",
+    "public.model_deployments"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Histórico de deployments por câmera existe no back; a aba de escopo não mostra linha do tempo.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Sem paginação.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/cameras/<camera_id>/model-config/rollback",
+   "auth": "jwt + permission:training:approve",
+   "tenant": "public.tenant_id — 404 (deployment de outra câmera/tenant → 404)",
+   "envelope": "success/error 201|400|403|404|500",
+   "request": "path: camera_id; body {deployment_id*}",
+   "response": "data.deployment (NOVO registro com model_id/config do alvo)",
+   "tables": [
+    "public.cameras",
+    "public.model_deployments",
+    "public.user_permission_overrides"
+   ],
+   "side_effects": [
+    "Redis PUBLISH camera:model_change:{camera_id}"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Rollback de configuração de modelo por câmera sem UI.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Rollback = novo deployment (histórico preservado). Depende de /history para escolher o alvo.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/models",
+   "auth": "jwt",
+   "tenant": "public.tenant_id — 404",
+   "envelope": "success/error 200|404|500",
+   "request": "path: camera_id",
+   "response": "data {camera_id, models{epi: uuid|null, quality: uuid|null, counting: uuid|null}}",
+   "tables": [
+    "public.cameras"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "CameraModelAssignment (CamerasPage) carrega a atribuição por módulo.",
+   "evidence": [
+    "apps/frontend/src/components/cameras/CameraModelAssignment.tsx:72",
+    "apps/frontend/src/services/countingService.ts:53"
+   ],
+   "behavior_notes": "Lê cameras.model_epi_id/model_quality_id/model_counting_id.",
+   "risks": ""
+  },
+  {
+   "method": "PUT",
+   "path": "/api/cameras/<camera_id>/models",
+   "auth": "jwt + role admin/superadmin (inline get_role → 403)",
+   "tenant": "public.tenant_id — 404",
+   "envelope": "success/error 200|400|403|404|500",
+   "request": "path: camera_id; body {module*: epi|quality|counting, model_id: uuid|null}",
+   "response": "data {camera_id, models{epi,quality,counting}}",
+   "tables": [
+    "public.cameras",
+    "public.trained_models",
+    "public.users"
+   ],
+   "side_effects": [
+    "Redis PUBLISH camera:model_change:{camera_id} (best-effort)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Select de modelo por módulo no CameraModelAssignment.",
+   "evidence": [
+    "apps/frontend/src/components/cameras/CameraModelAssignment.tsx:99",
+    "apps/frontend/src/services/countingService.ts:59"
+   ],
+   "behavior_notes": "model_id=null remove. Modelo precisa existir no tenant e ter module_code == module (400). Dívida: coexiste com model_deployments (CameraModelScope); o worker prioriza model_deployments.",
+   "risks": ""
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/cameras/<camera_id>/module",
+   "auth": "jwt + gate de módulo (claim 'modules' do JWT; claim ausente → public.tenants.modules_enabled; fail-closed → 403 AuthorizationError)",
+   "tenant": "public.tenant_id — 404",
+   "envelope": "success/error 200|400|403|404|500",
+   "request": "path: camera_id; body {module*: epi|quality|counting|basic|none}",
+   "response": "data {camera_id, active_module}",
+   "tables": [
+    "public.cameras",
+    "public.tenants"
+   ],
+   "side_effects": [
+    "Redis PUBLISH camera_module_changed:{camera_id} (nenhum assinante encontrado no repo)"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Trocar o módulo ativo de uma câmera (ou pausar com 'none') não tem tela; CameraModelScope só lê active_module.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "'none' sempre permitido (pausa). Gating por modules_enabled do tenant.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/module/current",
+   "auth": "jwt",
+   "tenant": "public.tenant_id — 404",
+   "envelope": "success/error 200|404|500",
+   "request": "path: camera_id",
+   "response": "data {camera_id, current_module|null, paused: bool, default_module}",
+   "tables": [
+    "public.cameras"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Resolve schedule_rules × horário atual; útil para badge 'módulo rodando agora' — sem consumidor.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Depende de PUT /schedule; sem regra casando → default_module.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/cameras/<camera_id>/restore",
+   "auth": "jwt (sem override admin)",
+   "tenant": "public.tenant_id — cross-tenant 404",
+   "envelope": "success/error 200|404|500",
+   "request": "path: camera_id",
+   "response": "data.camera {id, name, is_active:true}",
+   "tables": [
+    "public.cameras"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Botão 'Restaurar' na CamerasPage.",
+   "evidence": [
+    "apps/frontend/src/pages/CamerasPage.tsx:123",
+    "apps/frontend/src/services/cameraService.ts:201"
+   ],
+   "behavior_notes": "Inverso de /archive.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/retention",
+   "auth": "jwt",
+   "tenant": "public.tenant_id — 404",
+   "envelope": "success/error 200|404|500",
+   "request": "path: camera_id",
+   "response": "data {camera_id, retention_days|null, tenant_default_days, effective_days, allowed_tiers:[1,7,30,90]}",
+   "tables": [
+    "public.cameras",
+    "public.tenants",
+    "public.plans"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "adminService.getCameraRetention existe (adminService.ts:444) mas nenhuma página chama; retenção por câmera é configuração plausível de produto.",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:444 (wrapper sem chamador)"
+   ],
+   "behavior_notes": "tenant_default = COALESCE(tenants.default_retention_days, plans.video_retention_days, 7).",
+   "risks": ""
+  },
+  {
+   "method": "PUT",
+   "path": "/api/cameras/<camera_id>/retention",
+   "auth": "jwt + permission:retention:write (admin/superadmin) → 403",
+   "tenant": "public.tenant_id — 404",
+   "envelope": "success/error 200|403|404|422|500",
+   "request": "path: camera_id; body {retention_days: 1|7|30|90|null (null = herdar do tenant)}",
+   "response": "data {camera_id, retention_days}",
+   "tables": [
+    "public.cameras"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "adminService.setCameraRetention (adminService.ts:447) sem chamador; não há UI de tier por câmera.",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:447 (wrapper sem chamador)"
+   ],
+   "behavior_notes": "Tier fora da lista → 422.",
+   "risks": ""
+  },
+  {
+   "method": "PUT",
+   "path": "/api/cameras/<camera_id>/schedule",
+   "auth": "jwt (sem gate de permissão)",
+   "tenant": "public.tenant_id — 404",
+   "envelope": "success/error 200|400|404|500",
+   "request": "path: camera_id; body {rules: [{days: [1..7], start: 'HH:MM', end: 'HH:MM', module}]}",
+   "response": "data {camera_id, schedule_rules}",
+   "tables": [
+    "public.cameras"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Agendamento de módulo por horário (JSONB) sem UI.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Substitui a lista inteira (não é merge). Não valida que o módulo da regra está habilitado no tenant (diferente do PATCH /module).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/snapshot",
+   "auth": "jwt",
+   "tenant": "public.tenant_id — 404 (UUID inválido → 422)",
+   "envelope": "success/error 200|404|422|500",
+   "request": "path: camera_id",
+   "response": "data {status: none|pending|ready|failed, url: presigned R2 (TTL 900s)|null, captured_at|null, error_reason|null}",
+   "tables": [
+    "public.cameras"
+   ],
+   "side_effects": [
+    "Redis GET epi:camera_snapshot:{tenant_id}:{camera_id} (TTL 7d)",
+    "R2 presign (get_storage(tenant_id))"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "useCameraSnapshot (CameraSnapshotThumbnail na CameraTriagePage) faz poll até ready/failed.",
+   "evidence": [
+    "apps/frontend/src/hooks/useCameraSnapshot.ts:45",
+    "apps/frontend/src/services/cameraService.ts:253"
+   ],
+   "behavior_notes": "Leitura pura de cache; nunca toca no gravador. Front limita concorrência (snapshotQueue) e para o poll em ready/failed ou teto de tentativas. URL presignada expira em 15 min — re-GET para renovar.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/cameras/<camera_id>/snapshot/refresh",
+   "auth": "jwt",
+   "tenant": "public.tenant_id — 404",
+   "envelope": "success/error 200 (no-op fresco {status:'ready',queued:false,reason:'fresh',captured_at}) | 202 ({status:'pending',queued:true} ou {status:'pending',queued:false,reason:'already_pending'}) | 404 | 422 (câmera sem site_id) | 500",
+   "request": "path: camera_id",
+   "response": "data {status, queued, reason?, captured_at?}",
+   "tables": [
+    "public.cameras",
+    "public.edge_commands"
+   ],
+   "side_effects": [
+    "INSERT public.edge_commands command_type=capture_snapshot payload{camera_id,channel} (edge-sync-agent command_poller → SnapshotExecutor → POST /api/v1/edge/cameras/<id>/snapshot → R2 + cache Redis)",
+    "Redis write estado pending"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "useCameraSnapshot dispara refresh sob demanda antes do poll.",
+   "evidence": [
+    "apps/frontend/src/hooks/useCameraSnapshot.ts:74",
+    "apps/frontend/src/services/cameraService.ts:261"
+   ],
+   "behavior_notes": "Fluxo: POST /refresh → (202) poll GET /snapshot até ready/failed. Frescor SNAPSHOT_FRESH_MINUTES=10 → 200 no-op. Idempotente: não enfileira se já há capture_snapshot pendente no site. Exige câmera com site edge.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/stream/<path:filename>",
+   "auth": "playback_token (rota legada SEM token: com HLS_REQUIRE_PLAYBACK_TOKEN default ON → 404; só serve se =0 → public)",
+   "tenant": "n.a. — sem JWT; nenhuma checagem de tenant além do enforcement do token",
+   "envelope": "raw:bytes (application/vnd.apple.mpegurl | video/mp2t, chunked 64KB, Content-Length) 200 | raw 425 'Aguardando segmento'/'Stream initializing' (Retry-After 1|2) | error() 400 (uuid/filename inválido) | error() 404",
+   "request": "path: camera_id (uuid), filename ^[a-zA-Z0-9_.-]+$ (stream.m3u8, streamN.ts)",
+   "response": "bytes do m3u8/ts",
+   "tables": [
+    "public.cameras",
+    "public.edge_sites"
+   ],
+   "side_effects": [
+    "Redis SETEX epi:stream:{camera_id}:active (TTL HLS_VIEWER_TTL=90s) a cada request — alimenta GET /api/v1/edge/live-view/wanted",
+    "Redis GET epi:edge_hls:{camera_id}:{filename} (segmentos empurrados pelo edge via POST /api/v1/edge/live-view/<id>/segment)",
+    "Redis cache epi:camera:{camera_id}:edge_fed (60s)",
+    "proxy HTTP GATEWAY_INTERNAL_URL/hls/... se service:gateway:health existir (gateway extinto — ramo morto)",
+    "lazy-start FFmpeg local (LocalStreamManager) quando NÃO edge-fed e não há arquivo em /tmp/hls/{camera_id}"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "Compat legada: o front nunca monta esta URL (useLiveView usa hls_url do backend, tokenizada) e o default de enforcement responde 404; só vive como escape hatch de diagnóstico (HLS_REQUIRE_PLAYBACK_TOKEN=0).",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "apps/frontend/src/components/CameraPlayer.jsx:12 (legado morto, usa /streams/... que não existe)"
+   ],
+   "behavior_notes": "Rate limit próprio: 240/min por token (hls-video-session) + piso 6000/min por IP (hls-video-ip-floor), fora do bucket geral. Mesma view de serve_hls_tokenized.",
+   "risks": "Se HLS_REQUIRE_PLAYBACK_TOKEN=0 em produção, qualquer um com o UUID assiste a qualquer câmera de qualquer tenant."
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/stream/info",
+   "auth": "jwt (+ role lida para demo_video: só superadmin recebe demo)",
+   "tenant": "public.tenant_id — câmera fora do tenant → 404 (C-01 explícito; é o portão que autoriza emitir token)",
+   "envelope": "success/error 200|404|503 (pool)|500",
+   "request": "path: camera_id; query module (opcional, ex.: fueling — filtra vídeo demo)",
+   "response": "data {type: 'hls'|'edge_hls'|'demo_video', url: '/api/cameras/<id>/stream/s/<token>/stream.m3u8' (tokenizada; legada se enforcement OFF) | presigned R2 (demo), label? (demo)}",
+   "tables": [
+    "public.cameras",
+    "public.edge_sites",
+    "public.demo_videos"
+   ],
+   "side_effects": [
+    "mint playback token HMAC-SHA256(camera_id:exp) TTL HLS_PLAYBACK_TOKEN_TTL=3600s",
+    "R2 presign 1h (demo_video, só superadmin)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "CameraCell (grade de monitoramento) e FuelingPage decidem feed real × vídeo demo.",
+   "evidence": [
+    "apps/frontend/src/components/camera-grid/CameraCell.tsx:105",
+    "apps/frontend/src/pages/fueling/FuelingPage.tsx:137"
+   ],
+   "behavior_notes": "type='edge_hls' só quando site.deployment_mode=='edge' ('hybrid' → 'hls'). demo_video é isolado por role (nunca para cliente). 404 para superadmin sem contexto → CameraCell consulta /v1/admin/inventory?camera_id e alimenta o banner 'assumir contexto' (crossTenantCameras.ts). URL é relativa — front prefixa VITE_API_URL. errorTranslator suprime toast de 404 nesta rota.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/stream/s/<token>/<path:filename>",
+   "auth": "playback_token (HMAC camera_id:exp com JWT_SECRET_KEY; inválido/forjado → 404; assinatura válida mas vencida → 410 error_code=playback_token_expired + Cache-Control: no-store)",
+   "tenant": "n.a. — sem JWT; o token é o portão (emitido por /stream/start e /stream/info após validar tenant)",
+   "envelope": "raw:bytes 200 (m3u8/ts) | raw 425 Retry-After | error() 400 | error() 404 | error() 410",
+   "request": "path: camera_id, token '<exp>.<sig_b64url>', filename ^[a-zA-Z0-9_.-]+$",
+   "response": "bytes do m3u8/ts",
+   "tables": [
+    "public.cameras",
+    "public.edge_sites"
+   ],
+   "side_effects": [
+    "Redis SETEX epi:stream:{camera_id}:active (TTL HLS_VIEWER_TTL=90s) a cada request — alimenta GET /api/v1/edge/live-view/wanted",
+    "Redis GET epi:edge_hls:{camera_id}:{filename} (segmentos empurrados pelo edge via POST /api/v1/edge/live-view/<id>/segment)",
+    "Redis cache epi:camera:{camera_id}:edge_fed (60s)",
+    "proxy HTTP GATEWAY_INTERNAL_URL/hls/... se service:gateway:health existir (gateway extinto — ramo morto)",
+    "lazy-start FFmpeg local (LocalStreamManager) quando NÃO edge-fed e não há arquivo em /tmp/hls/{camera_id}"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "hls.js consome a hls_url devolvida por POST /stream/start (useLiveView) e /stream/info; .ts relativos herdam o token no path.",
+   "evidence": [
+    "apps/frontend/src/hooks/useLiveView.ts:77-83 (usa res.hls_url)",
+    "apps/frontend/src/components/monitoring/CameraPlayer.tsx:159",
+    "apps/frontend/src/components/monitoring/CameraPlayer.tsx:217",
+    "apps/frontend/src/components/monitoring/CameraPlayer.tsx:264"
+   ],
+   "behavior_notes": "Contrato do player: (1) URL SEMPRE do backend, token no PATH (query não funciona); (2) 425 = tentar de novo (1-2s) — segmento ainda não chegou do edge ou FFmpeg local iniciando; (3) 410 = renovar token via novo POST /stream/start (refreshLiveViewUrl); 404 = inválido/inexistente; (4) cada GET renova epi:stream:{id}:active (90s) — é isso que faz o edge transmitir (/edge/live-view/wanted); parar de pedir por >90s desliga o feed; (5) rate limit 240/min por token + 6000/min por IP → 429; (6) ordem de fonte: Redis do edge → proxy gateway (morto) → /tmp/hls local → lazy-start FFmpeg (nunca para câmera edge-fed). Renovação proativa no front 5 min antes do exp; retry 30s se renovação falhar.",
+   "risks": "Token assinado com JWT_SECRET_KEY (default 'test-secret-key' se env ausente).",
+   "scanner_blind": "consumo indireto: hls.js carrega `data.hls_url`/`data.url` devolvidos por POST /stream/start e GET /stream/info (hooks/useLiveView.ts:77-83, CameraPlayer.tsx:159/217); não há literal da rota no front"
+  },
+  {
+   "method": "POST",
+   "path": "/api/cameras/<camera_id>/stream/start",
+   "auth": "jwt (+override admin/superadmin via _is_admin; cameras:control não aplicado)",
+   "tenant": "public.tenant_id via CameraService.build_stream_url — BUG: handler passa get_current_user_id() onde o service compara com cameras.tenant_id → não-admin recebe 404 sempre",
+   "envelope": "success/error 200|404|500",
+   "request": "path: camera_id",
+   "response": "data {camera_id, rtsp_url_validated: true, hls_url (tokenizada quando enforcement ON), status: 'starting', dispatch_mode: 'gateway'|'edge'|'local'}",
+   "tables": [
+    "public.cameras",
+    "public.users",
+    "public.edge_sites"
+   ],
+   "side_effects": [
+    "Redis SETEX epi:stream:{id}:active 90s (segments redis)",
+    "Redis PUBLISH gateway:commands {action:start_stream, rtsp_url,...} se service:gateway:health (gateway extinto)",
+    "LocalStreamManager.start (FFmpeg local, com fallback para stream principal) quando não edge-fed",
+    "mint playback token (TTL 3600s)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "useLiveView (grade/monitoramento) e CamerasPage (botão iniciar).",
+   "evidence": [
+    "apps/frontend/src/hooks/useLiveView.ts:77-83",
+    "apps/frontend/src/pages/CamerasPage.tsx:136",
+    "apps/frontend/src/services/cameraService.ts:218"
+   ],
+   "behavior_notes": "É a fonte única da URL de playback. Front deduplica chamadas concorrentes por câmera (inFlight) e cacheia até 5 min antes do exp; renova proativamente; refresh forçado em 410/erro fatal. Usa live_view_subtype (substream) — distinto do subtype de detecção e do /test. Idempotente (re-arma TTL). Não chamar em loop (já houve 5×/13s). [PR #525] override global só para superadmin; admin de tenant é escopado ao próprio tenant; cross-tenant → 404 (antes 403/200).",
+   "risks": "P1: build_stream_url(camera_id, user_id, ...) compara user_id com cameras.tenant_id (camera_service.py:227/301) → operator/viewer/trainer recebem 404 'Câmera não encontrada' — live view só funciona para admin/superadmin (testes mockam o service inteiro, não cobrem)."
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/stream/status",
+   "auth": "jwt",
+   "tenant": "n.a. — sem checagem de tenant/existência (qualquer JWT consulta qualquer camera_id)",
+   "envelope": "success/error 200|500",
+   "request": "path: camera_id",
+   "response": "data {camera_id, streaming: bool, gateway_online, ttl_seconds, ffmpeg_running|null, ffmpeg_error|null}",
+   "tables": [],
+   "side_effects": [
+    "Redis EXISTS/TTL epi:stream:{id}:active",
+    "LocalStreamManager.status"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "Substituído pelo agregado GET /api/v1/admin/observability/streams (StreamsPanel.tsx:6 documenta a troca); sem consumidor.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "apps/frontend/src/modules/admin/pages/observability/StreamsPanel.tsx:6 (comentário: antiga StreamHealthPage fazia N+1 aqui)"
+   ],
+   "behavior_notes": "",
+   "risks": "Sem escopo de tenant."
+  },
+  {
+   "method": "POST",
+   "path": "/api/cameras/<camera_id>/stream/stop",
+   "auth": "jwt",
+   "tenant": "n.a. — sem checagem de tenant/existência",
+   "envelope": "success/error 200|500",
+   "request": "path: camera_id",
+   "response": "data {camera_id, status: 'stopped'}",
+   "tables": [],
+   "side_effects": [
+    "Redis DEL epi:stream:{id}:active",
+    "Redis PUBLISH gateway:commands stop_stream (gateway extinto)",
+    "LocalStreamManager.stop (mata FFmpeg local)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Botão parar na CamerasPage.",
+   "evidence": [
+    "apps/frontend/src/pages/CamerasPage.tsx:148",
+    "apps/frontend/src/services/cameraService.ts:223"
+   ],
+   "behavior_notes": "Derruba o stream para TODOS os espectadores — CameraPlayer NÃO chama no unmount de propósito. Para câmera edge-fed o efeito é só apagar a chave :active (o edge para de transmitir após /wanted).",
+   "risks": "Qualquer JWT (de qualquer tenant) pode parar o stream de qualquer camera_id."
+  },
+  {
+   "method": "POST",
+   "path": "/api/cameras/<camera_id>/test",
+   "auth": "jwt (+override admin/superadmin) + rate limit 5/min (get_rate_limit_identifier) → 429",
+   "tenant": "public.tenant_id via build_stream_url — mesmo BUG do /stream/start (passa user_id): não-admin recebe 200 com success:false e error 'Câmera … não encontrada'",
+   "envelope": "success/error 200 (mesmo em falha do teste — success fica no payload)|429|500",
+   "request": "path: camera_id",
+   "response": "data {camera_id, success, error|null, suggestion|null, checks{url_format, host_reachable, port_open, rtsp_response, stream_available}: {status: ok|error|warning|pending, message}}",
+   "tables": [
+    "public.cameras",
+    "public.users"
+   ],
+   "side_effects": [
+    "DNS + TCP connect + sonda HTTP na porta",
+    "ffprobe subprocess (timeout 10s)",
+    "UPDATE cameras.last_tested_at/last_error (best-effort)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "CameraWizard (salvar→testar) e CamerasPage (botão testar).",
+   "evidence": [
+    "apps/frontend/src/components/cameras/CameraWizard.tsx:99",
+    "apps/frontend/src/pages/CamerasPage.tsx:161",
+    "apps/frontend/src/services/cameraService.ts:206"
+   ],
+   "behavior_notes": "Síncrono e lento (até ~20s). 5 checks sequenciais com parada no primeiro erro (checks seguintes ficam 'pending'). Testa o subtype de detecção (não o live_view_subtype). Sem ffprobe instalado → warning e success=true. Na nuvem, câmera em VLAN isolada (RVB) sempre falha em host/porta — o teste real é no edge. [PR #525] override global só para superadmin; admin de tenant é escopado ao próprio tenant; cross-tenant → 404 (antes 403/200).",
+   "risks": "P1 compartilhado com /stream/start (user_id × tenant_id)."
+  },
+  {
+   "method": "POST",
+   "path": "/api/cameras/probe",
+   "auth": "jwt + permission:cameras:test (admin/operator/superadmin) → 403",
+   "tenant": "public.tenant_id (só para checar site_gateways no ramo NAT; probe em si não toca câmera cadastrada)",
+   "envelope": "success/error 200|403|422|500",
+   "request": "body {manufacturer[=generic]: intelbras|hikvision|dahua|generic, ip_or_host*, port[=554], username, password, channel[=1], is_behind_nat[=false]}",
+   "response": "data {ok: bool|null, codec, resolution, fps, substream_url_sugerida|null, warning, error} | NAT: {ok:null, method:'nat', gateway_available, substream_url_sugerida, message}",
+   "tables": [
+    "public.site_gateways",
+    "public.edge_sites"
+   ],
+   "side_effects": [
+    "DNS resolve + gate SSRF (loopback/link-local bloqueados; RFC1918 permitido)",
+    "ffprobe main→sub (timeout 8s)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "Etapa 1 do CameraOnboardingWizard.",
+   "evidence": [
+    "apps/frontend/src/components/cameras/CameraOnboardingWizard.tsx:63",
+    "apps/frontend/src/services/cameraService.ts:246"
+   ],
+   "behavior_notes": "Fluxo: probe → (ok) step 2 → POST /cameras com detection_stream_url=substream_url_sugerida e video_codec=codec. Sem persistir nada. Aceita só 4 fabricantes (manufacturer_profiles.py PROFILES) — o CameraOnboardingWizard (único chamador do probe) oferece exatamente esses 4; axis/samsung aparecem só no CameraWizard legado (WizardSteps.tsx:18-25), que não chama probe.",
+   "risks": "BUG front: CameraOnboardingWizard.tsx:75 checa res.status==='success' (envelope é success:true) → probe OK é exibido como 'Erro ao verificar câmera' e o wizard não avança."
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/tenant/retention",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200|404|500 (na prática 500 — ver risks)",
+   "request": "sem params",
+   "response": "data {tenant_id, retention_days, valid_tiers:[1,7,30,90]} (nunca chega: query falha)",
+   "tables": [
+    "public.tenants"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "Quebrado (lê coluna tenants.video_retention_days que não existe no DEV — tenants tem default_retention_days) e duplicado por GET /api/v1/tenant/retention (blueprint retention). Wrapper adminService.getTenantRetention sem chamador.",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:452 (wrapper sem chamador)"
+   ],
+   "behavior_notes": "Path estático /tenant/retention convive com /<camera_id>/retention (Flask prioriza o estático — OK).",
+   "risks": "SELECT video_retention_days FROM public.tenants → UndefinedColumn → 500 sempre."
+  },
+  {
+   "method": "PUT",
+   "path": "/api/cameras/tenant/retention",
+   "auth": "jwt + permission:retention:write → 403",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200|400|403|500 (na prática 500)",
+   "request": "body {retention_days*: 1|7|30|90}",
+   "response": "data {tenant_id, retention_days}",
+   "tables": [
+    "public.tenants"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "Mesma quebra do GET (UPDATE public.tenants SET video_retention_days — coluna inexistente) e duplicado por PUT /api/v1/tenant/retention; AdminRetentionPage usa adminService.updateTenant.",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:455 (wrapper sem chamador)"
+   ],
+   "behavior_notes": "",
+   "risks": "UPDATE em coluna inexistente → 500 sempre."
+  },
+  {
+   "method": "GET",
+   "path": "/api/streams/status",
+   "auth": "jwt + role admin/superadmin (inline get_role → 401 sem role | 403)",
+   "tenant": "global",
+   "envelope": "jsonify (sem envelope padrão) 200 sempre no corpo {workers[]: {worker_id,status,active_tasks,pool}, status: ok|error|redis_unavailable} | error() 401/403",
+   "request": "sem params",
+   "response": "{workers[], status} (raiz, sem data)",
+   "tables": [],
+   "side_effects": [
+    "celery.control.inspect (timeout 2s)"
+   ],
+   "label": "BACKEND-ONLY",
+   "label_reason": "Só scripts/smoke_test.sh chama; nenhum consumidor no front (StreamsPanel usa /admin/observability).",
+   "evidence": [
+    "scripts/smoke_test.sh:41",
+    "scripts/tests/_fake_api_smoke.py:20"
+   ],
+   "behavior_notes": "Erros internos viram 200 com status:'error'.",
+   "risks": "smoke_test.sh:41 espera 200 SEM token, mas a rota exige admin JWT → smoke falha por design (doc/API_CONTRACT_MAP.md:449 ainda diz 'público')."
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/cameras/<camera_id>/config",
+   "auth": "idem PATCH /api/cameras/<camera_id>/config",
+   "tenant": "idem PATCH /api/cameras/<camera_id>/config",
+   "envelope": "idem PATCH /api/cameras/<camera_id>/config",
+   "request": "idem PATCH /api/cameras/<camera_id>/config",
+   "response": "idem PATCH /api/cameras/<camera_id>/config",
+   "tables": [
+    "idem PATCH /api/cameras/<camera_id>/config"
+   ],
+   "side_effects": [
+    "idem PATCH /api/cameras/<camera_id>/config"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "Alias v1 (cameras_v1_bp) da mesma view de PATCH /api/cameras/<camera_id>/config; front usa só o prefixo /api/cameras.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Mesma função Flask registrada em dois blueprints — duplicata de contrato (migração /api→/api/v1 incompleta: só 8 de ~33 rotas têm alias). [PR #525] override global só para superadmin; admin de tenant é escopado ao próprio tenant; cross-tenant → 404.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/cameras/<camera_id>/effective-model",
+   "auth": "idem GET /api/cameras/<camera_id>/effective-model",
+   "tenant": "idem GET /api/cameras/<camera_id>/effective-model",
+   "envelope": "idem GET /api/cameras/<camera_id>/effective-model",
+   "request": "idem GET /api/cameras/<camera_id>/effective-model",
+   "response": "idem GET /api/cameras/<camera_id>/effective-model",
+   "tables": [
+    "idem GET /api/cameras/<camera_id>/effective-model"
+   ],
+   "side_effects": [
+    "idem GET /api/cameras/<camera_id>/effective-model"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "Alias v1 (cameras_v1_bp) da mesma view de GET /api/cameras/<camera_id>/effective-model; front usa só o prefixo /api/cameras.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Mesma função Flask registrada em dois blueprints — duplicata de contrato (migração /api→/api/v1 incompleta: só 8 de ~33 rotas têm alias).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/cameras/<camera_id>/health-context",
+   "auth": "idem GET /api/cameras/<camera_id>/health-context",
+   "tenant": "idem GET /api/cameras/<camera_id>/health-context",
+   "envelope": "idem GET /api/cameras/<camera_id>/health-context",
+   "request": "idem GET /api/cameras/<camera_id>/health-context",
+   "response": "idem GET /api/cameras/<camera_id>/health-context",
+   "tables": [
+    "idem GET /api/cameras/<camera_id>/health-context"
+   ],
+   "side_effects": [
+    "idem GET /api/cameras/<camera_id>/health-context"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "Alias v1 (cameras_v1_bp) da mesma view de GET /api/cameras/<camera_id>/health-context; front usa só o prefixo /api/cameras. Herda o bug do método inexistente (500).",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Mesma função Flask registrada em dois blueprints — duplicata de contrato (migração /api→/api/v1 incompleta: só 8 de ~33 rotas têm alias).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/cameras/<camera_id>/model-config",
+   "auth": "idem GET /api/cameras/<camera_id>/model-config",
+   "tenant": "idem GET /api/cameras/<camera_id>/model-config",
+   "envelope": "idem GET /api/cameras/<camera_id>/model-config",
+   "request": "idem GET /api/cameras/<camera_id>/model-config",
+   "response": "idem GET /api/cameras/<camera_id>/model-config",
+   "tables": [
+    "idem GET /api/cameras/<camera_id>/model-config"
+   ],
+   "side_effects": [
+    "idem GET /api/cameras/<camera_id>/model-config"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "Alias v1 (cameras_v1_bp) da mesma view de GET /api/cameras/<camera_id>/model-config; front usa só o prefixo /api/cameras.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Mesma função Flask registrada em dois blueprints — duplicata de contrato (migração /api→/api/v1 incompleta: só 8 de ~33 rotas têm alias).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/cameras/<camera_id>/model-config",
+   "auth": "idem POST /api/cameras/<camera_id>/model-config",
+   "tenant": "idem POST /api/cameras/<camera_id>/model-config",
+   "envelope": "idem POST /api/cameras/<camera_id>/model-config",
+   "request": "idem POST /api/cameras/<camera_id>/model-config",
+   "response": "idem POST /api/cameras/<camera_id>/model-config",
+   "tables": [
+    "idem POST /api/cameras/<camera_id>/model-config"
+   ],
+   "side_effects": [
+    "idem POST /api/cameras/<camera_id>/model-config"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "Alias v1 (cameras_v1_bp) da mesma view de POST /api/cameras/<camera_id>/model-config; front usa só o prefixo /api/cameras.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Mesma função Flask registrada em dois blueprints — duplicata de contrato (migração /api→/api/v1 incompleta: só 8 de ~33 rotas têm alias).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/cameras/<camera_id>/model-config/history",
+   "auth": "idem GET /api/cameras/<camera_id>/model-config/history",
+   "tenant": "idem GET /api/cameras/<camera_id>/model-config/history",
+   "envelope": "idem GET /api/cameras/<camera_id>/model-config/history",
+   "request": "idem GET /api/cameras/<camera_id>/model-config/history",
+   "response": "idem GET /api/cameras/<camera_id>/model-config/history",
+   "tables": [
+    "idem GET /api/cameras/<camera_id>/model-config/history"
+   ],
+   "side_effects": [
+    "idem GET /api/cameras/<camera_id>/model-config/history"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "Alias v1 (cameras_v1_bp) da mesma view de GET /api/cameras/<camera_id>/model-config/history; front usa só o prefixo /api/cameras.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Mesma função Flask registrada em dois blueprints — duplicata de contrato (migração /api→/api/v1 incompleta: só 8 de ~33 rotas têm alias).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/cameras/<camera_id>/model-config/rollback",
+   "auth": "idem POST /api/cameras/<camera_id>/model-config/rollback",
+   "tenant": "idem POST /api/cameras/<camera_id>/model-config/rollback",
+   "envelope": "idem POST /api/cameras/<camera_id>/model-config/rollback",
+   "request": "idem POST /api/cameras/<camera_id>/model-config/rollback",
+   "response": "idem POST /api/cameras/<camera_id>/model-config/rollback",
+   "tables": [
+    "idem POST /api/cameras/<camera_id>/model-config/rollback"
+   ],
+   "side_effects": [
+    "idem POST /api/cameras/<camera_id>/model-config/rollback"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "Alias v1 (cameras_v1_bp) da mesma view de POST /api/cameras/<camera_id>/model-config/rollback; front usa só o prefixo /api/cameras.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Mesma função Flask registrada em dois blueprints — duplicata de contrato (migração /api→/api/v1 incompleta: só 8 de ~33 rotas têm alias).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/cameras/probe",
+   "auth": "idem POST /api/cameras/probe",
+   "tenant": "idem POST /api/cameras/probe",
+   "envelope": "idem POST /api/cameras/probe",
+   "request": "idem POST /api/cameras/probe",
+   "response": "idem POST /api/cameras/probe",
+   "tables": [
+    "idem POST /api/cameras/probe"
+   ],
+   "side_effects": [
+    "idem POST /api/cameras/probe"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "Alias v1 (cameras_v1_bp) da mesma view de POST /api/cameras/probe; front usa só o prefixo /api/cameras.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Mesma função Flask registrada em dois blueprints — duplicata de contrato (migração /api→/api/v1 incompleta: só 8 de ~33 rotas têm alias).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/recorders",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200|500",
+   "request": "sem params (strict_slashes=False)",
+   "response": "data {recorders[]: {id,tenant_id,name,host,port,username,protocol,manufacturer,channels,retention_days,status,last_tested_at,last_error,created_by,created_at (sem password_encrypted)}, total}",
+   "tables": [
+    "public.recorders"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Gravadores NVR/DVR (ADR-0034) existem no back e são pré-requisito do coletor do edge (RECORDER_CLOUD_ID), mas não há tela de cadastro/lista — hoje se cria via curl.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/edge-sync-agent/deploy/edge-sync-agent.env.example:97 (instrui criar via POST /api/v1/recorders)"
+   ],
+   "behavior_notes": "Sem paginação.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/recorders",
+   "auth": "jwt + permission:training:write (superadmin/admin/trainer + overrides) → 403",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 201|400 (ValidationError global)|403|500",
+   "request": "body {name*, host*, port[=80] 1-65535, protocol[=onvif]: onvif|hikvision|dahua|intelbras|rtsp, username, password, manufacturer, channels[=0], retention_days}",
+   "response": "data.recorder (sem senha)",
+   "tables": [
+    "public.recorders",
+    "public.user_permission_overrides"
+   ],
+   "side_effects": [
+    "senha cifrada com Fernet(CAMERA_SECRET_KEY)"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Cadastro de gravador sem UI (mesma família).",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/edge-sync-agent/deploy/edge-sync-agent.env.example:97"
+   ],
+   "behavior_notes": "O id criado vira RECORDER_CLOUD_ID no edge (coletor de frames) e recorder_id no upload de snapshot do edge.",
+   "risks": ""
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/recorders/<recorder_id>",
+   "auth": "jwt + permission:training:write → 403",
+   "tenant": "public.tenant_id — 404",
+   "envelope": "success/error 200|400|403|404|500",
+   "request": "path: recorder_id",
+   "response": "data {deleted: true, id}",
+   "tables": [
+    "public.recorders",
+    "public.user_permission_overrides"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Remoção de gravador sem UI.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "DELETE físico; training_frames.recorder_id referencia o gravador (verificar FK antes de expor).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/recorders/<recorder_id>",
+   "auth": "jwt",
+   "tenant": "public.tenant_id — 404",
+   "envelope": "success/error 200|400 (uuid inválido)|404|500",
+   "request": "path: recorder_id (uuid)",
+   "response": "data.recorder",
+   "tables": [
+    "public.recorders"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Detalhe de gravador sem UI.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "",
+   "risks": ""
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/recorders/<recorder_id>",
+   "auth": "jwt + permission:training:write → 403",
+   "tenant": "public.tenant_id — 404",
+   "envelope": "success/error 200|400|403|404|500",
+   "request": "path: recorder_id; body: qualquer subconjunto de name, host, port, username, password, protocol, manufacturer, channels, retention_days",
+   "response": "data.recorder",
+   "tables": [
+    "public.recorders",
+    "public.user_permission_overrides"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Edição de gravador sem UI.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Allow-list de campos fica no repository (campos fora dela são ignorados).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/recorders/<recorder_id>/extract-frames",
+   "auth": "jwt + permission:training:write → 403",
+   "tenant": "public.tenant_id — 404",
+   "envelope": "success/error 202|400|403|404|500",
+   "request": "path: recorder_id; body {channel[=1], from*, to* (ISO 8601), interval_seconds[=5], module_code[=epi]}",
+   "response": "data {task_id, recorder_id, status: 'queued'}",
+   "tables": [
+    "public.recorders",
+    "public.user_permission_overrides"
+   ],
+   "side_effects": [
+    "Celery tasks.nvr_extraction.extract_nvr_frames (queue=extraction) → FFmpeg sobre playback → R2 training-images/{tenant}/nvr/… + INSERT training_frames (source=NVR, recorder_id, camera_id=NULL)"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Disparo de extração de frames do gravador sem UI; não há endpoint de status do task_id neste domínio.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Job assíncrono: 202 + task_id; resultado só aparece como frames na fila de anotação (sem polling dedicado/callback).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/recorders/<recorder_id>/recordings",
+   "auth": "jwt",
+   "tenant": "public.tenant_id — 404 (NotFoundError via get_recorder_or_raise)",
+   "envelope": "success/error 200|400|404|502 (falha ao consultar gravador)|500",
+   "request": "path: recorder_id; query channel[=1], from* (ISO 8601), to* (ISO 8601, > from)",
+   "response": "data {recorder_id, channel, segments[]: {channel, start, end}}",
+   "tables": [
+    "public.recorders"
+   ],
+   "side_effects": [
+    "consulta ao gravador (client.search_recordings) — rede"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Timeline de gravações (ADR-0034) para escolher trecho a extrair — sem UI.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Síncrono; depende de alcance de rede ao gravador a partir da nuvem.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/recorders/<recorder_id>/test",
+   "auth": "jwt + permission:training:write → 403",
+   "tenant": "public.tenant_id — 404",
+   "envelope": "success/error 200|400|403|404|500",
+   "request": "path: recorder_id",
+   "response": "data.recorder (com status: online|offline|error, last_tested_at, last_error)",
+   "tables": [
+    "public.recorders",
+    "public.user_permission_overrides"
+   ],
+   "side_effects": [
+    "conexão de rede ao gravador (cascata ONVIF/ISAPI/RTSP via infrastructure/nvr)",
+    "UPDATE recorders.status/last_tested_at/last_error"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "Teste de conexão de gravador sem UI.",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Síncrono; best-effort (exceção vira status='error'). Na nuvem, gravador em LAN isolada sempre falha.",
+   "risks": ""
+  }
+ ],
+ "flows": [
+  {
+   "name": "Onboarding de câmera (probe → criar)",
+   "description": "CameraOnboardingWizard: POST /cameras/probe (SSRF gate + ffprobe; NAT → só URL sugerida) → usuário confirma → POST /cameras com detection_stream_url=substream_url_sugerida e video_codec=codec. Precisa de site_id para a câmera existir para o edge. Front hoje quebra na checagem do envelope (status vs success).",
+   "endpoints": [
+    "POST /api/cameras/probe",
+    "POST /api/cameras"
+   ]
+  },
+  {
+   "name": "Editar/testar câmera (wizard legado)",
+   "description": "CameraWizard: cria (POST) ou atualiza (PUT) e em seguida POST /test (5 checks síncronos, 5/min). Front mapeia ip→host e path→rtsp_url_override. /test usa o subtype de detecção.",
+   "endpoints": [
+    "POST /api/cameras",
+    "PUT /api/cameras/<camera_id>",
+    "POST /api/cameras/<camera_id>/test"
+   ]
+  },
+  {
+   "name": "Live view HLS (start → playlist tokenizada → renovação)",
+   "description": "useLiveView: POST /stream/start (dedupe + cache) devolve hls_url com token no path (TTL 1h) → hls.js GET /stream/s/<token>/stream.m3u8 e .ts relativos → 425 = retry (segmento ainda não chegou do edge / FFmpeg iniciando), 410 = token expirado → novo /stream/start, 404 = inválido/inexistente. Cada GET renova epi:stream:{id}:active (90s), lido por GET /api/v1/edge/live-view/wanted; o edge empurra segmentos em POST /api/v1/edge/live-view/<id>/segment. Renovação proativa 5 min antes do exp. /stream/stop derruba para todos.",
+   "endpoints": [
+    "POST /api/cameras/<camera_id>/stream/start",
+    "GET /api/cameras/<camera_id>/stream/s/<token>/<path:filename>",
+    "POST /api/cameras/<camera_id>/stream/stop",
+    "GET /api/cameras/<camera_id>/stream/<path:filename>"
+   ]
+  },
+  {
+   "name": "Tipo de feed por câmera (real × demo × edge)",
+   "description": "CameraCell/FuelingPage: GET /stream/info?module= → {type: hls|edge_hls|demo_video, url}. demo_video só para superadmin. 404 (câmera fora do tenant do token) → superadmin resolve dono via /v1/admin/inventory e recebe banner 'assumir contexto'.",
+   "endpoints": [
+    "GET /api/cameras/<camera_id>/stream/info"
+   ]
+  },
+  {
+   "name": "Snapshot de triagem (refresh → poll)",
+   "description": "CameraTriagePage/useCameraSnapshot: POST /snapshot/refresh (200 no-op se fresco <10min; 202 enfileira edge_command capture_snapshot, idempotente) → poll GET /snapshot até ready|failed (url presignada R2 15min). Captura acontece no edge (ONVIF) e sobe por POST /api/v1/edge/cameras/<id>/snapshot.",
+   "endpoints": [
+    "POST /api/cameras/<camera_id>/snapshot/refresh",
+    "GET /api/cameras/<camera_id>/snapshot"
+   ]
+  },
+  {
+   "name": "Config de FPS/qualidade/coleta com propagação ao edge",
+   "description": "CameraFpsConfig: GET /health-context (telemetria do site; hoje 500 por método inexistente → fallback heurístico) → PATCH /config (parcial) → resposta traz propagation.queued (edge_command update_camera_config consumido pelo edge-sync-agent, sem confirmação de volta).",
+   "endpoints": [
+    "GET /api/cameras/<camera_id>/health-context",
+    "PATCH /api/cameras/<camera_id>/config"
+   ]
+  },
+  {
+   "name": "Modelo por câmera — atribuição simples por módulo",
+   "description": "CameraModelAssignment: GET /models → lista de modelos via GET /training/models (outro domínio) → PUT /models {module, model_id|null} (admin/superadmin). Publica camera:model_change para o worker.",
+   "endpoints": [
+    "GET /api/cameras/<camera_id>/models",
+    "PUT /api/cameras/<camera_id>/models"
+   ]
+  },
+  {
+   "name": "Modelo por câmera — escopo/geometria com histórico (registry)",
+   "description": "CameraModelScope (TrainingPage): GET /api/v1/models (só ONNX) + GET /api/v1/models/<id> (classes) → GET /model-config?module= → POST /model-config {model_id, module_code, config{roi,line,classes,thresholds}} (training:approve; upsert com histórico). Back ainda oferece /history e /rollback sem UI. Worker prioriza model_deployments sobre model_{módulo}_id.",
+   "endpoints": [
+    "GET /api/cameras/<camera_id>/model-config",
+    "POST /api/cameras/<camera_id>/model-config",
+    "GET /api/cameras/<camera_id>/model-config/history",
+    "POST /api/cameras/<camera_id>/model-config/rollback"
+   ]
+  },
+  {
+   "name": "Arquivar/restaurar (ciclo de vida sem apagar)",
+   "description": "CamerasPage: POST /archive (is_active=false, frames saem do treino) ↔ POST /restore. Triagem faz o mesmo via PUT {is_active}. DELETE físico ficou fora da UI (#428).",
+   "endpoints": [
+    "POST /api/cameras/<camera_id>/archive",
+    "POST /api/cameras/<camera_id>/restore",
+    "PUT /api/cameras/<camera_id>",
+    "DELETE /api/cameras/<camera_id>"
+   ]
+  },
+  {
+   "name": "Módulo ativo e agendamento (sem UI)",
+   "description": "PATCH /module (gate modules_enabled) define active_module; PUT /schedule grava regras dia/hora→módulo; GET /module/current resolve o que vale agora. Nenhuma tela consome.",
+   "endpoints": [
+    "PATCH /api/cameras/<camera_id>/module",
+    "PUT /api/cameras/<camera_id>/schedule",
+    "GET /api/cameras/<camera_id>/module/current"
+   ]
+  },
+  {
+   "name": "Gravadores NVR/DVR → timeline → extração de frames (sem UI)",
+   "description": "POST /recorders (senha Fernet) → POST /<id>/test → GET /<id>/recordings?channel&from&to (timeline) → POST /<id>/extract-frames (202 + task_id Celery; frames caem na fila de anotação como source=NVR). O id do gravador é RECORDER_CLOUD_ID no edge.",
+   "endpoints": [
+    "GET /api/v1/recorders",
+    "POST /api/v1/recorders",
+    "GET /api/v1/recorders/<recorder_id>",
+    "PUT /api/v1/recorders/<recorder_id>",
+    "DELETE /api/v1/recorders/<recorder_id>",
+    "POST /api/v1/recorders/<recorder_id>/test",
+    "GET /api/v1/recorders/<recorder_id>/recordings",
+    "POST /api/v1/recorders/<recorder_id>/extract-frames"
+   ]
+  }
+ ],
+ "tables_by_scope": {
+  "public": [
+   "public.cameras",
+   "public.demo_videos",
+   "public.edge_commands",
+   "public.edge_heartbeats",
+   "public.edge_sites",
+   "public.model_deployments",
+   "public.plans",
+   "public.platform_feature_flags",
+   "public.recorders",
+   "public.site_gateways",
+   "public.tenants",
+   "public.trained_models",
+   "public.user_permission_overrides",
+   "public.users"
+  ],
+  "tenant_schema": [
+   "{schema}.models"
+  ],
+  "not_in_dev": [
+   "coluna public.tenants.video_retention_days (usada por GET/PUT /api/cameras/tenant/retention; DEV tem tenants.default_retention_days e plans.video_retention_days)"
+  ]
+ },
+ "findings": [
+  {
+   "severity": "P1",
+   "text": "POST /api/cameras/<id>/stream/start e POST /api/cameras/<id>/test passam get_current_user_id() (identity do JWT = users.id; auth/routes.py:177) para CameraService.build_stream_url (stream_handlers.py:216-221 e :268, test_handler.py:48-53), que compara esse valor com cameras.tenant_id (camera_service.py:227 build_rtsp_url, :301 build_stream_url) → qualquer não-admin (operator/viewer/trainer) recebe 404 no start (live view morto) e 'não encontrada' no test. A comparação é anterior ao commit 2b5227d5 (2026-08-17): ele só trocou 403→404 e escreveu no comentário a premissa FALSA de que 'todos os handlers passam get_tenant_id()' — update/delete passam tenant_id, start/test não. Testes (tests/unit/api/test_start_stream_edge_guard.py:67) mockam _get_camera_service e não cobrem."
+  },
+  {
+   "severity": "P1",
+   "text": "GET /api/cameras/<id>/health-context (health_context_handler.py:83) chama EdgeHeartbeatRepository.get_last_heartbeat_for_site, método inexistente (repo só tem get_last_heartbeat_per_site*) → AttributeError → 500 para toda câmera com site_id; tests/unit/test_camera_health_context.py mocka o repo. Alias /api/v1 herda."
+  },
+  {
+   "severity": "P1",
+   "text": "CameraOnboardingWizard.tsx:75 e :106 decidem por res.status==='success', mas o envelope real é {success:true,...} (responses.py) → probe bem-sucedido vira 'Erro ao verificar câmera' e POST /cameras cria a câmera (201) mas a UI mostra erro e não fecha (risco de duplicatas). Mesmo drift de tipo em cameraService.ts:101 (ApiEnvelope = {status, data})."
+  },
+  {
+   "severity": "P1",
+   "text": "[CORRIGIDO em PR #525] risk:security — GET /api/cameras com role 'admin' (admin de tenant) usa CameraRepository.get_all() sem filtro de tenant (crud_handlers.py:78 → camera_service.py list_cameras → camera_repository.py get_all); o mesmo _is_admin libera get/update/delete/test/start cross-tenant. Só superadmin deveria ter visão global."
+  },
+  {
+   "severity": "P1",
+   "text": "GET/PUT /api/cameras/tenant/retention (tenant_retention_handler.py:39, 86) consultam public.tenants.video_retention_days, coluna inexistente no DEV (tenants tem default_retention_days; video_retention_days é de plans) → 500 sempre. Duplicados por /api/v1/tenant/retention (blueprint retention). Sem chamador no front."
+  },
+  {
+   "severity": "P2",
+   "text": "GET /api/cameras/<id> (crud_handlers.py:158) responde 403 em cross-tenant para não-admin — viola C-01 (resto do domínio usa 404)."
+  },
+  {
+   "severity": "P2",
+   "text": "Permissões do registry cameras:write/control/configure/delete (core/permissions.py:61-90) não são aplicadas em POST/PUT/DELETE /api/cameras, /archive, /restore, /stream/start|stop, PATCH /config, PUT /schedule — qualquer papel autenticado (viewer) cria/edita/arquiva câmeras e para streams. Só cameras:test (probe) e retention:write são enforced."
+  },
+  {
+   "severity": "P2",
+   "text": "POST /stream/stop e GET /stream/status (stream_handlers.py:305-350) não checam tenant nem existência: qualquer JWT para/consulta o stream de qualquer camera_id."
+  },
+  {
+   "severity": "P2",
+   "text": "Três fontes de verdade para 'modelo da câmera': cameras.model_{módulo}_id (PUT /models), public.model_deployments (POST /model-config) e {schema}.models.active (GET /effective-model). O worker prioriza model_deployments; /effective-model ignora model_deployments → resposta pode divergir do que roda."
+  },
+  {
+   "severity": "P2",
+   "text": "scripts/smoke_test.sh:41 espera 200 em GET /api/streams/status SEM token, mas a rota exige admin JWT (S4) → smoke falha sempre; docs/API_CONTRACT_MAP.md:449 ainda descreve a rota como pública."
+  },
+  {
+   "severity": "P2",
+   "text": "Duplicatas /api vs /api/v1: 8 aliases em cameras_v1_bp (routes.py:142-190) para a mesma view; probe, effective-model, config, health-context, model-config(GET/POST), history, rollback. Migração incompleta (API_CONTRACT_MAP.md achado 12 fala em 4, hoje são 8)."
+  },
+  {
+   "severity": "P3",
+   "text": "Código morto: GET /api/cameras/<id>/model lê Redis camera:model:{id} que ninguém escreve (sempre null); PUT /model duplica PUT /models; PATCH /module publica camera_module_changed:{id} sem assinante; GET /stream/status substituído por /admin/observability/streams; ramo 'gateway' (service:gateway:health, GATEWAY_INTERNAL_URL) referencia o camera-gateway extinto (ADR-0014) — gateway_status da lista é sempre offline mas CamerasPage.tsx:82 exibe."
+  },
+  {
+   "severity": "P3",
+   "text": "apps/frontend/src/components/CameraPlayer.jsx (legado, não importado) monta /streams/<id>/stream.m3u8 — rota inexistente; DashboardPage.tsx:54 fallback lê cams.cameras (real é cams.data.cameras) → cameras_total=0; ModelScenarioWizard.tsx:182 comenta que GET /snapshot 'não existe' (existe)."
+  },
+  {
+   "severity": "P3",
+   "text": "Allow-list dupla de campos de câmera (camera_service.update_camera × camera_repository.update, camera_repository.py:79-87): campo presente em uma só é descartado em silêncio com 200 (já aconteceu com site_id). Fabricantes: WizardSteps.tsx:18-25 (CameraWizard legado) oferece axis/samsung; o backend não os conhece (camera_service.py:244-250 cai em generic → /stream1; probe_handler PROFILES rejeita com 422, mas o CameraWizard não chama probe) e o preview do front (cameraService.ts:88-98 getDefaultPath → /axis-media/media.amp, /profile1/media.smp) mostra uma URL diferente da que o /test realmente monta."
+  },
+  {
+   "severity": "P3",
+   "text": "DELETE /api/cameras/<id> (crud_handlers.py:207-228) falha com 500 genérico por FK NO ACTION quando a câmera tem training_frames (094) / model_deployments (100) / model_drift_metrics (101); CASCADE silencioso em counting_sessions (049), operations (047), demo_videos (037); SET NULL em demo_events (084). alerts/camera_events: FK nasceu sobre ip_cameras (002/004) — indeterminado se seguiu o rename do 013 (DEV não exporta constraints)."
+  },
+  {
+   "severity": "P3",
+   "text": "MonitoringPage.tsx:439-441 chama GET /cameras?module=<x>, mas list_cameras (crud_handlers.py:66-96) não lê request.args (filtro ignorado); o filtro client-side (MonitoringPage.tsx:558-564) testa c.module_code, campo que a lista NÃO devolve (_SELECT_COLS em camera_repository.py:12-19 expõe active_module, não module_code) → as abas de módulo da grade nunca filtram (module_code==null passa tudo)."
+  }
+ ],
+ "design_needs": [
+  "Ficha/detalhe da câmera (GET /cameras/<id>): dados de conexão (sem senha), site edge, módulo ativo, modelo efetivo (override × herdado × deployment ativo) e último teste/probe — hoje só existe lista + modais.",
+  "Wizard de onboarding corrigido e único: probe (com ramo NAT/gateway) → revisar URL sugerida/codec → escolher site edge (obrigatório para edge) → criar; unir com o wizard de edição/teste (hoje são dois componentes com contratos diferentes).",
+  "Player de live view com os estados do contrato: carregando (425 = aguardando edge/FFmpeg), renovando token (410), indisponível (404), limite (429), e indicação de tipo de feed (HLS × edge × demo para superadmin); botão 'parar' explícito com aviso de que derruba para todos.",
+  "Banner/ação 'assumir contexto do tenant' para superadmin quando câmeras da grade pertencem a outro tenant (já existe em parte — manter no novo front).",
+  "Tela de configuração operacional por câmera: FPS/qualidade/coleta (PATCH /config) com indicador de propagação ao edge (queued/sem site/erro) e telemetria do site (health-context) — depois de consertar o 500.",
+  "Troca de módulo ativo por câmera (epi/quality/counting/basic/pausar) respeitando modules_enabled, e agenda semanal dia/hora→módulo com visualização do 'módulo valendo agora' (PATCH /module, PUT /schedule, GET /module/current).",
+  "Histórico e rollback de escopo de modelo por câmera (GET /model-config/history, POST /rollback) dentro da aba 'Modelos por câmera'; unificar a visão com a atribuição simples por módulo (PUT /models) para o usuário não ver duas verdades.",
+  "Retenção por câmera (tier 1/7/30/90 ou herdar do tenant) na ficha da câmera, e retenção padrão do tenant nas configurações do tenant (usar /api/v1/tenant/retention, não a rota quebrada de /api/cameras).",
+  "Módulo de gravadores NVR/DVR: cadastrar (protocolo, host/porta, credenciais), testar conexão, ver canais, timeline de gravações por canal/período e disparar extração de frames com acompanhamento do job (hoje só 202 + task_id) — pré-requisito do coletor do edge (RECORDER_CLOUD_ID).",
+  "Exclusão definitiva de câmera só para admin, com confirmação forte, aviso de cascata e bloqueio explícito quando houver frames de treino (ou manter só arquivar).",
+  "Diagnóstico de stream por câmera (status/ffmpeg) via o agregado de observability, não via /stream/status por câmera.",
+  "Lista de câmeras com filtros/paginação (site, módulo, ativa/arquivada, status de probe/teste) — hoje é lista inteira sem filtros; e badge de gateway deve sair (serviço extinto)."
+ ]
+}

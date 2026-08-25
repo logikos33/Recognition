@@ -26,7 +26,7 @@ from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
 
 from app.core.responses import error, success
-from app.core.tenant import require_admin
+from app.core.tenant import require_admin, require_superadmin
 from app.infrastructure.database.connection import DatabasePool
 
 logger = logging.getLogger(__name__)
@@ -416,23 +416,30 @@ _TEST_TENANT_SLUG  = "test-epi-ci"
 _TEST_USER_EMAIL   = "test-admin@epi-ci.internal"
 _TEST_USER_NAME    = "CI Test Admin"
 _TEST_USER_ROLE    = "admin"
-_DEFAULT_TEST_PASS = "ci-test-password-2026"
 
 
 @test_console_bp.post("/seed")
 @jwt_required()
-@require_admin
+@require_superadmin
 def seed_test_tenant():
     """
     Semeia o tenant de teste isolado no banco de staging.
 
     Idempotente — seguro chamar múltiplas vezes (ON CONFLICT DO UPDATE/NOTHING).
-    Requer role admin/superadmin. Nunca cria dados em tenants reais.
+    Requer role superadmin (cria/reseta credencial admin — admin de tenant
+    cliente não pode). Senha obrigatória: body.password ou env
+    TEST_CONSOLE_SEED_PASSWORD — sem default hardcoded. Nunca cria dados em
+    tenants reais.
     """
     import bcrypt  # noqa: PLC0415
 
     body = request.get_json(silent=True) or {}
-    test_password = body.get("password", _DEFAULT_TEST_PASS)
+    test_password = body.get("password") or os.environ.get("TEST_CONSOLE_SEED_PASSWORD")
+    if not test_password:
+        return error(
+            "Senha obrigatória: informe body.password ou defina TEST_CONSOLE_SEED_PASSWORD",
+            400,
+        )
 
     try:
         pwd_hash = bcrypt.hashpw(
@@ -502,5 +509,5 @@ def seed_test_tenant():
         "user_email": user_row[1] if user_row else _TEST_USER_EMAIL,
         "user_role":  user_row[2] if user_row else _TEST_USER_ROLE,
         "login_email": _TEST_USER_EMAIL,
-        "login_password_hint": "(body.password ou 'ci-test-password-2026')",
+        "login_password_hint": "(body.password ou env TEST_CONSOLE_SEED_PASSWORD)",
     })

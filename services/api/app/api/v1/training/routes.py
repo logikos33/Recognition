@@ -56,11 +56,13 @@ from .image_handlers import (
     list_training_images_handler,
     upload_training_images_handler,
 )
+from app.api.v1.models.registry_handlers import activate_registry_model
+
 from .job_handlers import (
-    activate_model_handler,
     create_job_handler,
     get_alerts_handler,
     get_current_job_status_handler,
+    get_job_progress_handler,
     get_job_status_handler,
     list_jobs_handler,
     list_models_handler,
@@ -320,7 +322,12 @@ def list_models():  # type: ignore[no-untyped-def]
 @training_bp.route("/api/training/models/<model_id>/activate", methods=["POST"])
 @jwt_required()
 def activate_model(model_id: str):  # type: ignore[no-untyped-def]
-    return activate_model_handler(model_id)
+    """Alias legado de POST /api/v1/models/<id>/activate — delega ao handler
+    canônico (posse por tenant → 404, gate training:approve, avaliação
+    campeão×desafiante, rollout sync, model:reload). Antes ativava qualquer
+    trained_models por id, sem tenant nem gate (C-01).
+    """
+    return activate_registry_model(model_id)
 
 
 # --- Validation ---
@@ -412,27 +419,7 @@ def training_progress_callback(job_id: str):  # type: ignore[no-untyped-def]
 @training_bp.route("/api/training/jobs/<job_id>/progress", methods=["GET"])
 @jwt_required()
 def get_job_progress(job_id: str):  # type: ignore[no-untyped-def]
-    """Lê progresso do job via Redis sem bater no banco."""
-    import json
-    import os
-
-    import redis as _redis
-
-    from app.core.responses import error as err_resp
-    from app.core.responses import success
-
-    try:
-        r = _redis.from_url(
-            os.environ.get("REDIS_URL", "redis://localhost:6379"),
-            decode_responses=True,
-        )
-        raw = r.get(f"training_progress:{job_id}")
-        r.close()
-        if raw is None:
-            return err_resp("Progresso não disponível — job ainda não iniciado ou expirado", 404)
-        return success(json.loads(raw))
-    except Exception as exc:
-        return err_resp(f"Erro ao ler progresso: {exc}", 500)
+    return get_job_progress_handler(job_id)
 
 
 # --- Scenario Config ---

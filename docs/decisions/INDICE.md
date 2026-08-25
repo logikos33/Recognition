@@ -5,7 +5,7 @@
 Uma decisão por arquivo (`docs/decisions/D-NNN-slug.md`). Convenção e motivo:
 [`README.md`](./README.md). Histórico congelado: [`../REGISTRO_DE_DECISOES.md`](../REGISTRO_DE_DECISOES.md).
 
-**180 decisões** · última: D-185
+**183 decisões** · última: D-188
 
 | # | Decisão | Data | Status |
 |---|---|---|---|
@@ -189,3 +189,6 @@ Uma decisão por arquivo (`docs/decisions/D-NNN-slug.md`). Convenção e motivo:
 | [D-183](./D-183-o-commit-unknown-era-o-proprio-ci.md) | O `commit: unknown` era o próprio CI, ⛔ não um invasor | 2026-08-18 | ✅ vigente |
 | [D-184](./D-184-deploy-do-dev-tem-um-dono-a-integracao-nativa.md) | O deploy do DEV passa a ter UM dono: a integração nativa | 2026-08-18 | ✅ vigente |
 | [D-185](./D-185-o-scan-de-seguranca-nao-rodava-ha-85-runs.md) | O scan de segurança ⛔ não rodava há 85 runs — uma chave YAML repetida | 2026-08-19 | ✅ vigente |
+| [D-186](./D-186-consolidacao-de-17-08-as-4-correcoes-ja-estavam-em-develop.md) | Consolidação de 17/08: as 4 correções já estavam em develop; merges parados por CI vermelho pré-existente | 2026-08-17 | ↩ substituída |
+| [D-187](./D-187-pr-384-nao-mergeado-em-17-08-conflitava-e-tocava-o.md) | #384 (aba Classificar + minerador) não mergeado em 17/08 — conflitava e tocava o supercategory | 2026-08-17 | ↩ substituída |
+| [D-188](./D-188-pr-375-293-259-valor-extraido-em-17-08-recomendacao-de.md) | #375/#293/#259 não mergeados — valor extraído em 17/08, recomendação de fechar | 2026-08-17 | 📌 dívida |

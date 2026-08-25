@@ -1,0 +1,877 @@
+{
+ "domain": "admin-core-a",
+ "overview": "Backoffice do superadmin (tudo @require_superadmin, 403 para outros papéis): dashboard agregado, CRUD de tenants (criação provisiona schema + admin com senha temporária), planos (limites/módulos/preço), feature flags globais e por tenant, catálogos estáticos de módulos/permissões, inventário cross-tenant de câmeras com importação CSV e probe, audit log com export CSV, comunicados da plataforma, canais OTA do edge e health legado. Sustenta as páginas do módulo admin do front atual (AdminTenantsPage/DetailPage, AdminPlansPage, AdminFeatureFlagsPage, AdminInventoryPage, AdminAuditLogPage, AdminAnnouncementsPage, AdminDashboard/AdminLayout) e o helper crossTenantCameras. Tudo em public.* (tenant é parâmetro, não contexto); envelope success/error exceto export CSV.",
+ "endpoints": [
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/announcements",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error (200/500)",
+   "request": "sem params",
+   "response": "data.announcements[]: {id,title,content,type,target,target_tenant_id,scheduled_at,published_at,expires_at,created_by,created_at,created_by_email}",
+   "tables": [
+    "public.platform_announcements",
+    "public.users"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminAnnouncementsPage lista comunicados via adminService.getAnnouncements",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:326",
+    "apps/frontend/src/modules/admin/pages/AdminAnnouncementsPage.tsx:22"
+   ],
+   "behavior_notes": "Lista só não-expirados (expires_at IS NULL OR > NOW()) — 'arquivados' (DELETE) somem da lista; sem paginação; view em services/api/app/api/v1/admin/routes.py:2330.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/announcements",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error (201/500)",
+   "request": "body: title*, content* (NOT NULL no DB, sem validação na view → 500 se ausentes), type[=info], target[=all], target_tenant_id?, scheduled_at?, expires_at?",
+   "response": "data.announcement: {id,title,created_at}",
+   "tables": [
+    "public.platform_announcements"
+   ],
+   "side_effects": [
+    "Redis PUBLISH announcement:{target_tenant_id|all} {id,title} — best-effort; NENHUM subscriber (socket_bridge só det:*/training:*/quality:*/operations:*/edge_telemetry:*)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminAnnouncementsPage cria comunicado (modal) via adminService.createAnnouncement",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:330",
+    "apps/frontend/src/modules/admin/pages/AdminAnnouncementsPage.tsx:33"
+   ],
+   "behavior_notes": "published_at = scheduled_at ou NOW(); sem validação de título/conteúdo (500 do NOT NULL); cliente lê via GET /api/v1/announcements (polling, outro domínio) — push não existe. View services/api/app/api/v1/admin/routes.py:2351; sem log_audit (diferente de planos/flags/tenants).",
+   "risks": "title/content obrigatórios só no DB → erro 500 genérico em vez de 400"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/admin/announcements/<announcement_id>",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error (200/500)",
+   "request": "path: announcement_id",
+   "response": "data: {deleted: true}",
+   "tables": [
+    "public.platform_announcements"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminAnnouncementsPage 'Arquivar' via adminService.deleteAnnouncement",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:337",
+    "apps/frontend/src/modules/admin/pages/AdminAnnouncementsPage.tsx:42"
+   ],
+   "behavior_notes": "Soft delete: SET expires_at = NOW(); id inexistente → 200 deleted:true (sem 404). View services/api/app/api/v1/admin/routes.py:2423; sem log_audit (diferente de planos/flags/tenants); id não-uuid no path → 500 (cast do Postgres, sem validação).",
+   "risks": ""
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/admin/announcements/<announcement_id>",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error (200/400/500)",
+   "request": "path: announcement_id; body (≥1): title, content, type, target, expires_at, scheduled_at",
+   "response": "data: {updated: true}",
+   "tables": [
+    "public.platform_announcements"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "wrapper adminService.updateAnnouncement existe mas nenhuma página o chama — edição de comunicado não está na UI atual",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:334 (wrapper sem consumidor de página)",
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Whitelist de campos; target_tenant_id NÃO editável; id inexistente → 200 updated:true (sem 404). View services/api/app/api/v1/admin/routes.py:2398; sem log_audit (diferente de planos/flags/tenants); id não-uuid no path → 500 (cast do Postgres, sem validação).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/audit-log",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error (200/500)",
+   "request": "query: page[=1], per_page[=20,max 100], tenant_id, actor_id, action, target_type, date_from, date_to",
+   "response": "data: {items[]: {id,action,target_type,target_id,actor_role,created_at,ip_address,actor_email,tenant_name}, total}",
+   "tables": [
+    "public.audit_log",
+    "public.users",
+    "public.tenants"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminAuditLogPage lista com filtros e paginação",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:313",
+    "apps/frontend/src/modules/admin/pages/AdminAuditLogPage.tsx:21"
+   ],
+   "behavior_notes": "Paginação offset (page/per_page) + total — a resposta NÃO ecoa page/per_page (front calcula páginas por total); page/per_page não-inteiros → ValueError em _page_params (routes.py:143) → 500 genérico; front usa action/date_from/date_to/page (a tela não tem filtro de tenant/ator/target_type, que o backend aceita); old_value/new_value/user_agent NÃO são expostos. View services/api/app/api/v1/admin/routes.py:2202.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/audit-log/export",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "csv (200) | success/error (500)",
+   "request": "query: tenant_id, action, date_from, date_to",
+   "response": "text/csv attachment audit-log-YYYYMMDD.csv; colunas: created_at,actor_email,actor_role,tenant_name,target_type,target_id,action,ip_address; máx 10000 linhas",
+   "tables": [
+    "public.audit_log",
+    "public.users",
+    "public.tenants"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminAuditLogPage 'Exportar CSV' via api.downloadBlob",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:320",
+    "apps/frontend/src/modules/admin/pages/AdminAuditLogPage.tsx:37"
+   ],
+   "behavior_notes": "Download autenticado por header (api.downloadBlob, timeout 30s) — não é URL pré-assinada; front envia só action (AdminAuditLogPage.tsx:37) — date_from/date_to da tela não vão ao export embora a lista filtre por data (a tela não tem filtro de tenant; backend aceita tenant_id); erro vem em JSON success/error. View services/api/app/api/v1/admin/routes.py:2264.",
+   "risks": "drift: filtro de data da tela não se aplica ao export"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/cameras/<camera_id>/probe",
+   "auth": "superadmin",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200/400/404/500)",
+   "request": "path: camera_id; sem body",
+   "response": "data: {camera_id, probe_status: ok|error, codec_detected?, substream_ok?, detail?}",
+   "tables": [
+    "public.cameras"
+   ],
+   "side_effects": [
+    "DNS resolve + TCP connect host:port (5s) a partir do host da API",
+    "subprocess ffprobe na rtsp_substream_url (timeout 10s, best-effort)",
+    "UPDATE public.cameras probe_status/codec_detected/substream_ok/last_probe_at/last_error"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminInventoryPage botão 'Testar' por câmera",
+   "evidence": [
+    "apps/frontend/src/modules/admin/pages/AdminInventoryPage.tsx:187"
+   ],
+   "behavior_notes": "Síncrono (até ~15s); anti-SSRF parcial (bloqueia loopback/link-local/multicast/unspecified → 400; RFC1918 permitido); falha de DNS/porta retorna 200 com probe_status=error+detail (não é erro HTTP); câmera inexistente (uuid válido) → 404; camera_id não-uuid → 500 (cast); superadmin cross-tenant por design. Probe sai do host da API (Railway) — câmeras atrás de WireGuard outbound-only (ADR-0020) tendem a falhar. View services/api/app/api/v1/admin/routes.py:2730.",
+   "risks": "probe executado na nuvem não representa alcance do edge; front já trata 'error' e exceção igual"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/cameras/import",
+   "auth": "superadmin",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (201/207/400/500)",
+   "request": "body: cameras[]* (1..200): {name*, ip*, tenant_id* (uuid ativo), port[=554], username[=admin], brand?, model?, manufacturer[=brand|generic], module[=epi], location?, notes?}",
+   "response": "data: {created: N, errors[]: {row, reason}}; 201 sem erros, 207 se houve erros por linha",
+   "tables": [
+    "public.cameras",
+    "public.tenants",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "log_audit camera/batch_import cameras_imported"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminInventoryPage importa CSV parseado no browser e envia JSON",
+   "evidence": [
+    "apps/frontend/src/modules/admin/pages/AdminInventoryPage.tsx:281",
+    "docs/migration/inventory/db_schema_dev.json (public.cameras.user_id NOT NULL, default null) × services/api/app/api/v1/admin/routes.py:2691 (INSERT sem user_id)"
+   ],
+   "behavior_notes": "Cria câmeras como rascunho (is_active=false, probe_status=pending) em public.cameras; grava host=ip e ip=ip; CSV é parseado no cliente (colunas name,brand,ip,port,username,module,tenant_id); front recarrega inventário depois. Erros de validação Python (name/ip/tenant_id ausentes, uuid inválido, tenant inexistente/inativo, port não-inteiro) não abortam o lote; MAS qualquer erro do Postgres numa linha aborta a transação única (conexão sem autocommit, connection.py:99) — as linhas seguintes falham com 'current transaction is aborted' e o commit final vira ROLLBACK. QUEBRADO NO DEV: o INSERT (routes.py:2691) não preenche user_id, que é NOT NULL sem default em public.cameras (db_schema_dev.json; migrations 002/013) → toda linha falha com NotNullViolation → resposta 207 com created=0 e reason técnica do psycopg2 por linha (str(row_exc), routes.py:2710). Produção: indeterminado (schema de produção não inventariado aqui; mesma linhagem de migrations → provável). View services/api/app/api/v1/admin/routes.py:2623.",
+   "risks": "importação não cria nenhuma câmera no DEV (user_id NOT NULL omitido) — a feature FRONT-ATUAL está inoperante; sem dedupe (mesma ip/tenant importada 2x criaria duplicata); sem password no payload; reason do erro vaza texto bruto do driver"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/cameras/probe-batch",
+   "auth": "superadmin",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200/400/500)",
+   "request": "body: camera_ids[]* (1..50 uuids)",
+   "response": "data: {results[]: {camera_id, probe_status, codec_detected, substream_ok, detail?}}",
+   "tables": [
+    "public.cameras"
+   ],
+   "side_effects": [
+    "TCP connect + ffprobe (timeout 8s) em threads (semáforo 5)",
+    "UPDATE public.cameras campos de probe"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminInventoryPage 'Testar selecionadas'",
+   "evidence": [
+    "apps/frontend/src/modules/admin/pages/AdminInventoryPage.tsx:226"
+   ],
+   "behavior_notes": "Síncrono; um join(timeout=30) POR thread em sequência (routes.py:2968-2969) — não é um teto global de 30s; resultados de threads não concluídas no momento do retorno ficam FORA de results (front deve tratar ausência); ids uuid válidos inexistentes voltam probe_status=error detail='Câmera não encontrada'; qualquer id que não seja uuid válido derruba o lote inteiro com 500 (cast no WHERE id IN (...), sem validação prévia); sem anti-SSRF por host neste caminho (só TCP connect_ex). View services/api/app/api/v1/admin/routes.py:2858.",
+   "risks": "sem guard anti-SSRF no batch (o single tem); resposta parcial silenciosa; id não-uuid → 500 do lote"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/dashboard",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error (200/500)",
+   "request": "sem params",
+   "response": "data: {tenants_active, users_total, cameras_online:0, alerts_24h:0, training_approvals_pending, tickets_open:0, mrr_estimated:0, workers:{online,fallback,offline}, recent_critical_events[]: {id,action,target_type,actor_role,created_at,actor_email,tenant_name}, top_tenants_users[]: {tenant_name,user_count}}",
+   "tables": [
+    "public.tenants",
+    "public.users",
+    "public.training_approvals",
+    "public.audit_log",
+    "public.worker_registry"
+   ],
+   "side_effects": [
+    "Redis GET worker:heartbeat:* (worker_registry)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminDashboard (useAdminDashboard, poll 30s) e AdminLayout (badges)",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:69",
+    "apps/frontend/src/modules/admin/hooks/useAdminDashboard.ts:15",
+    "apps/frontend/src/modules/admin/AdminLayout.tsx:99"
+   ],
+   "behavior_notes": "Polling 30s no front; cameras_online/alerts_24h/tickets_open/mrr_estimated são HARDCODED 0 (query de tickets está desativada com `if False`); recent_critical_events filtra ações suspended/worker_restart/training_rejected/deactivated. View services/api/app/api/v1/admin/routes.py:181.",
+   "risks": "KPIs zerados exibidos como reais no dashboard"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/feature-flags",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error (200/500)",
+   "request": "sem params",
+   "response": "data.flags[]: {id, flag_key, flag_value, description, updated_by, updated_at} (SELECT * de platform_feature_flags — colunas confirmadas no DEV)",
+   "tables": [
+    "public.platform_feature_flags"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminFeatureFlagsPage lista flags globais",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:257",
+    "apps/frontend/src/modules/admin/pages/AdminFeatureFlagsPage.tsx:13"
+   ],
+   "behavior_notes": "SELECT * ordenado por flag_key; shape bate com FeatureFlag do front (types/admin.ts:248). View services/api/app/api/v1/admin/routes.py:1893.",
+   "risks": ""
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/admin/feature-flags/<flag_key>",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error (200/500)",
+   "request": "path: flag_key; body: value (coagido com bool() — string 'false' vira true; ausente = false)",
+   "response": "data: {updated: true}",
+   "tables": [
+    "public.platform_feature_flags",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "log_audit feature_flag updated"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminFeatureFlagsPage toggle",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:260",
+    "apps/frontend/src/modules/admin/pages/AdminFeatureFlagsPage.tsx:22"
+   ],
+   "behavior_notes": "UPSERT (INSERT ... ON CONFLICT): flag_key desconhecida CRIA nova flag — sem whitelist de chaves; idempotente; value passa por bool() (routes.py:1913) — só booleano JSON é seguro. View services/api/app/api/v1/admin/routes.py:1908.",
+   "risks": "qualquer string vira flag nova (sem validação de chave)"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/feature-flags/tenant/<tenant_id>",
+   "auth": "superadmin",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200/404/500)",
+   "request": "path: tenant_id",
+   "response": "data.flags: {key: value} (jsonb tenants.feature_flags, {} se nulo)",
+   "tables": [
+    "public.tenants"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminTenantDetailPage aba Flags",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:264",
+    "apps/frontend/src/modules/admin/pages/AdminTenantDetailPage.tsx:624"
+   ],
+   "behavior_notes": "Tenant inexistente → 404; só retorna flags já gravadas no tenant (não mescla com flags globais). View services/api/app/api/v1/admin/routes.py:1981; id não-uuid no path → 500 (cast do Postgres, sem validação).",
+   "risks": ""
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/admin/feature-flags/tenant/<tenant_id>",
+   "auth": "superadmin",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200/400/500)",
+   "request": "path: tenant_id; body: key*, value* (qualquer JSON)",
+   "response": "data: {updated: true}",
+   "tables": [
+    "public.tenants",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "log_audit tenant_feature_flag updated"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminTenantDetailPage aba Flags (checkbox por chave)",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:269",
+    "apps/frontend/src/modules/admin/pages/AdminTenantDetailPage.tsx:637"
+   ],
+   "behavior_notes": "Merge jsonb (feature_flags || {key:value}); uma chave por chamada; tenant inexistente → 200 updated:true (sem 404); UI só toggla chaves existentes — não há como criar chave nova na tela. View services/api/app/api/v1/admin/routes.py:2002; id não-uuid no path → 500 (cast do Postgres, sem validação).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/health/metrics",
+   "auth": "superadmin",
+   "tenant": "n.a.",
+   "envelope": "success/error (200/500)",
+   "request": "sem params",
+   "response": "data: {errors_24h, avg_response_ms, celery_queues: {inference,extraction,training,versioning,quality_recording,quality_clips,quality_cep}}",
+   "tables": [],
+   "side_effects": [
+    "Redis LLEN filas Celery + HGETALL métricas RED horárias (request_metrics)"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "sem consumidor; superado por GET /api/v1/admin/observability/summary (domínio admin-aux; observability_service.get_summary usa os mesmos contadores RED) — front só usa /v1/health/metrics (health bp) no HealthFooter",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "docs/quality/CONTRATO_FRONT_BACK.md:212 (NAO SURFACED)"
+   ],
+   "behavior_notes": "Redis indisponível → errors_24h/avg_response_ms = 0 e celery_queues = {} (vazio, não zeros) — nunca erro. View services/api/app/api/v1/admin/routes.py:2510.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/health/platform",
+   "auth": "superadmin",
+   "tenant": "n.a.",
+   "envelope": "success (200 sempre)",
+   "request": "sem params",
+   "response": "data: {status: healthy|degraded|critical, services: {database,redis,r2,celery: {status,latency_ms?,details?}}, celery_queues: {inference,extraction,training,versioning,quality_recording}}",
+   "tables": [],
+   "side_effects": [
+    "SELECT 1 no Postgres",
+    "Redis PING + LLEN",
+    "R2 exists('health-check-probe')"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "wrapper adminService.getPlatformHealth sem consumidor; rota /admin/health redireciona para /admin/observability que usa /observability/summary (mesma regra de status)",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:342 (wrapper sem consumidor de página)",
+    "apps/frontend/src/modules/admin/AdminLayout.tsx:259 (redirect /admin/health→/admin/observability)",
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Nunca retorna erro HTTP — status vai no corpo. View services/api/app/api/v1/admin/routes.py:2445.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/inventory",
+   "auth": "superadmin",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200/400/500)",
+   "request": "query: tenant_id, camera_id (uuid → 400 se inválido), site_id, brand (ILIKE), probe_status (pending|ok|error|timeout)",
+   "response": "data: {cameras[] (máx 500): {id,tenant_id,name,location,description,manufacturer,host,port,username,channel,subtype,is_active,active_module,last_seen,last_error,last_tested_at,created_at,updated_at,site_id,brand,model,ip,rtsp_substream_url,codec_detected,substream_ok,max_connections,last_probe_at,probe_status,notes,tenant_name,tenant_slug}, edge_devices:[], sites:[], total}",
+   "tables": [
+    "public.cameras",
+    "public.tenants"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminInventoryPage (filtros) e crossTenantCameras.resolveCrossTenantCamera (lookup por camera_id)",
+   "evidence": [
+    "apps/frontend/src/modules/admin/pages/AdminInventoryPage.tsx:154",
+    "apps/frontend/src/services/crossTenantCameras.ts:94",
+    "apps/frontend/src/components/camera-grid/CameraCell.tsx:119 (caller do helper, gated por isSuperAdmin)"
+   ],
+   "behavior_notes": "Cross-tenant por design (superadmin); LIMIT 500 sem paginação; edge_devices/sites sempre vazios (reservado); crossTenantCameras.resolveCrossTenantCamera usa-o fora do módulo admin — chamado SÓ quando isSuperAdmin, ao receber 404 em /cameras/<id>/stream/info (CameraCell.tsx:116-119), para descobrir o tenant real da câmera e alimentar o banner 'assumir contexto'; qualquer falha resolve false silenciosamente. View services/api/app/api/v1/admin/routes.py:2542.",
+   "risks": "expõe username/host de todas as câmeras (sem password); limite 500 sem paginação"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/modules-registry",
+   "auth": "superadmin",
+   "tenant": "n.a.",
+   "envelope": "success (200)",
+   "request": "sem params",
+   "response": "data.modules[]: {module_code, label, features[]: {key,label}} (constante PLATFORM_MODULES)",
+   "tables": [],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminPlansPage carrega picker de módulos/funcionalidades",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:241",
+    "apps/frontend/src/modules/admin/pages/AdminPlansPage.tsx:90"
+   ],
+   "behavior_notes": "Estático (app/constants.py PLATFORM_MODULES) — cacheável no front; é a fonte de validação de modules_allowed/module_features/price_per_camera nos planos. View services/api/app/api/v1/admin/routes.py:1711.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/modules/catalog",
+   "auth": "superadmin",
+   "tenant": "n.a.",
+   "envelope": "success (200)",
+   "request": "sem params",
+   "response": "data.modules[]: {code,label,description,status: active|beta|coming_soon} (constante MODULE_CATALOG)",
+   "tables": [],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminTenantsPage (modal criar) e AdminTenantDetailPage (módulos habilitados)",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:106",
+    "apps/frontend/src/modules/admin/pages/AdminTenantsPage.tsx:43",
+    "apps/frontend/src/modules/admin/pages/AdminTenantDetailPage.tsx:409"
+   ],
+   "behavior_notes": "Estático; coexiste com /modules-registry (PLATFORM_MODULES) — duas fontes de 'módulos' com shapes diferentes (catalog p/ tenants, registry p/ planos). View services/api/app/api/v1/admin/routes.py:1229.",
+   "risks": "duas listas canônicas de módulos (MODULE_CATALOG × PLATFORM_MODULES) podem divergir"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/permissions/matrix",
+   "auth": "superadmin",
+   "tenant": "n.a.",
+   "envelope": "success (200)",
+   "request": "sem params",
+   "response": "data.matrix: {chave_legada_snake: [roles]} (derivada do PERMISSION_REGISTRY via aliases legados)",
+   "tables": [],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "wrapper adminService.getPermissionMatrix sem consumidor; substituído por GET /admin/permissions/registry (domínio auth-identity, permission_routes.py:87) usado em usePermissions.ts",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:161 (wrapper sem consumidor de página)",
+    "apps/frontend/src/modules/admin/hooks/usePermissions.ts:16 (usa registry)",
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Matriz legada (aliases); novo front deve usar /permissions/registry. View services/api/app/api/v1/admin/routes.py:1219.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/plans",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error (200/500)",
+   "request": "sem params",
+   "response": "data.plans[]: {id,slug,name,modules_allowed[],max_cameras,max_users|null,video_retention_days,requires_training_approval,price_per_camera{},module_features{},api_rate_per_minute,active,created_at,...,tenant_count}",
+   "tables": [
+    "public.plans",
+    "public.tenants"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminPlansPage lista planos",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:235",
+    "apps/frontend/src/modules/admin/pages/AdminPlansPage.tsx:90"
+   ],
+   "behavior_notes": "tenant_count via join por slug (tenants.plan = plans.slug); inclui inativos; ordenado por nome. View services/api/app/api/v1/admin/routes.py:1722.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/plans",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error (201/400/409/500)",
+   "request": "body: slug* (^[a-z0-9_-]{2,50}$), name* (≤100), modules_allowed[] (⊂ PLATFORM_MODULES), max_cameras[=10], max_users[=null], video_retention_days[=7], requires_training_approval[=false], price_per_camera{mod:valor≥0}, module_features{mod:[keys]}, api_rate_per_minute[=120]",
+   "response": "data.plan: {linha completa de public.plans}",
+   "tables": [
+    "public.plans",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "log_audit plan created"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminPlansPage modal criar",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:245",
+    "apps/frontend/src/modules/admin/pages/AdminPlansPage.tsx:225"
+   ],
+   "behavior_notes": "Validação server-side por módulo/feature do registry (400 com mensagem pt-BR); slug duplicado → 409 (pre-check + race). View services/api/app/api/v1/admin/routes.py:1754.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/plans/<plan_id>",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error (200/404/500)",
+   "request": "path: plan_id",
+   "response": "data.plan: {mesmo shape de GET /plans[] incl. tenant_count}",
+   "tables": [
+    "public.plans",
+    "public.tenants"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "wrapper adminService.getPlan sem consumidor; a lista já devolve o mesmo shape (duplicado)",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:238 (wrapper sem consumidor de página)",
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "404 se não existe. View services/api/app/api/v1/admin/routes.py:1737; id não-uuid no path → 500 (cast do Postgres, sem validação).",
+   "risks": ""
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/admin/plans/<plan_id>",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error (200/400/404/500)",
+   "request": "path: plan_id; body (≥1): name, modules_allowed, max_cameras, max_users, video_retention_days, requires_training_approval, price_per_camera, module_features, api_rate_per_minute, active — slug IMUTÁVEL",
+   "response": "data: {updated: true}",
+   "tables": [
+    "public.plans",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "log_audit plan updated"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminPlansPage editar/desativar plano",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:248",
+    "apps/frontend/src/modules/admin/pages/AdminPlansPage.tsx:228"
+   ],
+   "behavior_notes": "Mesma validação do POST; desativar (active=false) não altera tenants existentes — front confirma quando tenant_count>0; slug não editável (joins por slug). View services/api/app/api/v1/admin/routes.py:1819; id não-uuid no path → 500 (cast do Postgres, sem validação).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/plans/<plan_id>/tenants",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error (200/404/500)",
+   "request": "path: plan_id",
+   "response": "data.tenants[]: {id,name,slug,is_active,created_at}",
+   "tables": [
+    "public.plans",
+    "public.tenants"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "wrapper adminService.getPlanTenants sem consumidor; drill-down 'clientes deste plano' é capacidade plausível da tela de planos",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:251 (wrapper sem consumidor de página)",
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Resolve slug do plano e lista tenants.plan = slug; 404 se plano não existe. View services/api/app/api/v1/admin/routes.py:1865; id não-uuid no path → 500 (cast do Postgres, sem validação).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/software-channels",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error (200/500)",
+   "request": "sem params",
+   "response": "data.channels[]: {channel, target_ref, updated_at, updated_by}",
+   "tables": [
+    "public.edge_software_channels"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "sem UI; operado por curl no runbook de OTA — painel de canais/versões de software do edge é capacidade admin plausível",
+   "evidence": [
+    "docs/runbooks/edge-ota.md:105 (operação manual via curl)",
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Repository EdgeSoftwareChannelRepository.list_channels; tabela de plataforma sem tenant_id. View services/api/app/api/v1/admin/routes.py:1937.",
+   "risks": ""
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/admin/software-channels/<channel>",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error (200/422/500)",
+   "request": "path: channel (string livre, ex. dev|stable); body: target_ref* (git ref)",
+   "response": "data: {channel, target_ref, updated_at, updated_by}",
+   "tables": [
+    "public.edge_software_channels",
+    "public.audit_log"
+   ],
+   "side_effects": [
+    "log_audit edge_software_channel updated",
+    "devices do canal consultam GET /api/v1/edge/software/target e aplicam OTA (app/ota/updater.py) — a nuvem só publica"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "sem UI; publicado via curl (runbook edge-ota) — 'publicar versão para canal' é ação admin plausível com confirmação",
+   "evidence": [
+    "docs/runbooks/edge-ota.md:99 (curl PUT)",
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "UPSERT idempotente (re-pinar mesmo ref é normal); canal não é validado contra lista (qualquer nome cria canal); 422 (não 400) se target_ref vazio. View services/api/app/api/v1/admin/routes.py:1950.",
+   "risks": "sem whitelist de canal nem validação de ref; ação de alto impacto (atualiza frota) sem confirmação/dry-run"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/tenants",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error (200/500)",
+   "request": "sem params",
+   "response": "data.tenants[]: {id,slug,name,plan,schema_name,is_active,modules_enabled[],created_at,suspended_at,user_count}",
+   "tables": [
+    "public.tenants",
+    "public.users"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminTenantsPage, CreateUserWizard, AdminRetentionPage, AdminBrandingTenantsPage, DemoEventsPage (seletor)",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:74",
+    "apps/frontend/src/modules/admin/pages/AdminTenantsPage.tsx:35",
+    "apps/frontend/src/modules/admin/pages/DemoEventsPage.tsx:100",
+    "apps/frontend/src/modules/admin/components/CreateUserWizard.tsx:100",
+    "apps/frontend/src/modules/admin/pages/AdminRetentionPage.tsx:89",
+    "apps/frontend/src/modules/admin/pages/AdminBrandingTenantsPage.tsx:23"
+   ],
+   "behavior_notes": "Sem paginação/filtro (busca é client-side); inclui inativos/suspensos; ponto de partida de 'assumir contexto de tenant' (AdminTenantsPage.assumeTenantContext — endpoint em outro domínio). View services/api/app/api/v1/admin/routes.py:263.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants",
+   "auth": "superadmin",
+   "tenant": "global",
+   "envelope": "success/error (201/400/409/500)",
+   "request": "body: name*, slug* (lower(); validado só por str.isalnum() após remover hífens — aceita letras Unicode; vira schema_name), plan[=standard] (string livre; front oferece lista hardcoded basic|standard|premium|enterprise, AdminTenantsPage.tsx:16), modules_enabled[=['epi','counting','basic']]",
+   "response": "data: {tenant: {id,slug,name,plan,schema_name,is_active}, admin_email: admin@<slug>.epimonitor.local, temp_password (exibida UMA vez)}",
+   "tables": [
+    "public.tenants",
+    "public.users",
+    "public.audit_log",
+    "{schema}.* (criado por public.create_tenant_schema)"
+   ],
+   "side_effects": [
+    "SELECT public.create_tenant_schema(slug) — cria schema e tabelas do tenant",
+    "INSERT users admin com force_password_reset=true",
+    "invalidate_schema_cache()",
+    "log_audit tenant created"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminTenantsPage modal 'Novo Tenant'",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:80",
+    "apps/frontend/src/modules/admin/pages/AdminTenantsPage.tsx:65"
+   ],
+   "behavior_notes": "Transação única (tenant + schema + admin); temp_password só existe na resposta (front mostra via alert()) — novo front precisa de tela 'credenciais geradas' copiável; admin user é ON CONFLICT DO NOTHING (e-mail já existente → sem admin novo, sem aviso); slug 409 se duplicado; plan não validado contra public.plans (front usa lista hardcoded, não GET /plans); slug não checado contra schemas reservados (public, admin, pg_*) nem restrito a ASCII (isalnum, routes.py:312). View services/api/app/api/v1/admin/routes.py:300.",
+   "risks": "slug reservado ('public') passa na regex e executa create_tenant_schema('public'); plan livre"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/admin/tenants/<tenant_id>",
+   "auth": "superadmin",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error (200/404/500)",
+   "request": "path: tenant_id",
+   "response": "data.tenant: {t.* (tenants), user_count, users[]: {id,email,name,role,is_active,created_at,last_login_at,login_count,custom_role_id,permission_override_count}, pending_approvals[] (≤5), seats_in_use, plan_rate_limit_per_minute, plan_retention_days, worker_status, worker_metrics}",
+   "tables": [
+    "public.tenants",
+    "public.users",
+    "public.user_permission_overrides",
+    "public.training_approvals",
+    "public.plans"
+   ],
+   "side_effects": [
+    "Redis GET worker:heartbeat:<schema> (status/métricas do worker)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "AdminTenantDetailPage, CreateUserWizard, AdminBrandingEditorPage",
+   "evidence": [
+    "apps/frontend/src/modules/admin/services/adminService.ts:77",
+    "apps/frontend/src/modules/admin/pages/AdminTenantDetailPage.tsx:39",
+    "apps/frontend/src/modules/admin/components/CreateUserWizard.tsx:112",
+    "apps/frontend/src/modules/admin/pages/AdminBrandingEditorPage.tsx:95"
+   ],
+   "behavior_notes": "404 se não existe; agrega políticas efetivas (plano vs override do tenant) para a aba de políticas; PATCH correspondente está em outro domínio (admin-core-b). View services/api/app/api/v1/admin/routes.py:371; id não-uuid no path → 500 (cast do Postgres, sem validação).",
+   "risks": ""
+  }
+ ],
+ "flows": [
+  {
+   "name": "Criar tenant → credenciais temporárias → (opcional) assumir contexto",
+   "description": "Modal 'Novo Tenant' carrega catálogo de módulos, cria tenant (schema + admin com senha temporária exibida uma única vez, force_password_reset), recarrega lista; detalhe mostra usuários/aprovações/políticas/flags.",
+   "endpoints": [
+    "GET /api/v1/admin/modules/catalog",
+    "POST /api/v1/admin/tenants",
+    "GET /api/v1/admin/tenants",
+    "GET /api/v1/admin/tenants/<tenant_id>",
+    "GET /api/v1/admin/feature-flags/tenant/<tenant_id>",
+    "PATCH /api/v1/admin/feature-flags/tenant/<tenant_id>"
+   ]
+  },
+  {
+   "name": "Gestão de planos",
+   "description": "Lista planos (com tenant_count), carrega registry de módulos/funcionalidades para o picker, cria/edita com validação server-side; desativar exige confirmação quando há clientes; slug imutável.",
+   "endpoints": [
+    "GET /api/v1/admin/modules-registry",
+    "GET /api/v1/admin/plans",
+    "POST /api/v1/admin/plans",
+    "PATCH /api/v1/admin/plans/<plan_id>",
+    "GET /api/v1/admin/plans/<plan_id>",
+    "GET /api/v1/admin/plans/<plan_id>/tenants"
+   ]
+  },
+  {
+   "name": "Feature flags globais (toggle)",
+   "description": "Lista e alterna flags de plataforma; PATCH é upsert por chave.",
+   "endpoints": [
+    "GET /api/v1/admin/feature-flags",
+    "PATCH /api/v1/admin/feature-flags/<flag_key>"
+   ]
+  },
+  {
+   "name": "Inventário de câmeras → importar CSV → testar (probe) individual/lote",
+   "description": "Inventário cross-tenant com filtros; CSV parseado no browser e enviado como JSON (201/207 com erros por linha); depois recarrega e testa conectividade síncrona (single com anti-SSRF; lote até 50, 5 paralelos, join 30s por thread). ATENÇÃO: no DEV a importação não cria nada (INSERT sem user_id NOT NULL) — ver findings.",
+   "endpoints": [
+    "GET /api/v1/admin/inventory",
+    "POST /api/v1/admin/cameras/import",
+    "POST /api/v1/admin/cameras/<camera_id>/probe",
+    "POST /api/v1/admin/cameras/probe-batch"
+   ]
+  },
+  {
+   "name": "Auditoria: lista paginada + export CSV",
+   "description": "Tela filtra por ação/data (backend aceita também tenant_id/actor_id/target_type) com paginação offset; export autenticado por header devolve CSV (máx 10k linhas) que o front baixa via Blob — hoje só com o filtro de ação.",
+   "endpoints": [
+    "GET /api/v1/admin/audit-log",
+    "GET /api/v1/admin/audit-log/export"
+   ]
+  },
+  {
+   "name": "Comunicados da plataforma",
+   "description": "Admin cria/arquiva (soft delete por expires_at) comunicados; clientes leem por polling em GET /api/v1/announcements (outro domínio) — não há push real (publish Redis sem subscriber).",
+   "endpoints": [
+    "GET /api/v1/admin/announcements",
+    "POST /api/v1/admin/announcements",
+    "PATCH /api/v1/admin/announcements/<announcement_id>",
+    "DELETE /api/v1/admin/announcements/<announcement_id>"
+   ]
+  },
+  {
+   "name": "Dashboard admin (polling 30s) e badges do layout",
+   "description": "KPIs agregados + eventos críticos + workers; vários KPIs hardcoded 0.",
+   "endpoints": [
+    "GET /api/v1/admin/dashboard"
+   ]
+  },
+  {
+   "name": "OTA do edge: publicar target_ref por canal (sem UI)",
+   "description": "Admin publica git ref no canal; devices do canal consultam /api/v1/edge/software/target e se atualizam sozinhos. Hoje via curl (runbook).",
+   "endpoints": [
+    "GET /api/v1/admin/software-channels",
+    "PUT /api/v1/admin/software-channels/<channel>"
+   ]
+  },
+  {
+   "name": "Saúde da plataforma (legado)",
+   "description": "Substituído pela aba Observability (/observability/summary); rota /admin/health redireciona.",
+   "endpoints": [
+    "GET /api/v1/admin/health/platform",
+    "GET /api/v1/admin/health/metrics"
+   ]
+  }
+ ],
+ "tables_by_scope": {
+  "public": [
+   "public.audit_log",
+   "public.cameras",
+   "public.edge_software_channels",
+   "public.plans",
+   "public.platform_announcements",
+   "public.platform_feature_flags",
+   "public.tenants",
+   "public.training_approvals",
+   "public.user_permission_overrides",
+   "public.users",
+   "public.worker_registry"
+  ],
+  "tenant_schema": [
+   "{schema}.* (criado por public.create_tenant_schema no POST /tenants — não lido por este domínio)"
+  ],
+  "not_in_dev": []
+ },
+ "findings": [
+  {
+   "severity": "P1",
+   "text": "GET /admin/dashboard (services/api/app/api/v1/admin/routes.py:181-257): cameras_online, alerts_24h, tickets_open e mrr_estimated são hardcoded 0 (query de tickets desativada com `if False`) — AdminDashboard/AdminLayout exibem como KPIs reais (badge de tickets sempre 0)."
+  },
+  {
+   "severity": "P1",
+   "text": "POST /admin/cameras/import (services/api/app/api/v1/admin/routes.py:2691): INSERT INTO public.cameras não preenche user_id, que é NOT NULL sem default no DEV (docs/migration/inventory/db_schema_dev.json; migrations 002_cameras.sql:7 + 013_consolidate_cameras.sql) → toda linha falha com NotNullViolation, a transação única aborta e o commit vira ROLLBACK: resposta 207 com created=0 e reason bruta do driver (routes.py:2710). A importação CSV da AdminInventoryPage está inoperante; os testes (tests/unit/api/test_admin_inventory.py) mockam o pool e aceitam created>=0, por isso não pegam. O único inserter que funciona preenche user_id (camera_repository.py:25; scripts/ops/import_nvr_channels_rvb.py:107). Produção: indeterminado (schema não inventariado aqui)."
+  },
+  {
+   "severity": "P1",
+   "text": "Probe de câmera roda no host da API (services/api/app/api/v1/admin/routes.py:2730/2858): câmeras RVB ficam atrás de WireGuard outbound-only (ADR-0020) — o 'Testar' do inventário tende a reportar error para todas; probe-batch não aplica o guard anti-SSRF (loopback/link-local) que o single aplica."
+  },
+  {
+   "severity": "P2",
+   "text": "POST /admin/tenants (services/api/app/api/v1/admin/routes.py:300-312): slug validado só por str.isalnum() após remover hífens (aceita Unicode; 'public'/'admin' passam e executam public.create_tenant_schema(slug) — função com CREATE ... IF NOT EXISTS que criaria tabelas de tenant dentro de public); plan não é validado contra public.plans (front manda lista hardcoded basic|standard|premium|enterprise, AdminTenantsPage.tsx:16, em vez de GET /plans); admin ON CONFLICT DO NOTHING silencioso; temp_password exibida via alert() (AdminTenantsPage.tsx:66)."
+  },
+  {
+   "severity": "P2",
+   "text": "PATCH /admin/feature-flags/<flag_key> (services/api/app/api/v1/admin/routes.py:1908-1913) é UPSERT sem whitelist — qualquer chave cria flag nova — e coage value com bool() (string 'false' vira true); PATCH /feature-flags/tenant/<id> (routes.py:2002), PATCH/DELETE /announcements/<id> (routes.py:2398/2423) retornam 200 updated/deleted:true para ids inexistentes (sem 404)."
+  },
+  {
+   "severity": "P2",
+   "text": "POST /admin/announcements (services/api/app/api/v1/admin/routes.py:2351): title/content obrigatórios só pelo NOT NULL do DB → 500 em vez de 400; PUBLISH announcement:* no Redis não tem subscriber (socket_bridge.py:138) — código morto; cliente só vê por polling."
+  },
+  {
+   "severity": "P2",
+   "text": "Código morto no front: adminService.getPermissionMatrix (:161), getPlan (:238), getPlanTenants (:251), updateAnnouncement (:334), getPlatformHealth (:342) não têm consumidor de página. Backend legado duplicado: /admin/health/platform e /admin/health/metrics superados por /admin/observability/summary; /admin/permissions/matrix superado por /admin/permissions/registry."
+  },
+  {
+   "severity": "P2",
+   "text": "POST /admin/cameras/probe-batch (services/api/app/api/v1/admin/routes.py:2965-2969): join(timeout=30) sequencial por thread — threads não concluídas não entram em results; qualquer camera_id não-uuid → 500 do lote inteiro (cast no IN, sem validação); front (AdminInventoryPage.tsx:226) assume que todo id volta e só limpa o spinner dos que voltaram via finally (ok) mas mantém probe_status antigo sem aviso."
+  },
+  {
+   "severity": "P3",
+   "text": "Duas 'fontes canônicas' de módulos: MODULE_CATALOG (GET /modules/catalog, usado em tenants) × PLATFORM_MODULES (GET /modules-registry, usado em planos) — shapes e listas distintas podem divergir."
+  },
+  {
+   "severity": "P3",
+   "text": "AdminAuditLogPage.tsx:37 exporta só com filtro action — date_from/date_to da tela não são enviados ao export embora o backend (routes.py:2264) os aceite; a tela não tem filtro de tenant (backend aceita tenant_id)."
+  },
+  {
+   "severity": "P3",
+   "text": "Drift doc×código: docs/quality/CONTRATO_FRONT_BACK.md:164-212 marca dashboard/tenants/plans/flags/announcements/audit-export como 'NAO SURFACED', mas todos têm página consumidora; linha 457 suspeita de path sem /api — falso (API_BASE já inclui /api, api.ts:105)."
+  },
+  {
+   "severity": "P3",
+   "text": "apps/frontend/src/modules/admin/types/admin.ts:284 tipa o envelope como R<T>={status,data}; backend envia {success,message,data} (responses.py:29) — inofensivo hoje (só .data é lido) mas o novo front deve tipar o envelope real."
+  },
+  {
+   "severity": "P3",
+   "text": "GET /admin/inventory (services/api/app/api/v1/admin/routes.py:2542) LIMIT 500 sem paginação e expõe username/host de todas as câmeras; e-mail do admin gerado é admin@<slug>.epimonitor.local (nome de produto antigo)."
+  },
+  {
+   "severity": "P3",
+   "text": "Path params uuid não validados em nenhuma view do domínio (tenants/<id>, plans/<id>, feature-flags/tenant/<id>, announcements/<id>, cameras/<id>/probe, probe-batch ids — services/api/app/api/v1/admin/routes.py): valor não-uuid gera erro de cast no Postgres e cai no except genérico → 500 'Erro ao ...' em vez de 400/404; page/per_page não-inteiros em /audit-log idem (int() em _page_params, routes.py:143)."
+  },
+  {
+   "severity": "P3",
+   "text": "Announcements (services/api/app/api/v1/admin/routes.py:2351/2398/2423): POST/PATCH/DELETE não chamam log_audit, ao contrário de planos/flags/tenants — comunicados de plataforma não deixam trilha de auditoria."
+  }
+ ],
+ "design_needs": [
+  "Tela de criação de tenant com etapa final 'Credenciais geradas' (e-mail admin + senha temporária copiável, aviso de exibição única) em vez de alert(); validação de slug reservado e seleção de plano vinda da lista de planos.",
+  "Painel de planos com drill-down 'clientes neste plano' (lista de tenants do plano) e edição inline de limites/funcionalidades por módulo a partir do registry.",
+  "Tela de comunicados com edição (título/conteúdo/tipo/alvo/expiração) e agendamento visível — hoje só cria/arquiva.",
+  "Painel de canais de software do edge (OTA): lista de canais com target_ref/atualizado por, ação 'publicar ref' com confirmação e trilha de auditoria.",
+  "Inventário de câmeras com paginação/busca server-side, importação CSV com pré-visualização e relatório por linha (201/207), e teste de conectividade que deixe claro que roda da nuvem (ou delegue ao edge) com estado 'sem resposta' para itens fora do resultado do lote.",
+  "Dashboard admin honesto: ocultar/rotular KPIs não implementados (câmeras online, alertas 24h, tickets, MRR) ou ligá-los a fontes reais; atualização periódica (30s) e eventos críticos clicáveis para o audit log.",
+  "Auditoria com export que respeite os mesmos filtros da lista (data/tenant/ação) e indicação do limite de 10k linhas.",
+  "Flags: globais com catálogo de chaves conhecidas (evitar criar chave por engano) e, por tenant, criar/remover chaves além de alternar.",
+  "Importação de câmeras que funcione de ponta a ponta: backend precisa atribuir dono (user_id) ao criar a câmera (ator superadmin ou admin do tenant) — hoje a coluna NOT NULL derruba todo o lote; erros por linha devem ser legíveis (não a mensagem do driver)."
+ ]
+}

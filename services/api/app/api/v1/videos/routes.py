@@ -461,6 +461,11 @@ def upload_frame(video_id: str):  # type: ignore[no-untyped-def]
 def finalize_extraction(video_id: str):  # type: ignore[no-untyped-def]
     """Mark video as extracted after browser-side frame capture completes."""
     try:
+        user_id = get_current_user_id()
+        video = _video_service().get_video(UUID(video_id))
+        if str(video.get("user_id")) != str(user_id):
+            # C-01: vídeo de outro dono → mesmo 404 de vídeo inexistente
+            return error("Vídeo não encontrado", 404)
         frame_count = (request.get_json() or {}).get("frame_count", 0)
         _video_repo().update_status(UUID(video_id), "extracted", frame_count=frame_count)
         return success({"status": "extracted", "frame_count": frame_count})

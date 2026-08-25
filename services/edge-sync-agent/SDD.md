@@ -109,10 +109,14 @@ while True:
         continue
 
     try:
+        # Rota canônica (única) de ingest — /api/v1/edge/detections NUNCA
+        # existiu na API (docs/edge/INTEGRACAO_EDGE_F0F2_2026-07-19.md §1).
+        # Corpo {"events": [...]} (≤500), X-Batch-Id determinístico p/ dedup.
         response = httpx.post(
-            f"{CLOUD_API_URL}/api/v1/edge/detections",
-            json={"device_id": DEVICE_ID, "detections": batch},
-            headers={"Authorization": f"Bearer {token_manager.get_token()}"},
+            f"{CLOUD_API_URL}/api/v1/edge/events/ingest",
+            json={"events": [to_ingest_event(e) for e in batch]},
+            headers={"Authorization": f"Bearer {token_manager.get_token()}",
+                     "X-Batch-Id": batch_id},
             timeout=30,
         )
         if response.status_code == 200:
@@ -285,7 +289,7 @@ def enroll(one_time_token: str, site_id: str) -> None:
 |--------|---------|-----------|
 | `POST` | `/api/v1/edge/enroll` | Uma vez (enrollment) |
 | `POST` | `/api/v1/edge/heartbeat` | A cada 60s |
-| `POST` | `/api/v1/edge/detections` | A cada 30s (batch) |
+| `POST` | `/api/v1/edge/events/ingest` | A cada 30s (batch ≤500, escopo `events:write`) |
 | `GET` | `/api/v1/edge/config/poll` | A cada 5min |
 | `POST` | `/api/v1/edge/streams/report` | A cada 60s |
 | `POST` | `/api/v1/edge/token/renew` | A cada 53 dias |
@@ -314,15 +318,14 @@ def enroll(one_time_token: str, site_id: str) -> None:
 ### Fluxo normal (conectado)
 
 ```
-DeepStream pipeline
-  → MQTT Mosquitto local (events/detection/{cam})
-  → mqtt_consumer.py
-  → sqlite_buffer.enqueue()
+DeepStream pipeline (probe no box — FORA deste repo)
+  → Redis local pub/sub det:{camera_id} (ADR-0002; `detections:*` também assinado)
+  → detection_relay.py (só frames com has_violation=true)
+  → sqlite_buffer.enqueue("detection", camera_id, payload)
   → uploader.py (a cada 30s)
-  → POST /api/v1/edge/detections (cloud)
+  → POST /api/v1/edge/events/ingest (cloud) — {"events":[...]}, X-Batch-Id
   → sqlite_buffer.mark_sent()
-  → api cloud insere em edge_detections_buffer
-  → Celery worker processa → insere em alerts
+  → api cloud insere em public.edge_events (dedup por tenant+dedup_key)
 ```
 
 ### Fluxo offline (sem conectividade)

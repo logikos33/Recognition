@@ -1,0 +1,1193 @@
+{
+ "domain": "ops-dashboard-misc",
+ "overview": "Miscelânea operacional do monolito: (1) operações configuráveis por câmera (ROI/contagem/zona) que o worker OperationsEngine avalia e hot-recarrega via Redis/SocketIO — sustenta a tela de Operações da câmera (EpiOperationsPage/TrainingModeLayout) e o editor de cenário; (2) sessões de contagem (carga/descarga) com validação manual e aceite — sustentam CountingPage e FuelingValidationPage, embora hoje nada alimente counting_events; (3) módulo Fueling (dashboard/baias/eventos) — demo mockada para superadmin por feature flag, com o caminho 'real' quebrado; (4) relatórios/dashboard legados (/reports/home, /v1/dashboard/*, export xlsx) chamados só por páginas mortas (não importadas) → ÓRFÃO, e relatório de compliance PDF sem UI (GAP); (5) chat assistente SSE (Ollama) e health/liveness/readiness (infra) + /v1/health/metrics para o rodapé; (6) integração monofatura (inspeção por peça, tenant_schema) sem consumidor.",
+ "endpoints": [
+  {
+   "method": "GET",
+   "path": "/",
+   "auth": "public",
+   "tenant": "n.a.",
+   "envelope": "mixed(jsonify | raw:file) 200",
+   "request": "path param livre (qualquer GET sem rota mais específica)",
+   "response": "API-only: {status:'API online', frontend:'separate service'}; se existir frontend/dist: arquivo estático ou index.html",
+   "tables": [],
+   "side_effects": [],
+   "label": "BACKEND-ONLY",
+   "label_reason": "catch-all de serving do SPA (fallback index.html) — em produção Railway o front é serviço separado, então devolve JSON 'API online'",
+   "evidence": [
+    "services/api/app/__init__.py:592"
+   ],
+   "behavior_notes": "Catch-all GET: qualquer path GET desconhecido responde 200 JSON (não 404). Métodos não-GET em path desconhecido caem em 405 (ADR-0041). Novo front não deve depender disso; SPA hospedada à parte.",
+   "risks": "Mascara 404 de GETs — front que chamar rota GET inexistente recebe 200 {status:'API online'} e não um erro (drift silencioso)."
+  },
+  {
+   "method": "GET",
+   "path": "/<path:path>",
+   "auth": "public",
+   "tenant": "n.a.",
+   "envelope": "mixed(jsonify | raw:file) 200",
+   "request": "path param livre (qualquer GET sem rota mais específica)",
+   "response": "API-only: {status:'API online', frontend:'separate service'}; se existir frontend/dist: arquivo estático ou index.html",
+   "tables": [],
+   "side_effects": [],
+   "label": "BACKEND-ONLY",
+   "label_reason": "catch-all de serving do SPA (fallback index.html) — em produção Railway o front é serviço separado, então devolve JSON 'API online'",
+   "evidence": [
+    "services/api/app/__init__.py:592"
+   ],
+   "behavior_notes": "Catch-all GET: qualquer path GET desconhecido responde 200 JSON (não 404). Métodos não-GET em path desconhecido caem em 405 (ADR-0041). Novo front não deve depender disso; SPA hospedada à parte.",
+   "risks": "Mascara 404 de GETs — front que chamar rota GET inexistente recebe 200 {status:'API online'} e não um erro (drift silencioso)."
+  },
+  {
+   "method": "GET",
+   "path": "/api/cameras/<camera_id>/operations",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200",
+   "request": "path camera_id (uuid); query module_id (opcional — filtra por módulo)",
+   "response": "data.operations[]: {id,tenant_id,camera_id,module_id,type_id,name,config{},status,version,last_value_json,last_evaluated_at,created_at}, data.camera_id",
+   "tables": [
+    "public.operations"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "useOperations.fetchOperations (TrainingModeLayout/EpiOperationsPage e ScenarioEditor)",
+   "evidence": [
+    "apps/frontend/src/hooks/useOperations.ts:26",
+    "apps/frontend/src/components/training/TrainingModeLayout.tsx:63",
+    "apps/frontend/src/components/scenario/ScenarioEditor.tsx:177"
+   ],
+   "behavior_notes": "Lista filtrada por tenant_id do JWT; camera_id NÃO é validado contra public.cameras (qualquer uuid devolve lista vazia, nunca 404). module_id é string livre — EpiOperationsPage usa 'ppe', ScenarioEditor usa o module_code real ('epi'): operações criadas num fluxo não aparecem no outro. Status ao vivo chega por SocketIO /monitor (operation:status_changed, operation:reloaded) via useOperationLiveStatus.",
+   "risks": "Sem checagem de posse da câmera (só tenant_id da operação)."
+  },
+  {
+   "method": "POST",
+   "path": "/api/cameras/<camera_id>/operations",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 201/422/500",
+   "request": "path camera_id; body JSON {type_id*, name*, module_id='generic', config={}}",
+   "response": "data.operation: {...row} (201)",
+   "tables": [
+    "public.operations"
+   ],
+   "side_effects": [
+    "Redis publish operations:reload:{id} {operation_id,version} (best-effort) → worker OperationsEngine hot-reload + socket_bridge emite operation:reloaded em /monitor"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "useOperations.createOperation (OperationCreateModal/ScenarioEditor)",
+   "evidence": [
+    "apps/frontend/src/hooks/useOperations.ts:43",
+    "apps/frontend/src/components/training/modals/OperationCreateModal.tsx:120",
+    "apps/frontend/src/components/scenario/ScenarioEditor.tsx:218"
+   ],
+   "behavior_notes": "Ordem: GET /api/modules/<m>/operation-types (catálogo + config_schema) → POST. Valida config via OperationTypeRegistry.get(type_id).validate_config → 422 'Configuração inválida: ...' (mensagem concatenada). type_id desconhecido → 422. camera_id não é validado (aceita uuid de outra tenant ou inexistente). version inicia em 1.",
+   "risks": "Cross-tenant write: aceita camera_id de outro tenant; worker avalia por camera_id → resultados de detecções alheias podem cair em operação deste tenant."
+  },
+  {
+   "method": "POST",
+   "path": "/api/chat",
+   "auth": "jwt",
+   "tenant": "global",
+   "envelope": "mixed(raw:text/event-stream SSE 200 | error() 400/503) — nunca success()",
+   "request": "body JSON {message*, history=[] ({role:'user'|'bot', text})}",
+   "response": "SSE: linhas 'data: {\"token\":...}' | 'data: {\"error\":...}' | 'data: [DONE]'",
+   "tables": [
+    "public.assistant_docs"
+   ],
+   "side_effects": [
+    "Ollama: embed (OLLAMA_EMBED_MODEL) + generate_stream (OLLAMA_MODEL) em OLLAMA_BASE_URL"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "ChatFAB (assistente global)",
+   "evidence": [
+    "apps/frontend/src/components/chat/ChatFAB.tsx:56"
+   ],
+   "behavior_notes": "Contrato assimétrico: sucesso = SSE cru (Cache-Control no-cache, X-Accel-Buffering no); falha = envelope JSON (400 sem message, 503 Ollama offline). Front usa api.fetchRaw e faz parse linha a linha até [DONE]. RAG em assistant_docs (pgvector, 0 linhas no DEV) degrada silenciosamente. Sem tenant (docs globais). Histórico limitado às últimas 6 mensagens.",
+   "risks": "indeterminado se há Ollama em qualquer ambiente Railway (OLLAMA_BASE_URL não aparece em config do repo) — chat provavelmente sempre 503 em prod."
+  },
+  {
+   "method": "GET",
+   "path": "/api/chat/health",
+   "auth": "public",
+   "tenant": "n.a.",
+   "envelope": "raw:json 200/503",
+   "request": "—",
+   "response": "{available: bool, model: str} (sem envelope success/error)",
+   "tables": [],
+   "side_effects": [
+    "Ollama: GET tags/ping (is_available)"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "probe do Ollama sem consumidor (front não consulta disponibilidade antes de abrir o chat)",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Público e sem envelope padrão. 503 quando Ollama offline.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/counting/sessions",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/500",
+   "request": "—",
+   "response": "data.sessions[]: {id,tenant_id,camera_id,module_code,status('running'|'stopped'),total_counts{},started_at,ended_at,bay_id,truck_plate,direction,expected_count,divergence,video_clip_url,manual_count,acceptance_status,plate_text,plate_confidence,plate_review,plate_manual} + camera_name (LEFT JOIN public.cameras); só status='running'",
+   "tables": [
+    "public.counting_sessions",
+    "public.cameras"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "CountingPage (listar sessões ativas)",
+   "evidence": [
+    "apps/frontend/src/pages/CountingPage.tsx:96"
+   ],
+   "behavior_notes": "Só sessões 'running'. Front (CountingPage.tsx:108) procura status==='active' para retomar sessão — nunca casa com 'running' (bug). Sem paginação.",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/counting/sessions",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 201/400/500",
+   "request": "body JSON {camera_id* (uuid), module_code='epi'}",
+   "response": "data.session: {id,tenant_id,camera_id,module_code,status('running'|'stopped'),total_counts{},started_at,ended_at,bay_id,truck_plate,direction,expected_count,divergence,video_clip_url,manual_count,acceptance_status,plate_text,plate_confidence,plate_review,plate_manual} (201)",
+   "tables": [
+    "public.counting_sessions"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "CountingPage (iniciar contagem)",
+   "evidence": [
+    "apps/frontend/src/pages/CountingPage.tsx:134"
+   ],
+   "behavior_notes": "camera_id tem FK para public.cameras(id) ON DELETE CASCADE (infra/migrations/049_counting_deepsort_rebuild.sql:29), mas NÃO é checado contra o tenant do JWT: uuid inexistente → IntegrityError → 500 'Erro ao iniciar sessão'; câmera de OUTRO tenant → 201 (cross-tenant reference). UUID malformado → 500 genérico (ValueError cai no except amplo). Front depois faz polling de /stats a cada 3s. Não há produtor de counting_events no repo (record_detection só é definido no service; inference/edge não o chamam) → stats/total_counts ficam 0.",
+   "risks": "Sem checagem de posse da câmera (só FK): sessão pode ser aberta sobre câmera de outro tenant; list_active faz LEFT JOIN cameras e devolve camera_name alheio."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/counting/sessions/<session_id>",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/404/500",
+   "request": "path session_id",
+   "response": "data.session: {id,tenant_id,camera_id,module_code,status('running'|'stopped'),total_counts{},started_at,ended_at,bay_id,truck_plate,direction,expected_count,divergence,video_clip_url,manual_count,acceptance_status,plate_text,plate_confidence,plate_review,plate_manual} (status='stopped', ended_at, total_counts agregados por classe)",
+   "tables": [
+    "public.counting_sessions",
+    "public.counting_events"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "CountingPage (encerrar contagem)",
+   "evidence": [
+    "apps/frontend/src/pages/CountingPage.tsx:154"
+   ],
+   "behavior_notes": "Não deleta: é 'encerrar' (UPDATE status='stopped', ended_at=NOW(), total_counts={classe:n}). Idempotente na prática (segunda chamada re-grava). 404 cross-tenant.",
+   "risks": ""
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/counting/sessions/<session_id>",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/400/404/500",
+   "request": "path session_id (uuid); body JSON parcial — whitelist: bay_id, truck_plate, direction('load'|'unload'), expected_count, divergence, video_clip_url, manual_count(≥0), acceptance_status('pending'|'accepted'|'rejected')",
+   "response": "data.session: {id,tenant_id,camera_id,module_code,status('running'|'stopped'),total_counts{},started_at,ended_at,bay_id,truck_plate,direction,expected_count,divergence,video_clip_url,manual_count,acceptance_status,plate_text,plate_confidence,plate_review,plate_manual}",
+   "tables": [
+    "public.counting_sessions",
+    "public.counting_events"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "countingService.updateSession (FuelingValidationPage: manual_count / acceptance_status)",
+   "evidence": [
+    "apps/frontend/src/services/countingService.ts:33",
+    "apps/frontend/src/pages/fueling/FuelingValidationPage.tsx:123",
+    "apps/frontend/src/pages/fueling/FuelingValidationPage.tsx:136"
+   ],
+   "behavior_notes": "Body vazio → 400; campo fora da whitelist → 400 'Campo não atualizável'. Se expected_count sem divergence → calcula divergence = COUNT(counting_events) − expected_count. 404 cross-tenant. session_id inválido → 400.",
+   "risks": ""
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/counting/sessions/<session_id>/plate",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/400/404/422/500",
+   "request": "path session_id; body JSON {plate_text*, plate_confidence? (0..1; ausente = correção manual), plate_review? bool}",
+   "response": "data: {session_id, plate_text(normalizada), plate_confidence, plate_review, plate_manual, plate_format('mercosul'|'antiga')}",
+   "tables": [
+    "public.counting_sessions"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "LPR (task-050): registrar/corrigir placa com flag de revisão — nenhuma tela usa (FuelingValidationPage edita truck_plate via PATCH genérico, não plate_text)",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Valida formato Mercosul/antiga (422). plate_confidence<0.80 → plate_review=true automático; ausente → plate_manual=true, review=false. 404 cross-tenant. Retorna resumo, não a sessão inteira.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/counting/sessions/<session_id>/stats",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/404/500",
+   "request": "path session_id",
+   "response": "data: {session_id, status, started_at, counts{classe:n}, total}",
+   "tables": [
+    "public.counting_sessions",
+    "public.counting_events"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "CountingPage polling 3s",
+   "evidence": [
+    "apps/frontend/src/pages/CountingPage.tsx:78"
+   ],
+   "behavior_notes": "Polling (front: setInterval 3s enquanto sessão ativa). 404 cross-tenant. Não há produtor de counting_events no repo (record_detection só é definido no service; inference/edge não o chamam) → stats/total_counts ficam 0.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/counting/sessions/plates",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/500",
+   "request": "query review_only=true|1|yes (opcional)",
+   "response": "data.sessions[]: {id,tenant_id,camera_id,module_code,status('running'|'stopped'),total_counts{},started_at,ended_at,bay_id,truck_plate,direction,expected_count,divergence,video_clip_url,manual_count,acceptance_status,plate_text,plate_confidence,plate_review,plate_manual} + camera_name (plate_text IS NOT NULL; LIMIT 200)",
+   "tables": [
+    "public.counting_sessions",
+    "public.cameras"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "fila de revisão de placas OCR (review_only) sem tela",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "LIMIT 200 fixo, sem paginação. Rota estática precede <session_id> no Werkzeug (sem shadowing para GET, pois <session_id> só tem PATCH/DELETE).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/counting/sessions/validation-report",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/400/500",
+   "request": "query start=YYYY-MM-DD (default end−7d), end=YYYY-MM-DD inclusivo (default hoje), bay_id (uuid), threshold=5.0 (% erro)",
+   "response": "data: {bay_id, period{start,end}, threshold_pct, sessions[]{id,bay_id,camera_id,truck_plate,direction,started_at,ended_at,acceptance_status,video_clip_url,manual_count,system_count,abs_error,error_pct,passed}, daily[]{day,sessions,system_total,manual_total,abs_error,error_pct,passed}, summary{sessions_validated,system_count,manual_count,abs_error,error_pct,passed}}",
+   "tables": [
+    "public.counting_sessions"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "countingService.getValidationReport (FuelingValidationPage CD-07)",
+   "evidence": [
+    "apps/frontend/src/services/countingService.ts:46",
+    "apps/frontend/src/pages/fueling/FuelingValidationPage.tsx:255"
+   ],
+   "behavior_notes": "Só sessões com manual_count preenchido. system_count = soma de total_counts (jsonb). Datas inválidas → 400 'Parâmetro inválido'. start>end ou threshold<0 → 400. Fluxo: relatório → editar manual_count / aceite via PATCH → recarregar relatório.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/fueling/bays",
+   "auth": "jwt + role(superadmin no corpo p/ mock)",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/500",
+   "request": "—",
+   "response": "mock ON + superadmin: data.bays[]{id(int 1-6),nome,status('active'|'idle'|'maintenance'),operador,placa,total_itens,progresso}; mock ON + outros: {bays:[],no_data:true}; mock OFF: 500 (método inexistente)",
+   "tables": [
+    "public.tenants"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "FuelingPage aba Baias",
+   "evidence": [
+    "apps/frontend/src/pages/fueling/FuelingPage.tsx:293"
+   ],
+   "behavior_notes": "Feature flag em 2 camadas: tenants.feature_flags.fueling_use_mock (JSONB, admin) > env FUELING_USE_MOCK (default true). Caminho 'real' chama CountingService.list_loading_bays, que NÃO existe em counting_service.py → AttributeError → 500 'Erro interno'. Mock muda a cada 5 min (seed por slot).",
+   "risks": "Branch de dados reais quebrado (método inexistente) — flag OFF derruba a tela."
+  },
+  {
+   "method": "GET",
+   "path": "/api/fueling/bays/<int:bay_id>",
+   "auth": "jwt + role(superadmin)",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/404/500",
+   "request": "path bay_id (int 1-6, só mock)",
+   "response": "data.bay: {id,nome,status,operador,placa,total_itens,progresso}",
+   "tables": [
+    "public.tenants"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "mock-only (ids inteiros 1-6), 404 para não-superadmin ou flag OFF; nenhuma tela chama",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Sempre 404 fora do modo demo superadmin. Identificador int diverge do bay_id UUID das counting_sessions.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/fueling/dashboard",
+   "auth": "jwt + role(superadmin no corpo p/ mock)",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/500",
+   "request": "query period='today'|'week'|'month' (default today; inválido → today)",
+   "response": "mock ON + superadmin: data{kpis{total_carregado,tempo_medio_minutos,total_itens_movimentados,itens_nao_conformes,taxa_nao_conformidade,eventos_nao_conformidade,taxa_ocupacao_percent},top_baias_produtivas[],top_baias_perda[],series_operacoes_diarias[],series_tempo_por_baia[],pizza_causas_perda[]}; mock ON + outros: {no_data:true,message}; mock OFF: 500",
+   "tables": [
+    "public.tenants"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "FuelingPage dashboard (carrega na montagem e ao trocar período)",
+   "evidence": [
+    "apps/frontend/src/pages/fueling/FuelingPage.tsx:281"
+   ],
+   "behavior_notes": "Feature flag em 2 camadas: tenants.feature_flags.fueling_use_mock (JSONB, admin) > env FUELING_USE_MOCK (default true). Caminho real chama CountingService.get_loading_dashboard — inexistente → 500. Mock determinístico por dia (seed = data).",
+   "risks": "Idem bays: branch real quebrado."
+  },
+  {
+   "method": "GET",
+   "path": "/api/fueling/events",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/500",
+   "request": "query limit=20 (1..100)",
+   "response": "data: {events[]{id,camera_id,class_name,confidence,created_at}, total}",
+   "tables": [
+    "public.alerts"
+   ],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "FuelingPage aba Eventos",
+   "evidence": [
+    "apps/frontend/src/pages/fueling/FuelingPage.tsx:331"
+   ],
+   "behavior_notes": "Lê public.alerts WHERE module_code='fueling' (sem filtro de período). Sem paginação por offset (só limit + total).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/fueling/stats",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/500",
+   "request": "—",
+   "response": "data: {events_today, active_cameras, module_status:'configuring' (hardcoded)}",
+   "tables": [
+    "public.alerts"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "KPIs placeholder (module_status fixo) sem consumidor; FuelingPage usa /dashboard",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Conta alerts module_code='fueling' com class_name em (truck,plate,forklift,product_box,pallet) no dia corrente.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/modules/<module_id>/operation-types",
+   "auth": "jwt",
+   "tenant": "global",
+   "envelope": "success 200",
+   "request": "path module_id (string livre: 'epi','quality','counting','ppe'...)",
+   "response": "data.types[]: {type_id,type_label,description,available_modules[],config_schema{},metric_options[],output_formats[]}, data.module_id",
+   "tables": [],
+   "side_effects": [],
+   "label": "FRONT-ATUAL",
+   "label_reason": "useOperationTypes (TrainingModeLayout em modo edit, via EpiOperationsPage roteada em /epi/cameras/:cameraId/operations)",
+   "evidence": [
+    "apps/frontend/src/hooks/useOperations.ts:99",
+    "apps/frontend/src/components/training/TrainingModeLayout.tsx:65",
+    "apps/frontend/src/pages/epi/EpiOperationsPage.tsx:62"
+   ],
+   "behavior_notes": "Catálogo em memória (registry), sem DB e sem tenant. Retorna universais (available_modules ['*']) + específicos do module_id. Não valida module_id (desconhecido → só universais, 200). ScenarioEditor usa o catálogo alternativo GET /api/scenarios/operation-types?module= (domínio scenarios) — duas fontes para a mesma lista.",
+   "risks": ""
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/operations/<int:operation_id>",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/404/409/500",
+   "request": "path operation_id; query confirm_name (obrigatório quando há operation_results históricos — deve ser o nome exato)",
+   "response": "data: {deleted:true, operation_id}",
+   "tables": [
+    "public.operations",
+    "public.operation_results"
+   ],
+   "side_effects": [
+    "Redis publish operations:reload:{id} {removed:true} → worker remove do mapa + SocketIO operation:reloaded"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "useOperations.deleteOperation",
+   "evidence": [
+    "apps/frontend/src/hooks/useOperations.ts:70"
+   ],
+   "behavior_notes": "Fluxo em 2 passos: DELETE sem confirm_name → 409 com contagem de resultados na mensagem → UI pede digitar o nome → DELETE?confirm_name=<nome>. Cascata apaga operation_results (FK).",
+   "risks": ""
+  },
+  {
+   "method": "PUT",
+   "path": "/api/operations/<int:operation_id>",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/404/422/500",
+   "request": "path operation_id (int); body JSON {name*, config={}} (type_id e module_id imutáveis)",
+   "response": "data.operation: {...row com version+1}",
+   "tables": [
+    "public.operations"
+   ],
+   "side_effects": [
+    "Redis publish operations:reload:{id} {version} → worker hot-reload + SocketIO operation:reloaded (/monitor)"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "useOperations.updateOperation (OperationEditModal)",
+   "evidence": [
+    "apps/frontend/src/hooks/useOperations.ts:56"
+   ],
+   "behavior_notes": "404 se não pertence ao tenant (C-01 ok). Revalida config contra o tipo existente. Incrementa version (front pode usar para detectar reload confirmado via evento operation:reloaded {operation_id,version}).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/operations/<int:operation_id>/results",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/404",
+   "request": "path operation_id; query limit=100 (máx 500)",
+   "response": "data.results[]: {id, operation_id, result_json{}, evaluated_at}, data.operation_id",
+   "tables": [
+    "public.operations",
+    "public.operation_results"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "histórico de avaliações da operação (populado pelo worker OperationsEngine) sem nenhuma tela que o exiba",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "404 cross-tenant via get_by_id. Ordenado evaluated_at DESC, sem paginação por cursor (só limit).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/operations/<int:operation_id>/test",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/404/422",
+   "request": "path operation_id; body JSON {detections=[], frame_meta={width:640,height:360}}",
+   "response": "data: {test_result: <retorno de evaluate()>, operation_id}",
+   "tables": [
+    "public.operations"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "dry-run de depuração que exige detecções sintéticas no body; nenhuma UI nem script chama",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Não persiste. Usa a config salva (não a do body) — não serve para 'testar antes de salvar' como diz o docstring.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/reports/compliance",
+   "auth": "jwt (AuthenticationError de get_tenant_id é capturado → 401 envelope, não 422)",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/400/401/500",
+   "request": "query period*='dia'|'semana', from (ISO 8601, opcional), to (ISO 8601, opcional; from+to sobrescrevem period)",
+   "response": "data: {summary{compliance_rate,total_violations,top_cameras[]{camera_id,count},trend_by_hour[]{hour,count}}, pdf_url (pré-assinada R2, TTL 3600s), period{period,from,to}}",
+   "tables": [
+    "public.alerts"
+   ],
+   "side_effects": [
+    "R2/storage upload tenant/{tenant_id}/reports/{period}-{YYYY-MM-DD}.pdf + URL pré-assinada (1h)",
+    "reportlab PDF em memória"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "relatório de compliance EPI com PDF (gerado on-demand e diariamente pelo Celery beat generate_daily_compliance_reports) sem nenhuma tela para disparar/listar/baixar",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/api/app/infrastructure/queue/tasks/compliance.py:76 (beat diário, mesma lógica)"
+   ],
+   "behavior_notes": "Síncrono: agrega, gera PDF e sobe no R2 na própria request. pdf_url expira em 1h. compliance_rate é heurística (1 violação/h = −50pp), não métrica real. Falha na agregação degrada para 100%/0 (engolida). Chave R2 por data de início → histórico diário no bucket, mas não há endpoint de listagem.",
+   "risks": "Métrica de compliance é estimativa — rotular como tal na UI."
+  },
+  {
+   "method": "GET",
+   "path": "/api/reports/home",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/500",
+   "request": "—",
+   "response": "data: {cards{alerts_today,alerts_week,cameras_active,cameras_total,processings_today,objects_identified}, chart{alerts_by_hour[]{hour,count}}}",
+   "tables": [
+    "public.alerts",
+    "public.cameras"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "código morto no front: único chamador é pages/HomePage.tsx via reportService.getHomeReports, e HomePage.tsx não é importada por nenhum arquivo (AppRoutes.tsx:140 redireciona /home → /epi/dashboard; consumers.json reachable=false). Capacidade já coberta pelo EpiDashboard (KPIRow: /api/modules/epi/stats, /api/cameras, /api/alerts — outros domínios)",
+   "evidence": [
+    "apps/frontend/src/services/reportService.ts:30 (wrapper morto)",
+    "apps/frontend/src/pages/HomePage.tsx:74 (página não importada)",
+    "apps/frontend/src/AppRoutes.tsx:140",
+    "grep: sem consumidor em apps/frontend/src (fora de test/), services/edge-sync-agent, scripts, deployments"
+   ],
+   "behavior_notes": "processings_today/objects_identified são estimativas (cameras_active×8h×3600×3), não contagens. EpiDashboard atual usa /api/modules/epi/stats + /api/events timeline + /api/alerts (outros domínios).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/counting/sessions",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/500",
+   "request": "—",
+   "response": "data.sessions[]: {id,tenant_id,camera_id,module_code,status('running'|'stopped'),total_counts{},started_at,ended_at,bay_id,truck_plate,direction,expected_count,divergence,video_clip_url,manual_count,acceptance_status,plate_text,plate_confidence,plate_review,plate_manual} + camera_name (LEFT JOIN public.cameras); só status='running'",
+   "tables": [
+    "public.counting_sessions",
+    "public.cameras"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "alias v1 duplicado (ADR-0041) sem consumidor; front usa /api/counting/*",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/api/app/api/v1/counting/routes.py:318"
+   ],
+   "behavior_notes": "Só sessões 'running'. Front (CountingPage.tsx:108) procura status==='active' para retomar sessão — nunca casa com 'running' (bug). Sem paginação. (alias /api/v1 — ADR-0041, mesmo handler)",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/counting/sessions",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 201/400/500",
+   "request": "body JSON {camera_id* (uuid), module_code='epi'}",
+   "response": "data.session: {id,tenant_id,camera_id,module_code,status('running'|'stopped'),total_counts{},started_at,ended_at,bay_id,truck_plate,direction,expected_count,divergence,video_clip_url,manual_count,acceptance_status,plate_text,plate_confidence,plate_review,plate_manual} (201)",
+   "tables": [
+    "public.counting_sessions"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "alias v1 duplicado (ADR-0041) sem consumidor; front usa /api/counting/*",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/api/app/api/v1/counting/routes.py:318"
+   ],
+   "behavior_notes": "camera_id tem FK para public.cameras(id) ON DELETE CASCADE (infra/migrations/049_counting_deepsort_rebuild.sql:29), mas NÃO é checado contra o tenant do JWT: uuid inexistente → IntegrityError → 500 'Erro ao iniciar sessão'; câmera de OUTRO tenant → 201 (cross-tenant reference). UUID malformado → 500 genérico (ValueError cai no except amplo). Front depois faz polling de /stats a cada 3s. Não há produtor de counting_events no repo (record_detection só é definido no service; inference/edge não o chamam) → stats/total_counts ficam 0. (alias /api/v1 — ADR-0041, mesmo handler)",
+   "risks": "Sem checagem de posse da câmera (só FK): sessão pode ser aberta sobre câmera de outro tenant; list_active faz LEFT JOIN cameras e devolve camera_name alheio."
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/counting/sessions/<session_id>",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/404/500",
+   "request": "path session_id",
+   "response": "data.session: {id,tenant_id,camera_id,module_code,status('running'|'stopped'),total_counts{},started_at,ended_at,bay_id,truck_plate,direction,expected_count,divergence,video_clip_url,manual_count,acceptance_status,plate_text,plate_confidence,plate_review,plate_manual} (status='stopped', ended_at, total_counts agregados por classe)",
+   "tables": [
+    "public.counting_sessions",
+    "public.counting_events"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "alias v1 duplicado (ADR-0041) sem consumidor; front usa /api/counting/*",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/api/app/api/v1/counting/routes.py:318"
+   ],
+   "behavior_notes": "Não deleta: é 'encerrar' (UPDATE status='stopped', ended_at=NOW(), total_counts={classe:n}). Idempotente na prática (segunda chamada re-grava). 404 cross-tenant. (alias /api/v1 — ADR-0041, mesmo handler)",
+   "risks": ""
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/counting/sessions/<session_id>",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/400/404/500",
+   "request": "path session_id (uuid); body JSON parcial — whitelist: bay_id, truck_plate, direction('load'|'unload'), expected_count, divergence, video_clip_url, manual_count(≥0), acceptance_status('pending'|'accepted'|'rejected')",
+   "response": "data.session: {id,tenant_id,camera_id,module_code,status('running'|'stopped'),total_counts{},started_at,ended_at,bay_id,truck_plate,direction,expected_count,divergence,video_clip_url,manual_count,acceptance_status,plate_text,plate_confidence,plate_review,plate_manual}",
+   "tables": [
+    "public.counting_sessions",
+    "public.counting_events"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "alias v1 duplicado (ADR-0041) sem consumidor; front usa /api/counting/*",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/api/app/api/v1/counting/routes.py:318"
+   ],
+   "behavior_notes": "Body vazio → 400; campo fora da whitelist → 400 'Campo não atualizável'. Se expected_count sem divergence → calcula divergence = COUNT(counting_events) − expected_count. 404 cross-tenant. session_id inválido → 400. (alias /api/v1 — ADR-0041, mesmo handler)",
+   "risks": ""
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/counting/sessions/<session_id>/plate",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/400/404/422/500",
+   "request": "path session_id; body JSON {plate_text*, plate_confidence? (0..1; ausente = correção manual), plate_review? bool}",
+   "response": "data: {session_id, plate_text(normalizada), plate_confidence, plate_review, plate_manual, plate_format('mercosul'|'antiga')}",
+   "tables": [
+    "public.counting_sessions"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "alias v1 duplicado (ADR-0041) sem consumidor; front usa /api/counting/*",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/api/app/api/v1/counting/routes.py:318"
+   ],
+   "behavior_notes": "Valida formato Mercosul/antiga (422). plate_confidence<0.80 → plate_review=true automático; ausente → plate_manual=true, review=false. 404 cross-tenant. Retorna resumo, não a sessão inteira. (alias /api/v1 — ADR-0041, mesmo handler)",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/counting/sessions/<session_id>/stats",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/404/500",
+   "request": "path session_id",
+   "response": "data: {session_id, status, started_at, counts{classe:n}, total}",
+   "tables": [
+    "public.counting_sessions",
+    "public.counting_events"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "alias v1 duplicado (ADR-0041) sem consumidor; front usa /api/counting/*",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/api/app/api/v1/counting/routes.py:318"
+   ],
+   "behavior_notes": "Polling (front: setInterval 3s enquanto sessão ativa). 404 cross-tenant. Não há produtor de counting_events no repo (record_detection só é definido no service; inference/edge não o chamam) → stats/total_counts ficam 0. (alias /api/v1 — ADR-0041, mesmo handler)",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/counting/sessions/plates",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/500",
+   "request": "query review_only=true|1|yes (opcional)",
+   "response": "data.sessions[]: {id,tenant_id,camera_id,module_code,status('running'|'stopped'),total_counts{},started_at,ended_at,bay_id,truck_plate,direction,expected_count,divergence,video_clip_url,manual_count,acceptance_status,plate_text,plate_confidence,plate_review,plate_manual} + camera_name (plate_text IS NOT NULL; LIMIT 200)",
+   "tables": [
+    "public.counting_sessions",
+    "public.cameras"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "alias v1 duplicado (ADR-0041) sem consumidor; front usa /api/counting/*",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/api/app/api/v1/counting/routes.py:318"
+   ],
+   "behavior_notes": "LIMIT 200 fixo, sem paginação. Rota estática precede <session_id> no Werkzeug (sem shadowing para GET, pois <session_id> só tem PATCH/DELETE). (alias /api/v1 — ADR-0041, mesmo handler)",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/counting/sessions/validation-report",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/400/500",
+   "request": "query start=YYYY-MM-DD (default end−7d), end=YYYY-MM-DD inclusivo (default hoje), bay_id (uuid), threshold=5.0 (% erro)",
+   "response": "data: {bay_id, period{start,end}, threshold_pct, sessions[]{id,bay_id,camera_id,truck_plate,direction,started_at,ended_at,acceptance_status,video_clip_url,manual_count,system_count,abs_error,error_pct,passed}, daily[]{day,sessions,system_total,manual_total,abs_error,error_pct,passed}, summary{sessions_validated,system_count,manual_count,abs_error,error_pct,passed}}",
+   "tables": [
+    "public.counting_sessions"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "alias v1 duplicado (ADR-0041) sem consumidor; front usa /api/counting/*",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "services/api/app/api/v1/counting/routes.py:318"
+   ],
+   "behavior_notes": "Só sessões com manual_count preenchido. system_count = soma de total_counts (jsonb). Datas inválidas → 400 'Parâmetro inválido'. start>end ou threshold<0 → 400. Fluxo: relatório → editar manual_count / aceite via PATCH → recarregar relatório. (alias /api/v1 — ADR-0041, mesmo handler)",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/dashboard/detections",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/500",
+   "request": "query days=30 (int)",
+   "response": "data: {daily_detections[]{date,count}, period_days}",
+   "tables": [
+    "public.alerts"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "série diária de alertas duplicada pelos widgets do EpiDashboard (eventsService.getTimeline) — sem consumidor",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Conta public.alerts por DATE(created_at) nos últimos N dias (INTERVAL interpolado com int seguro via type=int).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/dashboard/stats",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "success/error 200/500",
+   "request": "—",
+   "response": "data: {cameras_total,videos_total,videos_extracted,frames_total,frames_annotated,jobs_total,jobs_running,models_total,models_active,alerts_24h,alerts_pending,class_distribution[]{class,count}}",
+   "tables": [
+    "public.cameras",
+    "public.training_videos",
+    "public.users",
+    "public.training_frames",
+    "public.training_jobs",
+    "public.trained_models",
+    "public.alerts",
+    "public.frame_annotations",
+    "public.yolo_classes"
+   ],
+   "side_effects": [],
+   "label": "ÓRFÃO",
+   "label_reason": "código morto no front: único chamador é pages/DashboardPage.tsx, que não é importada por nenhum arquivo (AppRoutes.tsx:141 redireciona /dashboard → /epi/dashboard; consumers.json reachable=false). Dashboard vivo é o EpiDashboard (KPIRow usa /api/modules/epi/stats)",
+   "evidence": [
+    "apps/frontend/src/pages/DashboardPage.tsx:45 (página não importada)",
+    "apps/frontend/src/AppRoutes.tsx:141",
+    "grep: sem consumidor em apps/frontend/src (fora de test/), services/edge-sync-agent, scripts, deployments"
+   ],
+   "behavior_notes": "11 COUNTs numa conexão. Posse de frames/jobs/models derivada por JOIN users.tenant_id e frames via training_videos.video_id — frames coletados do NVR (video_id NULL; 11.323 linhas no DEV, training_videos=0) NÃO contam: frames_total/frames_annotated/class_distribution saem 0 para o fluxo atual de coleta.",
+   "risks": "Queries defasadas do schema (tabelas já têm tenant_id) — números enganosos."
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/health",
+   "auth": "public",
+   "tenant": "n.a.",
+   "envelope": "jsonify 200/503",
+   "request": "—",
+   "response": "{status:'healthy'|'degraded', checks{database:bool, redis:bool}} — 503 só se database=false",
+   "tables": [],
+   "side_effects": [
+    "SELECT 1 no pool",
+    "Redis PING (REDIS_URL)"
+   ],
+   "label": "BACKEND-ONLY",
+   "label_reason": "healthcheckPath do Railway (services/api/railway.toml:6) + scripts (edge_artery_probe, soak_load); sem consumidor no front",
+   "evidence": [
+    "services/api/railway.toml:6",
+    "services/api/app/core/request_metrics.py:38",
+    "scripts/edge_artery_probe.py:291",
+    "scripts/edge/soak/soak_load.py:104"
+   ],
+   "behavior_notes": "Toca DB e Redis diretamente a cada chamada. 'degraded' (redis off) ainda responde 200.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/health/metrics",
+   "auth": "jwt (jwt_required_custom — verify_jwt_in_request + current_user_id; sem checagem de role no back, gating admin só no front)",
+   "tenant": "tenant_schema",
+   "envelope": "jsonify 200",
+   "request": "—",
+   "response": "{database:bool, redis:bool, cameras_active:int} (sem envelope success/error)",
+   "tables": [
+    "{schema}.cameras"
+   ],
+   "side_effects": [
+    "SELECT 1",
+    "Redis PING"
+   ],
+   "label": "FRONT-ATUAL",
+   "label_reason": "HealthFooter (react-query, refetch 60s; só admin/superadmin no front)",
+   "evidence": [
+    "apps/frontend/src/components/layout/HealthFooter/HealthFooter.tsx:20"
+   ],
+   "behavior_notes": "Polling 60s (staleTime 50s). Sempre 200 mesmo com DB/Redis fora (campos false/0). cameras_active conta `cameras` com search_path '{tenant_schema}, public' (health/routes.py:335-336) — como toda tenant schema do DEV tem a própria tabela cameras (rvb/admin/dev, 0 linhas), resolve para {schema}.cameras e não para public.cameras (29 linhas) → 0 no DEV. Front aceita envelope ou cru (fallback duplo).",
+   "risks": "Drift de tenancy híbrida: conta a tabela errada."
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/monofatura/pieces/<piece_id>/scan",
+   "auth": "jwt",
+   "tenant": "tenant_schema",
+   "envelope": "success/error 200/400",
+   "request": "path piece_id; body JSON {stage*, camera_id?}",
+   "response": "data.session: {id,piece_id,stage,status('open'|'completed'),camera_id,started_at,finished_at,result{},evidence_r2_key,created_at}",
+   "tables": [
+    "{schema}.inspection_sessions"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "inbound 'peça bipada' da integração monofatura (ADR-0053/task-108) — sem consumidor no repo; contrato real do cliente pendente, mas uma UI/tablet de bipagem é necessidade de produto",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts",
+    "docs/decisions/adr/0053-cenario-multimodulo-rvb-3-modelos-monofatura.md:39"
+   ],
+   "behavior_notes": "Idempotente por (piece_id, stage): UNIQUE + ON CONFLICT DO UPDATE no-op → segunda bipagem devolve a MESMA sessão (não reabre concluída). Isolamento pelo schema do JWT (sem claim → 401, ADR-0017). Sem 201 (retorna 200 mesmo ao criar).",
+   "risks": ""
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/monofatura/pieces/<piece_id>/stages/<stage>/complete",
+   "auth": "jwt",
+   "tenant": "tenant_schema",
+   "envelope": "success/error 200/400/404",
+   "request": "path piece_id, stage; body JSON {result* (objeto: {ok,attributes[]...}), evidence_r2_key?, elapsed_s?}",
+   "response": "data.session: {id,piece_id,stage,status('open'|'completed'),camera_id,started_at,finished_at,result{},evidence_r2_key,created_at} (status='completed')",
+   "tables": [
+    "{schema}.inspection_sessions"
+   ],
+   "side_effects": [
+    "Outbound MonofaturaAdapter.send_stage_result (env MONOFATURA_ADAPTER=simulated → log; adapter real inexistente; falha só loga)"
+   ],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "fechamento de etapa com resultado por atributo + evidência; sem consumidor no repo",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Ordem: scan (abre) → complete (fecha). 404 se (piece_id,stage) não existe no schema. result deve ser dict (400). elapsed_s é gravado dentro de result. Outbound best-effort; reenvio não implementado.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/monofatura/sessions",
+   "auth": "jwt",
+   "tenant": "tenant_schema",
+   "envelope": "success/error 200/400",
+   "request": "query piece_id (opcional), limit=100 (máx 500; não-int → 400)",
+   "response": "data.sessions[]: {id,piece_id,stage,status('open'|'completed'),camera_id,started_at,finished_at,result{},evidence_r2_key,created_at}",
+   "tables": [
+    "{schema}.inspection_sessions"
+   ],
+   "side_effects": [],
+   "label": "GAP-DE-PRODUTO",
+   "label_reason": "consulta de sessões de inspeção por peça sem tela",
+   "evidence": [
+    "grep: sem consumidor em apps/frontend/src, services/edge-sync-agent, scripts"
+   ],
+   "behavior_notes": "Ordenado created_at DESC, só limit (sem cursor/offset).",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/api/v1/reports/export",
+   "auth": "jwt",
+   "tenant": "public.tenant_id",
+   "envelope": "mixed(raw:file xlsx 200 | error 500)",
+   "request": "query days=30 (int)",
+   "response": "attachment epi-alertas-{days}d.xlsx (ID, Camera, Timestamp, Confianca, Violacoes, Reconhecido, Criado em)",
+   "tables": [
+    "public.alerts",
+    "public.cameras"
+   ],
+   "side_effects": [
+    "openpyxl em memória"
+   ],
+   "label": "ÓRFÃO",
+   "label_reason": "código morto no front: único chamador é DashboardPage.exportExcel (página não importada por nenhum arquivo; consumers.json reachable=false). Exportação viva é GET /api/alerts/export (CSV) em AlertsHistoryPage.tsx:92 (domínio alerts) — xlsx vs csv é decisão de design, não consumo atual",
+   "evidence": [
+    "apps/frontend/src/pages/DashboardPage.tsx:68 (página não importada)",
+    "apps/frontend/src/pages/AlertsHistoryPage.tsx:92 (substituto CSV)",
+    "grep: sem consumidor em apps/frontend/src (fora de test/), services/edge-sync-agent, scripts, deployments"
+   ],
+   "behavior_notes": "Binário via send_file (sem envelope). Front: downloadBlob com timeout 30s e <a download>. Duplica /api/alerts/export (CSV) do domínio alerts.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/health",
+   "auth": "public",
+   "tenant": "n.a.",
+   "envelope": "jsonify 200/503",
+   "request": "—",
+   "response": "{status:'healthy'|'degraded', checks{database:bool, redis:bool}}",
+   "tables": [],
+   "side_effects": [
+    "SELECT 1",
+    "Redis PING"
+   ],
+   "label": "BACKEND-ONLY",
+   "label_reason": "alias legado do mesmo handler (health_check); consumido por scripts/smoke_test.sh e scripts/staging_e2e_proof.py; middleware omite log desta rota",
+   "evidence": [
+    "services/api/app/api/v1/health/routes.py:34",
+    "scripts/smoke_test.sh:40",
+    "scripts/staging_e2e_proof.py:93",
+    "services/api/app/core/middleware.py:148"
+   ],
+   "behavior_notes": "Mesmo handler de /api/v1/health. Atenção: railway_start.py:284 registra um /health próprio, mas é do serviço landing-page (start_landing_page), não da API. Os /health em services/edge-sync-agent/app/evidence_api.py:88 e services/inference/inference/app.py:24 são endpoints próprios desses serviços, não chamadas a esta rota.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/livez",
+   "auth": "public",
+   "tenant": "n.a.",
+   "envelope": "jsonify 200",
+   "request": "—",
+   "response": "{status:'alive', uptime_seconds, commit (SHA ou 'unknown'), running_jobs (int|null = não sei)}",
+   "tables": [],
+   "side_effects": [],
+   "label": "BACKEND-ONLY",
+   "label_reason": "liveness operacional (curl humano/Railway): nenhum consumidor em front, edge-sync-agent, scripts ou deployments — só runbooks/registro de decisões (D-157: commit servido)",
+   "evidence": [
+    "services/api/app/api/v1/health/routes.py:75",
+    "docs/REGISTRO_DE_DECISOES.md:3131",
+    "tools/agent-driver/tasks/ESTADO-LOOP-ISSUES.md:20",
+    "grep: sem consumidor em apps/frontend/src (fora de test/), services/edge-sync-agent, scripts, deployments"
+   ],
+   "behavior_notes": "Nunca toca DB/Redis. running_jobs vem do cache do refresher de readiness (null = bloqueia merge por regra de convivência). commit='unknown' = deploy via railway up.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/readyz",
+   "auth": "public",
+   "tenant": "n.a.",
+   "envelope": "jsonify 200/503",
+   "request": "—",
+   "response": "{status:'ready'|'not_ready', ready:bool, stale:bool, age_seconds, invariants{}, dependencies{}}",
+   "tables": [],
+   "side_effects": [],
+   "label": "BACKEND-ONLY",
+   "label_reason": "readiness (cache do refresher de fundo; fail-closed se cache >30s); consumidor = promoção de deploy/curl humano — nenhum em front, edge, scripts ou deployments",
+   "evidence": [
+    "services/api/app/api/v1/health/routes.py:115",
+    "services/api/app/api/v1/health/readiness.py:16",
+    "docs/runbooks/SINAIS_DEGRADACAO.md:22",
+    "docs/runbooks/ROTACAO_CREDENCIAIS_DEV.md:58"
+   ],
+   "behavior_notes": "Handler não toca dependências; só lê cache. indeterminado: docstring diz que o Railway chama /readyz na promoção, mas services/api/railway.toml aponta healthcheckPath=/api/v1/health — config real do painel Railway não verificável pelo código.",
+   "risks": ""
+  },
+  {
+   "method": "GET",
+   "path": "/status",
+   "auth": "public",
+   "tenant": "n.a.",
+   "envelope": "jsonify 200",
+   "request": "—",
+   "response": "{status, checks{database{ok,latency_ms}, redis{ok,latency_ms}}, readiness_cache{ready,age_seconds,stale,invariants,dependencies}}",
+   "tables": [],
+   "side_effects": [
+    "SELECT 1",
+    "Redis PING"
+   ],
+   "label": "BACKEND-ONLY",
+   "label_reason": "diagnóstico humano/observabilidade; só testes unitários referenciam",
+   "evidence": [
+    "services/api/app/api/v1/health/routes.py:173",
+    "services/api/tests/unit/api/test_health_routes.py:362",
+    "grep: sem consumidor em apps/frontend/src (fora de test/), services/edge-sync-agent, scripts, deployments"
+   ],
+   "behavior_notes": "Público, sempre 200, expõe latências e invariantes de config (sem segredos). Candidato a virar painel de observabilidade do novo front (já existe /admin/observability no front atual — domínio admin).",
+   "risks": ""
+  }
+ ],
+ "flows": [
+  {
+   "name": "Operações por câmera (catálogo → criar → editar → excluir com confirmação → hot-reload)",
+   "description": "UI carrega catálogo de tipos do módulo (config_schema), lista operações da câmera, cria/edita (validação de config → 422), exclui (409 se há histórico → repetir com confirm_name). Cada mutação publica operations:reload:{id} no Redis; o worker recarrega e o socket_bridge emite operation:reloaded/operation:status_changed em /monitor (useOperationLiveStatus). Atenção ao module_id: 'ppe' (EpiOperationsPage) ≠ 'epi' (ScenarioEditor).",
+   "endpoints": [
+    "GET /api/modules/<module_id>/operation-types",
+    "GET /api/cameras/<camera_id>/operations",
+    "POST /api/cameras/<camera_id>/operations",
+    "PUT /api/operations/<int:operation_id>",
+    "DELETE /api/operations/<int:operation_id>",
+    "GET /api/operations/<int:operation_id>/results"
+   ]
+  },
+  {
+   "name": "Sessão de contagem ao vivo (iniciar → polling stats 3s → encerrar)",
+   "description": "Selecionar câmera → POST cria sessão 'running' → front faz polling de /stats a cada 3s → DELETE encerra e devolve total_counts por classe. Na volta à tela, GET /sessions lista as 'running' (front procura 'active' — bug). Sem produtor de counting_events no repo, contagens ficam 0.",
+   "endpoints": [
+    "GET /api/counting/sessions",
+    "POST /api/counting/sessions",
+    "GET /api/counting/sessions/<session_id>/stats",
+    "DELETE /api/counting/sessions/<session_id>"
+   ]
+  },
+  {
+   "name": "Validação/aceite de contagem (CD-07)",
+   "description": "Relatório por período/baia/threshold (sessões com manual_count) → editar contagem manual ou aceite/rejeição por sessão via PATCH (whitelist) → recarregar relatório. expected_count dispara cálculo de divergence no back.",
+   "endpoints": [
+    "GET /api/counting/sessions/validation-report",
+    "PATCH /api/counting/sessions/<session_id>"
+   ]
+  },
+  {
+   "name": "LPR — placa por sessão (sem UI)",
+   "description": "OCR ou humano registra placa (formato validado; confiança <0.80 marca revisão) → fila de revisão lista sessões com placa (review_only).",
+   "endpoints": [
+    "PATCH /api/counting/sessions/<session_id>/plate",
+    "GET /api/counting/sessions/plates"
+   ]
+  },
+  {
+   "name": "Fueling demo por feature flag",
+   "description": "Front carrega dashboard por período, baias e eventos. Com fueling_use_mock ON: superadmin vê mock determinístico, demais veem no_data. Com flag OFF: dashboard/bays retornam 500 (métodos inexistentes); events sempre lê public.alerts module_code='fueling'.",
+   "endpoints": [
+    "GET /api/fueling/dashboard",
+    "GET /api/fueling/bays",
+    "GET /api/fueling/events",
+    "GET /api/fueling/bays/<int:bay_id>",
+    "GET /api/fueling/stats"
+   ]
+  },
+  {
+   "name": "Relatório de compliance EPI (on-demand + beat diário)",
+   "description": "GET síncrono agrega alertas, gera PDF (reportlab), sobe no R2 em tenant/{id}/reports/{period}-{data}.pdf e devolve pdf_url pré-assinada (1h). O Celery beat gera o diário com a mesma função; não há listagem dos PDFs.",
+   "endpoints": [
+    "GET /api/reports/compliance"
+   ]
+  },
+  {
+   "name": "Chat assistente (SSE)",
+   "description": "POST com message+history → se Ollama indisponível 503 JSON; senão stream text/event-stream com tokens até 'data: [DONE]'. Front usa fetchRaw e parse incremental. RAG em assistant_docs degrada em silêncio.",
+   "endpoints": [
+    "POST /api/chat",
+    "GET /api/chat/health"
+   ]
+  },
+  {
+   "name": "Monofatura — inspeção por peça (scan → complete → listar)",
+   "description": "Bipagem abre sessão idempotente (piece_id,stage) → ao fim da etapa, complete grava result/evidência e dispara adapter outbound (simulado) → listagem por peça. Tudo no schema do tenant.",
+   "endpoints": [
+    "POST /api/v1/monofatura/pieces/<piece_id>/scan",
+    "POST /api/v1/monofatura/pieces/<piece_id>/stages/<stage>/complete",
+    "GET /api/v1/monofatura/sessions"
+   ]
+  },
+  {
+   "name": "Saúde da plataforma (infra + rodapé)",
+   "description": "Railway healthcheckPath=/api/v1/health (railway.toml) e scripts usam /health e /api/v1/health; /livez e /readyz para liveness/readiness (curl operacional/runbooks, sem consumidor em código); /status diagnóstico. O front só consome /api/v1/health/metrics (rodapé admin, polling 60s).",
+   "endpoints": [
+    "GET /api/v1/health",
+    "GET /health",
+    "GET /livez",
+    "GET /readyz",
+    "GET /status",
+    "GET /api/v1/health/metrics"
+   ]
+  }
+ ],
+ "tables_by_scope": {
+  "public": [
+   "alerts",
+   "assistant_docs",
+   "cameras",
+   "counting_events",
+   "counting_sessions",
+   "frame_annotations",
+   "operation_results",
+   "operations",
+   "tenants",
+   "trained_models",
+   "training_frames",
+   "training_jobs",
+   "training_videos",
+   "users",
+   "yolo_classes"
+  ],
+  "tenant_schema": [
+   "inspection_sessions",
+   "cameras"
+  ],
+  "not_in_dev": []
+ },
+ "findings": [
+  {
+   "severity": "P1",
+   "text": "Fueling 'dados reais' quebrado: services/api/app/api/v1/fueling/routes.py:207 e :240 chamam CountingService.get_loading_dashboard/list_loading_bays, que NÃO existem em app/domain/services/counting_service.py → com fueling_use_mock=false (ou FUELING_USE_MOCK=false) /api/fueling/dashboard e /api/fueling/bays respondem 500 'Erro interno'."
+  },
+  {
+   "severity": "P1",
+   "text": "Divergência de module_id nas operações: apps/frontend/src/pages/epi/EpiOperationsPage.tsx:63 usa moduleId='ppe' ('ppe' só existe ali e em comentários de registry.py), enquanto os tipos canônicos declaram available_modules=['epi'] (epi_zone.py:31) ou ['counting','epi'] (crowd_zone.py:20, dwell_zone.py:27) → para 'ppe' o catálogo devolve só os universais ['*'] e a lista filtra module_id=ppe; ScenarioEditor.tsx:179/218 usa o module_code real ('epi'). Operações criadas num fluxo não aparecem no outro."
+  },
+  {
+   "severity": "P1",
+   "text": "Contagem sem produtor: nenhum código em services/api (fora do próprio CountingService), services/edge-sync-agent, services/inference ou deepstream grava counting_events/record_detection → /stats e total_counts sempre 0; CountingPage mostra contagem que nunca anda."
+  },
+  {
+   "severity": "P2",
+   "text": "CountingPage.tsx:108 procura sessão com status==='active' para retomar polling, mas o backend usa 'running' (counting_repository.py:44; default da coluna) → sessão em andamento nunca é retomada ao recarregar."
+  },
+  {
+   "severity": "P2",
+   "text": "Páginas mortas no front chamando este domínio: pages/DashboardPage.tsx (GET /api/v1/dashboard/stats, GET /api/v1/reports/export) e pages/HomePage.tsx (GET /api/reports/home) não são importadas por NENHUM arquivo (AppRoutes.tsx:140-141 redireciona /home e /dashboard para /epi/dashboard; consumers.json reachable=false). Rotuladas ÓRFÃO; remover os arquivos ou decidir produto."
+  },
+  {
+   "severity": "P2",
+   "text": "Cross-tenant write em operações: POST /api/cameras/<camera_id>/operations (operations/routes.py:117) não verifica que camera_id pertence ao tenant; o worker (operation_repository.list_all_active) mapeia por camera_id → operação do tenant A pode ser avaliada com detecções da câmera do tenant B."
+  },
+  {
+   "severity": "P2",
+   "text": "Mesmo padrão do finding de operações em POST /api/counting/sessions (counting/routes.py:51-75 → counting_service.start_session:36-49 → counting_repository.create_session:20-30): camera_id só é protegido pela FK public.cameras (migration 049), sem checar cameras.tenant_id == JWT → sessão de contagem pode ser aberta sobre câmera de outro tenant (201) e GET /api/counting/sessions devolve camera_name alheio via LEFT JOIN."
+  },
+  {
+   "severity": "P2",
+   "text": "/api/v1/health/metrics (health/routes.py:335-336) faz SET search_path TO '{tenant_schema}, public' e conta `cameras WHERE status='active'` — resolve para {schema}.cameras (existe em rvb/admin/dev com 0 linhas), não para public.cameras (29 linhas no DEV, onde vivem as câmeras operacionais) → cameras_active do rodapé é 0 no DEV (tenancy híbrida)."
+  },
+  {
+   "severity": "P2",
+   "text": "GET /api/v1/dashboard/stats (dashboard/routes.py:75-154) deriva frames/anotações via training_frames.video_id→training_videos→users; frames coletados do NVR têm video_id NULL (11.323 frames vs 0 vídeos no DEV) → frames_total/frames_annotated/class_distribution = 0. Tabelas já têm tenant_id; queries defasadas."
+  },
+  {
+   "severity": "P2",
+   "text": "Catch-all GET (services/api/app/__init__.py:592) responde 200 {status:'API online'} para qualquer GET sem rota → erros de path no front viram 200 com corpo inesperado em vez de 404."
+  },
+  {
+   "severity": "P2",
+   "text": "Duplicatas: 8 aliases /api/v1/counting/* (ADR-0041) sem consumidor; GET /api/v1/dashboard/detections duplica a timeline de eventos; GET /api/v1/reports/export (xlsx) duplica GET /api/alerts/export (csv) usado pela AlertsHistoryPage; catálogo de tipos em /api/modules/<m>/operation-types e /api/scenarios/operation-types."
+  },
+  {
+   "severity": "P2",
+   "text": "Exceções de envelope: POST /api/chat (SSE cru no sucesso, JSON no erro), GET /api/chat/health (JSON cru, público, 503), /api/v1/health/metrics e todos os health (jsonify cru), /api/v1/reports/export (send_file). Loaders do flask-jwt-extended (app/__init__.py:552-566) devolvem {status:'error', data:{error}} — terceiro formato de erro que o novo front precisa tratar (401/422)."
+  },
+  {
+   "severity": "P3",
+   "text": "Drift doc×código em docs/API_CONTRACT_MAP.md: linha 166 diz que ChatFAB faz fetch sem Authorization (hoje usa api.fetchRaw com Bearer); linha 192 diz que DashboardPage tem path sem /api (hoje api.downloadBlob com API_BASE); linha 181-182 ainda afirma que PATCH .../{id} e /validation-report não existem (existem)."
+  },
+  {
+   "severity": "P3",
+   "text": "indeterminado: services/api/railway.toml healthcheckPath=/api/v1/health enquanto o docstring de /readyz (health/routes.py:122) afirma que o Railway chama /readyz na promoção — a configuração efetiva está no painel Railway, não no repo."
+  },
+  {
+   "severity": "P3",
+   "text": "/api/reports/compliance: compliance_rate é heurística (100 − violações/hora×50) e a agregação engole exceções devolvendo 100%/0 — risco de relatório 'verde' por erro silencioso (compliance_report_service.py:268-273)."
+  },
+  {
+   "severity": "P3",
+   "text": "railway_start.py:284 (@app.route('/health')) pertence a start_landing_page() (SERVICE_TYPE=landing-page), não à API; idem services/edge-sync-agent/app/evidence_api.py:88 e services/inference/inference/app.py:24 — são /health próprios desses serviços. Nenhum deles é consumidor do /health da API (consumers.json os lista como 'edge' por casamento de string)."
+  },
+  {
+   "severity": "P3",
+   "text": "railway_start.py aceita SERVICE_TYPE=beat (def start_celery_beat, :599) além dos 4 valores documentados no CLAUDE.md; o beat é quem agenda generate_daily_compliance_reports (tasks/compliance.py:52-54) — relevante para o relatório de compliance deste domínio existir sem UI."
+  }
+ ],
+ "design_needs": [
+  "Tela de Operações da câmera unificada com o editor de cenário: mesmo identificador de módulo, catálogo por módulo (com formulário gerado do config_schema), validação inline com as mensagens do back (422), exclusão com confirmação por nome quando há histórico (409) e indicador de 'recarregado no worker' (version/evento).",
+  "Histórico de avaliações por operação (timeline de operation_results com result_json) e status ao vivo (last_value_json/last_evaluated_at), hoje sem tela.",
+  "Contagem/carga-descarga: decidir produto antes de migrar — ou ligar um produtor real de eventos (edge) ou retirar a tela; se mantida: retomada de sessão em andamento, polling/stream de contagens, encerramento com totais por classe.",
+  "Validação e aceite de contagem (CD-07): filtros de período/baia/threshold, edição de contagem manual, aceite/rejeição por sessão, agregado diário e resumo — já existe, migrar com o mesmo contrato.",
+  "Fila de revisão de placas (LPR): lista de sessões com placa (filtro 'só revisão'), correção manual com validação de formato Mercosul/antiga e indicação de confiança do OCR.",
+  "Fueling: substituir a demo mockada por tela ligada a dados reais (ou explicitar 'modo demonstração' por flag) — hoje o caminho real não existe; precisa definição de baias (UUID) e KPIs reais a partir de counting_sessions.",
+  "Relatórios: tela de relatório de compliance EPI (período dia/semana ou intervalo, resumo, top câmeras, tendência por hora, download do PDF com link que expira em 1h; rotular a taxa como estimativa) e listagem dos PDFs diários já gerados no R2 (hoje sem endpoint de listagem).",
+  "Exportação de alertas em planilha (xlsx) — ou consolidar na exportação CSV da tela de alertas e aposentar /v1/reports/export.",
+  "Assistente/chat: indicador de disponibilidade (usar /api/chat/health), tratamento dos dois formatos (SSE vs JSON de erro) e decisão sobre manter o recurso sem Ollama em produção.",
+  "Rodapé/painel de saúde: consumir métricas corretas (câmeras ativas de public.cameras), latências e readiness (/status) numa visão de observabilidade para admin.",
+  "Integração monofatura: tela/tablet de bipagem de peça por etapa (abrir sessão, concluir com resultado por atributo e evidência) e consulta de sessões por peça; contrato outbound real ainda pendente."
+ ]
+}

@@ -7,7 +7,7 @@ import logging
 
 from flask_jwt_extended import jwt_required
 
-from app.core.auth import get_current_user_id
+from app.core.auth import get_current_user_id, get_tenant_id
 from app.core.exceptions import EpiMonitorError
 from app.core.rate_limiting import get_rate_limit_identifier
 from app.core.responses import success, error
@@ -50,7 +50,8 @@ def test_camera(camera_id: str):  # type: ignore[no-untyped-def]
 
         # Check 1: construir URL RTSP
         try:
-            stream_url = service.build_stream_url(UUID(camera_id), user_id, _is_admin(user_id))
+            # C-01: posse pelo tenant do JWT (ver stream_handlers.start_stream)
+            stream_url = service.build_stream_url(UUID(camera_id), get_tenant_id(), _is_admin(user_id))
             result["checks"]["url_format"] = _check("ok", "URL de stream construída com sucesso")
         except EpiMonitorError as exc:
             result["checks"]["url_format"] = _check("error", str(exc.message))

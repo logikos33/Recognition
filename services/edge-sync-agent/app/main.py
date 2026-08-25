@@ -38,6 +38,7 @@ from .auth.enrollment import EnrollmentError, build_enrollment_config_from_env, 
 from .auth.token_manager import TokenManager, build_token_manager_from_env
 from .command_poller import CommandPoller
 from .config_poller import ConfigPoller
+from .detection_relay import build_detection_relay_from_env
 from .discovery_api import bp as discovery_bp
 from .evidence_api import create_app, run_server
 from .evidence_auth import TrustAnchor
@@ -237,7 +238,9 @@ def build_sync_loops_from_env(
     the http_client/token plumbing (this file's job) is new.
 
     `SQLITE_BUFFER_PATH`/`UPLOAD_BATCH_SIZE` env vars — no new secrets, same
-    names already documented in AGENT.md. `EDGE_CONFIG_CACHE_PATH` (ADR-0058,
+    names already documented in AGENT.md. `EDGE_REDIS_URL` (optional) turns on
+    the detection_relay loop (det:* → buffer) — see detection_relay.py.
+    `EDGE_CONFIG_CACHE_PATH` (ADR-0058,
     optional, defaults to edge_config_cache.DEFAULT_CACHE_PATH) is where
     config_poller persists the recorder channel_map for
     recorder_factory.py/collector_loop.py to pick up on their next restart.
@@ -301,12 +304,18 @@ def build_sync_loops_from_env(
         config_version_applied=config_version_applied or None,
     )
 
-    return {
+    loops: dict[str, Any] = {
         "config_poller": config_poller,
         "command_poller": command_poller,
         "uploader": uploader,
         "heartbeat": heartbeat,
     }
+    # Produtor do caminho detecções→cloud (det:* local → o MESMO buffer que o
+    # uploader drena). Opt-in por EDGE_REDIS_URL — sem ela, os 4 loops de sempre.
+    relay = build_detection_relay_from_env(buffer)
+    if relay is not None:
+        loops["detection_relay"] = relay
+    return loops
 
 
 def _make_signal_handler(stop_event: threading.Event) -> Any:
