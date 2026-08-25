@@ -107,6 +107,22 @@ dia (`9f8e57f9`), com `reason` vazia gravando NULL e não string vazia — "não
 **Vereditos do Vitor foram corrompidos?** Não. Nunca houve nenhum gravado — os 334 estão NULL. Não
 há nada a reprocessar.
 
+**Prova NA TELA** (front local contra a API do DEV, sessão autenticada). Colunas do histórico de
+alertas depois do conserto:
+
+`Data | Câmera | Evento | Confiança | Veredito humano | Reconhecimento | Ação`
+
+| coluna | o que mostra | exemplo | cor |
+|---|---|---|---|
+| **Evento** | polaridade | `▲ Violação — Sem protetor de ouvido` | vermelho |
+| **Veredito humano** | julgamento | `PROCEDENTE` / `FALSO POSITIVO` / `NÃO REVISADO` | azul / âmbar / cinza |
+| **Reconhecimento** | fluxo de trabalho | `Reconhecido` | verde |
+
+Contagem na página, depois de eu aprovar um alerta **pela própria tela**: **1 PROCEDENTE · 1 FALSO
+POSITIVO · 18 NÃO REVISADO**. O clique em "Procedente" gravou no banco com a prova de humanidade
+(`verified_by = user:11111111-…`, `human_approved`). Nada aparece como falso a menos que uma pessoa
+tenha dito — que era exatamente a queixa.
+
 **Achado de segurança no caminho (corrigido):** `AlertRepository.acknowledge()` fazia
 `UPDATE alerts SET acknowledged = TRUE WHERE id = %s`, **sem `tenant_id`** — escrita cross-tenant
 (C-01). E era disparável **sem clique**: a lista armava `setTimeout(1000)` no `onMouseEnter`, então
@@ -337,6 +353,26 @@ corrigir.
 
 Medido: **14 de 14** com `classes_scope`, **0** com `classes`. Dado corrigido (move o valor, não
 apaga chave nenhuma) e o script do shadow alinhado ao contrato do código.
+
+**Verificado NA TELA** (front local contra a API do DEV): as 14 câmeras com deployment mostram o
+escopo real e os números batem com o banco um a um — Qualidade 01 EPI 1 classe, Manutenção 1,
+Montagem Artefatos Madeira 3, Entrada Expedição 02 2, Sala de Colagem 3. As 6 sem deployment
+aparecem **sem nada marcado**, não "todas as classes".
+
+**E a verificação achou um defeito que nenhum teste pegaria: a aba não abria.** `connection pool
+exhausted` — a tela disparava um GET por câmera em `Promise.all` e tomava 28 conexões do pool da API
+de uma vez, enquanto o banco estava folgado (5 de 500). O comentário no próprio código já previa
+("se doer, criar GET /api/cameras/model-config"). Criado: uma chamada por MÓDULO distinto, com
+`DISTINCT ON (camera_id)`, escopada por tenant. A tela passou a carregar.
+
+**Mais dois consertos que só apareceram olhando:**
+- **Permissão errada por categoria.** O gate era `training:approve` — "aprovar treinamentos", só
+  superadmin — então o admin da RVB via a aba em somente leitura. Editar quais classes uma câmera
+  reconhece é `cameras:configure`, que já existe, já inclui admin, e cuja descrição no registry é
+  "alterar configurações técnicas da câmera (FPS, modelo, conexão)".
+- **O aviso da tela virou mentira por causa de uma mudança minha.** Dizia "o worker da nuvem não
+  filtra por classe", o que deixou de valer quando o filtro entrou. Uma tela que se declara honesta
+  e afirma **menos** do que faz erra do mesmo jeito. Corrigido, com a ponta do edge (#519) explícita.
 
 **"Salvar já vale" agora é verdade** (item 4 / #519, primeiro elo): `_resolve_camera_model` lia o
 deployment **só** para tirar o `model_id` — `grep -n classes inference.py` devolvia uma única linha,
