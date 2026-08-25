@@ -615,11 +615,19 @@ morre, ou herda a semente.
 
 | item | por que não | próximo passo |
 |---|---|---|
-| **A/B do v12/#536** | três confundidores encontrados (base crescendo, caixas de frame inteiro, partições diferentes); treinar antes de corrigi-los daria veredito falso sobre uma regra que vai reger todo treino futuro | treinar `v14-tudo` × `v14-so-humano` (imgsz=560, mesma partição) e medir IoU no campo virgem |
-| **IoU antes/depois novo** | não houve treino novo nesta rodada — o número seria inventado | sai junto do A/B acima |
-| **Recalibração de limiar com vereditos** | não existe nenhum veredito gravado (0 de 334); o caminho não existia | Vitor revisar as 32 violações, agora que grava |
-| **Elo edge do #519** | o box não recebe classe por câmera; exige sessão no Jetson | rodada própria |
-| **3 classes de ausência (#537)** | falta dado, não código — separabilidade, não volume | mineração dirigida por classe |
-| **#517, #510, #532** | árvore 49 commits atrás; conserto aqui conflitaria | worktree fresco de `origin/develop` |
-| **Matriz de exigência (#535)** | só o Paulo tem | pendência humana do Vitor |
-| **Entrega de alerta (#472)** | ⛔ notificações desligadas por decisão desta rodada | decisão de canal + chave |
+| **Veredito do A/B (#536)** | os dois braços foram treinados; o `v15-tudo` ainda não convergiu quando este relatório fechou | rodar `ab_536.py` com os dois ONNX e publicar o veredito por classe |
+| **IoU antes/depois novo** | depende do veredito acima. ⛔ Não invento número: a única medição de IoU confiável até aqui é a anterior (v10-base 0,84 × v11 0,67, em 229 frames duplamente virgens) | sai junto do A/B |
+| **Recalibração de limiar com vereditos** | não havia veredito nenhum gravado (0 de 334) porque o caminho não existia. Agora existe e está provado ponta a ponta — mas os vereditos ainda precisam ser dados | Vitor revisar as 32 violações |
+| **Elo edge do #519** | o box não recebe classe por câmera; exige sessão no Jetson. O elo da nuvem foi entregue | rodada própria |
+| **Mineração dirigida (#537)** | ⛔ deliberadamente adiada: os alvos saíram de um veredito medido em dado contaminado (46–54% de rótulo de frame nas três classes que falham). Elas podem passar sem caixa nova | remedir no v15, depois minerar (+42, +86, +111 já calculados) |
+| **Migração do gate para `proposal_model_id` (#539)** | trocaria o conteúdo dos braços no meio do experimento — seria o sexto confundidor da rodada | depois do veredito do #536 |
+| **#517, #510, #532** | árvore 49 commits atrás de `origin/develop`; conserto aqui conflitaria no merge | worktree fresco de `origin/develop` |
+| **Recorte de pessoa no CropClassifier (#538)** | o detector já existe; alimentar a aba é mudança de UI com escopo próprio | rodada própria |
+
+## Entradas do Vitor (item 7 — nada aqui bloqueou a rodada)
+
+| pendência | estado |
+|---|---|
+| **Revisão das 32 violações** | ⏳ o caminho existe e está provado; 2 alertas já têm veredito (os meus, de teste). Faltam as 32 de verdade — e são elas que destravam a recalibração de limiar por classe |
+| **Entrada WC** | ⏳ sem decisão sua. Medido nesta rodada: ch11 *Entrada WC Usinagem Papelão* tem 48,5% de escape da âncora de pessoa (66 caixas humanas, 32 sem pessoa detectada) — se ela ficar no escopo, entra na lista de câmeras que merecem grade 3×3 |
+| **Matriz de exigência do Paulo (#535)** | 🔴 gate humano. É o que separa CAPACIDADE de EXIGÊNCIA — enquanto não vier, nenhum alerta sai para ninguém. As 3 perguntas para ele estão no fim do relatório da semana |
