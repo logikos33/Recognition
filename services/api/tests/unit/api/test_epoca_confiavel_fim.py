@@ -52,3 +52,47 @@ def test_epoca_maior_que_o_total_continua_recusada():
     )
     assert epoca is None
     assert metrics["epoch_reportado_invalido"] == 137
+
+
+def _fonte_training() -> str:
+    """training.py resolvido a partir do teste — o pytest roda de services/api."""
+    from pathlib import Path
+
+    # tests/unit/api/ -> unit -> tests -> services/api
+    raiz = Path(__file__).resolve().parents[3]
+    return (raiz / "app" / "infrastructure" / "queue" / "tasks"
+            / "training.py").read_text(encoding="utf-8")
+
+
+class TestOUltimoEscritorNaoGravaOOrcamento:
+    """A task Celery escreve DEPOIS do callback do pod — e escrevia o pedido.
+
+    `dispatch_training` terminava com `update_job("completed", epoch=epochs)`,
+    onde `epochs` é o TOTAL PEDIDO. Como esse UPDATE roda depois do callback
+    final, ele gravava o orçamento por cima da contagem real e desfazia o
+    guard do #420/#536 sem deixar rastro: o job 28dc8844 rodou 17 épocas
+    (early stop) e a linha ficou com 50.
+    """
+
+    def test_o_codigo_nao_passa_mais_o_total_pedido(self):
+        fonte = _fonte_training()
+        assert 'update_job("completed", progress=100, epoch=epochs' not in fonte, (
+            "`epochs` é o total PEDIDO; gravá-lo como época realizada desfaz o "
+            "guard do #420 no último UPDATE do job"
+        )
+        assert "epochs_ran" in fonte, (
+            "a contagem real do pod é `epochs_ran`; sem ela não há o que gravar"
+        )
+
+    def test_sem_epochs_ran_preserva_o_que_o_pod_reportou(self):
+        """0 cai no NULLIF(...,0) do UPDATE e mantém o valor anterior."""
+        import re
+
+        fonte = _fonte_training()
+        trecho = re.search(
+            r"rodadas = int\(float\(\(metrics or \{\}\)\.get\(\"epochs_ran\"\) or (\d)\)\)",
+            fonte,
+        )
+        assert trecho and trecho.group(1) == "0", (
+            "o fallback tem de ser 0 — qualquer outro número INVENTA uma época"
+        )

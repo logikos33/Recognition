@@ -310,7 +310,17 @@ def dispatch_training(
                     new_model_id, eval_exc,
                 )
 
-        update_job("completed", progress=100, epoch=epochs, metrics=metrics)
+        # ⛔ NUNCA `epoch=epochs`: `epochs` é o total PEDIDO, e este UPDATE roda
+        # DEPOIS do callback final do pod — gravava o orçamento por cima da
+        # contagem real e desfazia o guard do #420/#536 sem deixar rastro.
+        # Medido no A/B do #536: job 28dc8844 rodou 17 épocas (early stop) e a
+        # linha ficou com 50. `epochs_ran` é a contagem do próprio pod; sem ela,
+        # 0 preserva o que o pod já reportou (NULLIF(...,0) no UPDATE).
+        try:
+            rodadas = int(float((metrics or {}).get("epochs_ran") or 0))
+        except (TypeError, ValueError):
+            rodadas = 0
+        update_job("completed", progress=100, epoch=rodadas, metrics=metrics)
         logger.info("dispatch_training_completed: job_id=%s", job_id)
         return {"job_id": job_id, "status": "completed", "metrics": metrics}
 
