@@ -180,6 +180,73 @@ descartá-lo. Frame que nunca teve caixa alguma no banco é negativo legítimo e
 **53% dos frames do dataset carregam apenas geometria desenhada pelo MODELO.** Aceitar uma proposta
 com uma tecla confirma a CLASSE e herda a CAIXA — é o auto-envenenamento do #536, agora com número.
 
+#### 🔴 VEREDITO DO #536: a hipótese NÃO se sustenta
+
+Os dois braços treinaram e foram avaliados no **mesmo** campo — o `test` do
+braço só-humano: 289 frames, 403 caixas, **todas de mão humana**, virgem para
+os dois modelos.
+
+| limiar | só-humano F1 | tudo F1 |
+|---:|---:|---:|
+| 0,20 | 0,39 | **0,48** |
+| 0,25 | 0,44 | **0,53** |
+| 0,30 | 0,47 | **0,53** |
+| 0,35 | **0,49** | **0,53** |
+| 0,40 | 0,49 | **0,53** |
+| 0,50 | 0,42 | **0,52** |
+| 0,60 | 0,22 | **0,47** |
+
+**`tudo` vence em TODOS os limiares.** Melhor de cada um: `tudo` **F1 0,532**
+(limiar 0,30, precisão 0,50 / recall 0,57) contra `só-humano` **0,493** (limiar
+0,35). Não é margem estreita e não depende do corte escolhido — domina a curva
+inteira, inclusive na faixa de produção (0,25–0,30).
+
+**Por classe** (no melhor limiar de cada), `tudo` é melhor em 8 das 10:
+
+| classe | gt | só-humano prec/rec | tudo prec/rec |
+|---|---:|---:|---:|
+| Protetor auditivo | 209 | 64,6% / 58,4% | 62,9% / **68,9%** |
+| Uso incorreto de mascara | 55 | 61,2% / 54,5% | **61,9%** / 47,3% |
+| Luvas | 34 | 38,9% / 41,2% | **45,2%** / 41,2% |
+| Sem protetor de ouvido | 32 | 30,0% / 46,9% | **40,0%** / 37,5% |
+| mascara | 26 | **42,0%** / 80,8% | 32,8% / 76,9% |
+| Óculos | 11 | 14,3% / 54,5% | **20,0%** / **63,6%** |
+| Sem Luvas | 11 | 0% / 0% | **25,0%** / **9,1%** |
+| Sem Óculos | 9 | 33,3% / 22,2% | **66,7%** / 22,2% |
+| Botas | 9 | 10,0% / 33,3% | **20,0%** / **44,4%** |
+| Sem mascara | 7 | **16,7%** / 28,6% | 0% / 0% |
+
+**A contaminação reforça o veredito, não o enfraquece.** O braço só-humano
+carregava 11,4% de geometria do modelo (as 403 caixas). Se essa geometria
+ajuda — e o resultado diz que sim —, então o só-humano foi artificialmente
+BENEFICIADO por ela: o valor dele sem contaminação seria ainda menor, e `tudo`
+venceria por mais. A direção é segura.
+
+**Épocas (a régua honesta, não o `current_epoch`):** só-humano rodou **17**,
+`tudo` rodou **15** — os dois pararam cedo, sob a mesma política
+(`early_stopping_patience=8`). O `tudo` fez menos épocas com 2,1× o dado; cada
+época dele custou ~4× mais relógio (129 min contra 39). ⚠️ A linha do `tudo`
+no banco diz `current_epoch = 50`: é o defeito corrigido em `0dcab375`, ainda
+não implantado quando este treino fechou.
+
+### O que isso decide, e o que ainda não decide
+
+**Decide:** ⛔ NÃO promover o filtro só-humano. A regra da rodada era "perdendo
+ou empatando → números e mantém", e ele perdeu com folga. O export continua
+aceitando caixa de proposta revisada. **Nenhuma ADR de regra nova** — a
+hipótese do #536 não passou.
+
+**Não decide:** *por quê*. `tudo` tem 4.977 frames contra 2.362 — pode estar
+ganhando pela geometria ou simplesmente por 2× o dado. A auditoria adversarial
+pré-registrou exatamente este desfecho como o único em que o terceiro braço se
+paga ("se o só-humano vencer com metade do dado, o volume estava contra ele e
+a direção sobrevive; só se o TUDO vencer é que volume vira explicação rival").
+
+`v16-volume` — o braço completo cortado aos mesmos 2.362 frames, mesma
+partição — está em construção. Ele separa as duas explicações, e a resposta
+muda o que fazer DEPOIS: se for volume, vale investir em anotar mais; se for
+geometria, a proposta aceita é boa e o volante do propositor deve girar mais.
+
 #### Duas medições, e por que só uma vale como veredito
 
 O AP@50 de treino existe — 35 avaliações no braço só-humano, medidas pelo pod a cada época e
