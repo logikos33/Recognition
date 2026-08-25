@@ -278,6 +278,51 @@ ajudou só nas classes de presença, e ainda assim o `tudo` venceu.
 11 categorias e o `v15` tem 12; conferir o alinhamento levou ao mapa
 índice→nome, e daí ao caminho servido que não recebia mapa nenhum.
 
+#### 🔴 RESULTADO DOS TRÊS BRAÇOS — e a pergunta continua aberta
+
+`v16-volume` terminou (24 épocas, 71 min, US$ 0,88). Mesmo campo virgem: 289
+frames, 403 caixas, verdade 100% humana.
+
+| braço | frames | fonte | melhor F1 | limiar |
+|---|---:|---|---:|---:|
+| só-humano | 2.362 | só humano | 0,493 | 0,35 |
+| v16-volume | 2.362 | humano + proposta | 0,511 | 0,35 |
+| **tudo** | 4.977 | humano + proposta | **0,532** | 0,30 |
+
+A ordenação `tudo > v16 > só-humano` se repete nos **7 limiares**, sem exceção.
+
+**Mas 0,02 sobre 403 caixas não se lê a olho.** Bootstrap pareado sobre os 289
+frames (2.000 reamostragens; frames e não caixas, porque caixas do mesmo frame
+não são independentes — mesma cena, mesma luz, mesmo turno):
+
+| diferença | média | IC 95% | P(>0) |
+|---|---:|---|---:|
+| `tudo` − `só-humano` | **+0,040** | **[+0,004, +0,077]** | **98,6%** |
+| `v16` − `só-humano` (efeito da FONTE) | +0,018 | [−0,022, +0,056] | 81,0% |
+| `tudo` − `v16` (efeito do VOLUME) | +0,022 | [−0,012, +0,058] | 88,9% |
+
+**O que isto decide:** o veredito do #536 fica **mais forte**, não mais fraco —
+o intervalo da diferença total **exclui zero**. ⛔ Não promover o filtro
+só-humano, e agora com intervalo, não só com ponto.
+
+**O que isto NÃO decide, ao contrário do que prometi:** a pergunta "geometria ou
+volume?" **continua aberta**. Os dois efeitos são de tamanho parecido (+0,018 e
++0,022, somando os +0,040) e **nenhum dos dois é distinguível de zero
+isoladamente** neste campo. Gastei um pod para descobrir que 289 frames não
+bastam para separá-los — separar exigiria um campo perto de 4× maior, e não
+vale antes de haver mais verdade humana para gastar.
+
+O viés que pré-registrei empurra na mesma direção: as classes de ausência do
+`v16` foram cortadas pela metade, o que penaliza o `v16` e faz do +0,018 um
+**piso** do efeito da fonte, não uma estimativa centrada.
+
+**A leitura prática, que não depende de separar as duas:** ambas as alavancas
+apontam para o mesmo lado e valem cerca do mesmo. Anotar mais paga tanto quanto
+aceitar proposta — o volante do propositor **não substitui** anotação humana, e
+o inverso também não. E como o propositor não desenha uma única caixa de
+ausência (medido acima), para as classes da #537 **só a anotação humana move o
+número**.
+
 #### Duas medições, e por que só uma vale como veredito
 
 O AP@50 de treino existe — 35 avaliações no braço só-humano, medidas pelo pod a cada época e
