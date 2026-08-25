@@ -344,3 +344,32 @@ def _count_active_cameras(schema: str) -> int:
             exc_info=True,
         )
         return 0
+
+
+@health_bp.route("/health/backup")
+@health_bp.route("/api/v1/health/backup")
+def backup_health() -> tuple:
+    """Idade do backup mais novo do banco. 503 quando passa do limite.
+
+    Este endpoint é a metade que FALTAVA do backup. Um `pg_dump` agendado que
+    morre não avisa: só deixa de aparecer arquivo novo no bucket, e ninguém
+    olha bucket. Foi assim que a spec de 20/08 ficou cinco dias sem ninguém
+    perceber que nada rodava.
+
+    Sem autenticação de propósito: é sonda de infraestrutura, e o corpo não
+    revela conteúdo — só instante, idade e contagem.
+
+    Fail closed: erro ao listar o storage devolve 503, nunca 200. "Não
+    consegui verificar" não pode ler igual a "está tudo bem".
+    """
+    from app.infrastructure.queue.tasks.backup import (  # noqa: PLC0415
+        idade_do_backup_mais_novo,
+    )
+
+    try:
+        estado = idade_do_backup_mais_novo()
+    except Exception as exc:  # noqa: BLE001
+        logger.error("backup_health_erro: %s", exc, exc_info=True)
+        return jsonify({"saudavel": False, "motivo": "erro ao verificar"}), 503
+
+    return jsonify(estado), (200 if estado.get("saudavel") else 503)
