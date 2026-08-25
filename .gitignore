@@ -101,3 +101,7 @@ marketing/
 Migracao Claude Vitor/
 recognition-handoff-continuidade.zip
 *handoff*.zip
+# Sessão temporária da verificação no navegador: o token é servido por arquivo
+# para não passar pela transcrição, usado e apagado. Ignorado aqui como rede de
+# segurança — credencial commitada por engano não tem desfazer.
+apps/frontend/public/__sessao_temp.json
