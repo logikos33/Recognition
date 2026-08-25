@@ -108,7 +108,9 @@ def create_operation(camera_id: str):
     if op_class is None:
         return error(f"Tipo de operação desconhecido: {type_id}", 422)
 
-    instance = op_class(config)
+    # tenant explícito: quem valida taxonomia precisa saber de QUEM
+    # são as classes (ver EpiZoneOperation._classes_validas).
+    instance = op_class(config, tenant_id=tenant_id)
     validation_errors = instance.validate_config(config)
     if validation_errors:
         return error(f"Configuração inválida: {'; '.join(validation_errors)}", 422)
@@ -146,7 +148,7 @@ def update_operation(operation_id: int):
 
     op_class = OperationTypeRegistry.get(type_id)
     if op_class:
-        instance = op_class(config)
+        instance = op_class(config, tenant_id=tenant_id)
         validation_errors = instance.validate_config(config)
         if validation_errors:
             return error(f"Configuração inválida: {'; '.join(validation_errors)}", 422)

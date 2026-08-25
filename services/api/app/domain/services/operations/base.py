@@ -36,13 +36,19 @@ class BaseOperation(ABC):
     output_formats: list[str] = ["physical", "conditional", "both"]
     description: str = ""
 
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: dict, tenant_id: "str | None" = None) -> None:
         """Inicializa operação com config validada.
 
         Args:
             config: Configuração específica da instância (validada antes).
+            tenant_id: tenant de quem configurou. OPCIONAL e com default None
+                para não quebrar caller antigo, mas quem valida taxonomia
+                PRECISA dele: sem tenant não há como saber quais classes
+                existem, e a única alternativa é uma lista fixa — que foi
+                exatamente o defeito (ver EpiZoneOperation.validate_config).
         """
         self.config = config
+        self.tenant_id = tenant_id
 
     @abstractmethod
     def validate_config(self, config: dict) -> list[str]:

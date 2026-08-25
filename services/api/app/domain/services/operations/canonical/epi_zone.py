@@ -51,8 +51,23 @@ class EpiZoneOperation(BaseOperation):
             "watch_classes": {
                 "type": "array",
                 "title": "Classes a vigiar",
-                "description": "Subset de classes EPI a monitorar (ex: ['no_helmet', 'no_vest'])",
-                "items": {"type": "string", "enum": sorted(_VALID_EPI_CLASSES)},
+                # ⛔ SEM `enum` de propósito. O enum era `EpiClass`
+                # (helmet/no_helmet/vest/…), a taxonomia de demonstração da era
+                # COCO, e a tela oferecia SÓ aquelas 8 — nenhuma existe no
+                # cadastro de cliente real. Medido: um admin do RVB tentando
+                # `['Sem protetor de ouvido']` levava
+                # "classe inválida: não pertence ao módulo epi".
+                #
+                # As classes válidas são as do CADASTRO do tenant e mudam por
+                # cliente, então não cabem num esquema estático. Quem valida é
+                # `validate_config` (com o tenant em mãos); quem preenche a tela
+                # é GET /api/modules/epi/classes, que já devolve
+                # catálogo global ∪ classes do tenant.
+                "description": (
+                    "Classes de EPI a monitorar nesta zona. As opções vêm do "
+                    "cadastro do cliente (GET /api/modules/epi/classes)."
+                ),
+                "items": {"type": "string"},
                 "minItems": 1,
             },
             "confidence_threshold": {
@@ -113,6 +128,42 @@ class EpiZoneOperation(BaseOperation):
         },
     }
 
+    def _classes_validas(self) -> set[str]:
+        """Classes (lower) que existem para ESTE cliente.
+
+        Catálogo global ∪ classes do tenant — a mesma fonte que a polaridade
+        usa (ADR-0065). Sem `tenant_id` cai no enum histórico: caller antigo e
+        teste continuam funcionando, e a lista fixa deixa de ser a regra para
+        virar só o último recurso.
+        """
+        if not self.tenant_id:
+            return {c.lower() for c in _VALID_EPI_CLASSES}
+        try:
+            from app.infrastructure.database.connection import (  # noqa: PLC0415
+                DatabasePool,
+            )
+            from app.infrastructure.database.repositories.alert_repository import (  # noqa: PLC0415
+                AlertRepository,
+            )
+
+            pool = DatabasePool.get_instance()
+            if pool is None:
+                return {c.lower() for c in _VALID_EPI_CLASSES}
+            repo = AlertRepository(pool)
+            do_cadastro = set(repo.presence_class_names(self.tenant_id, "epi")) | set(
+                repo.violation_class_names(self.tenant_id, "epi")
+            )
+        except Exception as exc:  # noqa: BLE001
+            # Falha de leitura NÃO pode virar "nada é válido" — isso travaria a
+            # configuração inteira. Cai no enum histórico e avisa.
+            logger.warning(
+                "epi_zone_classes_do_cadastro_falhou: tenant=%s err=%s — "
+                "usando a lista histórica", self.tenant_id, exc,
+            )
+            return {c.lower() for c in _VALID_EPI_CLASSES}
+        # União com o enum: nome técnico do catálogo global continua aceito.
+        return do_cadastro | {c.lower() for c in _VALID_EPI_CLASSES}
+
     def validate_config(self, config: dict) -> list[str]:
         errors: list[str] = []
         zone = config.get("zone_points", [])
@@ -121,9 +172,13 @@ class EpiZoneOperation(BaseOperation):
         watch = config.get("watch_classes") or []
         if not watch:
             errors.append("watch_classes é obrigatório e não pode ser vazio")
+        validas = self._classes_validas()
         for cls in watch:
-            if cls not in _VALID_EPI_CLASSES:
-                errors.append(f"classe inválida: {cls!r} não pertence ao módulo epi")
+            if cls.strip().lower() not in validas:
+                errors.append(
+                    f"classe inválida: {cls!r} não pertence ao módulo epi "
+                    f"deste cliente"
+                )
 
         # Validar exclude_zones
         exclude_zones = config.get("exclude_zones") or []
