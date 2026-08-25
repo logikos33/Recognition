@@ -9,6 +9,7 @@ Cobre:
 - update_curation_status: UPDATE em lote escopado por tenant_id
 """
 from contextlib import contextmanager
+from datetime import date
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -548,3 +549,21 @@ class TestActiveLearningQueueCuration:
         for chamada in cur.execute.call_args_list:
             sql = chamada[0][0]
             assert "tf.curation_status = 'active'" in sql, sql
+
+
+class TestPropagationPoolCuration:
+    """#497 — terceira porta do mesmo enunciado do #496.
+
+    O pool da propagação semeada baixava do R2 e rodava SAM+DINOv2 em frame
+    já descartado na curadoria; pior, `apply_propagation_proposals` reseta
+    `pre_annotation_review_status` e devolve o descartado pra fila humana.
+    """
+
+    def test_pool_exclui_frame_descartado_na_curadoria(self):
+        repo, cur = _repo()
+        cur.fetchall.return_value = []
+        repo.list_for_propagation_pool(
+            TENANT_ID, [str(uuid4())], date(2026, 8, 1), date(2026, 8, 2)
+        )
+        sql = cur.execute.call_args_list[0][0][0]
+        assert "curation_status = 'active'" in sql
