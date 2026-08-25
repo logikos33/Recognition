@@ -5,7 +5,7 @@ Layer: domain
 Pattern: Service (framework-agnostic)
 
 Key exports:
-  - InferenceService.get_alerts(camera_id, limit, offset): paginated alert list for a camera
+  - InferenceService.get_alerts(camera_id, tenant_id, limit, offset): lista paginada de alertas da câmera, escopada por tenant (C-01)
   - InferenceService.get_unacknowledged(camera_id, limit): unacknowledged alerts, optionally filtered by camera
   - InferenceService.acknowledge_alert(alert_id): marks alert as acknowledged, raises NotFoundError if missing
   - InferenceService.get_alert_count(camera_id): total alert count for a camera
