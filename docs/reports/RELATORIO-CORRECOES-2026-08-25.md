@@ -197,10 +197,67 @@ a cada worker.
 
 | 6 | **dois braços não bastam** | o braço só-humano tem 2.362 frames contra 4.977. Se ele perder, foi a geometria herdada do modelo **ou** simplesmente treinar com metade do dado? As duas leituras levam a decisões opostas, e o desenho de dois braços não consegue separá-las | terceiro braço `v15-controle`: os MESMOS frames do só-humano, com TODAS as caixas. `só-humano × controle` isola a geometria com volume constante; `só-humano × tudo` continua sendo a decisão real de embarque. Custa US$ 0,34 |
 
-Os três datasets `v15-*` estão sendo construídos com os seis consertos, e passam pela régua antes de
-qualquer GPU. **O treino e o A/B ficam para a próxima rodada** — treinar sobre qualquer um dos seis
-estados anteriores teria produzido um veredito falso sobre uma regra que vai reger todo o treino
-daqui pra frente. Custo de ter esperado: **US$ 0**.
+Os três datasets `v15-*` foram construídos com os seis consertos e **passaram na régua**. Os dois
+braços do A/B (`v15-tudo` e `v15-so-humano`) estão **treinando** — RF-DETR base, 50 épocas,
+imgsz=560, RTX 4090, com zero pods vivos verificado antes do disparo.
+
+Custo de ter parado seis vezes antes de gastar GPU: **US$ 0**. Treinar em qualquer um dos seis
+estados anteriores teria produzido um veredito falso sobre uma regra que vai reger todo o treino do
+produto daqui pra frente.
+
+### Auditoria adversarial antes da GPU — 42 agentes, 38 alegações, 7 sobreviveram
+
+O desenho do experimento foi submetido a quatro lentes independentes (partição, espaço de classes,
+isolamento do tratamento, protocolo de medição) e cada alegação passou por um refutador cético,
+instruído a marcar "não é problema" na dúvida. Das **38 alegações, 31 caíram** — incluindo teses
+sedutoras como "o hash troca proporção exata por ruído binomial", "a chave de grupo depende do fuso
+do worker" e "o mesmo `category_id` significa classe diferente nos dois braços". Ficaram **7**.
+
+**A mais grave foi refutada por medição minha, não por argumento.** Um auditor concluiu que nem o
+v14 nem o v15 rodaram o código corrigido, porque "a branch é local e o DEV deploya da develop".
+Está errado neste caso — o deploy foi `railway up` sobre um `git archive` do commit — e a régua
+prova: **zero divergência de partição** nos três pares de braços do v15, sobre 2.362 frames comuns
+cada. O auditor, aliás, especificou o teste certo ("comparar a atribuição por chave de grupo"), e é
+exatamente ele que passou.
+
+**Régua do v15 — aprovada:**
+
+| verificação | v15-tudo | v15-so-humano | v15-controle |
+|---|---|---|---|
+| caixas cobrindo o frame | 0 | 0 | 0 |
+| imagens sem caixa | 3 (negativos deliberados) | 3 | 3 |
+| vazamento entre splits | nenhum | nenhum | nenhum |
+| partição comum divergente | **0** de 2.362 | **0** | **0** |
+| mapa de categorias | 12 | 12 | 12 |
+| campo virgem para todos | **717 frames** (era 111 no v14) | | |
+
+**Os 3 achados confirmados que mudaram o que eu ia fazer:**
+
+1. **🔴 A régua de avaliação premiava o tratamento.** 40% da verdade do campo virgem foi desenhada
+   pelo MODELO (caixa de proposta aceita). Medir o braço `tudo` ali é medi-lo contra caixas do
+   próprio ancestral. **Corrigido:** o campo passou a ser o `test` do braço só-humano — 289 frames,
+   403 caixas, todas de mão humana por construção, e (pela partição estável) no `test` dos dois
+   braços, portanto virgem para os dois.
+
+2. **🔴 O limiar cravado escolhe o vencedor.** Dois modelos com calibrações diferentes trocam de
+   lugar só de mexer no corte, e o arnês antigo usava 0,35 fixo enquanto produção usa 0,25–0,30 por
+   classe. **Corrigido:** varredura de limiar, com o melhor de cada modelo reportado.
+
+3. **🔴 O prior de classe muda junto com o braço** — o propositor não propõe classe de ausência,
+   então média agregada mistura "melhorou" com "mudou a mistura". **Corrigido:** veredito por
+   classe, com o `n` de verdade ao lado. ⛔ Não decidir pelo agregado.
+
+**E um conselho de desenho que foi aceito:** o terceiro braço (volume igualado) virou **condicional**
+em vez de obrigatório. O confundidor de volume é assimétrico — se o só-humano vencer **com metade do
+dado**, o volume estava contra ele e a direção do veredito sobrevive sem braço nenhum; só se o
+`tudo` vencer é que volume vira explicação rival e o braço se paga. Economiza um pod e ~80 min de
+relógio sem perder rigor.
+
+**O desenho que responde a pergunta CAUSAL (para a próxima rodada, especificado):** como as
+populações são disjuntas, o único par que isola geometria é sintético — rodar o propositor sobre os
+mesmos 2.362 frames humanos (um passe de inferência, zero treino) e treinar um braço em que a caixa
+do modelo SUBSTITUI a caixa da mão, mesmos frames, mesmo split, mesmas classes. Aí a única variável
+é a geometria.
 
 ### Dois achados de infraestrutura no caminho
 
