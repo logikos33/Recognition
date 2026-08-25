@@ -147,6 +147,7 @@ def make_celery(app: object | None = None) -> Celery:
         backend=redis_url,
         include=[
             "app.infrastructure.queue.tasks.backup",
+            "app.infrastructure.queue.tasks.shadow_classificador",
             "app.infrastructure.queue.tasks.extraction",
             "app.infrastructure.queue.tasks.quality",
             "app.infrastructure.queue.tasks.versioning",
