@@ -62,10 +62,15 @@ beforeEach(() => {
         lineage: { dataset_version: { class_distribution: { Risco: 10 } } },
       } }
     }
-    // Fonte de verdade do deployment: 1 GET por câmera ativa, módulo da câmera
-    if (path === '/cameras/cam-1/model-config?module=epi') return { success: true, data: { deployment: DEPLOY } }
-    if (path === '/cameras/cam-2/model-config?module=epi') return { success: true, data: { deployment: null } }
-    if (path === '/cameras/cam-3/model-config?module=quality') return { success: true, data: { deployment: null } }
+    // Fonte de verdade do deployment: 1 GET por MÓDULO distinto, não por
+    // câmera — com as 28 da RVB, uma chamada por câmera estourava o pool de
+    // conexões da API e a aba não abria (medido no DEV em 2026-08-25).
+    if (path === '/cameras/model-config?module=epi') {
+      return { success: true, data: { deployments: { 'cam-1': DEPLOY } } }
+    }
+    if (path === '/cameras/model-config?module=quality') {
+      return { success: true, data: { deployments: {} } }
+    }
     throw new Error(`GET inesperado: ${path}`)
   })
   mocks.post.mockImplementation(async (_path: string, body: { model_id: string; config: { classes: string[] } }) => ({
@@ -91,9 +96,13 @@ describe('CameraModelScope', () => {
     // Colete está em __sem_suporte_treino__ → o modelo não a prevê → não é escopo
     expect(screen.queryByLabelText('Classe Colete em Canal 8')).toBeNull()
     expect(screen.getAllByText('RF-DETR').length).toBeGreaterThan(0)
-    // Deployment veio do GET /model-config da câmera (1 por câmera ativa, nunca da desligada)
-    expect(mocks.get).toHaveBeenCalledWith('/cameras/cam-1/model-config?module=epi')
-    expect(mocks.get).toHaveBeenCalledWith('/cameras/cam-2/model-config?module=epi')
+    // Deployment veio do lote por módulo — uma chamada, não uma por câmera
+    expect(mocks.get).toHaveBeenCalledWith('/cameras/model-config?module=epi')
+    expect(mocks.get).toHaveBeenCalledWith('/cameras/model-config?module=quality')
+    const porCamera = mocks.get.mock.calls.filter(
+      ([p]: [string]) => /\/cameras\/[^/]+\/model-config/.test(p),
+    )
+    expect(porCamera).toEqual([])
     expect(mocks.get).not.toHaveBeenCalledWith(expect.stringContaining('/cameras/cam-9/'))
     // Câmera sem deployment: sem modelo selecionado, sem checkboxes
     expect((screen.getByLabelText('Modelo da câmera Canal 6') as HTMLSelectElement).value).toBe('')
@@ -119,7 +128,7 @@ describe('CameraModelScope', () => {
     render(<CameraModelScope classesCatalogo={[]} />)
     await waitFor(() => expect(screen.getByLabelText('Modelo da câmera Linha A')).toBeDefined())
 
-    expect(mocks.get).toHaveBeenCalledWith('/cameras/cam-3/model-config?module=quality')
+    expect(mocks.get).toHaveBeenCalledWith('/cameras/model-config?module=quality')
     const sel = screen.getByLabelText('Modelo da câmera Linha A') as HTMLSelectElement
     const ids = Array.from(sel.options).map(o => o.value)
     expect(ids).toContain('m-q1')
@@ -193,8 +202,10 @@ describe('CameraModelScope', () => {
     // ninguém escreveu — e, com `base` no mesmo fallback, nem dava para corrigir.
     const original = mocks.get.getMockImplementation()!
     mocks.get.mockImplementation(async (path: string) =>
-      path === '/cameras/cam-1/model-config?module=epi'
-        ? { success: true, data: { deployment: { ...DEPLOY, config: { classes_scope: ['Luvas'] } } } }
+      path === '/cameras/model-config?module=epi'
+        ? { success: true, data: { deployments: {
+            'cam-1': { ...DEPLOY, config: { classes_scope: ['Luvas'] } },
+          } } }
         : original(path),
     )
 

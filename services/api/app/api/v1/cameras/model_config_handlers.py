@@ -89,6 +89,37 @@ def _notify_model_change(camera_id: str) -> None:
 
 
 @jwt_required()
+def list_camera_model_configs():  # type: ignore[no-untyped-def]
+    """GET /api/cameras/model-config?module=epi — todos os deployments ativos.
+
+    Existe porque a versão por câmera não escala: a aba "Modelos por câmera"
+    disparava um GET por câmera em `Promise.all` e, com as 28 do RVB, estourava
+    o pool de conexões da API — a tela quebrava exatamente no tenant de tamanho
+    real (medido no DEV: "connection pool exhausted", com o banco folgado em 5
+    conexões de 500). Uma requisição, uma consulta, o mesmo dado.
+
+    Escopado por tenant no WHERE (C-01): não existe caminho para pedir o
+    deployment de outro tenant, nem por engano.
+    """
+    try:
+        tenant_id = get_tenant_id()
+        module_code = (request.args.get("module") or _DEFAULT_MODULE).strip()
+        deployments = _get_deployment_repo().list_active_for_tenant(
+            str(tenant_id), module_code
+        )
+        return success({
+            "deployments": {
+                str(d["camera_id"]): _serialize(d) for d in deployments
+            }
+        })
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("list_camera_model_configs_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+@jwt_required()
 def get_camera_model_config(camera_id: str):  # type: ignore[no-untyped-def]
     """GET /api/cameras/<id>/model-config?module=epi"""
     try:

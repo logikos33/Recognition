@@ -51,6 +51,29 @@ class ModelDeploymentRepository(BaseRepository):
             (str(tenant_id), str(camera_id), module_code),
         )
 
+    def list_active_for_tenant(
+        self, tenant_id: str, module_code: str = "epi"
+    ) -> list[dict[str, Any]]:
+        """Deployments ativos de TODAS as câmeras do tenant, numa consulta.
+
+        A aba "Modelos por câmera" pedia um GET por câmera e disparava os 28
+        do RVB em `Promise.all`. Cada requisição toma uma conexão do pool da
+        API, e o pool estourou: a tela ficou inacessível justamente no tenant
+        de tamanho real — medido no DEV em 2026-08-25, com
+        "connection pool exhausted" na resposta. O banco estava folgado (5
+        conexões de 500); o gargalo era a concorrência da própria tela.
+
+        DISTINCT ON pega o mais recente por câmera, que é o que
+        `get_active_for_camera` devolve por câmera (ORDER BY created_at DESC
+        LIMIT 1) — mesma semântica, uma ida ao banco.
+        """
+        return self._execute(
+            "SELECT DISTINCT ON (camera_id) * FROM model_deployments "
+            "WHERE tenant_id = %s AND module_code = %s AND status = 'active' "
+            "ORDER BY camera_id, created_at DESC",
+            (str(tenant_id), module_code),
+        )
+
     def list_for_camera(
         self, tenant_id: str, camera_id: UUID, module_code: Optional[str] = None
     ) -> list[dict[str, Any]]:

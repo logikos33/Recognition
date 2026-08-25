@@ -153,13 +153,17 @@ export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloCla
       ])
       const comArtefato = (modelsRes.data?.models ?? []).filter(m => !!m.r2_onnx_key)
       const ativas = cams.filter(c => c.is_active)
-      // ponytail: 1 GET por modelo com ONNX (hoje ≤3) + 1 GET por câmera ativa
-      // (≤28); se doer, criar GET /api/cameras/model-config (lista do tenant).
-      const [details, deployments] = await Promise.all([
+      // Um GET por MÓDULO distinto (hoje 1), não por câmera. A versão antiga
+      // disparava as 28 do RVB em Promise.all e estourava o pool de conexões
+      // da API — a tela quebrava exatamente no tenant de tamanho real, com
+      // "connection pool exhausted", enquanto o banco estava folgado (5
+      // conexões de 500). O gargalo era a concorrência da própria tela.
+      const modulos = [...new Set(ativas.map(moduloDaCamera))]
+      const [details, porModulo] = await Promise.all([
         Promise.allSettled(comArtefato.map(m => api.get<Envelope<ModelDetail>>(`/v1/models/${m.id}`))),
-        Promise.all(ativas.map(c =>
-          api.get<Envelope<{ deployment: ModelDeployment | null }>>(
-            `/cameras/${c.id}/model-config?module=${encodeURIComponent(moduloDaCamera(c))}`,
+        Promise.all(modulos.map(m =>
+          api.get<Envelope<{ deployments: Record<string, ModelDeployment> }>>(
+            `/cameras/model-config?module=${encodeURIComponent(m)}`,
           ),
         )),
       ])
@@ -169,9 +173,15 @@ export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloCla
         porModelo[comArtefato[i].id] = classesDoModelo(d?.lineage?.dataset_version?.class_distribution, fallback)
       })
       const porCamera: Record<string, ModelDeployment> = {}
-      deployments.forEach((r, i) => {
-        const dep = r.data?.deployment
-        if (dep) porCamera[ativas[i].id] = dep
+      porModulo.forEach((r, i) => {
+        // Só a câmera CUJO módulo é este: uma câmera de 'quality' não pode
+        // herdar o deployment 'epi' de outra só porque veio no mesmo lote.
+        const doModulo = new Set(
+          ativas.filter(c => moduloDaCamera(c) === modulos[i]).map(c => c.id),
+        )
+        for (const [cameraId, dep] of Object.entries(r.data?.deployments ?? {})) {
+          if (dep && doModulo.has(cameraId)) porCamera[cameraId] = dep
+        }
       })
       const novos: Record<string, Draft> = {}
       for (const c of ativas) {
