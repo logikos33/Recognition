@@ -352,6 +352,18 @@ teria derrubado os saves dele se estivesse trabalhando.
 Corrigido nos dois lados (`c5413516`): acesso por NOME de coluna no repositório, e o duplê do teste
 devolvendo dicionário como o `RealDictCursor` devolve.
 
+**Prova refeita contra o DEV, agora conferindo o código de status:**
+
+| passo | HTTP | resultado |
+|---|:--:|---|
+| estado inicial | — | `Óculos: pre_annotation` · `Protetor auditivo: pre_annotation` |
+| salvar **sem tocar em nada** | **200** | os dois seguem `pre_annotation` — a proveniência sobreviveu |
+| **mover uma** caixa e salvar | **200** | `Óculos: manual` · `Protetor auditivo: pre_annotation` |
+
+A segunda linha é o conserto; a terceira é a discriminação que ele precisa ter. A caixa que a mão
+humana moveu vira `manual` — que é o certo, porque aí a geometria passou por gente — e a que ninguém
+tocou continua sendo do modelo. Restaurei a proveniência da caixa que o meu teste mexeu.
+
 ### Dois achados de infraestrutura no caminho
 
 **O 403 da RunPod não era da chave.** A guarda de "zero pods vivos" tomou 403 e a leitura óbvia foi
