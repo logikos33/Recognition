@@ -195,10 +195,28 @@ O teste novo prova a propriedade certa: poda 20% da população e exige **zero**
 atribuição. `sha256` e não o `hash()` embutido — este é salgado por processo e daria split diferente
 a cada worker.
 
-Os datasets `v15-tudo` e `v15-so-humano` estão sendo construídos com os cinco consertos, e passam
-pela régua antes de qualquer GPU. **O treino e o A/B ficam para a próxima rodada** — treinar sobre
-qualquer um dos cinco estados anteriores teria produzido um veredito falso sobre uma regra que vai
-reger todo o treino daqui pra frente. Custo de ter esperado: **US$ 0**.
+| 6 | **dois braços não bastam** | o braço só-humano tem 2.362 frames contra 4.977. Se ele perder, foi a geometria herdada do modelo **ou** simplesmente treinar com metade do dado? As duas leituras levam a decisões opostas, e o desenho de dois braços não consegue separá-las | terceiro braço `v15-controle`: os MESMOS frames do só-humano, com TODAS as caixas. `só-humano × controle` isola a geometria com volume constante; `só-humano × tudo` continua sendo a decisão real de embarque. Custa US$ 0,34 |
+
+Os três datasets `v15-*` estão sendo construídos com os seis consertos, e passam pela régua antes de
+qualquer GPU. **O treino e o A/B ficam para a próxima rodada** — treinar sobre qualquer um dos seis
+estados anteriores teria produzido um veredito falso sobre uma regra que vai reger todo o treino
+daqui pra frente. Custo de ter esperado: **US$ 0**.
+
+### Dois achados de infraestrutura no caminho
+
+**O 403 da RunPod não era da chave.** A guarda de "zero pods vivos" tomou 403 e a leitura óbvia foi
+credencial revogada — a chave do Railway e a local são a mesma, e as duas falhavam. Medido: o
+GraphQL fica atrás de Cloudflare, que responde `403 error code: 1010` a requisição **sem
+User-Agent** — inclusive **sem autenticação nenhuma**. A REST v1 respondeu 200 com a mesma chave no
+mesmo instante. A rotação da chave está adiada por decisão do Vitor e **quase foi mexida por causa
+de um erro que não era dela**. `User-Agent` explícito no cliente (`5c89ae85`): hoje `requests` manda
+o dele por padrão e produção não estava afetada, mas o caminho que estima o **teto de custo** não
+deve depender de um default de biblioteca.
+
+**Redeploy do worker mata export em voo, em silêncio.** `railway up -s celery-worker` com um
+`build_dataset_version_v2` rodando derruba a task: nenhuma ativa, nenhuma reservada, e a linha fica
+presa em `building` para sempre — sem erro, sem log de falha, sem retry. Aconteceu duas vezes nesta
+rodada (custou ~20 min). Antes de subir o worker: conferir `inspect().active()`.
 
 **IoU antes/depois:** a única medição de IoU confiável desta rodada é a anterior (v10-base 0,84 ×
 v11 0,67, em 229 frames duplamente virgens). Não há IoU novo porque **não houve treino novo** —
