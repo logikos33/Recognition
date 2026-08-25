@@ -421,13 +421,73 @@ def _fetch_trained_model(pool, model_id: str, tenant_id: str) -> dict | None:
 
     return TrainingRepository(pool)._execute_one(  # noqa: SLF001
         """
-        SELECT tm.id, tm.framework, tm.r2_onnx_key, tm.model_path
+        SELECT tm.id, tm.framework, tm.r2_onnx_key, tm.model_path,
+               tm.dataset_version_id
         FROM trained_models tm
         JOIN users u ON u.id = tm.user_id
         WHERE tm.id = %s AND u.tenant_id = %s
         """,
         (str(model_id), str(tenant_id)),
     )
+
+
+def _taxonomia_do_modelo(pool, dataset_version_id, tenant_id: str) -> list[str] | None:
+    """Nomes de classe do modelo, NA ORDEM em que ele os indexa.
+
+    O ONNX devolve um índice inteiro; quem traduz índice→nome é o detector, a
+    partir desta lista. Sem ela o detector cai em `COCO_CLASSES_91` e um modelo
+    de EPI passa a chamar "Sem protetor de ouvido" de "truck": geometria certa,
+    rótulo de outro domínio.
+
+    O caminho de AVALIAÇÃO já resolvia isso (`model_evaluation`
+    ._class_names_from_coco, cujo docstring descreve exatamente este perigo). O
+    caminho SERVIDO não resolvia — e por isso ninguém via: o filtro de escopo
+    (#519, `_no_escopo_da_camera`) compara o nome contra as classes da câmera,
+    com dicionário COCO nada casa, e as detecções somem sem erro nenhum. Zero
+    alertas lê igual a "não houve violação".
+
+    A ordem é a do split de TREINO: é o diretório que o treinador leu para
+    dimensionar a cabeça (`remote_train.py`, `RFDETRBase._load_classes`), logo é
+    ele que define a correspondência índice→classe gravada nos pesos. `val`/
+    `test` só entram como último recurso — o exportador OMITE categoria com
+    zero caixas, então um split pode ter menos classes que o outro e deslocar
+    tudo a partir do buraco.
+
+    None = não deu para resolver. O caller então NÃO serve o modelo do tenant
+    com um dicionário inventado.
+    """
+    if not dataset_version_id:
+        return None
+
+    import json as _json  # noqa: PLC0415
+
+    from app.infrastructure.database.repositories.dataset_repository import (  # noqa: PLC0415
+        DatasetRepository,
+    )
+
+    from .model_evaluation import _class_names_from_coco, _get_storage  # noqa: PLC0415
+
+    dsv = DatasetRepository(pool).get_by_id(dataset_version_id)
+    coco_key = (dsv or {}).get("coco_r2_key")
+    if not coco_key:
+        return None
+
+    storage = _get_storage(tenant_id)
+    for split in ("train", "val", "test"):
+        try:
+            bruto = storage.download_bytes(f"{coco_key}/{split}/_annotations.coco.json")
+        except Exception:  # noqa: BLE001 — split ausente é normal; só o último importa
+            continue
+        nomes = _class_names_from_coco(_json.loads(bruto))
+        if nomes:
+            if split != "train":
+                logger.warning(
+                    "taxonomia_sem_split_train: dataset_version=%s usando '%s' — "
+                    "classe com zero caixas some do export e desloca os índices",
+                    dataset_version_id, split,
+                )
+            return nomes
+    return None
 
 
 def _resolve_camera_model(camera_id: str) -> dict | None:
@@ -490,10 +550,29 @@ def _resolve_camera_model(camera_id: str) -> dict | None:
         )
         return None
 
+    # Sem a ordem das classes o detector rotula com COCO ("bus", "truck") e o
+    # escopo abaixo descarta 100% — a câmera fica muda sem uma linha de erro.
+    # Servir o modelo do tenant com dicionário de outro domínio é pior do que
+    # não servir: cai para o baseline do env, que É de fato um modelo COCO.
+    class_names = _taxonomia_do_modelo(
+        pool, model.get("dataset_version_id"), tenant_id
+    )
+    if not class_names:
+        logger.error(
+            "camera_model_sem_taxonomia: camera=%s model=%s dataset_version=%s — "
+            "recusando servir (índice viraria rótulo COCO e o escopo apagaria "
+            "tudo em silêncio); fallback env",
+            camera_id, model_id, model.get("dataset_version_id"),
+        )
+        return None
+
     return {
         "model_id": model_id,
         "framework": model.get("framework"),
         "r2_onnx_key": model["r2_onnx_key"],
+        # Ordem índice→nome gravada nos pesos. Não confundir com "classes"
+        # abaixo, que é o RECORTE escolhido pelo admin (subconjunto, sem ordem).
+        "class_names": class_names,
         # Escopo de classes da câmera (#519). None = sem escopo gravado, e aí
         # nada é filtrado — não inventar restrição onde o dono não pôs nenhuma.
         "classes": _escopo_do_deployment(deployment),
@@ -563,7 +642,19 @@ def _no_escopo_da_camera(camera_id: str, detections: list[dict]) -> list[dict]:
         return detections
 
     dentro = [d for d in detections if str(d.get("class")) in escopo]
-    if len(dentro) != len(detections):
+    if detections and not dentro:
+        # Descartar TUDO não é um escopo apertado, é quase sempre taxonomia
+        # trocada: o detector rotulando em COCO ("bus") contra um escopo em
+        # nomes do tenant. Era `debug`, e foi assim que a câmera muda passou
+        # despercebida — zero alerta lê exatamente como "não houve violação".
+        logger.warning(
+            "camera_escopo_descartou_tudo: camera=%s n=%d vistas=%s escopo=%s — "
+            "100%% fora costuma ser dicionário de classe errado, não turno limpo",
+            camera_id, len(detections),
+            sorted({str(d.get("class")) for d in detections})[:6],
+            sorted(escopo)[:6],
+        )
+    elif len(dentro) != len(detections):
         logger.debug(
             "camera_escopo_filtrou: camera=%s de=%d para=%d",
             camera_id, len(detections), len(dentro),
@@ -614,6 +705,9 @@ def _get_detector_for_camera(camera_id: str):
             detector = get_detector(
                 backend=resolved.get("framework") or _DETECTOR_BACKEND,
                 model_path=local_path,
+                # Sem isto o detector usa COCO_CLASSES_91 e todo rótulo sai
+                # trocado — o caminho de avaliação já passava, o servido não.
+                class_names=resolved.get("class_names"),
                 confidence=_DETECTION_CONFIDENCE,
             )
         except Exception as exc:
