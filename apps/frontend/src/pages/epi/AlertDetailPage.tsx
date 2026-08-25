@@ -79,6 +79,8 @@ export function AlertDetailPage() {
   const [rascunho, setRascunho] = useState<Bbox | null>(null)
   const inicioArrasto = useRef<{ x: number; y: number } | null>(null)
   const [salvando, setSalvando] = useState(false)
+  /** Motivo do veredito — opcional, mas é ele que desambigua o 'reject'. */
+  const [motivo, setMotivo] = useState('')
   const [erroAcao, setErroAcao] = useState<string | null>(null)
 
   useEffect(() => {
@@ -111,7 +113,19 @@ export function AlertDetailPage() {
     setSalvando(true)
     setErroAcao(null)
     try {
-      await api.post(`/verification/${alertId}/review`, { verdict })
+      // `reason` vai junto. A rota e o service SEMPRE aceitaram; a tela é que
+      // não coletava, e o campo ficava NULL em 100% dos vereditos.
+      //
+      // Ele importa mais do que parece: um 'reject' sozinho é AMBÍGUO — a
+      // pessoa estava de máscara, ou a caixa pegou a pessoa errada, ou não
+      // dava para ver. As três levam a ações opostas (recalibrar limiar,
+      // corrigir caixa, abster). Sem o motivo, o falso positivo não ensina
+      // nada além de "erramos".
+      await api.post(`/verification/${alertId}/review`, {
+        verdict,
+        ...(motivo.trim() ? { reason: motivo.trim() } : {}),
+      })
+      setMotivo('')
       await recarregar()
     } catch {
       setErroAcao('Não foi possível registrar o veredito.')
@@ -379,6 +393,24 @@ export function AlertDetailPage() {
               Veredito é sobre a DETECÇÃO: ela é procedente ou o modelo errou. Não
               confundir com <strong>Reconhecer</strong>, que só registra que alguém
               viu o alerta.
+            </p>
+            <input
+              type="text"
+              value={motivo}
+              onChange={e => setMotivo(e.target.value)}
+              placeholder="Por quê? (opcional — ex.: a caixa pegou a luva do outro)"
+              aria-label="Motivo do veredito"
+              maxLength={280}
+              style={{
+                width: '100%', marginTop: '10px', padding: '7px 10px',
+                fontSize: '13px', borderRadius: 6,
+                border: `1px solid ${vars.color.borderDefault}`,
+                background: vars.color.bgBase, color: vars.color.textPrimary,
+              }}
+            />
+            <p style={{ color: vars.color.textMuted, fontSize: '12px', marginTop: '4px' }}>
+              O motivo é o que separa “a pessoa estava de máscara” de “a caixa
+              pegou a pessoa errada”. As duas coisas pedem correções opostas.
             </p>
             <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
               <Button size="sm" onClick={() => darVeredito('approve')} disabled={salvando}>
