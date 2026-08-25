@@ -230,10 +230,34 @@ apagado — descartar uma correção ruim é um novo append.
 
 ## 3 · Campanha de ausência (#537)
 
-Diagnóstico por classe contra a régua (`Sem protetor de ouvido` como referência de volume) publicado
-no #537. Situação: só **2 de 5** classes de ausência sustentam precisão ≥50% em algum limiar.
-Contraintuitivo e medido: `Uso incorreto de mascara` sustenta com **250** caixas, enquanto
-`Sem Luvas` falha com **361** — não é falta de volume, é separabilidade.
+Só **2 de 5** classes de ausência sustentam precisão ≥50% em algum limiar.
+
+**🔴 E o diagnóstico anterior desta campanha estava errado — eu o corrigi publicamente no #537.**
+Eu tinha concluído *"não é volume, é separabilidade"*, comparando `Uso incorreto de mascara`
+(sustenta com 250 caixas) contra `Sem Luvas` (falha com 361). **Aquelas contagens estavam
+contaminadas pelos rótulos `[0,0,1,1]`.** Separando caixa desenhada de rótulo de frame:
+
+| classe | caixas REAIS | rótulos de frame | contaminação | sustenta ≥50%? |
+|---|---:|---:|---:|:--:|
+| Sem protetor de ouvido | 509 | 27 | **5,0%** | ✅ |
+| Uso incorreto de mascara | 222 | 31 | **12,2%** | ✅ |
+| Sem Luvas | 180 | 183 | **50,4%** | ❌ |
+| Sem mascara | 136 | 158 | **53,7%** | ❌ |
+| Sem Óculos | 111 | 95 | **46,1%** | ❌ |
+
+**As duas que funcionam têm 5% e 12% de contaminação. As três que falham têm 46%, 50% e 54%.** A
+separação é limpa demais para ser coincidência. E o volume real cai junto: `Sem Luvas` não tem 361
+caixas, tem **180**.
+
+As duas hipóteses ficaram confundidas — as três classes ruins têm simultaneamente menos caixas
+reais **e** metade do dado envenenado. **⛔ Não minerei frame novo**: mineração dirigida por um
+diagnóstico que sei estar contaminado é trabalho no alvo errado. A ordem correta é treinar o v14
+(dado limpo pela primeira vez), remedir precisão × limiar das 5 classes, e só então escolher o alvo.
+
+**Tensão estrutural registrada:** ausência é julgamento de pessoa inteira, não objeto com contorno
+próprio — "Sem Luvas" não tem borda, quem anota desenha a mão nua (área média 2,33% do frame). É
+por isso que a aba Classificar atrai justamente essas classes e produz o rótulo de frame. #537 e
+#538 são o mesmo problema visto de dois lados.
 
 ### Escape da âncora de pessoa, por câmera
 
