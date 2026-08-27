@@ -1,0 +1,438 @@
+{
+ "rotas": [
+  {
+   "rota": "/",
+   "componente": "RootRedirect"
+  },
+  {
+   "rota": "/modules",
+   "componente": "ModuleSelectionPage"
+  },
+  {
+   "rota": "/epi/dashboard",
+   "componente": "EpiDashboard"
+  },
+  {
+   "rota": "/epi/cameras",
+   "componente": "EpiCameras"
+  },
+  {
+   "rota": "/epi/cameras/triagem",
+   "componente": "CameraTriagePage"
+  },
+  {
+   "rota": "/epi/alerts",
+   "componente": "EpiAlerts"
+  },
+  {
+   "rota": "/epi/alerts/:alertId",
+   "componente": "AlertDetailPage"
+  },
+  {
+   "rota": "/epi/training",
+   "componente": "TrainingPage"
+  },
+  {
+   "rota": "/epi/training/classes",
+   "componente": "ModuleClassesPage"
+  },
+  {
+   "rota": "/epi/cameras/:cameraId/operations",
+   "componente": "EpiOperationsPage"
+  },
+  {
+   "rota": "/epi/cameras/:cameraId/scenario",
+   "componente": "EpiScenarioEditorPage"
+  },
+  {
+   "rota": "/epi/reports",
+   "componente": "ReportsPage"
+  },
+  {
+   "rota": "/epi/verification",
+   "componente": "VerificationQueuePage"
+  },
+  {
+   "rota": "/epi/counting",
+   "componente": "CountingPage"
+  },
+  {
+   "rota": "/epi/health",
+   "componente": "StreamHealthRedirect"
+  },
+  {
+   "rota": "/epi/sites-health",
+   "componente": "SitesHealthRedirect"
+  },
+  {
+   "rota": "/epi/sites",
+   "componente": "EpiSitesPage"
+  },
+  {
+   "rota": "/epi/edge-observability",
+   "componente": "DashboardIntegradoPage"
+  },
+  {
+   "rota": "/epi/investigation",
+   "componente": "InvestigationPage"
+  },
+  {
+   "rota": "/home",
+   "componente": "Navigate"
+  },
+  {
+   "rota": "/dashboard",
+   "componente": "Navigate"
+  },
+  {
+   "rota": "/cameras",
+   "componente": "Navigate"
+  },
+  {
+   "rota": "/annotation",
+   "componente": "Navigate"
+  },
+  {
+   "rota": "/training",
+   "componente": "Navigate"
+  },
+  {
+   "rota": "/module-classes",
+   "componente": "Navigate"
+  },
+  {
+   "rota": "/monitoring",
+   "componente": "EdgeMonitoringGate"
+  },
+  {
+   "rota": "/epi/monitoring",
+   "componente": "MonitoringPage"
+  },
+  {
+   "rota": "/alerts",
+   "componente": "Navigate"
+  },
+  {
+   "rota": "/fueling/validation",
+   "componente": "FuelingValidationPage"
+  },
+  {
+   "rota": "/fueling/*",
+   "componente": "FuelingPage"
+  },
+  {
+   "rota": "*",
+   "componente": "RootRedirect"
+  }
+ ],
+ "endpoints_por_arquivo": {
+  "src/components/ui/NotificationBell/NotificationBell.tsx": [
+   "GET /alerts"
+  ],
+  "src/components/layout/HealthFooter/HealthFooter.tsx": [
+   "GET /v1/health/metrics"
+  ],
+  "src/components/training/CoverageMatrix.tsx": [
+   "GET /training/coverage-matrix"
+  ],
+  "src/components/camera-grid/CameraGrid.tsx": [
+   "GET /cameras"
+  ],
+  "src/components/annotation/AnnotationStudio.tsx": [
+   "GET /training/frames/${frameId}/annotations",
+   "GET /training/frames/${prevId}/annotations",
+   "POST /training/frames/${frameId}/annotations"
+  ],
+  "src/components/dashboard/KPIRow.tsx": [
+   "GET /alerts",
+   "GET /modules/epi/stats"
+  ],
+  "src/components/dashboard/widgets/useDashboardAlerts.ts": [
+   "GET /alerts"
+  ],
+  "src/components/monitoring/AlertsPanel.tsx": [
+   "GET /cameras/${cameraId}/alerts"
+  ],
+  "src/hooks/useAuth.ts": [
+   "POST /auth/login",
+   "POST /auth/register"
+  ],
+  "src/hooks/useOperations.ts": [
+   "GET /cameras/${cameraId}/operations${params}",
+   "POST /cameras/${cameraId}/operations",
+   "PUT /operations/${operationId}"
+  ],
+  "src/hooks/useScenario.ts": [
+   "GET /cameras/${cameraId}/scenario"
+  ],
+  "src/modules/quality/pages/QualityPiecesPage.tsx": [
+   "GET /v1/quality/gate/pieces",
+   "GET /v1/quality/gate/pieces/${piece.id}"
+  ],
+  "src/modules/quality/pages/QualityReportsPage.tsx": [
+   "GET /v1/quality/gate/pieces",
+   "POST /v1/quality/gate/export-wiser/batch"
+  ],
+  "src/modules/quality/pages/QualityConfigPage.tsx": [
+   "GET /v1/quality/gate/stations",
+   "PATCH /v1/quality/gate/config",
+   "PATCH /v1/quality/gate/stations/${editStationCode}",
+   "POST /v1/quality/gate/stations"
+  ],
+  "src/modules/quality/pages/QualityReworkPage.tsx": [
+   "GET /v1/quality/gate/reworks",
+   "GET /v1/quality/gate/stats/rework"
+  ],
+  "src/modules/quality/services/qualityDashboardService.ts": [
+   "GET /v1/quality/dashboard/stations",
+   "GET /v1/quality/dashboard/summary"
+  ],
+  "src/modules/admin/pages/DemoVideosPage.tsx": [
+   "GET /admin/demo-videos"
+  ],
+  "src/modules/admin/pages/AdminInventoryPage.tsx": [
+   "GET /v1/admin/inventory${qs ",
+   "POST /v1/admin/cameras/${cameraId}/probe",
+   "POST /v1/admin/cameras/import",
+   "POST /v1/admin/cameras/probe-batch"
+  ],
+  "src/pages/CamerasPage.tsx": [
+   "GET /cameras"
+  ],
+  "src/pages/AlertsHistoryPage.tsx": [
+   "GET /alerts",
+   "GET /alerts/usage-rate"
+  ],
+  "src/pages/CountingPage.tsx": [
+   "DELETE /counting/sessions/${activeSession.id}",
+   "GET /cameras",
+   "GET /counting/sessions",
+   "GET /counting/sessions/${sessionId}/stats",
+   "POST /counting/sessions"
+  ],
+  "src/pages/VerificationQueuePage.tsx": [
+   "GET /verification/queue"
+  ],
+  "src/pages/DashboardPage.tsx": [
+   "GET /cameras",
+   "GET /training/jobs",
+   "GET /training/videos",
+   "GET /v1/dashboard/stats"
+  ],
+  "src/pages/epi/AlertDetailPage.tsx": [
+   "GET /alerts/${alertId}",
+   "PATCH /alerts/${alertId}/violations"
+  ],
+  "src/pages/fueling/FuelingPage.tsx": [
+   "GET /admin/demo-videos",
+   "GET /cameras",
+   "GET /cameras/${camera.id}/stream/info",
+   "GET /fueling/bays",
+   "GET /fueling/dashboard",
+   "GET /fueling/events"
+  ],
+  "src/services/dashboardEdgeService.ts": [
+   "GET /v1/dashboard/edge-telemetry",
+   "GET /v1/dashboard/training-metrics${qs}",
+   "GET /v1/dashboard/training-metrics/models"
+  ],
+  "src/services/crossTenantCameras.ts": [
+   "GET /v1/admin/inventory"
+  ],
+  "src/services/edgeService.ts": [
+   "GET /v1/edge/overview",
+   "GET /v1/edge/sites",
+   "GET /v1/edge/sites/${siteId}/heartbeat-summary",
+   "GET /v1/edge/sites/${siteId}/heartbeats",
+   "GET /v1/edge/sites/health",
+   "PATCH /v1/edge/sites/${siteId}"
+  ],
+  "src/services/tenantContext.ts": [
+   "GET /v1/admin/tenant-context/tenants",
+   "POST /v1/admin/tenant-context/renew",
+   "POST /v1/admin/tenant-context/tenants/${tenantId}/assume"
+  ],
+  "src/services/trainingService.ts": [
+   "GET /training/jobs",
+   "GET /training/jobs/${jobId}/progress",
+   "GET /training/jobs/${jobId}/status",
+   "GET /training/models",
+   "GET /training/videos",
+   "POST /training/jobs",
+   "POST /training/models/${modelId}/activate",
+   "POST /training/videos"
+  ],
+  "src/services/impersonation.ts": [
+   "POST /v1/admin/users/${userId}/impersonate"
+  ]
+ },
+ "socket_por_arquivo": {
+  "src/types/monitoring.ts": [
+   "io("
+  ],
+  "src/components/training/TrainingModeLayout.tsx": [
+   "useMonitoringSocket",
+   "useOperationLiveStatus"
+  ],
+  "src/components/training/TrainingGallery.tsx": [
+   "io("
+  ],
+  "src/components/training/panels/RegisteredToolsPanel.tsx": [
+   "useOperationLiveStatus"
+  ],
+  "src/components/camera-grid/CameraGrid.tsx": [
+   "useMonitoringSocket"
+  ],
+  "src/components/annotation/AnnotationStudio.tsx": [
+   "io("
+  ],
+  "src/components/scenario/ScenarioEditor.tsx": [
+   "io("
+  ],
+  "src/hooks/useOperationLiveStatus.ts": [
+   "io(",
+   "useMonitoringSocket",
+   "useOperationLiveStatus"
+  ],
+  "src/hooks/useMonitoringSocket.ts": [
+   "io(",
+   "useMonitoringSocket"
+  ],
+  "src/hooks/useTraining.ts": [
+   "useTrainingSocket"
+  ],
+  "src/hooks/useTrainingSocket.ts": [
+   "io(",
+   "useTrainingSocket"
+  ],
+  "src/hooks/useScenario.ts": [
+   "io("
+  ],
+  "src/hooks/useEdgeTelemetrySocket.ts": [
+   "io(",
+   "useEdgeTelemetrySocket",
+   "useMonitoringSocket"
+  ],
+  "src/modules/quality/tablet/useTabletWebSocket.ts": [
+   "io(",
+   "useQualityWebSocket",
+   "useTabletWebSocket"
+  ],
+  "src/modules/quality/tablet/TabletKiosk.tsx": [
+   "useTabletWebSocket"
+  ],
+  "src/modules/quality/hooks/useQualityWebSocket.ts": [
+   "io(",
+   "useQualityWebSocket"
+  ],
+  "src/modules/admin/components/ColorPicker.tsx": [
+   "io("
+  ],
+  "src/modules/admin/hooks/useAdminWebSocket.ts": [
+   "io("
+  ],
+  "src/modules/admin/pages/AdminRolesPage.tsx": [
+   "io("
+  ],
+  "src/modules/admin/pages/AdminTestConsolePage.tsx": [
+   "io("
+  ],
+  "src/pages/MonitoringPage.tsx": [
+   "useMonitoringSocket"
+  ],
+  "src/pages/DashboardIntegradoPage.tsx": [
+   "useEdgeTelemetrySocket"
+  ],
+  "src/pages/TrainingPage.tsx": [
+   "io(",
+   "useTrainingSocket"
+  ],
+  "src/pages/monitoring/NetworkPanel.tsx": [
+   "io("
+  ],
+  "src/pages/monitoring/InferencePanel.tsx": [
+   "io("
+  ],
+  "src/pages/monitoring/parts.tsx": [
+   "io("
+  ],
+  "src/pages/monitoring/HardwarePanel.tsx": [
+   "io("
+  ],
+  "src/pages/monitoring/health.ts": [
+   "io("
+  ]
+ },
+ "envs": [
+  "VITE_API_URL",
+  "VITE_WS_URL"
+ ],
+ "todos_endpoints": [
+  "DELETE /counting/sessions/${activeSession.id}",
+  "GET /admin/demo-videos",
+  "GET /alerts",
+  "GET /alerts/${alertId}",
+  "GET /alerts/usage-rate",
+  "GET /cameras",
+  "GET /cameras/${camera.id}/stream/info",
+  "GET /cameras/${cameraId}/alerts",
+  "GET /cameras/${cameraId}/operations${params}",
+  "GET /cameras/${cameraId}/scenario",
+  "GET /counting/sessions",
+  "GET /counting/sessions/${sessionId}/stats",
+  "GET /fueling/bays",
+  "GET /fueling/dashboard",
+  "GET /fueling/events",
+  "GET /modules/epi/stats",
+  "GET /training/coverage-matrix",
+  "GET /training/frames/${frameId}/annotations",
+  "GET /training/frames/${prevId}/annotations",
+  "GET /training/jobs",
+  "GET /training/jobs/${jobId}/progress",
+  "GET /training/jobs/${jobId}/status",
+  "GET /training/models",
+  "GET /training/videos",
+  "GET /v1/admin/inventory",
+  "GET /v1/admin/inventory${qs ",
+  "GET /v1/admin/tenant-context/tenants",
+  "GET /v1/dashboard/edge-telemetry",
+  "GET /v1/dashboard/stats",
+  "GET /v1/dashboard/training-metrics${qs}",
+  "GET /v1/dashboard/training-metrics/models",
+  "GET /v1/edge/overview",
+  "GET /v1/edge/sites",
+  "GET /v1/edge/sites/${siteId}/heartbeat-summary",
+  "GET /v1/edge/sites/${siteId}/heartbeats",
+  "GET /v1/edge/sites/health",
+  "GET /v1/health/metrics",
+  "GET /v1/quality/dashboard/stations",
+  "GET /v1/quality/dashboard/summary",
+  "GET /v1/quality/gate/pieces",
+  "GET /v1/quality/gate/pieces/${piece.id}",
+  "GET /v1/quality/gate/reworks",
+  "GET /v1/quality/gate/stations",
+  "GET /v1/quality/gate/stats/rework",
+  "GET /verification/queue",
+  "PATCH /alerts/${alertId}/violations",
+  "PATCH /v1/edge/sites/${siteId}",
+  "PATCH /v1/quality/gate/config",
+  "PATCH /v1/quality/gate/stations/${editStationCode}",
+  "POST /auth/login",
+  "POST /auth/register",
+  "POST /cameras/${cameraId}/operations",
+  "POST /counting/sessions",
+  "POST /training/frames/${frameId}/annotations",
+  "POST /training/jobs",
+  "POST /training/models/${modelId}/activate",
+  "POST /training/videos",
+  "POST /v1/admin/cameras/${cameraId}/probe",
+  "POST /v1/admin/cameras/import",
+  "POST /v1/admin/cameras/probe-batch",
+  "POST /v1/admin/tenant-context/renew",
+  "POST /v1/admin/tenant-context/tenants/${tenantId}/assume",
+  "POST /v1/admin/users/${userId}/impersonate",
+  "POST /v1/quality/gate/export-wiser/batch",
+  "POST /v1/quality/gate/stations",
+  "PUT /operations/${operationId}"
+ ]
+}
