@@ -31,6 +31,7 @@ import { getSessionTokenExpMs } from '../../services/tenantContext'
 import { LogikosLoader } from './LogikosLoader'
 import { PaletaComandos, type GrupoPaleta } from './PaletaComandos'
 import { SessaoExpirando } from './SessaoExpirando'
+import { PREFIXO_NOVO } from '../RotasNovas'
 import { NAV_EPI, navVisivel } from './navPorPerfil'
 import * as s from './Shell.css'
 
@@ -60,6 +61,16 @@ export function Shell({ carregando }: ShellProps) {
   const grupos = useMemo(() => navVisivel(NAV_EPI, can), [can])
 
   /**
+   * `navPorPerfil` guarda o endereço FINAL de cada tela (`/epi/eventos`), que é
+   * o do desenho. Enquanto os dois fronts convivem, o front novo mora sob o
+   * prefixo — então o prefixo entra aqui, na hora de navegar, e não na tabela.
+   * Assim o tombamento é apagar `PREFIXO_NOVO` daqui, e a tabela já está certa.
+   *
+   * Sem isto o menu do front NOVO levaria para as telas do front ANTIGO, em
+   * silêncio: `/epi/dashboard` é rota válida nos dois.
+   */
+
+  /**
    * Telas na paleta = as MESMAS que a navegação mostra. Derivar das duas
    * fontes separadamente faria a paleta oferecer atalho para tela que o perfil
    * não pode abrir — o ⌘K viraria um caminho lateral em volta da permissão.
@@ -74,7 +85,7 @@ export function Shell({ carregando }: ShellProps) {
             id: i.rota,
             rotulo: i.rotulo,
             detalhe: g.titulo,
-            aoEscolher: () => navegar(i.rota),
+            aoEscolher: () => navegar(PREFIXO_NOVO + i.rota),
           })),
         ),
       },
@@ -130,7 +141,7 @@ export function Shell({ carregando }: ShellProps) {
                 return (
                   <NavLink
                     key={i.rota}
-                    to={i.rota}
+                    to={PREFIXO_NOVO + i.rota}
                     className={({ isActive }) =>
                       isActive ? `${s.item} ${s.itemAtivo}` : s.item
                     }
