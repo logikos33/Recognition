@@ -4,6 +4,11 @@
  * @migrado-para src/app/epi/AoVivo.tsx
  * rota nova: /novo/epi/live
  *
+ * @paridade-pendente aba Desempenho (FPS/qualidade/telemetria do edge); marcação de câmera em alerta; logs ao vivo
+ *
+ * ⛔ NÃO APAGUE: a substituta existe, mas NÃO faz tudo o que esta faz. A lista
+ * completa e verificada está em docs/migration/PARIDADE-ANTIGO-VS-NOVO.md.
+ *
  * Continua VIVA e servindo a rota antiga: os dois fronts convivem até a
  * migração terminar (decisão do Vitor, 27/08). Não apague nesta rodada.
  *

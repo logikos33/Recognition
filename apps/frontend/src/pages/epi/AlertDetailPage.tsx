@@ -4,6 +4,11 @@
  * @migrado-para src/app/epi/EventoDetalhe.tsx
  * rota nova: /novo/epi/eventos/:id
  *
+ * @paridade-pendente correção da caixa por arrasto e por teclado; autoria da última correção
+ *
+ * ⛔ NÃO APAGUE: a substituta existe, mas NÃO faz tudo o que esta faz. A lista
+ * completa e verificada está em docs/migration/PARIDADE-ANTIGO-VS-NOVO.md.
+ *
  * Continua VIVA e servindo a rota antiga: os dois fronts convivem até a
  * migração terminar (decisão do Vitor, 27/08). Não apague nesta rodada.
  *

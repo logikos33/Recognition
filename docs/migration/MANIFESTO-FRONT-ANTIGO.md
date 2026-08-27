@@ -8,19 +8,21 @@ depois que a migração inteira estiver feita.
 
 | status | significado | pode remover? |
 |---|---|---|
-| `MIGRADO` | já substituído por tela nova (marcado com `@migrado-para` no arquivo) | ✅ sim, na Fase 3 |
+| `MIGRADO` | tem substituta E a paridade fechou (marcado com `@migrado-para`) | ✅ sim, na Fase 3 |
+| `SUBSTITUIDA` | tem substituta, mas ela AINDA NÃO FAZ TUDO (`@paridade-pendente`) | ⛔ não — ver [PARIDADE-ANTIGO-VS-NOVO.md](./PARIDADE-ANTIGO-VS-NOVO.md) |
 | `PENDENTE` | ainda serve rota viva que a migração vai cobrir | ⛔ não |
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 394 arquivos, 67.075 linhas
+## Situação — 394 arquivos, 67.105 linhas
 
 | status | arquivos |
 |---|---:|
 | `INFRA` | 226 |
 | `PENDENTE` | 154 |
 | `SEM-DESENHO` | 7 |
-| `MIGRADO` | 7 |
+| `SUBSTITUIDA` | 6 |
+| `MIGRADO` | 1 |
 
 ## Como marcar um arquivo como migrado
 
@@ -30,7 +32,9 @@ No topo do arquivo substituído:
 /** @migrado-para src/app/epi/eventos/EventosPage.tsx — F3, PR #NNN */
 ```
 
-Rodar `npm run manifesto` no mesmo PR. A Fase 3 só apaga `MIGRADO`.
+Rodar `npm run manifesto` no mesmo PR. **A Fase 3 só apaga `MIGRADO`** —
+`SUBSTITUIDA` fica de pé até a paridade fechar. Ter substituta e poder ser
+apagado não são a mesma coisa.
 
 ## Inventário
 
@@ -262,13 +266,7 @@ Rodar `npm run manifesto` no mesmo PR. A Fase 3 só apaga `MIGRADO`.
 | `src/utils/labels.ts` | `INFRA` | — | 195 |
 | `src/utils/statusColors.ts` | `INFRA` | — | 18 |
 | `src/utils/timeBuckets.ts` | `INFRA` | — | 106 |
-| `src/pages/epi/AlertDetailPage.tsx` | `MIGRADO` | src/app/epi/EventoDetalhe.tsx | 644 |
-| `src/pages/epi/EpiAlerts.tsx` | `MIGRADO` | src/app/epi/Eventos.tsx | 26 |
-| `src/pages/epi/EpiCameras.tsx` | `MIGRADO` | src/app/epi/Cameras.tsx | 26 |
-| `src/pages/epi/EpiDashboard.tsx` | `MIGRADO` | src/app/epi/Dashboard.tsx | 151 |
-| `src/pages/MonitoringPage.tsx` | `MIGRADO` | src/app/epi/AoVivo.tsx | 677 |
 | `src/pages/ReportsPage.tsx` | `MIGRADO` | src/app/epi/Relatorios.tsx | 31 |
-| `src/pages/VerificationQueuePage.tsx` | `MIGRADO` | src/app/epi/Verificacao.tsx | 284 |
 | `src/modules/admin/AdminLayout.css.ts` | `PENDENTE` | — | 249 |
 | `src/modules/admin/AdminLayout.tsx` | `PENDENTE` | — | 278 |
 | `src/modules/admin/components/admin.css.ts` | `PENDENTE` | — | 275 |
@@ -430,3 +428,9 @@ Rodar `npm run manifesto` no mesmo PR. A Fase 3 só apaga `MIGRADO`.
 | `src/pages/epi/EpiSitesPage.tsx` | `SEM-DESENHO` | — | 160 |
 | `src/pages/epi/InvestigationPage.tsx` | `SEM-DESENHO` | — | 746 |
 | `src/pages/ModuleSelectionPage.tsx` | `SEM-DESENHO` | — | 165 |
+| `src/pages/epi/AlertDetailPage.tsx` | `SUBSTITUIDA` | src/app/epi/EventoDetalhe.tsx | 649 |
+| `src/pages/epi/EpiAlerts.tsx` | `SUBSTITUIDA` | src/app/epi/Eventos.tsx | 31 |
+| `src/pages/epi/EpiCameras.tsx` | `SUBSTITUIDA` | src/app/epi/Cameras.tsx | 31 |
+| `src/pages/epi/EpiDashboard.tsx` | `SUBSTITUIDA` | src/app/epi/Dashboard.tsx | 156 |
+| `src/pages/MonitoringPage.tsx` | `SUBSTITUIDA` | src/app/epi/AoVivo.tsx | 682 |
+| `src/pages/VerificationQueuePage.tsx` | `SUBSTITUIDA` | src/app/epi/Verificacao.tsx | 289 |

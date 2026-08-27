@@ -194,12 +194,46 @@ export function Verificacao() {
   // dado de treino; duplicar aqui suja o dataset em silêncio.
   const enviandoRef = useRef(false)
 
+  /**
+   * Alertas que a fila do servidor DEIXOU DE LISTAR — quase sempre porque
+   * outra pessoa já os revisou.
+   *
+   * A fila local é append-only de propósito (regra 1 do cabeçalho): remover
+   * encolheria o array sob o índice e o "próximo" viraria o item errado. Só que
+   * não remover, sozinho, deixa um buraco: o item some do servidor, continua na
+   * tela, é apresentado para julgar, e o veredito VAI. Dois vereditos humanos
+   * no mesmo alerta sujam dado de treino em silêncio — e quem carimbou por
+   * último nem fica sabendo que estava decidindo o que já estava decidido.
+   *
+   * Então ele fica na fila, na posição dele, mas marcado — e sem botão.
+   */
+  const [resolvidosPorOutro, setResolvidosPorOutro] = useState<Set<string>>(new Set())
+  /** Espelho da fila para leitura fora do render (ver `carregar`). */
+  const filaRef = useRef<ItemVerificacao[]>([])
+
   const carregar = useCallback(async () => {
     try {
       const res = await api.get<{ data?: { items?: ItemVerificacao[] } }>(
         `/verification/queue?limit=${LIMITE}`,
       )
       const itens = res?.data?.items ?? []
+
+      // Só dá para concluir "sumiu do servidor" quando vimos a fila INTEIRA.
+      // O endpoint não pagina, mas corta em `limit`: se voltou cheio, o que
+      // não veio pode estar apenas além do corte, e marcar isso como "outra
+      // pessoa resolveu" seria mentira — tirando o botão de alertas que ainda
+      // precisam de veredito.
+      //
+      // Lido de `filaRef`, não de dentro de um updater de `setFila`: chamar
+      // outro setState lá dentro é efeito colateral em função que o React pode
+      // executar duas vezes.
+      if (itens.length < LIMITE) {
+        const noServidor = new Set(itens.map((i) => i.id))
+        setResolvidosPorOutro(
+          new Set(filaRef.current.filter((i) => !noServidor.has(i.id)).map((i) => i.id)),
+        )
+      }
+
       // Ordena o LOTE, anexa sem repetir. Nunca reordena o que já está na tela.
       setFila((f) => anexarSemRepetir(f, ordenarPorIncerteza(itens)))
       setErro(null)
@@ -219,6 +253,10 @@ export function Verificacao() {
     const id = setInterval(() => void carregar(), POLL_MS)
     return () => clearInterval(id)
   }, [carregar, podeLer])
+
+  useEffect(() => {
+    filaRef.current = fila
+  }, [fila])
 
   const atual = fila[indice]
   const pendentes = useMemo(
@@ -276,7 +314,14 @@ export function Verificacao() {
 
   const decidir = useCallback(
     async (verdict: Veredito) => {
+      // Não carimba o que já saiu da fila do servidor: seria um segundo
+      // veredito humano no mesmo alerta, e veredito é dado de treino.
       if (!atual || !podeEscrever || enviandoRef.current) return
+      if (resolvidosPorOutro.has(atual.id) && !decididos[atual.id]) {
+        toast.info('Alerta já revisado', 'Outra pessoa decidiu este alerta enquanto ele estava aberto aqui.')
+        avancar()
+        return
+      }
       enviandoRef.current = true
       setEnviando(true)
       try {
@@ -292,7 +337,7 @@ export function Verificacao() {
         setEnviando(false)
       }
     },
-    [atual, avancar, podeEscrever, toast],
+    [atual, avancar, decididos, podeEscrever, resolvidosPorOutro, toast],
   )
 
   // ⚠️ Deps completas de propósito: o listener acompanha o item corrente. Um

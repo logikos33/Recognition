@@ -42,8 +42,9 @@ vi.mock('../../hooks/useAuth', () => ({
 }))
 
 const toastErro = vi.fn()
+const toastInfo = vi.fn()
 vi.mock('../../components/ui/Toast/useToast', () => ({
-  useToast: () => ({ success: vi.fn(), error: toastErro, warning: vi.fn(), info: vi.fn() }),
+  useToast: () => ({ success: vi.fn(), error: toastErro, warning: vi.fn(), info: toastInfo }),
 }))
 
 // ── Dados (formato real do payload: alerts.* + camera_name do JOIN) ─────────
@@ -95,6 +96,7 @@ beforeEach(() => {
   get.mockReset()
   post.mockReset()
   toastErro.mockReset()
+  toastInfo.mockReset()
   permissoes = new Set(['verification:read', 'verification:write'])
   post.mockResolvedValue({ success: true, data: {} })
 })
@@ -418,5 +420,65 @@ describe('contrato do desenho', () => {
     await screen.findByAltText(/Evidência de/)
     expect(screen.getByText(/sem unidade de caixa conhecida/)).toBeTruthy()
     expect(screen.queryByTestId('caixa-violacao')).toBeNull()
+  })
+})
+
+
+// ── 5 · Alerta que outra pessoa já revisou ──────────────────────────────────
+
+describe('dois revisores ao mesmo tempo', () => {
+  it('não carimba veredito em alerta que saiu da fila do servidor', async () => {
+    // O achado: a fila local é append-only (regra 1), então item que outro
+    // operador revisou NUNCA sai daqui — segue contando em "N RESTANTES" e é
+    // apresentado para julgar. O veredito ia, e SOBRESCREVIA em silêncio o que
+    // a outra pessoa já tinha decidido. Dado de auditoria trocado sem ninguém
+    // saber, e com dois revisores isso acontece no primeiro dia.
+    vi.useFakeTimers()
+    get.mockResolvedValueOnce(fila([B, C]))
+    montar()
+    await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(1))
+
+    // Segunda leitura: B sumiu — alguém revisou por fora. Veio MENOS que o
+    // limite, então dá para concluir que sumiu (e não que ficou além do corte).
+    get.mockResolvedValueOnce(fila([C]))
+    await vi.advanceTimersByTimeAsync(15_000)
+    await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(2))
+
+    // B continua na tela, na posição dele — a fila não encolhe sob o índice.
+    // Mas o veredito não pode ir.
+    post.mockClear()
+    tecla('c')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(post).not.toHaveBeenCalled()
+    expect(toastInfo).toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+
+  it('lote CHEIO não marca ninguém: o que faltou pode estar além do corte', async () => {
+    // O endpoint corta em `limit` e não pagina. Se o lote voltou COM o tamanho
+    // do limite, o que não veio pode estar apenas além do corte — concluir ali
+    // "outra pessoa resolveu" seria mentira, e tiraria o botão de alertas que
+    // ainda precisam de veredito. É o caso que faz a guarda errar para o lado
+    // caro: travar trabalho legítimo.
+    vi.useFakeTimers()
+    const cheio = Array.from({ length: 50 }, (_, i) => item(`x${i}`, 'no_helmet', 0.6))
+    get.mockResolvedValueOnce(fila(cheio))
+    montar()
+    await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(1))
+
+    // Segundo lote: também CHEIO, e sem nenhum dos anteriores. Um lote cheio
+    // não autoriza conclusão nenhuma sobre quem não veio.
+    const outros = Array.from({ length: 50 }, (_, i) => item(`y${i}`, 'no_vest', 0.6))
+    get.mockResolvedValueOnce(fila(outros))
+    await vi.advanceTimersByTimeAsync(15_000)
+    await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(2))
+
+    // x0 continua julgável: o veredito TEM de ir.
+    post.mockClear()
+    toastInfo.mockClear()
+    tecla('c')
+    await vi.waitFor(() => expect(post).toHaveBeenCalledTimes(1))
+    expect(toastInfo).not.toHaveBeenCalled()
+    vi.useRealTimers()
   })
 })

@@ -69,4 +69,36 @@ describe('manifesto do front antigo', () => {
     const manifesto = readFileSync(MANIFESTO, 'utf8')
     expect(manifesto).not.toMatch(/`src\/app\//)
   })
+
+  it('separa "tem substituta" de "pode apagar"', () => {
+    // O manifesto chegou a marcar 7 telas como MIGRADO — que ele mesmo define
+    // como "PODE ser removido". A comparação função-a-função depois achou 22
+    // perdas confirmadas nessas telas. Ter substituta e poder ser apagado não
+    // são a mesma coisa, e confundir as duas é o caminho mais curto para
+    // apagar função que o cliente usa.
+    const manifesto = readFileSync(MANIFESTO, 'utf8')
+    expect(manifesto).toContain('SUBSTITUIDA')
+    // A regra tem de estar ESCRITA, não só implícita na tabela — quem for
+    // apagar lê o documento, não o gerador. Sem crase no meio: o texto formata
+    // os status com backtick e um regex literal quebraria à toa.
+    const semFormato = manifesto.replace(/[`*]/g, '')
+    expect(semFormato).toMatch(/Fase 3 só apaga MIGRADO/i)
+    expect(semFormato).toMatch(/SUBSTITUIDA fica/i)
+  })
+
+  it('nenhuma tela com paridade aberta está marcada como removível', () => {
+    // A trava de verdade: arquivo que declara @paridade-pendente NUNCA pode
+    // aparecer como MIGRADO no manifesto.
+    const manifesto = readFileSync(MANIFESTO, 'utf8')
+    const linhas = manifesto.split('\n').filter((l) => l.includes('| `MIGRADO` |'))
+    for (const linha of linhas) {
+      const arquivo = linha.match(/`(src\/[^`]+)`/)?.[1]
+      if (!arquivo) continue
+      const fonte = readFileSync(join(RAIZ, arquivo), 'utf8')
+      expect(
+        fonte.includes('@paridade-pendente'),
+        `${arquivo} está como MIGRADO (removível) mas declara paridade pendente`,
+      ).toBe(false)
+    }
+  })
 })

@@ -193,10 +193,33 @@ relatório tem pouco o que fazer no módulo EPI. Pode estar certo (o trabalho de
 é no Estúdio), mas é uma decisão de produto que ninguém tomou de propósito — ela
 caiu da matriz de permissões.
 
-**Paridade funcional com as telas antigas — em apuração.** As novas foram
-provadas renderizando com dado real; a comparação função por função com as
-antigas está sendo feita em separado. É pré-requisito da rodada em que o front
-antigo sai, não desta.
+**Paridade funcional — APURADA, e o resultado importa para você.** Sete agentes
+compararam função por função cada tela antiga com sua substituta; cada alegação
+passou por um cético independente encarregado de refutá-la. Das **42 alegadas,
+22 se confirmaram** (as outras 20 eram função que já existia, com outro nome ou
+em outro lugar).
+
+Quatro delas são decisão de desenho, não de código — o handoff **não desenhou**
+o equivalente:
+
+1. **Ajustar a câmera** (FPS de inferência, qualidade do vídeo, resolução da
+   coleta de treino) e ver a saúde do equipamento. É o único lugar do produto
+   que grava em que resolução os frames entram no dataset, e o único freio
+   contra sobrecarregar o mini PC do cliente.
+2. **Corrigir a caixa da detecção** no frame — por arrasto e por teclado. É o
+   gesto que transforma erro da IA em dado bom; o caminho digitado é o acessível
+   para quem não usa mouse com precisão.
+3. **Montar a parede de câmeras**: qual câmera em qual quadrinho, arrastar para
+   trocar, e salvar com nome ("Portaria + Estoque"). Com 28 câmeras o operador
+   decora posição, não nome.
+4. **Ranking das 10 câmeras com mais alertas.** A tela nova de Relatórios mostra
+   só a campeã.
+
+A lista completa e verificada está em `PARIDADE-ANTIGO-VS-NOVO.md`.
+
+**O que precisamos:** desenho para as quatro. Enquanto não houver, as telas
+antigas ficam de pé — o manifesto de remoção já as marca como `SUBSTITUIDA`
+(tem substituta, mas NÃO pode ser apagada).
 
 ---
 

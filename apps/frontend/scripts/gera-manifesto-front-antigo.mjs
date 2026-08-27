@@ -7,12 +7,15 @@
  * GERADA — não escrita à mão, senão envelhece no primeiro PR.
  *
  * Status por arquivo:
- *   MIGRADO      — já substituído por tela nova; PODE ser removido na Fase 3
+ *   MIGRADO      — substituta existe E a paridade foi fechada; PODE ser removido
+ *   SUBSTITUIDA  — substituta existe, mas a paridade NÃO fechou; NÃO pode ser
+ *                  removido (a lista do que falta está em
+ *                  docs/migration/PARIDADE-ANTIGO-VS-NOVO.md)
  *   PENDENTE     — ainda serve rota viva que a migração vai cobrir
  *   SEM-DESENHO  — serve rota que o handoff NÃO desenhou; fica até o design desenhar
  *   INFRA        — não é tela (api, hooks, tipos, tema); decisão caso a caso
  *
- * ⛔ A remoção só pode apagar MIGRADO.
+ * ⛔ A remoção só pode apagar MIGRADO. SUBSTITUIDA fica.
  */
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, dirname } from "node:path";
@@ -32,6 +35,16 @@ const SEM_DESENHO = [
 ];
 
 const MARCA = "@migrado-para";
+
+/**
+ * Marca que o arquivo AINDA tem função que a substituta não faz.
+ *
+ * Sem esta distinção o manifesto dizia "MIGRADO = pode apagar" para 7 telas em
+ * que a comparação função-a-função achou 22 perdas confirmadas. "Tem substituta"
+ * e "pode ser apagado" não são a mesma coisa, e tratá-las como se fossem é o
+ * caminho mais curto para apagar função que o cliente usa.
+ */
+const PARIDADE_ABERTA = "@paridade-pendente";
 
 /**
  * O front NOVO. Não entra no manifesto: este documento é a lista do que SAI, e
@@ -63,7 +76,7 @@ const linhas = arquivos.map((p) => {
   const migrado = txt.includes(MARCA);
   const nomeBase = rel.split("/").pop().replace(/\.tsx?$/, "");
   let status;
-  if (migrado) status = "MIGRADO";
+  if (migrado) status = txt.includes(PARIDADE_ABERTA) ? "SUBSTITUIDA" : "MIGRADO";
   else if (SEM_DESENHO.includes(nomeBase)) status = "SEM-DESENHO";
   else if (/(^|\/)(pages|modules)\//.test(rel)) status = "PENDENTE";
   else status = "INFRA";
@@ -84,7 +97,8 @@ depois que a migração inteira estiver feita.
 
 | status | significado | pode remover? |
 |---|---|---|
-| \`MIGRADO\` | já substituído por tela nova (marcado com \`${MARCA}\` no arquivo) | ✅ sim, na Fase 3 |
+| \`MIGRADO\` | tem substituta E a paridade fechou (marcado com \`${MARCA}\`) | ✅ sim, na Fase 3 |
+| \`SUBSTITUIDA\` | tem substituta, mas ela AINDA NÃO FAZ TUDO (\`${PARIDADE_ABERTA}\`) | ⛔ não — ver [PARIDADE-ANTIGO-VS-NOVO.md](./PARIDADE-ANTIGO-VS-NOVO.md) |
 | \`PENDENTE\` | ainda serve rota viva que a migração vai cobrir | ⛔ não |
 | \`SEM-DESENHO\` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | \`INFRA\` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
@@ -103,7 +117,9 @@ No topo do arquivo substituído:
 /** ${MARCA} src/app/epi/eventos/EventosPage.tsx — F3, PR #NNN */
 \`\`\`
 
-Rodar \`npm run manifesto\` no mesmo PR. A Fase 3 só apaga \`MIGRADO\`.
+Rodar \`npm run manifesto\` no mesmo PR. **A Fase 3 só apaga \`MIGRADO\`** —
+\`SUBSTITUIDA\` fica de pé até a paridade fechar. Ter substituta e poder ser
+apagado não são a mesma coisa.
 
 ## Inventário
 
