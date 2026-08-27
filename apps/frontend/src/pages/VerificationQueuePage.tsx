@@ -1,4 +1,24 @@
 /**
+ * ⚠️ SUPERADA — esta tela tem substituta no front novo.
+ *
+ * @migrado-para src/app/epi/Verificacao.tsx
+ * rota nova: /novo/epi/verificacao
+ *
+ * @paridade-pendente acesso direto a qualquer item da fila; recarga sob demanda
+ *
+ * ⛔ NÃO APAGUE: a substituta existe, mas NÃO faz tudo o que esta faz. A lista
+ * completa e verificada está em docs/migration/PARIDADE-ANTIGO-VS-NOVO.md.
+ *
+ * Continua VIVA e servindo a rota antiga: os dois fronts convivem até a
+ * migração terminar (decisão do Vitor, 27/08). Não apague nesta rodada.
+ *
+ * Na rodada de remoção, ANTES de apagar: a substituta foi provada renderizando
+ * com dado real no DEV, mas paridade de FUNCIONALIDADE não foi conferida item a
+ * item. Compare as duas telas primeiro — e confira quem mais importa deste
+ * arquivo (componentes e estilos só dele saem junto; os compartilhados, não).
+ * A lista está em docs/migration/MANIFESTO-FRONT-ANTIGO.md.
+ */
+/**
  * VerificationQueuePage — Fila de revisão humana de alertas pré-filtrados pela IA.
  *
  * Mostra apenas alertas que o agente Claude classificou como "needs_human".

@@ -1,0 +1,442 @@
+/**
+ * EPI Dashboard — medidas e cores do `EPI Dashboard.dc.html`.
+ *
+ * Zero hex: cor só por `lk`. Tintas (borda de acento, trilho de barra) saem de
+ * `color-mix` sobre o token — assim o white-label do tenant continua alcançando
+ * a cor, o que um rgba escrito à mão não faria.
+ *
+ * O Shell já dá `padding: 24px` e `max-width: 1280px` ao conteúdo. Repetir aqui
+ * daria 48px de respiro e uma segunda fonte de verdade sobre a largura da tela.
+ */
+import { style, styleVariants } from '@vanilla-extract/css'
+
+import { lk, OVERLINE_TRACKING } from '../tokens/lk.css'
+
+export const raiz = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: lk.espaco.x2,
+})
+
+// ── Cabeçalho ───────────────────────────────────────────────────────────────
+
+export const cabecalho = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '12px',
+  flexWrap: 'wrap',
+})
+
+export const titulo = style({
+  margin: 0,
+  fontFamily: lk.fonte.titulo,
+  fontWeight: 700,
+  fontSize: '26px',
+})
+
+export const espacador = style({ flex: 1 })
+
+export const seletor = style({
+  height: '36px',
+  padding: `0 ${lk.espaco.x1}`,
+  background: lk.cor.grafite,
+  border: `1px solid ${lk.cor.borda}`,
+  borderRadius: lk.raio.s,
+  color: lk.cor.brancoSinal,
+  fontFamily: lk.fonte.ui,
+  fontSize: '13px',
+  cursor: 'pointer',
+  ':focus-visible': { outline: `2px solid ${lk.cor.cianoVisao}`, outlineOffset: '1px' },
+})
+
+export const botaoFantasma = style({
+  height: '36px',
+  padding: '0 14px',
+  background: 'transparent',
+  border: `1px solid ${lk.cor.borda}`,
+  borderRadius: lk.raio.s,
+  color: lk.cor.cinzaNevoa,
+  fontFamily: lk.fonte.ui,
+  fontSize: '13px',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '6px',
+  cursor: 'pointer',
+  ':hover': { color: lk.cor.brancoSinal, borderColor: lk.cor.cianoVisao },
+})
+
+export const envoltorioPopover = style({ position: 'relative' })
+
+/** Popover "Personalizar widgets" — ancorado no botão, sem portal. */
+export const popover = style({
+  position: 'absolute',
+  top: 'calc(100% + 8px)',
+  right: 0,
+  width: '260px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: lk.espaco.x1,
+  padding: lk.espaco.x2,
+  background: lk.cor.grafite,
+  border: `1px solid ${lk.cor.borda}`,
+  borderRadius: lk.raio.g,
+  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.7)',
+  zIndex: 40,
+})
+
+export const popoverLinha = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: lk.espaco.x1,
+  fontSize: '13px',
+  color: lk.cor.brancoSinal,
+  cursor: 'pointer',
+})
+
+export const popoverCheck = style({ accentColor: lk.cor.cianoVisao, cursor: 'pointer' })
+
+// ── Cartões de KPI ──────────────────────────────────────────────────────────
+
+export const gridKpi = style({
+  display: 'grid',
+  gridTemplateColumns: '360px 1fr 1fr 1fr',
+  gap: '12px',
+  '@media': {
+    '(max-width: 1180px)': { gridTemplateColumns: '1fr 1fr' },
+    '(max-width: 720px)': { gridTemplateColumns: '1fr' },
+  },
+})
+
+const cartaoBase = style({
+  display: 'flex',
+  flexDirection: 'column',
+  background: lk.cor.grafite,
+  border: `1px solid ${lk.cor.borda}`,
+  borderRadius: lk.raio.g,
+})
+
+export const cartaoScore = style([
+  cartaoBase,
+  { gap: '10px', padding: '20px', position: 'relative' },
+])
+
+export const cartaoKpi = style([
+  cartaoBase,
+  { gap: '6px', padding: '16px 18px', borderTopWidth: '2px', borderTopStyle: 'solid' },
+])
+
+export const overline = style({
+  fontFamily: lk.fonte.mono,
+  fontSize: '10px',
+  letterSpacing: OVERLINE_TRACKING,
+  textTransform: 'uppercase',
+  color: lk.cor.cinzaNevoa,
+})
+
+export const linhaOverline = style({ display: 'flex', alignItems: 'center', gap: lk.espaco.x1 })
+
+export const botaoAjuda = style({
+  width: '16px',
+  height: '16px',
+  flex: 'none',
+  borderRadius: '50%',
+  border: `1px solid ${lk.cor.cinzaNevoa}`,
+  background: 'transparent',
+  color: lk.cor.cinzaNevoa,
+  fontFamily: lk.fonte.mono,
+  fontSize: '10px',
+  lineHeight: 1,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'help',
+  ':hover': { color: lk.cor.brancoSinal, borderColor: lk.cor.cianoVisao },
+})
+
+export const dica = style({
+  position: 'absolute',
+  top: '44px',
+  left: '20px',
+  right: '20px',
+  zIndex: 10,
+  background: lk.cor.preto,
+  border: `1px solid ${lk.cor.borda}`,
+  borderRadius: lk.raio.s,
+  padding: '12px',
+  fontSize: '12px',
+  color: lk.cor.cinzaNevoa,
+  lineHeight: 1.55,
+  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.7)',
+})
+
+export const scoreLinha = style({ display: 'flex', alignItems: 'flex-end', gap: '14px' })
+
+export const scoreNumero = style({
+  fontFamily: lk.fonte.titulo,
+  fontWeight: 700,
+  fontSize: '84px',
+  lineHeight: 0.9,
+})
+
+export const scoreLado = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '2px',
+  paddingBottom: lk.espaco.x1,
+})
+
+/** Estado = cor + ícone + palavra. A cor entra inline; a palavra é obrigatória. */
+export const estadoLinha = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '5px',
+  fontSize: '12px',
+  fontWeight: 600,
+})
+
+export const legenda = style({ fontSize: '12px', color: lk.cor.cinzaNevoa })
+
+export const rodapeMono = style({
+  display: 'flex',
+  justifyContent: 'space-between',
+  gap: lk.espaco.x1,
+  marginTop: 'auto',
+  fontFamily: lk.fonte.mono,
+  fontSize: '10.5px',
+  letterSpacing: '0.06em',
+  color: lk.cor.cinzaNevoa,
+})
+
+export const kpiValor = style({
+  fontFamily: lk.fonte.mono,
+  fontWeight: 700,
+  fontSize: '34px',
+  lineHeight: 1,
+})
+
+export const kpiValorSufixo = style({ fontSize: '20px', color: lk.cor.cinzaNevoa })
+
+export const atalho = style({
+  fontSize: '12.5px',
+  fontWeight: 600,
+  marginTop: 'auto',
+  color: lk.cor.cianoVisao,
+  textDecoration: 'none',
+  ':hover': { color: lk.cor.cianoProfundo },
+})
+
+/** Mesmo atalho, no cabeçalho de um painel: encosta à direita, sem empurrão. */
+export const atalhoInline = style({
+  marginLeft: 'auto',
+  fontSize: '12px',
+  fontWeight: 600,
+  color: lk.cor.cianoVisao,
+  textDecoration: 'none',
+  ':hover': { color: lk.cor.cianoProfundo },
+})
+
+// ── Painéis (widgets) ───────────────────────────────────────────────────────
+
+export const gridPaineis = style({
+  display: 'grid',
+  gridTemplateColumns: '1.4fr 1fr 1fr',
+  gap: '12px',
+  alignItems: 'start',
+  '@media': { '(max-width: 1180px)': { gridTemplateColumns: '1fr' } },
+})
+
+export const painel = style([cartaoBase, { gap: '12px', padding: '18px' }])
+
+export const painelCabecalho = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: lk.espaco.x1,
+})
+
+export const painelTitulo = style({ fontSize: '14px', fontWeight: 600 })
+
+export const painelNota = style({
+  marginLeft: 'auto',
+  fontFamily: lk.fonte.mono,
+  fontSize: '10.5px',
+  letterSpacing: '0.06em',
+  color: lk.cor.cinzaNevoa,
+})
+
+/** Alça de arrasto — `cursor: grab`, como no desenho. */
+export const alca = style({
+  display: 'inline-flex',
+  padding: 0,
+  border: 'none',
+  background: 'transparent',
+  color: lk.cor.cinzaNevoa,
+  cursor: 'grab',
+  touchAction: 'none',
+  ':focus-visible': { outline: `2px solid ${lk.cor.cianoVisao}` },
+})
+
+export const arrastando = style({ opacity: 0.6, zIndex: 20 })
+
+// Eventos por hora
+export const barras = style({
+  display: 'flex',
+  alignItems: 'flex-end',
+  gap: '5px',
+  height: '110px',
+})
+
+export const colunaBarra = style({
+  flex: 1,
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: '5px',
+  height: '100%',
+  justifyContent: 'flex-end',
+})
+
+export const barra = style({
+  width: '100%',
+  minHeight: '2px',
+  borderRadius: '3px 3px 0 0',
+})
+
+export const barraRotulo = style({
+  fontFamily: lk.fonte.mono,
+  fontSize: '9.5px',
+  color: lk.cor.cinzaNevoa,
+})
+
+// Violações por classe
+export const classeLinha = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
+})
+
+export const classeNome = style({ fontSize: '12.5px', width: '76px', flex: 'none' })
+
+export const classeTrilho = style({
+  flex: 1,
+  height: '14px',
+  background: lk.cor.preto,
+  borderRadius: '4px',
+  overflow: 'hidden',
+})
+
+export const classePreenchimento = style({ height: '100%', background: lk.estado.nc })
+
+export const classeValor = style({
+  fontFamily: lk.fonte.mono,
+  fontSize: '13px',
+  width: '24px',
+  textAlign: 'right',
+})
+
+// Ações recentes
+export const itemAcao = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '3px',
+  padding: '10px 12px',
+  background: lk.cor.preto,
+  border: `1px solid ${lk.cor.borda}`,
+  borderRadius: lk.raio.s,
+})
+
+export const itemAcaoTitulo = style({ fontSize: '12.5px', fontWeight: 600 })
+
+export const itemAcaoMeta = style({
+  display: 'flex',
+  gap: lk.espaco.x1,
+  fontFamily: lk.fonte.mono,
+  fontSize: '10.5px',
+  color: lk.cor.cinzaNevoa,
+})
+
+// ── Estados de tela inteira ─────────────────────────────────────────────────
+
+export const telaCentral = style({
+  minHeight: '60vh',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '14px',
+  textAlign: 'center',
+  padding: lk.medida.padding,
+})
+
+export const telaTitulo = style({
+  fontFamily: lk.fonte.titulo,
+  fontWeight: 700,
+  fontSize: '19px',
+})
+
+export const telaTexto = style({
+  fontSize: '13.5px',
+  color: lk.cor.cinzaNevoa,
+  maxWidth: '380px',
+  lineHeight: 1.55,
+})
+
+export const telaDetalhe = style({
+  fontFamily: lk.fonte.mono,
+  fontSize: '12px',
+  letterSpacing: '0.06em',
+  color: lk.cor.cinzaNevoa,
+})
+
+/** Único botão primário da tela — o ciano é interativo, e só. */
+export const botaoPrimario = style({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  height: '40px',
+  padding: '0 18px',
+  textDecoration: 'none',
+  border: 'none',
+  borderRadius: lk.raio.s,
+  background: lk.cor.cianoVisao,
+  color: lk.cor.preto,
+  fontFamily: lk.fonte.ui,
+  fontSize: '13.5px',
+  fontWeight: 700,
+  cursor: 'pointer',
+  ':hover': { background: lk.cor.cianoProfundo },
+})
+
+/** Vazio/erro DENTRO de um painel — não derruba a tela inteira. */
+export const painelVazio = style({
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: lk.espaco.x1,
+  minHeight: '110px',
+  textAlign: 'center',
+  fontSize: '12.5px',
+  color: lk.cor.cinzaNevoa,
+})
+
+export const botaoRetentar = style({
+  height: '30px',
+  padding: '0 12px',
+  background: 'transparent',
+  border: `1px solid ${lk.cor.borda}`,
+  borderRadius: lk.raio.s,
+  color: lk.cor.cianoVisao,
+  fontFamily: lk.fonte.ui,
+  fontSize: '12.5px',
+  fontWeight: 600,
+  cursor: 'pointer',
+  ':hover': { borderColor: lk.cor.cianoVisao },
+})
+
+/** Acento de topo do cartão por estado. Neutro = cinza a 40%, como no desenho. */
+export const acento = styleVariants({
+  neutro: { borderTopColor: `color-mix(in srgb, ${lk.cor.cinzaNevoa} 40%, transparent)` },
+  ok: { borderTopColor: lk.estado.ok },
+  atencao: { borderTopColor: lk.estado.atencao },
+  nc: { borderTopColor: lk.estado.nc },
+})

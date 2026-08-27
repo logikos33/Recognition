@@ -1,0 +1,301 @@
+/**
+ * EPI Eventos — estilo da lista (handoff `EPI Eventos.dc.html`).
+ *
+ * Medidas, pesos e raios saem do desenho; cor, fonte e espaço saem de
+ * `tokens/lk.css`. Zero hex solto: o teste `tokens/semHexSolto.test.ts` varre
+ * `src/app/**` inteiro e reprova qualquer cor escrita à mão.
+ *
+ * Onde o desenho pede transparência sobre uma cor de token (barra de seleção
+ * ciano a 5%, divisor de linha cinza a 8%), a receita é `color-mix`, não
+ * `rgba(...)`: os tokens de superfície são `var(--color-*)` do white-label, e
+ * `rgba()` não aceita variável — escrever o rgba na mão devolveria o hex fixo
+ * do desenho e a tela deixaria de acompanhar a marca do tenant.
+ */
+import { style, styleVariants } from '@vanilla-extract/css'
+
+import { lk, OVERLINE_TRACKING } from '../tokens/lk.css'
+
+/** Fio de 1px entre linhas — o desenho usa cinza a 8%, não a borda cheia. */
+const DIVISOR = `color-mix(in srgb, ${lk.cor.cinzaNevoa} 8%, transparent)`
+
+export const pagina = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '14px',
+  fontFamily: lk.fonte.ui,
+  color: lk.cor.brancoSinal,
+})
+
+export const cabecalho = style({
+  display: 'flex',
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  gap: '10px',
+})
+
+export const titulo = style({
+  margin: 0,
+  fontFamily: lk.fonte.titulo,
+  fontWeight: 700,
+  fontSize: '26px',
+})
+
+/** "23 NO PERÍODO" — dado, então mono. */
+export const meta = style({
+  fontFamily: lk.fonte.mono,
+  fontSize: '12px',
+  color: lk.cor.cinzaNevoa,
+})
+
+export const espacador = style({ flex: 1 })
+
+export const filtro = style({
+  height: '36px',
+  background: lk.cor.grafite,
+  border: `1px solid ${lk.cor.borda}`,
+  borderRadius: '6px',
+  color: lk.cor.brancoSinal,
+  fontFamily: lk.fonte.ui,
+  fontSize: '13px',
+  padding: `0 ${lk.espaco.x1}`,
+  cursor: 'pointer',
+  selectors: {
+    '&:focus-visible': { outline: `2px solid ${lk.cor.cianoVisao}`, outlineOffset: '1px' },
+  },
+})
+
+/** Botão secundário do desenho: 32px, borda fria, ciano só no hover/foco. */
+export const botao = style({
+  height: '32px',
+  padding: '0 13px',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '6px',
+  background: 'transparent',
+  border: `1px solid ${lk.cor.borda}`,
+  borderRadius: '7px',
+  color: lk.cor.brancoSinal,
+  fontFamily: lk.fonte.ui,
+  fontSize: '12.5px',
+  fontWeight: 600,
+  cursor: 'pointer',
+  ':hover': { borderColor: lk.cor.cianoVisao, color: lk.cor.cianoVisao },
+  ':disabled': { opacity: 0.5, cursor: 'default' },
+  selectors: {
+    '&:focus-visible': { outline: `2px solid ${lk.cor.cianoVisao}`, outlineOffset: '1px' },
+  },
+})
+
+/** Primário: ciano CHEIO — o único lugar da tela onde ele é fundo, e é botão. */
+export const botaoPrimario = style([
+  botao,
+  {
+    height: '34px',
+    padding: '0 16px',
+    border: 'none',
+    background: lk.cor.cianoVisao,
+    color: lk.cor.preto,
+    fontWeight: 700,
+    fontSize: '13px',
+    ':hover': { background: lk.cor.cianoProfundo, color: lk.cor.preto },
+  },
+])
+
+export const barraSelecao = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '12px',
+  padding: `10px ${lk.espaco.x2}`,
+  background: `color-mix(in srgb, ${lk.cor.cianoVisao} 5%, transparent)`,
+  border: `1px solid color-mix(in srgb, ${lk.cor.cianoVisao} 30%, transparent)`,
+  borderRadius: lk.raio.s,
+})
+
+export const contagemSelecao = style({
+  fontSize: '13px',
+  fontWeight: 600,
+  color: lk.cor.cianoVisao,
+})
+
+export const cartao = style({
+  background: lk.cor.grafite,
+  border: `1px solid ${lk.cor.borda}`,
+  borderRadius: lk.raio.m,
+  overflowX: 'auto',
+})
+
+export const tabela = style({
+  width: '100%',
+  borderCollapse: 'collapse',
+  minWidth: '980px',
+})
+
+/** Overline do handoff: mono, caixa alta, tracking largo. */
+export const cabecalhoCelula = style({
+  padding: `10px 14px`,
+  textAlign: 'left',
+  fontFamily: lk.fonte.mono,
+  fontWeight: 400,
+  fontSize: '10px',
+  letterSpacing: '0.14em',
+  textTransform: 'uppercase',
+  color: lk.cor.cinzaNevoa,
+  borderBottom: `1px solid ${lk.cor.borda}`,
+  whiteSpace: 'nowrap',
+})
+
+export const celula = style({
+  padding: `12px 14px`,
+  borderBottom: `1px solid ${DIVISOR}`,
+  fontSize: '13px',
+  verticalAlign: 'middle',
+})
+
+export const celulaMono = style([celula, { fontFamily: lk.fonte.mono }])
+
+export const celulaAcoes = style([
+  celula,
+  { display: 'flex', gap: lk.espaco.x1, justifyContent: 'flex-end', flexWrap: 'wrap' },
+])
+
+/** Linha apontada por deep-link (sino de notificações) — realce temporário. */
+export const linhaDestacada = style({
+  outline: `2px solid ${lk.cor.cianoVisao}`,
+  outlineOffset: '-2px',
+})
+
+export const caixaSelecao = style({
+  width: '16px',
+  height: '16px',
+  accentColor: lk.cor.cianoVisao,
+  cursor: 'pointer',
+})
+
+/**
+ * Selo genérico: mono, caixa alta, borda da própria cor. A COR vem de quem
+ * usa — polaridade e veredito têm paletas deliberadamente disjuntas.
+ */
+export const selo = style({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '5px',
+  fontFamily: lk.fonte.mono,
+  fontSize: '10px',
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  borderRadius: '5px',
+  padding: '3px 8px',
+  border: '1px solid currentColor',
+  whiteSpace: 'nowrap',
+})
+
+/**
+ * POLARIDADE — o que o evento É (classe do modelo, ADR-0065). Verde/vermelho
+ * moram AQUI e só aqui. Três estados: NULL em `is_violation` não é
+ * conformidade, é "ninguém decidiu".
+ */
+export const corPolaridade = styleVariants({
+  violacao: { color: lk.estado.nc },
+  conformidade: { color: lk.estado.ok },
+  indefinida: { color: lk.cor.cinzaNevoa },
+})
+
+/**
+ * VEREDITO — o que uma PESSOA julgou. Paleta disjunta da polaridade de
+ * propósito: se "falso positivo" fosse vermelho, veredito e violação viravam
+ * a mesma cor na mesma linha e o operador perderia a diferença.
+ */
+export const corVeredito = styleVariants({
+  procedente: { color: lk.cor.brancoSinal },
+  'falso-positivo': { color: lk.estado.atencao },
+  'nao-revisado': { color: lk.cor.cinzaNevoa },
+})
+
+/** Estado de fluxo (reconhecimento) — terceiro eixo, terceira paleta. */
+export const corStatus = styleVariants({
+  novo: { color: lk.estado.atencao },
+  reconhecido: { color: lk.estado.ok },
+})
+
+/** Procedência temporal — só a afirmação NEGATIVA ("coleta retroativa"). */
+export const seloRetroativo = style([selo, { color: lk.estado.atencao }])
+
+/** Motivo do veredito: some por elipse, inteiro no `title`. */
+export const motivo = style({
+  display: 'block',
+  marginTop: '3px',
+  maxWidth: '160px',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  fontSize: '11px',
+  color: lk.cor.cinzaNevoa,
+})
+
+export const celulaEvento = style([
+  celula,
+  { display: 'flex', alignItems: 'center', gap: '9px', flexWrap: 'wrap' },
+])
+
+export const nomeClasse = style({ fontSize: '13.5px', fontWeight: 600 })
+
+export const rodape = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '12px',
+  fontFamily: lk.fonte.mono,
+  fontSize: '11px',
+  letterSpacing: '0.08em',
+  color: lk.cor.cinzaNevoa,
+})
+
+export const nota = style({ fontSize: '12px', color: lk.cor.cinzaNevoa })
+
+/** Vazio / erro / sem permissão — mesma caixa, copy diferente. */
+export const painelCentral = style({
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '14px',
+  textAlign: 'center',
+  padding: lk.espaco.x3,
+  minHeight: '340px',
+})
+
+export const painelTitulo = style({
+  fontFamily: lk.fonte.titulo,
+  fontWeight: 700,
+  fontSize: '19px',
+})
+
+export const painelTexto = style({
+  fontSize: '13.5px',
+  color: lk.cor.cinzaNevoa,
+  maxWidth: '380px',
+  lineHeight: 1.55,
+})
+
+/** Detalhe técnico do erro: dado, então mono. */
+export const painelDetalhe = style({
+  fontFamily: lk.fonte.mono,
+  fontSize: '12px',
+  letterSpacing: '0.08em',
+  color: lk.cor.cinzaNevoa,
+})
+
+export const botaoPainel = style([
+  botaoPrimario,
+  { height: '40px', padding: '0 18px', fontSize: '13.5px', borderRadius: lk.raio.s },
+])
+
+export const overlineLegenda = style({
+  fontFamily: lk.fonte.mono,
+  fontSize: '10px',
+  letterSpacing: OVERLINE_TRACKING,
+  textTransform: 'uppercase',
+  color: lk.cor.cinzaNevoa,
+})
+
+/** Par de botões de veredito dentro da célula. */
+export const grupoBotoes = style({ display: 'flex', gap: '6px', marginTop: '6px' })

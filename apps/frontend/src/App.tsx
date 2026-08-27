@@ -12,6 +12,8 @@ import { AppShell } from './components/layout/AppShell/AppShell'
 import { AppLayout } from './components/layout/AppLayout/AppLayout'
 import { ChatFAB } from './components/chat/ChatFAB'
 import { GlobalBanners } from './components/layout/GlobalBanners'
+import { PREFIXO_NOVO, ROTAS_NOVAS } from './app/RotasNovas'
+import { Shell } from './app/shell/Shell'
 import { ThemeProvider } from './theme/ThemeProvider'
 import type { User } from './hooks/useAuth'
 
@@ -40,9 +42,22 @@ function AppShellWrapper({ user, onLogout }: { user: User; onLogout: () => void 
           fora das rotas, visíveis em todas as telas; ocupam espaço real no
           layout via --global-banner-offset (ver GlobalBanners.tsx) */}
       <GlobalBanners />
-      <AppLayout user={user} onLogout={onLogout}>
-        <AppRoutes />
-      </AppLayout>
+      {/* Os dois fronts convivem (decisão do Vitor, 27/08). As rotas migradas
+          montam o Shell novo; TODO o resto cai no `*` e segue no AppLayout
+          antigo, com o mesmo comportamento de antes. O front antigo só sai
+          quando a migração inteira estiver de pé — ver
+          docs/migration/MANIFESTO-FRONT-ANTIGO.md. */}
+      <Routes>
+        <Route path={PREFIXO_NOVO} element={<Shell />}>{ROTAS_NOVAS}</Route>
+        <Route
+          path="*"
+          element={
+            <AppLayout user={user} onLogout={onLogout}>
+              <AppRoutes />
+            </AppLayout>
+          }
+        />
+      </Routes>
       <ChatFABExcetoAnotacao />
     </AppShell>
   )
