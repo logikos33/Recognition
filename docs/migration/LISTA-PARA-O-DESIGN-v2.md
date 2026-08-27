@@ -152,22 +152,51 @@ o resto do produto. Note que "Nenhum evento" pode significar *nada aconteceu* ou
 
 ---
 
-## 8. O que NÃO conseguimos verificar
+## 8. O que foi verificado, e o que não foi
 
-Honestidade sobre os limites desta rodada:
+Honestidade sobre os limites desta rodada. Duas das três lacunas que estavam
+aqui foram fechadas depois — ficaram registradas para você saber o que existe de
+evidência por trás de cada afirmação.
 
-- **A regra do ciano ≤10% não foi medida.** Conferimos que não há hexadecimal
-  solto, que o magenta não escapou do loader e que nenhuma tela usa cor de estado
-  sem ícone. Mas a proporção de área ciana não foi medida — o navegador de
-  automação usado não expõe as dimensões da página. Nas capturas o ciano parece
-  esparso (botão primário, borda do item ativo), o que é consistente com a regra,
-  mas **"parece" não é "medido"**. Fica para conferência sua nas telas reais.
-- **Paridade funcional com as telas antigas não foi conferida item a item.** As
-  novas foram provadas renderizando com dado real; ninguém sentou e comparou
-  função por função. Isso é pré-requisito da rodada em que o front antigo sai.
-- **Só um perfil foi visto na tela.** A navegação por permissão tem teste que
-  confere cada chave contra o backend, mas quem abriu o produto no navegador foi
-  um superadmin. `analyst` e `trainer` não foram vistos de olho.
+**Ciano ≤10% — MEDIDO.** Foi medido com navegador de verdade, contra dado real
+do RVB, com um guard que reprova a medição se a tela estiver em erro ou
+carregando (a primeira tentativa mediu sete telas de erro, porque a API do DEV
+só libera CORS para a porta 3000):
+
+| tela | área ciana | maior elemento ciano |
+|---|---:|---|
+| Dashboard | 0,34% | — |
+| Ações | 0,40% | — |
+| Eventos | 0,89% | botão "Limpar filtros" |
+| Verificação | 1,08% | "Voltar ao dashboard" |
+| Ao Vivo | 1,34% | — |
+| Câmeras | 1,69% | botão "Adicionar câmera" |
+| Relatórios | 2,27% | botão "Exportar" |
+
+A medida conta **área de fundo** ciano sobre a área da tela; borda e texto
+cianos não entram, então ela é conservadora por baixo. Todas passam com folga.
+
+Um achado de lambuja: o **chat flutuante** (§4) aparece na conta de TODAS as
+telas — são 3.136px² de ciano vindos do produto antigo, em cada tela nova.
+
+**Cada papel na tela — VERIFICADO.** Os seis papéis reais foram abertos num
+navegador de verdade, e o menu de cada um foi conferido contra a matriz de
+permissões gerada do backend. Confirmações que interessam ao desenho:
+
+- **`trainer` vê 3 itens** (Dashboard, Ao Vivo, Câmeras) — não vê Eventos,
+  Verificação, Ações nem Relatórios, porque só tem `cameras:read`.
+- **`viewer` vê 6** — tudo menos Verificação.
+- `operator` e `analyst` veem os 7, como `admin`.
+
+O caso do `trainer` merece sua atenção: um perfil que não enxerga evento nem
+relatório tem pouco o que fazer no módulo EPI. Pode estar certo (o trabalho dele
+é no Estúdio), mas é uma decisão de produto que ninguém tomou de propósito — ela
+caiu da matriz de permissões.
+
+**Paridade funcional com as telas antigas — em apuração.** As novas foram
+provadas renderizando com dado real; a comparação função por função com as
+antigas está sendo feita em separado. É pré-requisito da rodada em que o front
+antigo sai, não desta.
 
 ---
 
