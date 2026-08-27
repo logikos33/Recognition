@@ -60,4 +60,13 @@ describe('manifesto do front antigo', () => {
       expect(rotas, `rota sem desenho sumiu: ${r}`).toContain(r)
     }
   })
+
+  it('não lista o front NOVO como candidato a remoção', () => {
+    // O manifesto é a lista do que SAI. `src/app/` é o front novo — o que FICA.
+    // O gerador já os classificou como INFRA uma vez, e INFRA neste documento
+    // significa "decidir caso a caso na remoção": o front novo teria ido parar
+    // na pauta de apagar.
+    const manifesto = readFileSync(MANIFESTO, 'utf8')
+    expect(manifesto).not.toMatch(/`src\/app\//)
+  })
 })

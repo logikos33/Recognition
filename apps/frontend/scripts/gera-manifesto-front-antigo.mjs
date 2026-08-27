@@ -33,6 +33,14 @@ const SEM_DESENHO = [
 
 const MARCA = "@migrado-para";
 
+/**
+ * O front NOVO. Não entra no manifesto: este documento é a lista do que SAI, e
+ * `src/app/` é o que FICA. Sem este corte o gerador classificava `Shell.tsx`
+ * como INFRA e o punha no inventário de remoção — quem lesse a lista na Fase 3
+ * veria o front novo entre os candidatos a apagar.
+ */
+const FRONT_NOVO = "src/app/";
+
 function varrer(dir, saida = []) {
   for (const nome of readdirSync(dir)) {
     const p = join(dir, nome);
@@ -46,7 +54,9 @@ function varrer(dir, saida = []) {
   return saida;
 }
 
-const arquivos = varrer(SRC);
+const arquivos = varrer(SRC).filter(
+  (p) => !relative(RAIZ, p).startsWith(FRONT_NOVO),
+);
 const linhas = arquivos.map((p) => {
   const rel = relative(RAIZ, p);
   const txt = readFileSync(p, "utf8");

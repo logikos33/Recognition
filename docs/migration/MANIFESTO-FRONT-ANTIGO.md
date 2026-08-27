@@ -13,7 +13,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 394 arquivos, 66.955 linhas
+## Situação — 394 arquivos, 66.970 linhas
 
 | status | arquivos |
 |---|---:|
@@ -35,7 +35,7 @@ Rodar `npm run manifesto` no mesmo PR. A Fase 3 só apaga `MIGRADO`.
 
 | arquivo | status | migrado para | linhas |
 |---|---|---|---:|
-| `src/App.tsx` | `INFRA` | — | 74 |
+| `src/App.tsx` | `INFRA` | — | 89 |
 | `src/AppRoutes.tsx` | `INFRA` | — | 182 |
 | `src/components/annotation/AnnotationStudio.css.ts` | `INFRA` | — | 514 |
 | `src/components/annotation/AnnotationStudio.tsx` | `INFRA` | — | 1458 |
