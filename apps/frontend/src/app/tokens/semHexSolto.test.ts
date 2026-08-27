@@ -53,16 +53,24 @@ describe('front novo: cor só por token', () => {
       .toEqual([])
   })
 
-  it('lk.css.ts liga as superfícies ao white-label do tenant', () => {
-    // Se alguém "limpar" os var(--color-*) para hex direto, o tema do cliente
-    // para de valer nas telas novas SEM nenhum teste ficar vermelho. Este é.
-    const fonte = fs.readFileSync(path.join(APP, FONTE_DOS_VALORES), 'utf-8')
-    for (const v of [
-      '--color-bg-base', '--color-bg-surface', '--color-border',
-      '--color-text-primary', '--color-text-secondary', '--color-primary',
-    ]) {
-      expect(fonte, `${v} deixou de ser lido — white-label quebra em silêncio`)
-        .toContain(`var(${v},`)
+  it('o tenant pinta a cor de MARCA, e só ela', () => {
+    // Só o CÓDIGO, não a prosa: o cabeçalho do arquivo cita os nomes das vars
+    // para explicar por que elas ficaram de fora, e citação não é vazamento.
+    const arquivo = fs.readFileSync(path.join(APP, FONTE_DOS_VALORES), 'utf-8')
+    const fonte = arquivo.slice(arquivo.indexOf('createGlobalTheme'))
+    // A cor de marca continua vindo do tenant — se alguém a fixar em hex, o
+    // white-label morre em silêncio nas telas novas.
+    expect(fonte, 'a cor de marca deixou de vir do tenant').toContain('var(--color-primary,')
+
+    // E as SUPERFÍCIES não voltam a vir do tema antigo. Medido no DEV: o
+    // tenant RVB tem white-label claro (texto #0080ff, borda #136ec9) herdado
+    // do shell antigo; ligado às superfícies, o shell escuro novo virava fundo
+    // branco com texto azul. Um white-label de superfície para o shell escuro
+    // precisa ser desenhado antes de existir.
+    for (const v of ['--color-bg-base', '--color-bg-surface', '--color-border',
+                     '--color-text-primary', '--color-text-secondary']) {
+      expect(fonte, `${v} voltou a pintar superfície — o tema antigo vaza para o novo`)
+        .not.toContain(`var(${v},`)
     }
   })
 

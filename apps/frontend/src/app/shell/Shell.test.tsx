@@ -10,7 +10,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const auth = vi.hoisted(() => ({ can: vi.fn(() => true) }))
+const auth = vi.hoisted(() => ({ can: vi.fn((_p: string) => true) }))
 vi.mock('../../hooks/useAuth', () => ({ useAuth: () => auth }))
 
 const sessao = vi.hoisted(() => ({ exp: vi.fn<() => number | null>(() => null) }))

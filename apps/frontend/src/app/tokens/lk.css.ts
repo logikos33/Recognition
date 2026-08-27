@@ -12,37 +12,47 @@
  *    não distingue verde de vermelho ainda tem de conseguir operar.
  *  · TRÊS VOZES tipográficas, e só três.
  *
- * WHITE-LABEL — por que os tokens de superfície são `var(--color-*, <valor>)`:
+ * WHITE-LABEL — o que o tenant pinta, e o que ele NÃO pinta.
  *
- * O `ThemeProvider` (já montado em `App.tsx`, acima das rotas) busca
- * `/v1/tenant/branding` e injeta `--color-primary`, `--color-bg-base`, etc. num
- * `<style>` no head. Referenciar essas vars AQUI faz o tema do cliente valer nas
- * telas novas sem um segundo provider, sem um segundo fetch e sem duas fontes de
- * verdade sobre a cor do tenant. Sem override, o fallback é o valor do desenho.
+ * Só a COR DE MARCA vem do tenant: `--color-primary`, que o `ThemeProvider`
+ * (já montado em `App.tsx`) busca em `/v1/tenant/branding`. Logo, produto e
+ * cor de marca são do cliente — o resto é a identidade Logikos Vision.
  *
- * O que NÃO é white-label, de propósito:
+ * As SUPERFÍCIES (fundo, borda, texto) ficam nos valores do desenho, e isto foi
+ * MEDIDO, não suposto. Ao ligá-las a `var(--color-bg-base, …)` etc., o tenant
+ * RVB do DEV — que tem white-label claro, herdado do shell antigo — renderizou o
+ * shell novo com fundo branco, `--color-text-primary: #0080ff` (texto azul) e
+ * `--color-border: #136ec9`. Não era o desenho: era o tema do front ANTIGO
+ * vazando para dentro do novo. Aqueles valores foram escolhidos para um shell
+ * claro; no shell escuro eles não são personalização, são quebra de identidade.
+ *
+ * Isso NÃO quer dizer que tenant nunca poderá ajustar superfície — quer dizer
+ * que um white-label do shell escuro precisa ser DESENHADO: quais tokens são
+ * abertos e com que piso de contraste, para a legibilidade sobreviver a
+ * qualquer escolha do cliente. Está na lista do design.
+ *
+ * Também FORA do white-label, e por outro motivo:
  *
  *  · **estado** (ok/atenção/nc) — verde, âmbar e vermelho são semântica de
  *    segurança, não marca. Um tenant repintar "não conforme" de verde é risco
  *    de segurança, não personalização.
- *  · **magentaGlitch** — é a assinatura do loader da Logikos, não do cliente.
- *    White-label troca a marca do produto, não a identidade de quem o fez.
+ *  · **magentaGlitch** — assinatura do loader da Logikos, não do cliente.
  */
 import { createGlobalTheme } from '@vanilla-extract/css'
 
 export const lk = createGlobalTheme(':root', {
   cor: {
     /** fundo da aplicação */
-    preto: 'var(--color-bg-base, #0A0A0F)',
+    preto: '#0A0A0F',
     /** superfícies: topbar, sidebar, cards */
-    grafite: 'var(--color-bg-surface, #14141C)',
+    grafite: '#14141C',
     /** bordas 1px e divisores */
-    borda: 'var(--color-border, #23242F)',
+    borda: '#23242F',
     /** texto principal e wordmark */
-    brancoSinal: 'var(--color-text-primary, #F4F6F8)',
+    brancoSinal: '#F4F6F8',
     /** secundário, labels overline */
-    cinzaNevoa: 'var(--color-text-secondary, #8A8F98)',
-    /** ⚠️ SÓ interativo, ≤10%, nunca fundo */
+    cinzaNevoa: '#8A8F98',
+    /** ⚠️ SÓ interativo, ≤10%, nunca fundo de superfície. Cor de MARCA do tenant. */
     cianoVisao: 'var(--color-primary, #00E5FF)',
     /** hover/pressed do acento */
     cianoProfundo: 'var(--color-primary-dark, #0091AD)',

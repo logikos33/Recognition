@@ -22,7 +22,7 @@
  * · **Expiração da sessão.** `getSessionTokenExpMs()` lê o claim `exp` do JWT
  *   corrente. Decodificar token aqui de novo divergiria no primeiro refresh.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { Menu, Search } from 'lucide-react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 
@@ -163,7 +163,16 @@ export function Shell({ carregando }: ShellProps) {
             {carregando ? (
               <LogikosLoader estado="waiting" variante="fullscreen" rotulo="CARREGANDO" />
             ) : (
-              <Outlet />
+              // As telas vêm por lazy(): entre o clique e o pedaço chegar há um
+              // vão. Sem Suspense o React estoura; com um spinner qualquer, o
+              // vão fica com a cara de outro produto.
+              <Suspense
+                fallback={
+                  <LogikosLoader estado="entering" variante="fullscreen" rotulo="ABRINDO" />
+                }
+              >
+                <Outlet />
+              </Suspense>
             )}
           </div>
         </main>

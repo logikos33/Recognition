@@ -41,7 +41,14 @@ export const marca = style({
 
 export const espacador = style({ flex: 1 })
 
-export const corpo = style({ display: 'flex', alignItems: 'stretch' })
+export const corpo = style({
+  display: 'flex',
+  alignItems: 'stretch',
+  // Sem altura mínima, a sidebar termina onde o conteúdo termina — numa tela
+  // com pouco conteúdo (um vazio honesto, por exemplo) ela vira uma faixa
+  // curta no meio da página, e o shell parece quebrado.
+  minHeight: `calc(100vh - ${lk.medida.topbar})`,
+})
 
 export const sidebar = style({
   width: lk.medida.sidebar,

@@ -1,0 +1,419 @@
+/**
+ * O que esta tela não pode perder — e por quê.
+ *
+ *  · **Dado real ou vazio honesto.** A lista vem da API; lista vazia diz
+ *    "nenhuma câmera cadastrada" e falha diz que falhou. O que não pode
+ *    acontecer é a tela afirmar "nenhuma câmera" quando na verdade a chamada
+ *    quebrou — num tenant de 28 câmeras isso é uma mentira operacional.
+ *  · **Estado = cor + ícone + palavra.** Câmera offline não pode ser só um
+ *    ponto vermelho: quem não distingue verde de vermelho ainda tem de operar.
+ *  · **Permissão gate a AÇÃO, não o texto.** Sem `cameras:write` não há
+ *    "Adicionar câmera"; sem `cameras:test` não há "Testar conexão". As
+ *    permissões são as reais de `core/permissions.py`.
+ *  · **Aba Escopo (delta §2 item 8) em lote.** É a regressão mais cara desta
+ *    família: a versão por câmera do `model-config` estourava o pool de
+ *    conexões da API nas 28 câmeras da RVB. UMA chamada por MÓDULO — este
+ *    teste conta as chamadas, não confia na intenção.
+ *  · **Sites são de outro domínio.** A listagem de sites é restrita a
+ *    administradores; um 403 lá não pode derrubar a lista de câmeras.
+ */
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { Cameras, estadoDaCamera } from './Cameras'
+
+// ── dublês ───────────────────────────────────────────────────────────────────
+
+const listar = vi.fn()
+const testar = vi.fn()
+const arquivar = vi.fn()
+const apiGet = vi.fn()
+const apiPost = vi.fn()
+const listarSites = vi.fn()
+const saudeSites = vi.fn()
+const permissoes = new Set<string>()
+
+vi.mock('../../services/cameraService', () => ({
+  cameraService: {
+    list: (...a: unknown[]) => listar(...a),
+    test: (...a: unknown[]) => testar(...a),
+    archive: (...a: unknown[]) => arquivar(...a),
+    restore: vi.fn(),
+    start: vi.fn(),
+    stop: vi.fn(),
+    // A prévia usa o snapshot de triagem — nunca acende a câmera.
+    getSnapshot: vi.fn().mockResolvedValue({ status: 'none', url: null, captured_at: null, error_reason: null }),
+    refreshSnapshot: vi.fn().mockResolvedValue({ status: 'none', queued: false }),
+  },
+}))
+
+vi.mock('../../services/edgeService', () => ({
+  edgeService: {
+    listSites: (...a: unknown[]) => listarSites(...a),
+    getSitesHealth: (...a: unknown[]) => saudeSites(...a),
+    updateSite: vi.fn(),
+  },
+}))
+
+vi.mock('../../services/api', () => ({
+  api: {
+    get: (...a: unknown[]) => apiGet(...a),
+    post: (...a: unknown[]) => apiPost(...a),
+  },
+}))
+
+vi.mock('../../hooks/useAuth', () => ({
+  useAuth: () => ({ can: (p: string) => permissoes.has(p) }),
+}))
+
+// ── dados no formato real do backend (RVB Isolantes — Blumenau) ──────────────
+
+const SITE_ID = 'site-rvb-01'
+
+const CAM_01 = {
+  id: 'cam-01',
+  name: 'CAM-01 Doca Norte',
+  location: 'Doca Norte',
+  manufacturer: 'intelbras',
+  host: '10.0.3.11',
+  port: 554,
+  username: 'admin',
+  channel: 1,
+  is_active: true,
+  stream_status: 'active',
+  active_module: 'epi',
+  fps_target: 5,
+  last_seen: new Date().toISOString(),
+  site_id: SITE_ID,
+  created_at: '2026-08-01T10:00:00Z',
+}
+
+const CAM_04 = {
+  ...CAM_01,
+  id: 'cam-04',
+  name: 'CAM-04 Expedição',
+  location: 'Expedição',
+  host: '10.0.3.14',
+  stream_status: 'offline',
+  fps_target: 4,
+  last_seen: '2026-08-01T10:00:00Z',
+}
+
+const SITE = {
+  id: SITE_ID,
+  tenant_id: 't1',
+  name: 'RVB Isolantes — Blumenau',
+  description: null,
+  location: 'Blumenau/SC',
+  deployment_mode: 'edge' as const,
+  status: 'active' as const,
+  created_at: null,
+  created_by: null,
+}
+
+const SAUDE = {
+  site_id: SITE_ID,
+  site_name: SITE.name,
+  status: 'healthy' as const,
+  last_heartbeat: new Date().toISOString(),
+  fps: 12,
+  cameras_online: 1,
+  cameras_total: 2,
+  gpu_temp_c: 61,
+  decode_fps: 28,
+}
+
+const MODELO = { id: 'mod-1', name: 'RVB EPI v3', framework: 'yolox', r2_onnx_key: 'k.onnx', is_active: true, module_code: 'epi' }
+
+/** `api.get` roteando por URL — é assim que a aba Escopo conversa com a API. */
+function apiDeEscopo() {
+  apiGet.mockImplementation((url: string) => {
+    if (url === '/v1/models') return Promise.resolve({ success: true, data: { models: [MODELO] } })
+    if (url.startsWith('/v1/models/')) {
+      return Promise.resolve({
+        success: true,
+        data: {
+          model: MODELO,
+          lineage: { dataset_version: { class_distribution: { capacete: 12, colete: 9, __sem_suporte_treino__: ['colete'] } } },
+        },
+      })
+    }
+    if (url.startsWith('/cameras/model-config')) {
+      return Promise.resolve({ success: true, data: { deployments: {} } })
+    }
+    return Promise.reject(new Error(`URL inesperada: ${url}`))
+  })
+}
+
+function montar() {
+  return render(<MemoryRouter><Cameras /></MemoryRouter>)
+}
+
+/** O nome da selecionada aparece na lista E no cabeçalho do detalhe — por isso
+ * `findAllByText`; esperar por um só quebraria por ambiguidade, não por bug. */
+const esperarCarregado = () => screen.findAllByText('CAM-01 Doca Norte')
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  permissoes.clear()
+  ;['cameras:read', 'cameras:write', 'cameras:test', 'cameras:control', 'cameras:configure']
+    .forEach((p) => permissoes.add(p))
+  listar.mockResolvedValue([CAM_01, CAM_04])
+  listarSites.mockResolvedValue([SITE])
+  saudeSites.mockResolvedValue([SAUDE])
+  apiGet.mockRejectedValue(new Error('não deveria ser chamada'))
+})
+
+// ── dado real / vazio honesto / erro ─────────────────────────────────────────
+
+describe('dado real, vazio honesto, erro que se assume', () => {
+  it('mostra as câmeras que a API devolveu — nenhuma inventada', async () => {
+    montar()
+    expect(await esperarCarregado()).toBeTruthy()
+    expect(screen.getByText('CAM-04 Expedição')).toBeTruthy()
+  })
+
+  it('lista vazia é vazio, com o convite do desenho', async () => {
+    listar.mockResolvedValue([])
+    montar()
+    expect(await screen.findByText('Nenhuma câmera cadastrada')).toBeTruthy()
+  })
+
+  it('falha NÃO vira "nenhuma câmera" — diz que falhou e oferece tentar de novo', async () => {
+    listar.mockRejectedValueOnce(new Error('TIMEOUT 10 S'))
+    montar()
+    expect(await screen.findByText('Não foi possível carregar')).toBeTruthy()
+    expect(screen.queryByText('Nenhuma câmera cadastrada')).toBeNull()
+
+    fireEvent.click(screen.getByText('Tentar novamente'))
+    expect(await esperarCarregado()).toBeTruthy()
+  })
+
+  it('sites restritos (403) não derrubam a lista de câmeras', async () => {
+    listarSites.mockRejectedValue(new Error('403 Forbidden'))
+    saudeSites.mockRejectedValue(new Error('403 Forbidden'))
+    montar()
+    expect(await esperarCarregado()).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Sites' }))
+    expect(await screen.findByText(/403 Forbidden/)).toBeTruthy()
+  })
+})
+
+// ── estado = cor + ícone + palavra ───────────────────────────────────────────
+
+describe('estado nunca é só uma cor', () => {
+  it('câmera offline traz a PALAVRA, não só um ponto vermelho', async () => {
+    montar()
+    await screen.findByText('CAM-04 Expedição')
+    expect(screen.getAllByText('PARADA').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('ONLINE').length).toBeGreaterThan(0)
+  })
+
+  it('arquivada, falha e parada são estados distintos — e nomeados', () => {
+    expect(estadoDaCamera({ is_active: false, stream_status: 'active' }).palavra).toBe('ARQUIVADA')
+    expect(estadoDaCamera({ is_active: true, stream_status: 'error' }).palavra).toBe('FALHA')
+    expect(estadoDaCamera({ is_active: true, stream_status: 'inactive' }).palavra).toBe('PARADA')
+    expect(estadoDaCamera({ is_active: true, stream_status: 'online' }).palavra).toBe('ONLINE')
+  })
+})
+
+// ── permissões reais ─────────────────────────────────────────────────────────
+
+describe('permissões (as reais de core/permissions.py)', () => {
+  it('sem cameras:write não há como adicionar nem editar', async () => {
+    permissoes.delete('cameras:write')
+    montar()
+    await esperarCarregado()
+    expect(screen.queryByText('Adicionar câmera')).toBeNull()
+    expect(screen.queryByText('Editar')).toBeNull()
+  })
+
+  it('sem cameras:test não há "Testar conexão"', async () => {
+    permissoes.delete('cameras:test')
+    montar()
+    await esperarCarregado()
+    expect(screen.queryByText('Testar conexão')).toBeNull()
+  })
+
+  it('sem cameras:control não há iniciar/parar monitoramento', async () => {
+    permissoes.delete('cameras:control')
+    montar()
+    await esperarCarregado()
+    expect(screen.queryByText('Parar monitoramento')).toBeNull()
+    expect(screen.queryByText('Iniciar monitoramento')).toBeNull()
+  })
+})
+
+// ── teste de conectividade ───────────────────────────────────────────────────
+
+describe('teste de conexão', () => {
+  it('mostra o passo a passo com as mensagens que o backend devolveu', async () => {
+    testar.mockResolvedValue({
+      camera_id: CAM_01.id,
+      success: false,
+      error: 'Credenciais incorretas.',
+      suggestion: 'Confira usuário e senha da câmera.',
+      checks: {
+        url_format: { status: 'ok', message: 'rtsp válido' },
+        host_reachable: { status: 'ok', message: 'ping 4 ms' },
+        port_open: { status: 'ok', message: '554 aberta' },
+        rtsp_response: { status: 'error', message: '401 Unauthorized' },
+        stream_available: { status: 'pending', message: 'não executado' },
+      },
+    })
+    montar()
+    await esperarCarregado()
+    fireEvent.click(screen.getByText('Testar conexão'))
+
+    expect(await screen.findByText('401 Unauthorized')).toBeTruthy()
+    expect(screen.getByText('Handshake RTSP')).toBeTruthy()
+    expect(screen.getByText('Credenciais incorretas.')).toBeTruthy()
+    expect(screen.getByText('Confira usuário e senha da câmera.')).toBeTruthy()
+  })
+
+  it('erro de rede no próprio teste aparece na tela, não some', async () => {
+    testar.mockRejectedValue(new Error('Failed to fetch'))
+    montar()
+    await esperarCarregado()
+    fireEvent.click(screen.getByText('Testar conexão'))
+    expect(await screen.findByText('Failed to fetch')).toBeTruthy()
+  })
+})
+
+// ── endereço com senha oculta ────────────────────────────────────────────────
+
+it('o endereço RTSP nunca exibe senha', async () => {
+  montar()
+  await esperarCarregado()
+  expect(screen.getByText(/rtsp:\/\/admin:\*\*\*\*@10\.0\.3\.11:554/)).toBeTruthy()
+})
+
+// ── aba Saúde ────────────────────────────────────────────────────────────────
+
+describe('aba Saúde', () => {
+  it('não inventa uptime nem chama de "FPS" o que é alvo configurado', async () => {
+    montar()
+    await esperarCarregado()
+    fireEvent.click(screen.getByRole('tab', { name: 'Saúde' }))
+
+    expect(await screen.findByText('Uptime 7d')).toBeTruthy()
+    expect(screen.getByText('FPS alvo')).toBeTruthy()
+    const linha = screen.getByRole('cell', { name: 'CAM-01 Doca Norte' }).closest('tr')!
+    // Uptime por câmera não existe na API — a célula fica vazia, não zerada.
+    expect(within(linha).getAllByText('—').length).toBeGreaterThan(0)
+  })
+})
+
+// ── aba Sites ────────────────────────────────────────────────────────────────
+
+describe('aba Sites', () => {
+  it('traz o site real e a telemetria que o edge mandou', async () => {
+    montar()
+    await esperarCarregado()
+    fireEvent.click(screen.getByRole('tab', { name: 'Sites' }))
+
+    expect(await screen.findByText('EDGE SAUDÁVEL')).toBeTruthy()
+    expect(screen.getByText('1/2')).toBeTruthy()
+    expect(screen.getByText('61')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Edge', pressed: true })).toBeTruthy()
+  })
+
+  it('sem cameras:configure o modo do site fica travado', async () => {
+    permissoes.delete('cameras:configure')
+    montar()
+    await esperarCarregado()
+    fireEvent.click(screen.getByRole('tab', { name: 'Sites' }))
+
+    const cloud = await screen.findByRole('button', { name: 'Cloud-only' })
+    expect((cloud as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+// ── aba Escopo — delta §2 item 8 ─────────────────────────────────────────────
+
+describe('aba Escopo por câmera (delta §2 item 8)', () => {
+  it('a aba existe — a funcionalidade não se perdeu na migração', async () => {
+    apiDeEscopo()
+    montar()
+    await esperarCarregado()
+    expect(screen.getByRole('tab', { name: 'Escopo' })).toBeTruthy()
+  })
+
+  it('pede o model-config EM LOTE: uma vez por MÓDULO, não uma por câmera', async () => {
+    apiDeEscopo()
+    montar()
+    await esperarCarregado()
+    fireEvent.click(screen.getByRole('tab', { name: 'Escopo' }))
+
+    await waitFor(() => {
+      const urls = apiGet.mock.calls.map((c) => String(c[0]))
+      const emLote = urls.filter((url) => url.startsWith('/cameras/model-config'))
+      // Duas câmeras, um módulo → UMA chamada. Uma por câmera estourava o pool
+      // de conexões da API nas 28 da RVB.
+      expect(emLote).toHaveLength(1)
+      expect(emLote[0]).toBe('/cameras/model-config?module=epi')
+    })
+    // E nunca a variante por câmera.
+    expect(apiGet.mock.calls.map((c) => String(c[0])).some((url) => /\/cameras\/[^/]+\/model-config/.test(url))).toBe(false)
+  })
+
+  it('só oferece as classes que o modelo declara — menos as sem suporte a treino', async () => {
+    apiDeEscopo()
+    montar()
+    await esperarCarregado()
+    fireEvent.click(screen.getByRole('tab', { name: 'Escopo' }))
+
+    const seletor = await screen.findByLabelText('Modelo da câmera CAM-01 Doca Norte')
+    fireEvent.change(seletor, { target: { value: MODELO.id } })
+
+    expect(await screen.findByLabelText('Classe capacete em CAM-01 Doca Norte')).toBeTruthy()
+    // 'colete' está em __sem_suporte_treino__ — o detector não a emite.
+    expect(screen.queryByLabelText('Classe colete em CAM-01 Doca Norte')).toBeNull()
+  })
+
+  it('salvar grava module_code e config.classes — o contrato do worker', async () => {
+    apiDeEscopo()
+    apiPost.mockResolvedValue({
+      success: true,
+      data: { deployment: { id: 'd1', model_id: MODELO.id, camera_id: CAM_01.id, module_code: 'epi', config: { classes: ['capacete'] }, status: 'active', created_at: '2026-08-27T12:00:00Z' } },
+    })
+    montar()
+    await esperarCarregado()
+    fireEvent.click(screen.getByRole('tab', { name: 'Escopo' }))
+
+    const seletor = await screen.findByLabelText('Modelo da câmera CAM-01 Doca Norte')
+    fireEvent.change(seletor, { target: { value: MODELO.id } })
+    fireEvent.click(await screen.findByLabelText('Salvar escopo de CAM-01 Doca Norte'))
+
+    await waitFor(() => {
+      expect(apiPost).toHaveBeenCalledWith(`/cameras/${CAM_01.id}/model-config`, {
+        model_id: MODELO.id,
+        module_code: 'epi',
+        config: { classes: ['capacete'] },
+      })
+    })
+  })
+
+  it('sem cameras:configure a aba é somente leitura', async () => {
+    permissoes.delete('cameras:configure')
+    apiDeEscopo()
+    montar()
+    await esperarCarregado()
+    fireEvent.click(screen.getByRole('tab', { name: 'Escopo' }))
+
+    const seletor = await screen.findByLabelText('Modelo da câmera CAM-01 Doca Norte')
+    expect((seletor as HTMLSelectElement).disabled).toBe(true)
+  })
+
+  it('falha ao carregar o escopo NÃO vira "nenhuma câmera ativa"', async () => {
+    apiGet.mockRejectedValue(new Error('connection pool exhausted'))
+    montar()
+    await esperarCarregado()
+    fireEvent.click(screen.getByRole('tab', { name: 'Escopo' }))
+
+    expect(await screen.findByText('Não foi possível carregar o escopo')).toBeTruthy()
+    expect(screen.queryByText('Nenhuma câmera ativa no tenant.')).toBeNull()
+  })
+})
