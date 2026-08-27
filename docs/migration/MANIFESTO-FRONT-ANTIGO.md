@@ -13,13 +13,14 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 394 arquivos, 66.970 linhas
+## Situação — 394 arquivos, 67.075 linhas
 
 | status | arquivos |
 |---|---:|
 | `INFRA` | 226 |
-| `PENDENTE` | 161 |
+| `PENDENTE` | 154 |
 | `SEM-DESENHO` | 7 |
+| `MIGRADO` | 7 |
 
 ## Como marcar um arquivo como migrado
 
@@ -261,6 +262,13 @@ Rodar `npm run manifesto` no mesmo PR. A Fase 3 só apaga `MIGRADO`.
 | `src/utils/labels.ts` | `INFRA` | — | 195 |
 | `src/utils/statusColors.ts` | `INFRA` | — | 18 |
 | `src/utils/timeBuckets.ts` | `INFRA` | — | 106 |
+| `src/pages/epi/AlertDetailPage.tsx` | `MIGRADO` | src/app/epi/EventoDetalhe.tsx | 644 |
+| `src/pages/epi/EpiAlerts.tsx` | `MIGRADO` | src/app/epi/Eventos.tsx | 26 |
+| `src/pages/epi/EpiCameras.tsx` | `MIGRADO` | src/app/epi/Cameras.tsx | 26 |
+| `src/pages/epi/EpiDashboard.tsx` | `MIGRADO` | src/app/epi/Dashboard.tsx | 151 |
+| `src/pages/MonitoringPage.tsx` | `MIGRADO` | src/app/epi/AoVivo.tsx | 677 |
+| `src/pages/ReportsPage.tsx` | `MIGRADO` | src/app/epi/Relatorios.tsx | 31 |
+| `src/pages/VerificationQueuePage.tsx` | `MIGRADO` | src/app/epi/Verificacao.tsx | 284 |
 | `src/modules/admin/AdminLayout.css.ts` | `PENDENTE` | — | 249 |
 | `src/modules/admin/AdminLayout.tsx` | `PENDENTE` | — | 278 |
 | `src/modules/admin/components/admin.css.ts` | `PENDENTE` | — | 275 |
@@ -381,11 +389,7 @@ Rodar `npm run manifesto` no mesmo PR. A Fase 3 só apaga `MIGRADO`.
 | `src/pages/DashboardPage.css.ts` | `PENDENTE` | — | 105 |
 | `src/pages/DashboardPage.tsx` | `PENDENTE` | — | 156 |
 | `src/pages/DesignSystemPage.tsx` | `PENDENTE` | — | 317 |
-| `src/pages/epi/AlertDetailPage.tsx` | `PENDENTE` | — | 629 |
-| `src/pages/epi/EpiAlerts.tsx` | `PENDENTE` | — | 11 |
-| `src/pages/epi/EpiCameras.tsx` | `PENDENTE` | — | 11 |
 | `src/pages/epi/EpiDashboard.css.ts` | `PENDENTE` | — | 43 |
-| `src/pages/epi/EpiDashboard.tsx` | `PENDENTE` | — | 136 |
 | `src/pages/epi/EpiSitesPage.css.ts` | `PENDENTE` | — | 69 |
 | `src/pages/epi/lupaEvidencia.ts` | `PENDENTE` | — | 68 |
 | `src/pages/ForgotPasswordPage.tsx` | `PENDENTE` | — | 72 |
@@ -416,12 +420,9 @@ Rodar `npm run manifesto` no mesmo PR. A Fase 3 só apaga `MIGRADO`.
 | `src/pages/monitoring/ThresholdsModal.tsx` | `PENDENTE` | — | 106 |
 | `src/pages/monitoring/VersionPanel.tsx` | `PENDENTE` | — | 70 |
 | `src/pages/MonitoringPage.css.ts` | `PENDENTE` | — | 379 |
-| `src/pages/MonitoringPage.tsx` | `PENDENTE` | — | 662 |
-| `src/pages/ReportsPage.tsx` | `PENDENTE` | — | 16 |
 | `src/pages/ResetPasswordPage.tsx` | `PENDENTE` | — | 84 |
 | `src/pages/TrainingPage.css.ts` | `PENDENTE` | — | 344 |
 | `src/pages/TrainingPage.tsx` | `PENDENTE` | — | 1040 |
-| `src/pages/VerificationQueuePage.tsx` | `PENDENTE` | — | 269 |
 | `src/pages/CameraTriagePage.tsx` | `SEM-DESENHO` | — | 482 |
 | `src/pages/DashboardIntegradoPage.tsx` | `SEM-DESENHO` | — | 418 |
 | `src/pages/epi/EpiOperationsPage.tsx` | `SEM-DESENHO` | — | 72 |
