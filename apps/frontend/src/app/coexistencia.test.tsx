@@ -53,4 +53,36 @@ describe('front novo e front antigo convivem', () => {
   it('o Shell novo só monta sob o prefixo', () => {
     expect(leia('App.tsx')).toContain('path={PREFIXO_NOVO} element={<Shell />}')
   })
+
+  it('nenhuma tela nova linka para fora do prefixo', () => {
+    // O pior bug desta rodada, e o mais silencioso: `<Link to="/epi/cameras">`
+    // dentro do front NOVO leva para a tela ANTIGA de mesmo endereço. Não dá
+    // erro, não quebra teste, não avisa nada — o usuário só vê, de repente, o
+    // produto velho. Aconteceu em 10 lugares na primeira leva.
+    //
+    // Todo link interno passa por `rotaNova()`. Este teste é quem cobra.
+    const infratores: string[] = []
+    const varre = (dir: string) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name)
+        if (e.isDirectory()) { varre(p); continue }
+        if (!/\.tsx?$/.test(e.name) || /\.test\.tsx?$/.test(e.name)) continue
+        if (path.relative(SRC, p) === 'app/RotasNovas.tsx') continue
+        fs.readFileSync(p, 'utf-8').split('\n').forEach((linha, i) => {
+          // `to="/..."` ou to={`/...`} com caminho absoluto que não é o prefixo
+          const m = linha.match(/to=(?:"(\/[^"]*)"|\{`(\/[^`]*)`\})/)
+          const alvo = m?.[1] ?? m?.[2]
+          if (alvo && !alvo.startsWith('/novo')) {
+            infratores.push(`${path.relative(SRC, p)}:${i + 1}  to="${alvo}"`)
+          }
+        })
+      }
+    }
+    varre(path.join(SRC, 'app'))
+    expect(
+      infratores,
+      'link absoluto sai do front novo e cai no antigo — use rotaNova():\n' +
+        infratores.join('\n'),
+    ).toEqual([])
+  })
 })

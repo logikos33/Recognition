@@ -61,6 +61,7 @@ import { fillBuckets, formatBucketLabel } from '../../utils/timeBuckets'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import { lk } from '../tokens/lk.css'
 import * as s from './Dashboard.css'
+import { rotaNova } from '../RotasNovas'
 
 /**
  * `ModuleStats` (serviço compartilhado com o front antigo) só declara as 4
@@ -348,7 +349,7 @@ export function Dashboard() {
           Nenhuma câmera está atribuída ao EPI ainda. O score aparece após as primeiras detecções.
         </span>
         {can('cameras:read') && (
-          <Link to="/epi/cameras" className={s.botaoPrimario}>
+          <Link to={rotaNova('/epi/cameras')} className={s.botaoPrimario}>
             Ver câmeras
           </Link>
         )}
@@ -488,7 +489,7 @@ export function Dashboard() {
         titulo="Ações recentes"
         acao={
           can('alerts:read') ? (
-            <Link to="/epi/acoes" className={s.atalhoInline}>
+            <Link to={rotaNova('/epi/acoes')} className={s.atalhoInline}>
               todas →
             </Link>
           ) : undefined
@@ -610,8 +611,15 @@ export function Dashboard() {
             </div>
           </div>
           <div className={s.rodapeMono}>
-            {/* Sem série histórica de score em endpoint nenhum — ver cabeçalho. */}
-            <span>SEM HISTÓRICO · 7 DIAS</span>
+            {/*
+              "SEM HISTÓRICO" sozinho contradizia o cartão ao lado, que mostra
+              "% vs média 7d" a 40px daqui: um diz que não há histórico, o outro
+              calcula em cima de uma média de 7 dias. São coisas diferentes — não
+              existe SÉRIE DO SCORE em endpoint nenhum, enquanto a contagem de
+              eventos da semana existe (`alerts_week`) — mas quem lê a tela não
+              tem como saber disso. O rótulo passa a dizer de que histórico fala.
+            */}
+            <span>SCORE SEM SÉRIE · 7 DIAS</span>
             <span>ATUALIZADO {horaCurta(estatisticas.dataUpdatedAt)}</span>
           </div>
         </section>
@@ -636,7 +644,7 @@ export function Dashboard() {
             )}
           </span>
           {can('alerts:read') && (
-            <Link to="/epi/eventos" className={s.atalho}>
+            <Link to={rotaNova('/epi/eventos')} className={s.atalho}>
               triar eventos →
             </Link>
           )}
@@ -666,7 +674,7 @@ export function Dashboard() {
             <Estado nivel="ok" palavra="Todas online" />
           )}
           {can('cameras:read') && (
-            <Link to="/epi/cameras" className={s.atalho}>
+            <Link to={rotaNova('/epi/cameras')} className={s.atalho}>
               ver saúde →
             </Link>
           )}

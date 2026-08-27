@@ -77,6 +77,7 @@ import { useToast } from '../../components/ui/Toast/useToast'
 import { labelForClass } from '../../utils/labels'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import * as s from './Verificacao.css'
+import { rotaNova } from '../RotasNovas'
 
 /** Única unidade de bbox projetável (contrato de `domain/detectors/base.py`). */
 const BBOX_PIXELS = 'pixels_xywh_frame_original'
@@ -363,7 +364,7 @@ export function Verificacao() {
           Nenhuma detecção aguarda verificação. As decisões de hoje já alimentam o próximo
           treino.
         </span>
-        <Link className={s.acaoPrimaria} to="/epi/dashboard">
+        <Link className={s.acaoPrimaria} to={rotaNova('/epi/dashboard')}>
           Voltar ao dashboard
         </Link>
       </div>

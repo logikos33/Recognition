@@ -57,6 +57,7 @@ import { rangeForPeriod } from '../../utils/timeBuckets'
 import type { Camera } from '../../types'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import * as s from './Eventos.css'
+import { rotaNova } from '../RotasNovas'
 
 const MODULO = 'epi'
 const POR_PAGINA = 20
@@ -655,7 +656,7 @@ export function Eventos() {
                             Reconhecer
                           </button>
                         )}
-                        <NavLink className={s.botao} to={`/epi/eventos/${ev.id}`}>
+                        <NavLink className={s.botao} to={rotaNova(`/epi/eventos/${ev.id}`)}>
                           Abrir →
                         </NavLink>
                       </td>

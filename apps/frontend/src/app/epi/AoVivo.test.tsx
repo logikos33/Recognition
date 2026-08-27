@@ -29,6 +29,7 @@ import { cameraService } from '../../services/cameraService'
 import { __resetLiveViewCache } from '../../hooks/useLiveView'
 import type { Camera } from '../../types'
 import type { Detection } from '../../hooks/useMonitoringSocket'
+import { rotaNova } from '../RotasNovas'
 
 // ── Dublês ──────────────────────────────────────────────────────────────────
 
@@ -250,7 +251,7 @@ describe('estados da tela', () => {
     respondeCameras([])
     montar()
     await screen.findByText('Nenhuma câmera neste site')
-    expect(screen.getByText('Adicionar câmera').getAttribute('href')).toBe('/epi/cameras')
+    expect(screen.getByText('Adicionar câmera').getAttribute('href')).toBe(rotaNova('/epi/cameras'))
     expect(screen.queryByTestId('player')).toBeNull()
   })
 
@@ -306,7 +307,7 @@ describe('gaveta da câmera', () => {
     expect(within(gaveta).getByText('DOCA NORTE')).toBeTruthy()
 
     const evento = await within(gaveta).findByText('Sem capacete')
-    expect(evento.closest('a')?.getAttribute('href')).toBe('/epi/eventos/a1')
+    expect(evento.closest('a')?.getAttribute('href')).toBe(rotaNova('/epi/eventos/a1'))
   })
 
   it('câmera sem evento: vazio honesto, não lista inventada', async () => {

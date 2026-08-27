@@ -50,6 +50,17 @@ const Verificacao = lazy(() => import('./epi/Verificacao').then((m) => ({ defaul
 export const PREFIXO_NOVO = '/novo'
 
 /**
+ * Endereço de uma tela do front novo. **Todo `<Link>`/`navigate` interno passa
+ * por aqui.**
+ *
+ * Escrever `to="/epi/cameras"` direto não dá erro nenhum: leva o usuário para a
+ * tela ANTIGA de mesmo endereço, calada, com a cara do produto velho. Foi o que
+ * aconteceu em 10 lugares na primeira leva — e nenhum teste pegou, porque do
+ * ponto de vista do React Router estava tudo certo. Há teste agora.
+ */
+export const rotaNova = (caminho: string) => PREFIXO_NOVO + caminho
+
+/**
  * As telas entram aqui conforme forem migradas E PROVADAS, uma por uma.
  * Lista vazia = o front novo ainda não serve rota nenhuma, e o antigo atende
  * tudo. É o estado honesto até a primeira tela ficar de pé.

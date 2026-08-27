@@ -107,7 +107,7 @@ describe('EPI Dashboard — números', () => {
 
   it('declara que não tem histórico de 7 dias em vez de desenhar uma curva', async () => {
     montar()
-    expect(await screen.findByText(/SEM HISTÓRICO · 7 DIAS/)).toBeTruthy()
+    expect(await screen.findByText(/SCORE SEM SÉRIE · 7 DIAS/)).toBeTruthy()
   })
 
   it('deriva o delta de eventos da média de 7 dias que a API devolveu', async () => {

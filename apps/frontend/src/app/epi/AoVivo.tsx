@@ -63,6 +63,7 @@ import { CameraPlayer } from '../../components/monitoring/CameraPlayer'
 import type { Camera } from '../../types'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import * as s from './AoVivo.css'
+import { rotaNova } from '../RotasNovas'
 
 const WS_URL = (import.meta.env.VITE_WS_URL as string | undefined)
   || (import.meta.env.VITE_API_URL as string | undefined)
@@ -344,7 +345,7 @@ function Gaveta({
           <span className={s.centradoDetalhe}>Nenhum evento nesta câmera</span>
         ) : (
           eventos.map((ev) => (
-            <Link key={ev.id} to={`/epi/eventos/${ev.id}`} className={s.itemEvento}>
+            <Link key={ev.id} to={rotaNova(`/epi/eventos/${ev.id}`)} className={s.itemEvento}>
               <span className={s.pontoEvento} />
               <span className={s.eventoTitulo}>
                 {ev.class_name ?? ev.violations?.map((v) => v.class).filter(Boolean).join(', ') ?? 'Evento'}
@@ -355,7 +356,7 @@ function Gaveta({
         )}
       </div>
 
-      <Link to="/epi/cameras" className={s.acaoSecundaria}>
+      <Link to={rotaNova('/epi/cameras')} className={s.acaoSecundaria}>
         Ir para gestão da câmera
       </Link>
     </aside>
@@ -485,7 +486,7 @@ export function AoVivo() {
         <span className={s.centradoTexto}>
           Cadastre a primeira câmera para começar o monitoramento ao vivo.
         </span>
-        <Link to="/epi/cameras" className={s.acaoPrimaria}>
+        <Link to={rotaNova('/epi/cameras')} className={s.acaoPrimaria}>
           Adicionar câmera
         </Link>
       </div>
@@ -612,7 +613,7 @@ export function AoVivo() {
                   onDestacar={() => destacar(c.id)}
                 />
               ))}
-              <Link to="/epi/cameras" className={s.ladrilhoVago}>
+              <Link to={rotaNova('/epi/cameras')} className={s.ladrilhoVago}>
                 <Plus size={22} strokeWidth={1.7} aria-hidden />
                 Adicionar câmera
               </Link>
