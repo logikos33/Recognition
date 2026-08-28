@@ -1,0 +1,15 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "1 · Ajustar a câmera" },
+    { "file": "CorrigirCaixa.dc.html", "x": 1560, "y": 0, "w": 1440, "h": 900, "title": "2 · Corrigir a caixa" },
+    { "file": "ParedeCameras.dc.html", "x": 0, "y": 1020, "w": 1440, "h": 900, "title": "3 · Montar a parede" },
+    { "file": "RankingCameras.dc.html", "x": 1560, "y": 1020, "w": 620, "h": 520, "title": "4 · Ranking de câmeras" }
+  ],
+  "annotations": [
+    { "id": "porque", "x": 0, "y": -190, "w": 620, "text": "As 4 funções que o front novo ainda não faz e o handoff não desenhou.\n\nSaíram da comparação função-a-função entre cada tela antiga e sua substituta: 42 perdas alegadas, 22 confirmadas por um revisor independente. Estas quatro bloqueiam — enquanto não existirem, as telas antigas não podem ser apagadas." },
+    { "id": "dados-reais", "x": 700, "y": -190, "w": 740, "text": "Todo campo aqui é real, lido do código: telemetria é gpu_pct / gpu_mem_pct / cpu_pct / queue_depth / inference_fps / inference_latency_ms / gpu_temp_c / decode_pct; a caixa é [x, y, largura, altura] em pixels do frame original; o ranking vem de by_camera em /events/summary. Nenhum número foi inventado — os valores mostrados são de exemplo, os CAMPOS não." },
+    { "id": "shell", "x": 1560, "y": -190, "w": 620, "text": "O shell (topbar 56 · sidebar 236 · item 38 · conteúdo 1280/pad 24) está desenhado inline em cada artboard porque este canvas não resolve os dc-import do handoff original. Ao levar para o projeto do handoff, trocar por <dc-import name=\"EPI Topbar\"> e <dc-import name=\"EPI Sidebar\">." },
+    { "id": "duvida-parede", "x": 0, "y": 1950, "w": 620, "text": "Dúvida em aberto na parede: hoje o layout salvo é só do navegador de quem salvou (localStorage). Layout por USUÁRIO no servidor, ou por SITE (a parede da portaria é a mesma para quem entrar)? Isso muda se precisa de endpoint." }
+  ],
+  "launch": { "view": "canvas" }
+}

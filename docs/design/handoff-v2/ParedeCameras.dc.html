@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}</style>
+</helmet>
+
+<div style="width:100%;height:100vh;display:flex;flex-direction:column;background:#0A0A0F" data-screen-label="EPI Ao Vivo · Montar a parede">
+
+  <div style="height:56px;flex:none;display:flex;align-items:center;gap:16px;padding:0 24px;background:#14141C;border-bottom:1px solid #23242F">
+    <span style="font-family:'Space Grotesk';font-weight:700;letter-spacing:.04em;font-size:15px">LOGIKOS</span>
+    <div style="flex:1"></div>
+    <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98;border:1px solid #23242F;border-radius:8px;padding:3px 8px">⌘K</span>
+  </div>
+
+  <div style="flex:1;display:flex;min-height:0">
+    <div style="width:236px;flex:none;background:#14141C;border-right:1px solid #23242F;padding:16px 0;display:flex;flex-direction:column">
+      <span style="padding:8px 24px;font-family:'JetBrains Mono';font-size:11px;letter-spacing:.18em;color:#8A8F98">EPI</span>
+      <sc-for list="{{ nav }}" as="n" hint-placeholder-count="7">
+        <span style="height:38px;display:flex;align-items:center;padding:0 24px;font-size:14px;color:{{ n.cor }};border-left:2px solid {{ n.marca }};background:{{ n.fundo }}">{{ n.t }}</span>
+      </sc-for>
+    </div>
+
+    <main style="flex:1;min-width:0;display:flex;flex-direction:column;padding:24px;box-sizing:border-box;gap:14px;overflow:hidden">
+
+      <div style="display:flex;align-items:center;gap:14px;flex:none">
+        <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Ao Vivo</h1>
+        <span style="font-family:'JetBrains Mono';font-size:11px;letter-spacing:.16em;color:#8A8F98">29 CÂMERAS · 20 ATIVAS</span>
+        <div style="flex:1"></div>
+        <div style="display:flex;background:#14141C;border-radius:8px;padding:3px;gap:2px">
+          <sc-for list="{{ presetsGrade }}" as="p" hint-placeholder-count="4">
+            <span style="height:34px;display:flex;align-items:center;padding:0 14px;border-radius:6px;background:{{ p.bg }};color:{{ p.cor }};font-family:'JetBrains Mono';font-size:12.5px;font-weight:700">{{ p.t }}</span>
+          </sc-for>
+        </div>
+        <span style="display:flex;align-items:center;gap:8px;height:34px;padding:0 12px;border-radius:8px;border:1px solid #00E5FF;color:#00E5FF;font-size:13px;font-weight:600">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="1.9"><path d="M8 5h11"/><path d="M8 12h11"/><path d="M8 19h11"/><path d="M3.5 5h.01"/><path d="M3.5 12h.01"/><path d="M3.5 19h.01"/></svg>
+          Montar
+        </span>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;flex:none;padding:10px 14px;border-radius:10px;background:#14141C;border:1px solid #23242F">
+        <span style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.18em;color:#8A8F98">MEUS LAYOUTS</span>
+        <sc-for list="{{ salvos }}" as="s" hint-placeholder-count="3">
+          <span style="display:flex;align-items:center;gap:8px;height:32px;padding:0 12px;border-radius:7px;border:1px solid {{ s.borda }};background:{{ s.fundo }};color:{{ s.cor }};font-size:13px">
+            {{ s.t }}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="{{ s.cor }}" stroke-width="2"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+          </span>
+        </sc-for>
+        <span style="display:flex;align-items:center;gap:7px;height:32px;padding:0 12px;border-radius:7px;border:1px dashed #23242F;color:#8A8F98;font-size:13px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8A8F98" stroke-width="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          Salvar layout atual
+        </span>
+        <div style="flex:1"></div>
+        <span style="font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98">{{ contagem }}</span>
+      </div>
+
+      <div style="flex:1;min-height:0;display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));grid-template-rows:repeat(2, minmax(0, 1fr));gap:12px">
+        <sc-for list="{{ celulas }}" as="c" hint-placeholder-count="6">
+          <div style="position:relative;border-radius:10px;overflow:hidden;background:{{ c.fundo }};border:{{ c.borda }};display:flex;flex-direction:column">
+            <div style="display:flex;align-items:center;gap:8px;padding:9px 11px;flex:none">
+              <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.16em;color:#8A8F98">{{ c.slot }}</span>
+              <span style="font-family:'JetBrains Mono';font-size:12px;font-weight:700;color:{{ c.corNome }}">{{ c.nome }}</span>
+              <div style="flex:1"></div>
+              <sc-if value="{{ c.ocupada }}" hint-placeholder-val="{{ true }}">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8A8F98" stroke-width="1.8"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>
+              </sc-if>
+            </div>
+            <div style="flex:1;display:flex;align-items:center;justify-content:center">
+              <sc-if value="{{ c.vazia }}" hint-placeholder-val="{{ false }}">
+                <span style="display:flex;align-items:center;gap:8px;height:38px;padding:0 14px;border-radius:8px;border:1px dashed #23242F;color:#8A8F98;font-size:13px">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8A8F98" stroke-width="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                  Escolher câmera
+                </span>
+              </sc-if>
+            </div>
+            <sc-if value="{{ c.arrastando }}" hint-placeholder-val="{{ false }}">
+              <span style="position:absolute;left:11px;bottom:11px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#00E5FF">SOLTE PARA TROCAR</span>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+
+      <span style="flex:none;font-size:12.5px;color:#8A8F98">Arraste um quadro sobre outro para trocar de posição. O layout salvo guarda qual câmera fica em qual quadro — o operador decora posição, não nome.</span>
+
+    </main>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"modoMontar":{"editor":"boolean","default":true,"section":"Estado"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const nav = ['Dashboard','Ao Vivo','Eventos','Verificação','Ações','Câmeras','Relatórios']
+      .map((t) => ({
+        t,
+        cor: t === 'Ao Vivo' ? '#F4F6F8' : '#8A8F98',
+        marca: t === 'Ao Vivo' ? '#00E5FF' : 'transparent',
+        fundo: t === 'Ao Vivo' ? '#0A0A0F' : 'transparent',
+      }))
+    const montar = this.props.modoMontar ?? true
+    const grade = (t, on) => ({ t, bg: on ? '#00E5FF' : 'transparent', cor: on ? '#0A0A0F' : '#8A8F98' })
+    const salvo = (t, on) => ({
+      t,
+      borda: on ? '#00E5FF' : '#23242F',
+      fundo: on ? '#0A0A0F' : 'transparent',
+      cor: on ? '#00E5FF' : '#8A8F98',
+    })
+    const cel = (slot, nome, opts) => {
+      const o = opts || {}
+      return {
+        slot, nome: nome || '—',
+        ocupada: !!nome,
+        vazia: !nome,
+        arrastando: !!o.arrastando,
+        corNome: nome ? '#F4F6F8' : '#8A8F98',
+        fundo: nome ? '#101018' : '#0E0E14',
+        borda: o.arrastando ? '2px solid #00E5FF' : (montar ? '1px dashed #23242F' : '1px solid #23242F'),
+      }
+    }
+    return {
+      nav,
+      presetsGrade: [grade('2×2', false), grade('3×2', true), grade('4×3', false), grade('DESTAQUE', false)],
+      salvos: [salvo('Portaria + Estoque', true), salvo('Expedição noite', false), salvo('Usinagem', false)],
+      contagem: '3 de 10 layouts',
+      celulas: [
+        cel('01', 'Guarita'),
+        cel('02', 'Entrada Expedição', { arrastando: true }),
+        cel('03', 'Porta Pallets'),
+        cel('04', 'Galpão Alugado Entrada'),
+        cel('05', null),
+        cel('06', 'Qualidade 01 EPI'),
+      ],
+    }
+  }
+}
+</script>
+</body>
+</html>
