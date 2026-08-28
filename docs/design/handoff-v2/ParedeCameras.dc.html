@@ -37,10 +37,10 @@
         <div style="flex:1"></div>
         <div style="display:flex;background:#14141C;border-radius:8px;padding:3px;gap:2px">
           <sc-for list="{{ presetsGrade }}" as="p" hint-placeholder-count="4">
-            <span style="height:34px;display:flex;align-items:center;padding:0 14px;border-radius:6px;background:{{ p.bg }};color:{{ p.cor }};font-family:'JetBrains Mono';font-size:12.5px;font-weight:700">{{ p.t }}</span>
+            <span style="height:36px;display:flex;align-items:center;padding:0 14px;border-radius:6px;background:{{ p.bg }};color:{{ p.cor }};font-family:'JetBrains Mono';font-size:12.5px;font-weight:700">{{ p.t }}</span>
           </sc-for>
         </div>
-        <span style="display:flex;align-items:center;gap:8px;height:34px;padding:0 12px;border-radius:8px;border:1px solid #00E5FF;color:#00E5FF;font-size:13px;font-weight:600">
+        <span style="display:flex;align-items:center;gap:8px;height:38px;padding:0 14px;border-radius:8px;border:1px solid #00E5FF;color:#00E5FF;font-size:13px;font-weight:600">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="1.9"><path d="M8 5h11"/><path d="M8 12h11"/><path d="M8 19h11"/><path d="M3.5 5h.01"/><path d="M3.5 12h.01"/><path d="M3.5 19h.01"/></svg>
           Montar
         </span>
@@ -121,7 +121,7 @@ class Component extends DCLogic {
         vazia: !nome,
         arrastando: !!o.arrastando,
         corNome: nome ? '#F4F6F8' : '#8A8F98',
-        fundo: nome ? '#101018' : '#0E0E14',
+        fundo: nome ? '#101018' : '#0E0E15',
         borda: o.arrastando ? '2px solid #00E5FF' : (montar ? '1px dashed #23242F' : '1px solid #23242F'),
       }
     }
