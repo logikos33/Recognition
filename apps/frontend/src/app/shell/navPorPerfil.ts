@@ -17,7 +17,7 @@
 import type { LucideIcon } from 'lucide-react'
 import {
   Activity, AlertTriangle, BarChart3, Camera, CheckSquare,
-  LayoutDashboard, Radio,
+  FlaskConical, LayoutDashboard, Radio,
 } from 'lucide-react'
 
 export interface ItemNav {
@@ -55,6 +55,22 @@ export const NAV_EPI: GrupoNav[] = [
       { rota: '/epi/acoes', rotulo: 'Ações', icone: Activity, permissao: 'alerts:read' },
       { rota: '/epi/cameras', rotulo: 'Câmeras', icone: Camera, permissao: 'cameras:read' },
       { rota: '/epi/relatorios', rotulo: 'Relatórios', icone: BarChart3, permissao: 'reports:read' },
+    ],
+  },
+]
+
+/**
+ * Estúdio — grupo PRÓPRIO, não item do EPI: treinar modelo é transversal aos
+ * módulos, e o trainer (que só tem 4 permissões) vive aqui. `frames:annotate`
+ * é a união exata de quem anota: superadmin, admin, operator, trainer
+ * (`matriz-papeis.json`). O desenho pedia "estudio:acesso" — chave que não
+ * existe no registry; divergência registrada (F5 PR-A).
+ */
+export const NAV_ESTUDIO: GrupoNav[] = [
+  {
+    titulo: 'Estúdio',
+    itens: [
+      { rota: '/estudio', rotulo: 'Estúdio', icone: FlaskConical, permissao: 'frames:annotate' },
     ],
   },
 ]
