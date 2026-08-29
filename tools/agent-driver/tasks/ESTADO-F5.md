@@ -26,12 +26,19 @@
 - Reconciliação de tokens FECHADA: `--st-ok/atencao/nc` do bundle = `lk.estado.{ok,atencao,nc}` byte-idênticos (#3ECF8E/#E8A13C/#E5484D). Zero paralelo a criar. README canônico confirma rotas do plano (/estudio/*, /tv/:site, /tablet/:station, admin com share links, mobile eventos/ações leitura) e EmptyState-com-CTA como padrão (convergir VazioPainel→EmptyState na F5).
 - Achado novo do README: Evento Detalhe desenha "Compartilhar com expiração 1h/24h/7d + permissão ver/ver+baixar" → reforça pedido-ao-backend share links (design existe, backend não). Verificação desenha tecla "A" = enviar pra fila do Estúdio (extensão de tela F3 — registrar, não fazer agora).
 
+## Adendos do Vitor (leis da sessão)
+- v2 29/08: origin é a verdade (fetch antes de rodada/merge) · varrer inbound (PRs abertos+branches+ESTADOs) antes de criar qualquer coisa · rebase 1×/dia e pré-PR · numeração no momento do merge · registrar SHA-base+inbound no ESTADO.
+- v3 29/08 (economia máxima, orçamento 72%): haiku default p/ mecânico/leitura; sonnet só não-trivial; opus SÓ cético crítico (security/demolição/flip/paridade) · ⛔ Read inteiro >200ln · saída de agente ≤20ln tabela · suíte da área 1×/PR, completa 1×/sub-rodada+pré-merge · screenshots só aceite final · ESTADO em delta · relatórios telegráficos · modo-reserva a ~85% (só P1, opus congelado exceto security).
+
 ## Log
 - 2026-08-29 ~19h — Fase 0: worktree wt-f5 criado; agentes leitor/implementador/cetico/arquiteto; ESTADO-F5. Exploração e plano completos (3 leitores + 2 arquitetos). Plano aprovado pelo Vitor com emendas.
 - 2026-08-29 ~19h45 — Bundle F5 commitado e PR #571 aberto (docs-only). `/livez` DEV saudável (`running_jobs:0`, commit=develop 230f7382). ESTADO-SEMANA-CLIENTE lido: nada mergeado por eles; congelamento de terça = congelamento de MERGE (confirmado); pedido de sync deles à migração-leve SEM resposta → mandei sync completo à sessão `frontend-migration-logikos-bd4acf-26` (faixas, colisão RotasNovas/navPorPerfil, bundle, respostas dos 3 pontos). Medição estática dos endpoints SR1 concluída (duas listas de modelos user-scoped vs tenant-scoped; classes[] na raiz; jobs vazam callback_token — ver Achados).
 - 2026-08-29 ~20h15 — **#571 MERGEADO** (bundle canônico na develop). Pranchas destrinchadas: Estúdio = 6 áreas (Dados/Classes/IA/Dataset/Treinos/Modelos) + anotador overlay + sidebar própria 220px; DIVERGÊNCIAS registradas: (1) gate desenhado "estudio:acesso" não existe → chave real `frames:annotate`; (2) Cobertura e Classificar não têm aba própria na prancha — decisão de encaixe fica pro PR-B com arquiteto; (3) CTA "Solicitar acesso" sem backend → não implementado, registrado. Admin prancha: 8 seções incl. Dispositivos=claim-codes (backend EXISTE: /api/devices/claim-codes) e Share Links (backend NÃO existe). Acesso prancha: login/esqueci/troca-obrigatória (troca segue bloqueada por backend). contrato-dados.js validado: 421 ops (207 FRONT-ATUAL/122 GAP/61 ÓRFÃO).
 - 2026-08-29 ~20h40 — **PR-A implementado por mim no main loop** (subagente implementador herdou plan mode e não pôde editar — plano dele em ~/.claude/plans/...-agent-a75e157df846df621.md foi seguido): branch `f5/estudio-pr-a`; criados SemPermissao.{tsx,css.ts,test.tsx} (shell), Estudio.{tsx,css.ts,test.tsx} + Dados.{tsx,css.ts,test.tsx} (app/estudio); editados Shell.tsx (SEM_BARRA_LATERAL + nav concat), navPorPerfil.{ts,test.ts} (NAV_ESTUDIO, FlaskConical), RotasNovas.tsx (rota aninhada estudio/dados), front-novo-perfis.spec.ts (MENU + Estúdio). Deep-link novo por URL (?camera=/?status= com guard exaustivo). `npm ci` do worktree em curso → tsc/vitest na sequência.
-- Próximo: verificação (tsc → vitest área → suíte) → teste de mutação do gate → commit → cético → push/PR.
+- 2026-08-29 ~20h10 — **PR #572 aberto** (f5/estudio-pr-a, base c399155b). Verificação: tsc 0 · vitest 1026/1026 · área 79/79 · e2e perfis 13/13 · mutação do gate provada. Cético (opus): alegações 1-4,7-8 CONFIRMADAS (diff mecânico do refill = idêntico); **1 BLOQUEIO achado e corrigido** (`in` deixava passar toString/valueOf do protótipo → white screen por URL; agora hasOwnProperty.call + teste) + layout (minHeight/padding duplicados, Suspense local) — commits 993c4c79/f2615e79. Aguardando CI → merge.
+- DÉBITOS registrados pelo cético (não bloqueiam #572): (a) coexistencia.test não varre rotas ANINHADAS (ponto cego novo — corrigir teste-régua no PR-B); (b) `?camera=` sem validação (falha macia); (c) refill/pedirMaisFila coberto por leitura+diff, sem teste próprio no arquivo novo (adicionar teste com continuacao fake no PR-B); (d) lateral do Estúdio nasce DENTRO da caixa 1280/padding do Shell — aceite visual no navegador pendente; (e) `frames:annotate` cru na tela SemPermissao (jargão; alternativa é pergunta ao design).
+- DECISÃO de encaixe (minha, registrada p/ design): Cobertura e Classificar NÃO têm aba própria na prancha de 6 áreas — entram como sub-rotas extras da lateral do Estúdio (função do delta > desenho; divergência para a LISTA-PARA-O-DESIGN), em vez de espremê-las numa área onde não cabem.
+- Próximo: CI #572 → rito → merge; PR-B (Cobertura+Classificar; considerar #498 em voo no CropClassifier) ∥ PR-C (Classes).
 
 ## Achados para outras pistas (não são meus arquivos)
 - 🔒 `GET /api/training/jobs` VAZA `callback_token` na listagem (training/routes.py) e escopo é por user_id, não tenant — registrar como issue de segurança para a pista de backend (risk:security = fila para revisão humana, não mexo).
@@ -40,7 +47,10 @@
 ## Placar de PRs
 | PR | tema | branch | estado |
 |---|---|---|---|
-| #571 | docs: bundle canônico F5 | docs/handoff-f5-bundle | CI rodando → merge quando verde |
+| #571 | docs: bundle canônico F5 | docs/handoff-f5-bundle | ✅ MERGEADO 29/08 22:52Z |
+| #572 | Estúdio PR-A (gate+layout+Dados) | f5/estudio-pr-a | ✅ MERGEADO 29/08 23:22Z (CI 23/23; cético: 1 bloqueio corrigido) |
+| #574 | Estúdio PR-B (Cobertura+Classificar+débitos a/b) | f5/estudio-pr-b | aberto, CI rodando (372/372 local) |
+| — | Estúdio PR-C (Classes) | f5/estudio-pr-c (wt-f5b) | implementador sonnet em curso |
 
 ## Pedidos-ao-backend (a registrar em doc na 1ª leva)
 1. Share links admin (zero backend). 2. Login devolver `force_password_reset`. 3. Parede kiosk por site (reforço DECISOES 29/08). 4. TV por site `/tv/:site`.
