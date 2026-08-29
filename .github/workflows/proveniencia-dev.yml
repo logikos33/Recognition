@@ -1,3 +1,11 @@
+# ⛔ INATIVO — este workflow NÃO executa hoje.
+# `schedule` e `workflow_dispatch` só são reconhecidos a partir da branch padrão
+# (`main`); este arquivo vive em `develop`. Enquanto não chegar em `main`,
+# ninguém executa esta checagem.
+#
+# Rodar à mão:  python3 scripts/checa_proveniencia.py --url <URL>
+# Ver docs/runbooks/SINAIS_DEGRADACAO.md · PR #557
+#
 # Alguém lê o alarme por ofício.
 #
 # Em 29/08 a API do DEV rodou horas um build de `railway up` enquanto a develop
