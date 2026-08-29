@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}</style>
+</helmet>
+<header style="height:56px;display:flex;align-items:center;gap:16px;padding:0 20px;background:#14141C;border-bottom:1px solid #23242F">
+  <div style="display:flex;align-items:center;gap:10px;flex:none">
+    <svg viewBox="0 0 100 100" style="width:26px;height:26px"><defs><mask id="khT"><rect width="100" height="100" fill="white"></rect><g transform="translate(24,22.4) scale(0.52)"><path d="M40 55.3 A20 20 0 1 1 60 55.3 L67 88 L33 88 Z" fill="black"></path></g></mask></defs><circle cx="50" cy="50" r="44" fill="#F4F6F8" mask="url(#khT)"></circle></svg>
+    <span style="font-family:'Space Grotesk';font-weight:700;font-size:15px;letter-spacing:.14em;color:#F4F6F8">LOGIKOS</span>
+  </div>
+  <div style="width:1px;height:24px;background:#23242F;flex:none"></div>
+  <a href="Shell Logikos Vision.dc.html" style="height:34px;display:flex;align-items:center;gap:8px;padding:0 12px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-size:13px;font-weight:600;flex:none" title="Trocar módulo (shell)">
+    {{ moduloNome }}
+    <svg viewBox="0 0 24 24" style="width:14px;height:14px" fill="none" stroke="#8A8F98" stroke-width="2"><path d="M6 9l6 6 6-6"></path></svg>
+  </a>
+  <nav style="display:flex;align-items:center;font-size:13px;color:#8A8F98;min-width:0;overflow:hidden">
+    <div style="display:flex;align-items:center;min-width:0;overflow:hidden;flex:0 1 auto;margin-right:8px"><span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">RVB Isolantes — Blumenau</span></div>
+    <sc-if value="{{ crumb2 }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden;flex:0 1 auto;margin-right:8px"><span style="color:#3A3D4A;flex:none">/</span><span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ crumb2 }}</span></div>
+    </sc-if>
+    <sc-if value="{{ crumb3 }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:8px;min-width:64px;overflow:hidden;flex:0 1 auto"><span style="color:#3A3D4A;flex:none">/</span><span style="display:block;color:#F4F6F8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ crumb3 }}</span></div>
+    </sc-if>
+  </nav>
+  <div style="flex:1"></div>
+  <div style="width:250px;min-width:110px;height:34px;flex:0 1 auto;display:flex;align-items:center;gap:9px;padding:0 12px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px;overflow:hidden;box-sizing:border-box">
+    <svg viewBox="0 0 24 24" style="width:15px;height:15px;flex:none" fill="none" stroke="#8A8F98" stroke-width="1.8" stroke-linecap="square"><path d="M10 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12zM14.5 14.5L20 20"></path></svg>
+    <span style="font-size:13px;color:#8A8F98">Buscar…</span>
+    <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:11px;color:#8A8F98;border:1px solid #23242F;border-radius:5px;padding:2px 6px">⌘K</span>
+  </div>
+  <div style="width:36px;height:36px;flex:none;display:flex;align-items:center;justify-content:center;position:relative">
+    <svg viewBox="0 0 24 24" style="width:19px;height:19px" fill="none" stroke="#8A8F98" stroke-width="1.7" stroke-linecap="square"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 3H4zM10 21h4"></path></svg>
+    <span style="position:absolute;top:2px;right:2px;min-width:15px;height:15px;border-radius:8px;background:#E8A13C;color:#0A0A0F;font-family:'JetBrains Mono';font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px;box-sizing:border-box">3</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:9px;flex:none">
+    <span style="width:30px;height:30px;border-radius:50%;background:#0A0A0F;border:1px solid #3A3D4A;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600">AR</span>
+    <div style="display:flex;flex-direction:column">
+      <span style="font-size:13px;font-weight:600;line-height:1.2">Ana Ribeiro</span>
+      <span style="font-size:11px;color:#8A8F98;line-height:1.2">Técnica de segurança</span>
+    </div>
+  </div>
+</header>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:56},&quot;crumb2&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;crumb3&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;&quot;,&quot;tsType&quot;:&quot;string&quot;}}">class Component extends DCLogic {
+  renderVals() { return { moduloNome: this.props.modulo || 'EPI · Segurança' }; }
+}</script>
+</body>
+</html>

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:#23242F;border-radius:5px}</style>
+</helmet>
+<div style="width:100%;height:100vh;display:flex;flex-direction:column;background:#0A0A0F" data-screen-label="EPI Relatórios">
+  <dc-import name="EPI Topbar" crumb2="Relatórios" style="flex:none" hint-size="100%,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <dc-import name="EPI Sidebar" ativa="Relatórios" style="flex:none;align-self:stretch" hint-size="237px,100%"></dc-import>
+    <main style="flex:1;min-width:0;overflow:auto;position:relative">
+      <sc-if value="{{ carregado }}" hint-placeholder-val="{{ true }}">
+        <div style="max-width:1080px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+          <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Relatórios</h1>
+          <div style="display:grid;grid-template-columns:1fr 1.2fr;gap:14px;align-items:start">
+            <div style="display:flex;flex-direction:column;gap:14px;background:#14141C;border:1px solid #23242F;border-radius:12px;padding:20px">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">EXPORTAR RELATÓRIO</span>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <span style="font-size:13px;color:#8A8F98">Período</span>
+                <select style="height:40px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-size:13px;padding:0 11px"><option>Últimos 7 dias</option><option>Últimos 30 dias</option><option>Mês fechado (julho)</option><option>Personalizado…</option></select>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <span style="font-size:13px;color:#8A8F98">Formato</span>
+                <div style="display:flex;background:#0A0A0F;border-radius:8px;padding:3px;gap:2px">
+                  <sc-for list="{{ formatos }}" as="f" hint-placeholder-count="2">
+                    <button onClick="{{ f.go }}" style="flex:1;height:36px;border:none;border-radius:6px;background:{{ f.bg }};color:{{ f.cor }};font-family:'JetBrains Mono';font-size:12.5px;font-weight:600;cursor:pointer">{{ f.t }}</button>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <span style="font-size:13px;color:#8A8F98">Conteúdo</span>
+                <sc-for list="{{ conteudo }}" as="c" hint-placeholder-count="3">
+                  <button onClick="{{ c.go }}" style="display:flex;align-items:center;gap:10px;background:transparent;border:none;padding:2px 0;cursor:pointer;text-align:left">
+                    <span style="width:17px;height:17px;flex:none;border-radius:4px;border:1px solid {{ c.borda }};background:{{ c.bg }};color:#0A0A0F;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ c.mark }}</span>
+                    <span style="font-size:13px;color:#F4F6F8">{{ c.t }}</span>
+                  </button>
+                </sc-for>
+              </div>
+              <button onClick="{{ exportar }}" style="height:44px;border:none;border-radius:9px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px">
+                <sc-if value="{{ exportando }}" hint-placeholder-val="{{ false }}"><x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="spinner" state="waiting" size="17" hint-size="17px,17px"></x-import></sc-if>
+                {{ exportTxt }}
+              </button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:14px;background:#14141C;border:1px solid #23242F;border-radius:12px;padding:20px">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">DIGEST DIÁRIO POR E-MAIL</span>
+                <button onClick="{{ toggleDigest }}" style="margin-left:auto;height:36px;display:flex;align-items:center;gap:9px;padding:0 12px;background:#0A0A0F;border:1px solid {{ dgBorda }};border-radius:8px;cursor:pointer">
+                  <span style="width:30px;height:16px;border-radius:8px;background:{{ dgTrack }};position:relative;flex:none"><span style="position:absolute;top:2px;left:{{ dgKnob }};width:12px;height:12px;border-radius:50%;background:#F4F6F8;transition:left .1s steps(2,end)"></span></span>
+                  <span style="font-size:12.5px;font-weight:600;color:{{ dgTxtCor }}">{{ dgTxt }}</span>
+                </button>
+              </div>
+              <div style="display:flex;gap:10px">
+                <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+                  <span style="font-size:13px;color:#8A8F98">Horário de envio</span>
+                  <select style="height:40px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-size:13px;padding:0 11px"><option>07:00</option><option>08:00</option><option>18:00</option></select>
+                </div>
+                <div style="flex:2;display:flex;flex-direction:column;gap:6px">
+                  <span style="font-size:13px;color:#8A8F98">Destinatários</span>
+                  <div style="min-height:40px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px;padding:6px 10px;box-sizing:border-box">
+                    <span style="font-family:'JetBrains Mono';font-size:11px;background:#14141C;border:1px solid #23242F;border-radius:11px;padding:3px 9px">ana.ribeiro@rvb.com.br</span>
+                    <span style="font-family:'JetBrains Mono';font-size:11px;background:#14141C;border:1px solid #23242F;border-radius:11px;padding:3px 9px">carlos.m@rvb.com.br</span>
+                    <span style="font-size:12px;color:#8A8F98">+ adicionar</span>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <span style="font-size:13px;color:#8A8F98">O que inclui</span>
+                <sc-for list="{{ digestItens }}" as="c" hint-placeholder-count="3">
+                  <button onClick="{{ c.go }}" style="display:flex;align-items:center;gap:10px;background:transparent;border:none;padding:2px 0;cursor:pointer;text-align:left">
+                    <span style="width:17px;height:17px;flex:none;border-radius:4px;border:1px solid {{ c.borda }};background:{{ c.bg }};color:#0A0A0F;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ c.mark }}</span>
+                    <span style="font-size:13px;color:#F4F6F8">{{ c.t }}</span>
+                  </button>
+                </sc-for>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:10px;padding:16px;background:#0A0A0F;border:1px solid #23242F;border-radius:10px">
+                <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.18em;color:#8A8F98">PRÉVIA DO E-MAIL · ONTEM</span>
+                <div style="display:flex;align-items:baseline;gap:10px">
+                  <span style="font-family:'Space Grotesk';font-weight:700;font-size:34px">82</span>
+                  <span style="font-size:12.5px;color:#8A8F98">score de conformidade · RVB Blumenau · 03/08</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:#8A8F98">
+                  <span>· 31 eventos — pico 14h (troca de turno)</span>
+                  <span>· Top câmera: CAM-04 Expedição (14 eventos)</span>
+                  <span style="color:#E5484D">· 2 ações vencidas — Juliana P., Carlos M.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}">
+        <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="fullscreen" state="waiting" label="CARREGANDO RELATÓRIOS" size="96" style="position:absolute;inset:0" hint-size="100%,100%"></x-import>
+      </sc-if>
+      <sc-if value="{{ vazio }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#8A8F98" stroke-width="1.5" stroke-linecap="square"><path d="M6 3h9l4 4v14H6zM9 12h6M9 16h6M9 8h3"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Sem dados no período</span>
+          <span style="font-size:13.5px;color:#8A8F98;max-width:380px;line-height:1.55">O período selecionado não tem eventos registrados. Amplie o intervalo.</span>
+          <button style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Últimos 30 dias</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{ erro }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#E5484D" stroke-width="1.5" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Falha ao gerar o export</span>
+          <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">POST /api/epi/relatorios/export · 502</span>
+          <button style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Tentar novamente</button>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+  <div style="position:fixed;left:16px;bottom:14px;display:flex;align-items:center;gap:6px;background:#14141C;border:1px solid #23242F;border-radius:10px;padding:7px 10px;z-index:130;box-shadow:0 8px 32px rgba(0,0,0,.6)">
+    <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.2em;color:#8A8F98;margin-right:4px">ESTADO</span>
+    <sc-for list="{{ chips }}" as="ch" hint-placeholder-count="4">
+      <button onClick="{{ ch.go }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid {{ ch.borda }};background:{{ ch.bg }};color:{{ ch.cor }};font-family:'JetBrains Mono';font-size:10.5px;cursor:pointer">{{ ch.t }}</button>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:940}}">
+class Component extends DCLogic {
+  state = { estado: 'carregado', formato: 'csv', cont: [true, true, false], digest: true, dItens: [true, true, true], exportando: false, exportou: false };
+  componentWillUnmount() { clearTimeout(this._t); }
+  renderVals() {
+    const s = this.state;
+    const chip = (t, k) => ({ t, go: () => this.setState({ estado: k }), bg: s.estado === k ? 'rgba(0,229,255,.09)' : 'transparent', cor: s.estado === k ? '#00E5FF' : '#8A8F98', borda: s.estado === k ? 'rgba(0,229,255,.4)' : '#23242F' });
+    const check = (arr, key) => (t, i) => ({ t, mark: s[key][i] ? '✓' : '', bg: s[key][i] ? '#00E5FF' : 'transparent', borda: s[key][i] ? '#00E5FF' : '#3A3D4A', go: () => { const v = [...s[key]]; v[i] = !v[i]; this.setState({ [key]: v }); } });
+    return {
+      carregado: s.estado === 'carregado', loading: s.estado === 'loading', vazio: s.estado === 'vazio', erro: s.estado === 'erro',
+      chips: [chip('CARREGADO', 'carregado'), chip('LOADING', 'loading'), chip('VAZIO', 'vazio'), chip('ERRO', 'erro')],
+      formatos: [['csv', 'CSV'], ['pdf', 'PDF']].map(([k, t]) => ({ t, go: () => this.setState({ formato: k }), bg: s.formato === k ? '#14141C' : 'transparent', cor: s.formato === k ? '#00E5FF' : '#8A8F98' })),
+      conteudo: ['Score e tendência', 'Eventos por câmera e classe', 'Ações corretivas e prazos'].map(check(s.cont, 'cont')),
+      digestItens: ['Score do dia', 'Top-5 eventos com thumbnail', 'Ações vencidas'].map(check(s.dItens, 'dItens')),
+      toggleDigest: () => this.setState(p => ({ digest: !p.digest })),
+      dgTrack: s.digest ? '#0091AD' : '#23242F', dgKnob: s.digest ? '16px' : '2px', dgBorda: s.digest ? 'rgba(0,229,255,.35)' : '#23242F',
+      dgTxt: s.digest ? 'Ativo' : 'Inativo', dgTxtCor: s.digest ? '#F4F6F8' : '#8A8F98',
+      exportar: () => { this.setState({ exportando: true, exportou: false }); clearTimeout(this._t); this._t = setTimeout(() => this.setState({ exportando: false, exportou: true }), 1400); },
+      exportando: s.exportando, exportTxt: s.exportando ? 'Gerando…' : s.exportou ? 'Exportado ✓ · baixar de novo' : 'Exportar',
+    };
+  }
+}
+</script>
+</body>
+</html>

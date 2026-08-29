@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="./image-slot.js"></script>
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}</style>
+</helmet>
+<div style="width:100%;min-height:100vh;display:flex;flex-direction:column;background:#0A0A0F" data-screen-label="Revisão R1/R2">
+  <header style="height:56px;flex:none;display:flex;align-items:center;gap:24px;padding:0 24px;background:#14141C;border-bottom:1px solid rgba(138,143,152,.16)">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:26px;height:26px;border-radius:50%;border:2px solid #F4F6F8;display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-weight:700;font-size:14px">Λ</div>
+      <span style="font-family:'Space Grotesk';font-weight:700;font-size:16px;letter-spacing:.08em">ΛΟΓΙΚΟΣ</span>
+      <span style="color:#8A8F98;font-size:14px">· Qualidade</span>
+    </div>
+    <nav style="display:flex;gap:4px;height:100%">
+      <a href="Revisão Qualidade.dc.html" style="display:flex;align-items:center;padding:0 16px;font-size:14px;font-weight:600;color:#00E5FF;border-bottom:2px solid #00E5FF">Revisão</a>
+      <a href="Configuração Qualidade.dc.html" style="display:flex;align-items:center;padding:0 16px;font-size:14px;color:#8A8F98;border-bottom:2px solid transparent">Configuração</a>
+      <a href="Gestão Qualidade.dc.html" style="display:flex;align-items:center;padding:0 16px;font-size:14px;color:#8A8F98;border-bottom:2px solid transparent">Gestão</a>
+    </nav>
+    <div style="flex:1"></div>
+    <span style="font-size:13px;color:#8A8F98">RVB Isolantes</span>
+    <span style="width:30px;height:30px;border-radius:50%;background:#0A0A0F;border:1px solid rgba(138,143,152,.3);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600">SA</span>
+  </header>
+
+  <!-- ============ R1 · FILA ============ -->
+  <sc-if value="{{ isQueue }}" hint-placeholder-val="{{ true }}">
+    <div style="flex:1;display:flex;flex-direction:column;max-width:1080px;width:100%;margin:0 auto;padding:24px;box-sizing:border-box;gap:16px">
+      <div style="display:flex;align-items:baseline;gap:16px">
+        <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Fila de revisão</h1>
+        <span style="font-family:'JetBrains Mono';font-size:15px;color:#8A8F98">{{ queueCount }} itens</span>
+        <span style="font-size:13px;font-weight:600;color:#FF5C47;background:rgba(255,92,71,.12);padding:3px 10px;border-radius:99px">{{ ncCount }} suspeitas de NC</span>
+        <span style="font-size:13px;font-weight:600;color:#FFB020;background:rgba(255,176,32,.12);padding:3px 10px;border-radius:99px">{{ duvidaCount }} dúvidas</span>
+        <div style="flex:1"></div>
+        <span style="font-size:13px;color:#8A8F98">idade máx <span style="font-family:'JetBrains Mono';color:{{ slaColor }}">{{ maxAge }}</span> · SLA 45 min</span>
+      </div>
+      <div style="display:flex;gap:10px">
+        <select style="height:36px;background:#14141C;border:1px solid rgba(138,143,152,.25);border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 10px"><option>Todos os pontos</option><option>P1</option><option>P2</option><option>P4</option><option>P8</option></select>
+        <select style="height:36px;background:#14141C;border:1px solid rgba(138,143,152,.25);border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 10px"><option>Todas as estações</option><option>Estação 1</option><option>Estação 2</option></select>
+        <select style="height:36px;background:#14141C;border:1px solid rgba(138,143,152,.25);border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 10px"><option>Turno atual</option><option>1º turno</option><option>2º turno</option></select>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <sc-for list="{{ items }}" as="it" hint-placeholder-count="5">
+          <div onClick="{{ it.open }}" style="display:flex;align-items:center;gap:16px;padding:12px 16px;background:#14141C;border:1px solid rgba(138,143,152,.12);border-radius:10px;cursor:pointer" style-hover="border-color:rgba(0,229,255,.5)">
+            <div style="width:96px;height:64px;flex:none;background:#0A0A0F;border:1px solid rgba(138,143,152,.2);border-radius:6px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono';font-size:10px;color:#8A8F98">foto</div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:4px;min-width:0">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="font-size:12px;font-weight:700;letter-spacing:.05em;color:{{ it.chipColor }};background:{{ it.chipBg }};padding:2px 9px;border-radius:4px">{{ it.chip }}</span>
+                <span style="font-size:15px;font-weight:600">{{ it.classe }}</span>
+              </div>
+              <div style="font-size:13px;color:#8A8F98"><span style="font-family:'JetBrains Mono'">{{ it.ponto }}</span> · {{ it.pontoNome }} · <span style="font-family:'JetBrains Mono'">{{ it.peca }}</span> · {{ it.op }} · {{ it.estacao }}</div>
+            </div>
+            <div style="font-family:'JetBrains Mono';font-size:14px;color:{{ it.ageColor }};flex:none">{{ it.age }}</div>
+            <span style="color:#8A8F98">›</span>
+          </div>
+        </sc-for>
+        <sc-if value="{{ queueEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:56px;text-align:center;color:#8A8F98;font-size:16px;background:#14141C;border-radius:10px">Fila vazia — nada aguardando revisão.</div>
+        </sc-if>
+      </div>
+      <div style="font-size:12px;color:#8A8F98;font-family:'JetBrains Mono'">atalhos no detalhe: A conforme · N abre classes · F foto inválida</div>
+    </div>
+  </sc-if>
+
+  <!-- ============ R2 · DETALHE ============ -->
+  <sc-if value="{{ isDetail }}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;display:flex;flex-direction:column;max-width:1240px;width:100%;margin:0 auto;padding:20px 24px;box-sizing:border-box;gap:16px">
+      <div style="display:flex;align-items:center;gap:14px">
+        <button onClick="{{ onBack }}" style="height:36px;padding:0 14px;background:transparent;border:1px solid rgba(138,143,152,.3);border-radius:6px;color:#8A8F98;font-size:13px;cursor:pointer">← Fila ({{ queueCount }})</button>
+        <span style="font-size:12px;font-weight:700;letter-spacing:.05em;white-space:nowrap;color:{{ selChipColor }};background:{{ selChipBg }};padding:3px 10px;border-radius:4px">{{ selChip }}</span>
+        <span style="font-family:'Space Grotesk';font-weight:700;font-size:20px">{{ selClasse }}</span>
+        <span style="font-size:14px;color:#8A8F98"><span style="font-family:'JetBrains Mono'">{{ selPonto }}</span> · <span style="font-family:'JetBrains Mono'">{{ selPeca }}</span> · {{ selOp }} · {{ selEstacao }} · há <span style="font-family:'JetBrains Mono'">{{ selAge }}</span></span>
+      </div>
+      <div style="display:flex;gap:16px;min-height:0">
+        <div style="flex:1.15;min-width:0;display:flex;flex-direction:column;gap:6px">
+          <div style="font-size:12px;letter-spacing:.08em;color:#FF9B8D">ENCONTRADO — foto da estação</div>
+          <div style="position:relative;height:340px;background:#14141C;border:2px solid #FF5C47;border-radius:10px;display:flex;align-items:center;justify-content:center">
+            <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">foto capturada</span>
+            <div style="position:absolute;left:32%;top:36%;width:32%;height:26%;border:3px solid #FF5C47;border-radius:4px"></div>
+            <div style="position:absolute;left:32%;top:27%;background:#FF5C47;color:#0A0A0F;font-size:12px;font-weight:700;padding:2px 8px;border-radius:4px">{{ selClasse }}</div>
+            <span style="position:absolute;right:10px;bottom:8px;font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">confiança 0,78 · 1,3 s</span>
+          </div>
+          <sc-if value="{{ selHasOcr }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;gap:18px;padding:10px 14px;background:#2A2211;border:1px solid rgba(255,176,32,.4);border-radius:8px">
+              <span style="font-size:12px;letter-spacing:.08em;color:#FFB020">MEDIÇÃO</span>
+              <span style="font-size:14px">OCR do paquímetro: <span style="font-family:'JetBrains Mono';font-weight:700">13,4 mm</span></span>
+              <span style="font-size:14px">Digitado no WISER: <span style="font-family:'JetBrains Mono';font-weight:700">13,0 mm</span></span>
+              <span style="font-size:13px;color:#FFB020;font-weight:600">divergência 0,4 mm</span>
+            </div>
+          </sc-if>
+        </div>
+        <div style="flex:1.15;min-width:0;display:flex;flex-direction:column;gap:6px">
+          <div style="font-size:12px;letter-spacing:.08em;color:#8A8F98">ESPECIFICADO — padrão do ponto</div>
+          <div style="height:340px;border-radius:10px;overflow:hidden;border:1px solid rgba(138,143,152,.25)">
+            <image-slot id="rev-esp-{{ selPonto }}" shape="rect" placeholder="Foto Especificado {{ selPonto }}"></image-slot>
+          </div>
+        </div>
+        <div style="width:280px;flex:none;display:flex;flex-direction:column;gap:6px">
+          <div style="font-size:12px;letter-spacing:.08em;color:#8A8F98">HISTÓRICO DA PEÇA</div>
+          <div style="flex:1;background:#14141C;border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px">
+            <sc-for list="{{ selHistorico }}" as="h" hint-placeholder-count="4">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="font-family:'JetBrains Mono';font-size:13px;width:26px;color:#8A8F98">{{ h.code }}</span>
+                <span style="font-size:14px;color:{{ h.cor }};width:16px">{{ h.icone }}</span>
+                <span style="flex:1;font-size:13px;color:#F4F6F8">{{ h.label }}</span>
+                <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">{{ h.hora }}</span>
+              </div>
+            </sc-for>
+            <div style="margin-top:auto;padding-top:10px;border-top:1px solid rgba(138,143,152,.15);font-size:12px;color:#8A8F98;line-height:1.5">Estação 2 · 1º turno<br>Captura #2 deste ponto</div>
+          </div>
+        </div>
+      </div>
+      <sc-if value="{{ showClasses }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:8px;padding:12px 16px;background:#14141C;border:1px solid rgba(255,92,71,.4);border-radius:10px;flex-wrap:wrap">
+          <span style="font-size:13px;color:#8A8F98;margin-right:6px">Classe da NC:</span>
+          <sc-for list="{{ classes }}" as="c" hint-placeholder-count="4">
+            <button onClick="{{ c.pick }}" style="height:38px;padding:0 14px;background:transparent;border:1px solid rgba(255,92,71,.5);border-radius:99px;color:#F4F6F8;font-size:14px;cursor:pointer" style-hover="background:rgba(255,92,71,.15)">{{ c.nome }}</button>
+          </sc-for>
+        </div>
+      </sc-if>
+      <div style="display:flex;align-items:center;gap:12px;padding:14px 0 4px;border-top:1px solid rgba(138,143,152,.12)">
+        <button onClick="{{ onConforme }}" style="height:56px;flex:1;border:none;border-radius:8px;background:#3ECF8E;color:#0A0A0F;font-family:'Space Grotesk';font-weight:700;font-size:17px;letter-spacing:.03em;cursor:pointer">✓ CONFORME <span style="font-family:'JetBrains Mono';font-size:12px;opacity:.6">A</span></button>
+        <button onClick="{{ onNc }}" style="height:56px;flex:1;border:none;border-radius:8px;background:#FF5C47;color:#0A0A0F;font-family:'Space Grotesk';font-weight:700;font-size:17px;letter-spacing:.03em;cursor:pointer">✕ NC + CLASSE <span style="font-family:'JetBrains Mono';font-size:12px;opacity:.6">N</span></button>
+        <button onClick="{{ onFotoInvalida }}" style="height:56px;flex:none;padding:0 26px;background:transparent;border:1px solid rgba(138,143,152,.4);border-radius:8px;color:#F4F6F8;font-size:15px;font-weight:600;cursor:pointer">Foto inválida <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">F</span></button>
+        <span style="font-size:12px;color:#8A8F98;margin-left:8px;max-width:200px;line-height:1.4">A decisão vira anotação de treino automaticamente.</span>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#F4F6F8;color:#0A0A0F;font-size:15px;font-weight:600;padding:12px 22px;border-radius:8px;z-index:50">{{ toast }}</div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  QUEUE = [
+    { id: 1, tipo: 'nc', classe: 'Madeira exposta na alma', ponto: 'P2', pontoNome: 'Detalhe da alma', peca: 'AN-24-0781', op: 'OP 2024-1186', estacao: 'Estação 2', min: 38 },
+    { id: 2, tipo: 'nc', classe: 'Distância acima da tolerância', ponto: 'P4', pontoNome: 'Distanciamento entre espiras', peca: 'AN-24-0785', op: 'OP 2024-1187', estacao: 'Estação 2', min: 21, ocr: true },
+    { id: 3, tipo: 'nc', classe: 'Transpasse maior que 10 mm', ponto: 'P1', pontoNome: 'Transpasse da cordoalha', peca: 'AN-24-0779', op: 'OP 2024-1186', estacao: 'Estação 1', min: 12 },
+    { id: 4, tipo: 'duvida', classe: 'Dúvida do sistema — papel crepado', ponto: 'P2', pontoNome: 'Detalhe da alma', peca: 'AN-24-0783', op: 'OP 2024-1187', estacao: 'Estação 2', min: 33 },
+    { id: 5, tipo: 'duvida', classe: 'Dúvida do sistema — transpasse', ponto: 'P1', pontoNome: 'Transpasse da cordoalha', peca: 'AN-24-0785', op: 'OP 2024-1187', estacao: 'Estação 2', min: 17 },
+    { id: 6, tipo: 'duvida', classe: 'Dúvida do sistema — extremidade', ponto: 'P5', pontoNome: 'Extremidade do enchimento', peca: 'EN-24-0112', op: 'OP 2024-1190', estacao: 'Estação 1', min: 9 },
+    { id: 7, tipo: 'duvida', classe: 'Dúvida do sistema — foco parcial', ponto: 'P8', pontoNome: 'Foto final da peça', peca: 'AN-24-0782', op: 'OP 2024-1186', estacao: 'Estação 2', min: 4 },
+  ];
+  CLASSES = ['Madeira exposta', 'Papel rasgado', 'Transpasse > 10 mm', 'Distância fora da tolerância', 'Cordoalha solta', 'Outra — descrever'];
+  state = { queue: this.QUEUE.slice(), selId: null, showClasses: false, toast: '' };
+  componentDidMount() {
+    this._kb = (e) => {
+      if (this.state.selId == null) return;
+      const k = e.key.toLowerCase();
+      if (k === 'a') this.decide('Conforme');
+      else if (k === 'n') this.setState({ showClasses: true });
+      else if (k === 'f') this.decide('Foto inválida');
+      else if (k === 'escape') this.setState({ selId: null, showClasses: false });
+    };
+    window.addEventListener('keydown', this._kb);
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this._kb); clearTimeout(this._toast); }
+  decide(label) {
+    const queue = this.state.queue.filter(q => q.id !== this.state.selId);
+    clearTimeout(this._toast);
+    this.setState({ queue, selId: null, showClasses: false, toast: 'Decisão registrada: ' + label + ' — enviada para anotação' });
+    this._toast = setTimeout(() => this.setState({ toast: '' }), 2800);
+  }
+  renderVals() {
+    const s = this.state;
+    const fmtAge = (m) => m >= 60 ? Math.floor(m / 60) + 'h' + String(m % 60).padStart(2, '0') : m + ' min';
+    const sorted = s.queue.slice().sort((a, b) => (a.tipo === b.tipo ? b.min - a.min : a.tipo === 'nc' ? -1 : 1));
+    const items = sorted.map(q => ({
+      chip: q.tipo === 'nc' ? 'SUSPEITA DE NC' : 'DÚVIDA',
+      chipColor: q.tipo === 'nc' ? '#FF5C47' : '#FFB020',
+      chipBg: q.tipo === 'nc' ? 'rgba(255,92,71,.12)' : 'rgba(255,176,32,.12)',
+      classe: q.classe, ponto: q.ponto, pontoNome: q.pontoNome, peca: q.peca, op: q.op, estacao: q.estacao,
+      age: fmtAge(q.min), ageColor: q.min > 30 ? '#FFB020' : '#8A8F98',
+      open: () => this.setState({ selId: q.id, showClasses: false }),
+    }));
+    const sel = s.queue.find(q => q.id === s.selId);
+    const maxMin = s.queue.length ? Math.max(...s.queue.map(q => q.min)) : 0;
+    return {
+      isQueue: !sel, isDetail: !!sel,
+      queueCount: s.queue.length, queueEmpty: s.queue.length === 0,
+      ncCount: s.queue.filter(q => q.tipo === 'nc').length,
+      duvidaCount: s.queue.filter(q => q.tipo === 'duvida').length,
+      maxAge: fmtAge(maxMin), slaColor: maxMin > 30 ? '#FFB020' : '#8A8F98',
+      items,
+      selChip: sel ? (sel.tipo === 'nc' ? 'SUSPEITA DE NC' : 'DÚVIDA') : '',
+      selChipColor: sel && sel.tipo === 'nc' ? '#FF5C47' : '#FFB020',
+      selChipBg: sel && sel.tipo === 'nc' ? 'rgba(255,92,71,.12)' : 'rgba(255,176,32,.12)',
+      selClasse: sel ? sel.classe : '', selPonto: sel ? sel.ponto : '', selPeca: sel ? sel.peca : '',
+      selOp: sel ? sel.op : '', selEstacao: sel ? sel.estacao : '', selAge: sel ? fmtAge(sel.min) : '',
+      selHasOcr: !!(sel && sel.ocr),
+      selHistorico: [
+        { code: 'P1', icone: '✓', cor: '#3ECF8E', label: 'Conforme', hora: '09:12' },
+        { code: 'P2', icone: '⟳', cor: '#8A8F98', label: 'Refeita → conforme', hora: '09:15' },
+        { code: sel ? sel.ponto : 'P4', icone: '✕', cor: '#FF5C47', label: 'Em revisão (este item)', hora: '09:18' },
+        { code: 'P8', icone: '·', cor: '#8A8F98', label: 'Aguardando', hora: '—' },
+      ],
+      showClasses: s.showClasses,
+      classes: this.CLASSES.map(nome => ({ nome, pick: () => this.decide('NC — ' + nome) })),
+      onBack: () => this.setState({ selId: null, showClasses: false }),
+      onConforme: () => this.decide('Conforme'),
+      onNc: () => this.setState({ showClasses: !s.showClasses }),
+      onFotoInvalida: () => this.decide('Foto inválida'),
+      toast: s.toast,
+    };
+  }
+}
+</script>
+</body>
+</html>

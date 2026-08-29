@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:#23242F;border-radius:5px}</style>
+</helmet>
+<div style="width:100%;height:100vh;display:flex;flex-direction:column;background:#0A0A0F" data-screen-label="Módulo Qualidade">
+  <dc-import name="EPI Topbar" modulo="Qualidade" crumb2="{{ crumb2 }}" style="flex:none" hint-size="100%,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <aside style="width:236px;flex:none;box-sizing:border-box;display:flex;flex-direction:column;background:#14141C;border-right:1px solid #23242F;padding:14px 0">
+      <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.22em;color:#8A8F98;padding:0 20px 10px">QUALIDADE</span>
+      <nav style="display:flex;flex-direction:column;gap:2px;padding:0 8px">
+        <sc-for list="{{ itens }}" as="it" hint-placeholder-count="7">
+          <a onClick="{{ it.go }}" style="display:flex;align-items:center;gap:11px;height:38px;padding:0 12px;border-radius:8px;border-left:2px solid {{ it.borda }};color:{{ it.cor }};background:{{ it.bg }};font-size:13.5px;font-weight:{{ it.peso }};cursor:pointer;white-space:nowrap;overflow:hidden" style-hover="background:#0A0A0F">
+            <svg viewBox="0 0 24 24" style="width:18px;height:18px;flex:none" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="square"><path d="{{ it.d }}"></path></svg>
+            <span>{{ it.nome }}</span>
+          </a>
+        </sc-for>
+      </nav>
+      <div style="flex:1"></div>
+      <div style="display:flex;flex-direction:column;gap:2px;padding:10px 8px 0;border-top:1px solid #23242F">
+        <a href="Shell Logikos Vision.dc.html" style="display:flex;align-items:center;gap:11px;height:36px;padding:0 12px;border-radius:8px;color:#8A8F98;font-size:13px" style-hover="background:#0A0A0F;color:#F4F6F8">
+          <svg viewBox="0 0 24 24" style="width:18px;height:18px;flex:none" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="square"><path d="M8 3L4 7l4 4M4 7h16M16 21l4-4-4-4M20 17H4"></path></svg>
+          <span>Trocar módulo</span>
+        </a>
+        <a href="Kiosk RVB.dc.html" style="display:flex;align-items:center;gap:11px;height:36px;padding:0 12px;border-radius:8px;color:#8A8F98;font-size:13px" style-hover="background:#0A0A0F;color:#F4F6F8">
+          <svg viewBox="0 0 24 24" style="width:18px;height:18px;flex:none" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="square"><path d="M4 4h16v12H4zM8 20h8M12 16v4"></path></svg>
+          <span>Kiosk da estação</span>
+        </a>
+      </div>
+    </aside>
+    <main style="flex:1;min-width:0;overflow:auto;position:relative">
+      <sc-if value="{{ notaOn }}" hint-placeholder-val="{{ false }}">
+        <div style="position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:10px;padding:8px 20px;background:#14141C;border-bottom:1px solid #23242F">
+          <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#00E5FF">TELA APROVADA · INTOCADA</span>
+          <span style="font-size:12.5px;color:#8A8F98">{{ notaTxt }}</span>
+        </div>
+      </sc-if>
+      <sc-if value="{{ showGestao }}" hint-placeholder-val="{{ true }}">
+        <div style="overflow:hidden;min-width:1080px"><div style="margin-top:-56px"><dc-import name="Gestão Qualidade" hint-size="100%,900px"></dc-import></div></div>
+      </sc-if>
+      <sc-if value="{{ showRevisao }}" hint-placeholder-val="{{ false }}">
+        <div style="overflow:hidden;min-width:1080px"><div style="margin-top:-56px"><dc-import name="Revisão Qualidade" hint-size="100%,900px"></dc-import></div></div>
+      </sc-if>
+      <sc-if value="{{ showConfig }}" hint-placeholder-val="{{ false }}">
+        <div style="overflow:hidden;min-width:1080px"><div style="margin-top:-56px"><dc-import name="Configuração Qualidade" hint-size="100%,900px"></dc-import></div></div>
+      </sc-if>
+
+      <sc-if value="{{ showRetrabalho }}" hint-placeholder-val="{{ false }}">
+        <sc-if value="{{ carregado }}" hint-placeholder-val="{{ true }}">
+          <div style="max-width:1280px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;align-items:center;gap:14px">
+              <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Retrabalho</h1>
+              <div style="flex:1"></div>
+              <select style="height:36px;background:#14141C;border:1px solid rgba(138,143,152,.25);border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 10px"><option>Hoje</option><option>7 dias</option></select>
+              <select style="height:36px;background:#14141C;border:1px solid rgba(138,143,152,.25);border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 10px"><option>Todas as estações</option><option>Estação 1</option><option>Estação 2</option></select>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+              <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+                <div style="display:flex;flex-direction:column;gap:6px;padding:16px;background:#14141C;border-radius:10px;border-top:2px solid {{ k.cor }}">
+                  <span style="font-size:11px;color:#8A8F98;letter-spacing:.07em">{{ k.label }}</span>
+                  <span style="font-family:'JetBrains Mono';font-weight:700;font-size:30px;line-height:1;color:{{ k.corValor }}">{{ k.valor }}</span>
+                  <span style="font-size:12px;color:#8A8F98">{{ k.sub }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:grid;grid-template-columns:110px 110px 60px 1.2fr 90px 90px 150px 170px;background:#14141C;border-radius:10px;overflow:hidden">
+              <div style="padding:10px 14px;font-size:11px;color:#8A8F98;letter-spacing:.08em;border-bottom:1px solid rgba(138,143,152,.15)">PEÇA</div>
+              <div style="padding:10px 14px;font-size:11px;color:#8A8F98;letter-spacing:.08em;border-bottom:1px solid rgba(138,143,152,.15)">OP</div>
+              <div style="padding:10px 14px;font-size:11px;color:#8A8F98;letter-spacing:.08em;border-bottom:1px solid rgba(138,143,152,.15)">PONTO</div>
+              <div style="padding:10px 14px;font-size:11px;color:#8A8F98;letter-spacing:.08em;border-bottom:1px solid rgba(138,143,152,.15)">MOTIVO</div>
+              <div style="padding:10px 14px;font-size:11px;color:#8A8F98;letter-spacing:.08em;border-bottom:1px solid rgba(138,143,152,.15);text-align:right">INÍCIO</div>
+              <div style="padding:10px 14px;font-size:11px;color:#8A8F98;letter-spacing:.08em;border-bottom:1px solid rgba(138,143,152,.15);text-align:right">TEMPO</div>
+              <div style="padding:10px 14px;font-size:11px;color:#8A8F98;letter-spacing:.08em;border-bottom:1px solid rgba(138,143,152,.15)">STATUS</div>
+              <div style="padding:10px 14px;border-bottom:1px solid rgba(138,143,152,.15)"></div>
+              <sc-for list="{{ fila }}" as="r" hint-placeholder-count="4">
+                <div style="display:contents">
+                  <span style="padding:12px 14px;font-family:'JetBrains Mono';font-weight:500;font-size:13px;border-bottom:1px solid rgba(138,143,152,.08)">{{ r.peca }}</span>
+                  <span style="padding:12px 14px;font-size:12.5px;color:#8A8F98;border-bottom:1px solid rgba(138,143,152,.08)">{{ r.op }}</span>
+                  <span style="padding:12px 14px;font-family:'JetBrains Mono';font-weight:700;font-size:13px;border-bottom:1px solid rgba(138,143,152,.08)">{{ r.ponto }}</span>
+                  <span style="padding:12px 14px;font-size:13px;border-bottom:1px solid rgba(138,143,152,.08)">{{ r.motivo }}</span>
+                  <span style="padding:12px 14px;font-family:'JetBrains Mono';font-size:12.5px;text-align:right;color:#8A8F98;border-bottom:1px solid rgba(138,143,152,.08)">{{ r.inicio }}</span>
+                  <span style="padding:12px 14px;font-family:'JetBrains Mono';font-size:12.5px;text-align:right;color:{{ r.tempoCor }};border-bottom:1px solid rgba(138,143,152,.08)">{{ r.tempo }}</span>
+                  <span style="padding:12px 14px;border-bottom:1px solid rgba(138,143,152,.08)"><span style="font-size:12px;font-weight:600;color:{{ r.stCor }}">{{ r.stIcone }} {{ r.status }}</span></span>
+                  <span style="padding:12px 14px;border-bottom:1px solid rgba(138,143,152,.08);display:flex;align-items:center;justify-content:flex-end">
+                    <sc-if value="{{ r.podeRecapturar }}" hint-placeholder-val="{{ true }}">
+                      <button onClick="{{ r.recapturar }}" style="height:32px;padding:0 13px;background:transparent;border:1px solid rgba(138,143,152,.3);border-radius:7px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer" style-hover="border-color:#00E5FF;color:#00E5FF">Marcar recapturada</button>
+                    </sc-if>
+                  </span>
+                </div>
+              </sc-for>
+            </div>
+            <span style="font-size:12.5px;color:#8A8F98">A recaptura acontece na estação (kiosk); esta fila acompanha o ciclo NC → retrabalho → recaptura → conforme. Tempo acima da meta (2:30) fica âmbar.</span>
+          </div>
+        </sc-if>
+      </sc-if>
+
+      <sc-if value="{{ showCameras }}" hint-placeholder-val="{{ false }}">
+        <sc-if value="{{ carregado }}" hint-placeholder-val="{{ true }}">
+          <div style="max-width:1280px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;align-items:center;gap:14px">
+              <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Câmeras das estações</h1>
+              <div style="flex:1"></div>
+              <a href="Configuração Qualidade.dc.html" style="height:38px;display:flex;align-items:center;padding:0 16px;border:1px solid rgba(138,143,152,.3);border-radius:8px;color:#F4F6F8;font-size:13px;font-weight:600" style-hover="border-color:#00E5FF;color:#00E5FF">Config de estações →</a>
+            </div>
+            <div style="display:flex;gap:14px;align-items:flex-start">
+              <div style="width:330px;flex:none;display:flex;flex-direction:column;gap:6px">
+                <sc-for list="{{ cams }}" as="c" hint-placeholder-count="2">
+                  <button onClick="{{ c.go }}" style="display:flex;align-items:center;gap:12px;padding:13px 14px;background:#14141C;border:1px solid {{ c.borda }};border-radius:9px;cursor:pointer;text-align:left">
+                    <span style="width:9px;height:9px;border-radius:50%;background:{{ c.stCor }};flex:none"></span>
+                    <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+                      <span style="font-family:'JetBrains Mono';font-size:13px;font-weight:700;color:#F4F6F8">{{ c.nome }}</span>
+                      <span style="font-size:12px;color:#8A8F98">{{ c.estacao }}</span>
+                    </div>
+                    <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:10px;color:{{ c.stCor }}">{{ c.stTxt }}</span>
+                  </button>
+                </sc-for>
+              </div>
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:14px;background:#14141C;border:1px solid rgba(138,143,152,.16);border-radius:12px;padding:18px;box-sizing:border-box">
+                <div style="display:flex;align-items:center;gap:12px">
+                  <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">{{ selNome }}</span>
+                  <span style="font-family:'JetBrains Mono';font-size:10.5px;color:{{ selStCor }}">● {{ selSt }}</span>
+                  <div style="flex:1"></div>
+                  <button onClick="{{ testar }}" style="height:38px;padding:0 16px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px">
+                    <sc-if value="{{ testando }}" hint-placeholder-val="{{ false }}"><x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="spinner" state="waiting" size="16" hint-size="16px,16px"></x-import></sc-if>
+                    Testar conexão
+                  </button>
+                </div>
+                <div style="display:flex;gap:14px">
+                  <div style="width:300px;flex:none;position:relative;aspect-ratio:16/9;border-radius:8px;overflow:hidden;border:1px solid rgba(138,143,152,.2);background:{{ selFundo }}">
+                    <div style="position:absolute;inset:14% 22%;border:1.5px dashed rgba(0,229,255,.45);border-radius:4px"></div>
+                    <span style="position:absolute;bottom:6px;left:8px;font-family:'JetBrains Mono';font-size:9px;color:#8A8F98">ZONA DE CAPTURA DEMARCADA</span>
+                  </div>
+                  <div style="flex:1;display:grid;grid-template-columns:auto 1fr;gap:7px 16px;font-size:12.5px;align-content:start">
+                    <span style="color:#8A8F98">Estação</span><span>{{ selEstacao }}</span>
+                    <span style="color:#8A8F98">Papel</span><span>Captura dos pontos de inspeção (box edge)</span>
+                    <span style="color:#8A8F98">Último veredito</span><span style="font-family:'JetBrains Mono';font-size:12px">{{ selVeredito }}</span>
+                    <span style="color:#8A8F98">Latência P95</span><span style="font-family:'JetBrains Mono';font-size:12px">1,4 s · meta &lt; 2 s</span>
+                  </div>
+                </div>
+                <sc-if value="{{ temTeste }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#0A0A0F;border:1px solid rgba(138,143,152,.16);border-radius:10px">
+                    <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">TESTE DE CONEXÃO · PASSO A PASSO</span>
+                    <sc-for list="{{ passos }}" as="p" hint-placeholder-count="3">
+                      <div style="display:flex;align-items:center;gap:10px">
+                        <span style="width:20px;height:20px;flex:none;border-radius:50%;border:1px solid {{ p.borda }};color:{{ p.cor }};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">{{ p.mark }}</span>
+                        <span style="font-size:13px;color:{{ p.txtCor }}">{{ p.txt }}</span>
+                        <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">{{ p.ms }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+      </sc-if>
+
+      <sc-if value="{{ showEstados }}" hint-placeholder-val="{{ false }}">
+        <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}">
+          <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="fullscreen" state="waiting" label="{{ loadingLabel }}" size="96" style="position:absolute;inset:0" hint-size="100%,100%"></x-import>
+        </sc-if>
+        <sc-if value="{{ vazio }}" hint-placeholder-val="{{ false }}">
+          <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+            <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#3ECF8E" stroke-width="1.5" stroke-linecap="square"><path d="M5 12l5 5 9-10"></path></svg>
+            <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">{{ vazioTitulo }}</span>
+            <span style="font-size:13.5px;color:#8A8F98;max-width:400px;line-height:1.55">{{ vazioTxt }}</span>
+            <button onClick="{{ voltarCarregado }}" style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Atualizar</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ erro }}" hint-placeholder-val="{{ false }}">
+          <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+            <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#FF5C47" stroke-width="1.5" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+            <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Não foi possível carregar</span>
+            <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">{{ erroDetalhe }}</span>
+            <button onClick="{{ voltarCarregado }}" style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Tentar novamente</button>
+          </div>
+        </sc-if>
+      </sc-if>
+    </main>
+  </div>
+  <sc-if value="{{ showEstados }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;left:16px;bottom:14px;display:flex;align-items:center;gap:6px;background:#14141C;border:1px solid #23242F;border-radius:10px;padding:7px 10px;z-index:130;box-shadow:0 8px 32px rgba(0,0,0,.6)">
+      <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.2em;color:#8A8F98;margin-right:4px">ESTADO</span>
+      <sc-for list="{{ chips }}" as="ch" hint-placeholder-count="4">
+        <button onClick="{{ ch.go }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid {{ ch.borda }};background:{{ ch.bg }};color:{{ ch.cor }};font-family:'JetBrains Mono';font-size:10.5px;cursor:pointer">{{ ch.t }}</button>
+      </sc-for>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:940}}">
+class Component extends DCLogic {
+  ITENS = [
+    { key: 'dashboard', nome: 'Dashboard', d: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z' },
+    { key: 'inspecoes', nome: 'Inspeções', d: 'M10 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12zM14.5 14.5L20 20' },
+    { key: 'pecas', nome: 'Peças', d: 'M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12L4 7.5M12 12l8-4.5M12 12v9' },
+    { key: 'retrabalho', nome: 'Retrabalho', d: 'M20 12a8 8 0 1 1-2.3-5.7M20 3v4h-4' },
+    { key: 'cameras', nome: 'Câmeras', d: 'M3 7h12v10H3zM15 10l6-3v10l-6-3' },
+    { key: 'relatorios', nome: 'Relatórios', d: 'M6 3h9l4 4v14H6zM9 12h6M9 16h6M9 8h3' },
+    { key: 'config', nome: 'Config', d: 'M4 7h10M18 7h2M14 4v6M4 17h2M10 17h10M10 14v6' },
+  ];
+  CAMS = [
+    { key: 'e1', nome: 'CAM-EST-01', estacao: 'Estação 1 — Anéis planos', st: 'ONLINE', cor: '#3ECF8E', fundo: 'linear-gradient(155deg,#1A1B26,#101018)', veredito: 'P4 · CONFORME · 14:38', falha: false },
+    { key: 'e2', nome: 'CAM-EST-02', estacao: 'Estação 2 — Helicoidais', st: 'INSTÁVEL', cor: '#FFB020', fundo: 'linear-gradient(200deg,#191822,#0F0F16)', veredito: 'H1 · DÚVIDA → FILA · 14:21', falha: true },
+  ];
+  state = { estado: 'carregado', aba: 'dashboard', sel: 'e1', teste: -1, testando: false, recap: [] };
+  componentWillUnmount() { clearTimeout(this._t1); clearTimeout(this._t2); clearTimeout(this._t3); }
+  _testar() {
+    clearTimeout(this._t1); clearTimeout(this._t2); clearTimeout(this._t3);
+    this.setState({ teste: 0, testando: true });
+    this._t1 = setTimeout(() => this.setState({ teste: 1 }), 700);
+    this._t2 = setTimeout(() => this.setState({ teste: 2 }), 1500);
+    this._t3 = setTimeout(() => this.setState({ teste: 3, testando: false }), 2400);
+  }
+  renderVals() {
+    const s = this.state;
+    const chip = (t, k) => ({ t, go: () => this.setState({ estado: k }), bg: s.estado === k ? 'rgba(0,229,255,.09)' : 'transparent', cor: s.estado === k ? '#00E5FF' : '#8A8F98', borda: s.estado === k ? 'rgba(0,229,255,.4)' : '#23242F' });
+    const aprovada = { dashboard: 'gestao', pecas: 'gestao', relatorios: 'gestao', inspecoes: 'revisao', config: 'config' }[s.aba];
+    const nova = s.aba === 'retrabalho' || s.aba === 'cameras';
+    const notas = {
+      pecas: 'Peças vive na aba "Peças & OPs" da tela Gestão — clique nela acima.',
+      relatorios: 'Relatórios vive na aba "Relatórios" da tela Gestão — clique nela acima.',
+      dashboard: 'Tela Gestão aprovada, renderizada intocada dentro do shell.',
+      inspecoes: 'Fila de revisão aprovada (dúvidas + NCs), renderizada intocada.',
+      config: 'Configuração aprovada (estações, limiares, padrão OCR), renderizada intocada.',
+    };
+    const cam = this.CAMS.find(c => c.key === s.sel);
+    const falhaNo = cam.falha ? 2 : 99;
+    const passosDef = [
+      { txt: 'Resolver endereço da câmera', ms: '31 MS' },
+      { txt: 'Autenticar RTSP', ms: '180 MS' },
+      { txt: 'Receber stream de vídeo', ms: cam.falha ? '—' : '840 MS · 15 FPS' },
+    ];
+    const passos = passosDef.map((p, i) => {
+      const done = s.teste > i || s.teste === 3;
+      const falhou = s.teste >= 3 && i === falhaNo;
+      const ativo = s.teste === i && s.testando;
+      const ok = done && !falhou && i < falhaNo;
+      return { txt: p.txt, ms: ok ? p.ms : falhou ? 'INSTÁVEL — QUEDAS INTERMITENTES' : ativo ? '…' : '', mark: ok ? '✓' : falhou ? '▲' : String(i + 1), cor: ok ? '#3ECF8E' : falhou ? '#FFB020' : '#8A8F98', borda: ok ? 'rgba(62,207,142,.5)' : falhou ? 'rgba(255,176,32,.5)' : '#3A3D4A', txtCor: ok || falhou || ativo ? '#F4F6F8' : '#8A8F98' };
+    });
+    const FILA = [
+      { id: 1, peca: 'AN-24-0781', op: 'OP 2024-1186', ponto: 'P4', motivo: 'Distância 13,4 mm — fora da tolerância', inicio: '14:12', tempo: '2:48', tempoCor: '#FFB020', status: 'EM RETRABALHO', stCor: '#FFB020', stIcone: '⟳' },
+      { id: 2, peca: 'AN-24-0779', op: 'OP 2024-1186', ponto: 'P2', motivo: 'Madeira exposta na alma', inicio: '13:47', tempo: '1:52', tempoCor: '#F4F6F8', status: 'EM RETRABALHO', stCor: '#FFB020', stIcone: '⟳' },
+      { id: 3, peca: 'EN-24-0110', op: 'OP 2024-1190', ponto: 'P6', motivo: 'Transpasse > 10 mm na extremidade', inicio: '13:02', tempo: '—', tempoCor: '#8A8F98', status: 'AGUARDANDO', stCor: '#8A8F98', stIcone: '…' },
+      { id: 4, peca: 'AN-24-0775', op: 'OP 2024-1185', ponto: 'P1', motivo: 'Transpasse da cordoalha', inicio: '11:36', tempo: '2:10', tempoCor: '#F4F6F8', status: 'RECAPTURADA · CONFORME', stCor: '#3ECF8E', stIcone: '✓' },
+    ];
+    return {
+      crumb2: this.ITENS.find(i => i.key === s.aba).nome,
+      itens: this.ITENS.map(it => ({
+        nome: it.nome, d: it.d,
+        cor: s.aba === it.key ? '#00E5FF' : '#8A8F98',
+        bg: s.aba === it.key ? 'rgba(0,229,255,.06)' : 'transparent',
+        borda: s.aba === it.key ? '#00E5FF' : 'transparent',
+        peso: s.aba === it.key ? '600' : '500',
+        go: () => this.setState({ aba: it.key, estado: 'carregado' }),
+      })),
+      notaOn: !!aprovada, notaTxt: notas[s.aba] || '',
+      showGestao: aprovada === 'gestao', showRevisao: aprovada === 'revisao', showConfig: aprovada === 'config',
+      showRetrabalho: s.aba === 'retrabalho', showCameras: s.aba === 'cameras',
+      showEstados: nova,
+      carregado: s.estado === 'carregado', loading: s.estado === 'loading', vazio: s.estado === 'vazio', erro: s.estado === 'erro',
+      chips: [chip('CARREGADO', 'carregado'), chip('LOADING', 'loading'), chip('VAZIO', 'vazio'), chip('ERRO', 'erro')],
+      voltarCarregado: () => this.setState({ estado: 'carregado' }),
+      loadingLabel: s.aba === 'retrabalho' ? 'CARREGANDO RETRABALHO' : 'CARREGANDO CÂMERAS',
+      vazioTitulo: s.aba === 'retrabalho' ? 'Nada em retrabalho' : 'Nenhuma câmera de estação',
+      vazioTxt: s.aba === 'retrabalho' ? 'Nenhuma peça aguarda retrabalho agora — o ciclo NC → recaptura está em dia.' : 'Cadastre a câmera da estação na Config para começar a capturar pontos.',
+      erroDetalhe: s.aba === 'retrabalho' ? 'GET /api/quality/retrabalho · TIMEOUT 10 S' : 'GET /api/quality/cameras · TIMEOUT 10 S',
+      kpis: [
+        { label: 'EM RETRABALHO', valor: '2', sub: 'agora, nas 2 estações', cor: '#FFB020', corValor: '#FFB020' },
+        { label: 'AGUARDANDO', valor: '1', sub: 'peça fora da bancada', cor: 'rgba(138,143,152,.4)', corValor: '#F4F6F8' },
+        { label: 'RECUPERADAS HOJE', valor: '9', sub: 'recaptura conforme', cor: '#3ECF8E', corValor: '#3ECF8E' },
+        { label: 'TEMPO MÉDIO', valor: '2:12', sub: 'meta 2:30', cor: 'rgba(138,143,152,.4)', corValor: '#F4F6F8' },
+      ],
+      fila: FILA.map(r => {
+        const recap = s.recap.includes(r.id);
+        return { ...r,
+          status: recap ? 'RECAPTURADA · CONFORME' : r.status, stCor: recap ? '#3ECF8E' : r.stCor, stIcone: recap ? '✓' : r.stIcone,
+          podeRecapturar: !recap && r.status !== 'RECAPTURADA · CONFORME',
+          recapturar: () => this.setState(p => ({ recap: [...p.recap, r.id] })),
+        };
+      }),
+      cams: this.CAMS.map(c => ({ nome: c.nome, estacao: c.estacao, stTxt: c.st, stCor: c.cor, borda: s.sel === c.key ? 'rgba(0,229,255,.5)' : 'rgba(138,143,152,.12)', go: () => this.setState({ sel: c.key, teste: -1, testando: false }) })),
+      selNome: cam.nome, selSt: cam.st, selStCor: cam.cor, selEstacao: cam.estacao, selFundo: cam.fundo, selVeredito: cam.veredito,
+      testar: () => this._testar(), testando: s.testando, temTeste: s.teste >= 0, passos,
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:#23242F;border-radius:5px}</style>
+</helmet>
+<div style="width:100%;height:100vh;display:flex;flex-direction:column;background:#0A0A0F" data-screen-label="EPI Câmeras">
+  <dc-import name="EPI Topbar" crumb2="Câmeras & Sites" style="flex:none" hint-size="100%,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <dc-import name="EPI Sidebar" ativa="Câmeras & Sites" style="flex:none;align-self:stretch" hint-size="237px,100%"></dc-import>
+    <main style="flex:1;min-width:0;overflow:auto;position:relative">
+      <sc-if value="{{ carregado }}" hint-placeholder-val="{{ true }}">
+        <div style="max-width:1280px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+          <div style="display:flex;align-items:center;gap:16px">
+            <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Câmeras &amp; Sites</h1>
+            <div style="display:flex;background:#14141C;border-radius:8px;padding:3px;gap:2px">
+              <sc-for list="{{ abas }}" as="a" hint-placeholder-count="3">
+                <button onClick="{{ a.go }}" style="height:36px;padding:0 18px;border:none;border-radius:6px;background:{{ a.bg }};color:{{ a.cor }};font-size:14px;font-weight:600;cursor:pointer">{{ a.t }}</button>
+              </sc-for>
+            </div>
+            <div style="flex:1"></div>
+            <button style="height:38px;padding:0 16px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Adicionar câmera</button>
+          </div>
+
+          <sc-if value="{{ abaCameras }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;gap:14px;align-items:flex-start">
+              <div style="width:330px;flex:none;display:flex;flex-direction:column;gap:6px">
+                <sc-for list="{{ cams }}" as="c" hint-placeholder-count="3">
+                  <button onClick="{{ c.go }}" style="display:flex;align-items:center;gap:12px;padding:13px 14px;background:#14141C;border:1px solid {{ c.borda }};border-radius:9px;cursor:pointer;text-align:left">
+                    <span style="width:9px;height:9px;border-radius:50%;background:{{ c.stCor }};flex:none"></span>
+                    <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+                      <span style="font-family:'JetBrains Mono';font-size:13px;font-weight:700;color:#F4F6F8">{{ c.nome }}</span>
+                      <span style="font-size:12px;color:#8A8F98">{{ c.area }}</span>
+                    </div>
+                    <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:10px;color:{{ c.stCor }}">{{ c.stTxt }}</span>
+                  </button>
+                </sc-for>
+              </div>
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:14px;background:#14141C;border:1px solid #23242F;border-radius:12px;padding:18px;box-sizing:border-box">
+                <div style="display:flex;align-items:center;gap:12px">
+                  <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">{{ selNome }}</span>
+                  <span style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono';font-size:10.5px;color:{{ selStCor }}">{{ selStTxt }}</span>
+                  <div style="flex:1"></div>
+                  <button onClick="{{ testar }}" style="height:38px;padding:0 16px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px">
+                    <sc-if value="{{ testando }}" hint-placeholder-val="{{ false }}"><x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="spinner" state="waiting" size="16" hint-size="16px,16px"></x-import></sc-if>
+                    Testar conexão
+                  </button>
+                </div>
+                <div style="display:flex;gap:14px">
+                  <div style="width:300px;flex:none;position:relative;aspect-ratio:16/9;border-radius:8px;overflow:hidden;border:1px solid #23242F;background:{{ selFundo }}">
+                    <sc-if value="{{ selOffline }}" hint-placeholder-val="{{ false }}">
+                      <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="tile" state="waiting" label="SEM SINAL" size="36" style="position:absolute;inset:0" hint-size="100%,100%"></x-import>
+                    </sc-if>
+                  </div>
+                  <div style="flex:1;display:grid;grid-template-columns:auto 1fr;gap:7px 16px;font-size:12.5px;align-content:start">
+                    <span style="color:#8A8F98">Site</span><span>RVB Isolantes — Blumenau</span>
+                    <span style="color:#8A8F98">Área</span><span>{{ selArea }}</span>
+                    <span style="color:#8A8F98">Endereço</span><span style="font-family:'JetBrains Mono';font-size:12px">rtsp://10.0.3.{{ selIp }}:554/ch01 <span style="color:#8A8F98">· senha oculta</span></span>
+                    <span style="color:#8A8F98">Processa em</span><span>Edge · Jetson RVB-01</span>
+                    <span style="color:#8A8F98">Cenário</span><span>EPI — zona de capacete/colete</span>
+                  </div>
+                </div>
+                <sc-if value="{{ temTeste }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#0A0A0F;border:1px solid #23242F;border-radius:10px">
+                    <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">TESTE DE CONEXÃO · PASSO A PASSO</span>
+                    <sc-for list="{{ passos }}" as="p" hint-placeholder-count="3">
+                      <div style="display:flex;align-items:center;gap:10px">
+                        <span style="width:20px;height:20px;flex:none;border-radius:50%;border:1px solid {{ p.borda }};color:{{ p.cor }};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">{{ p.mark }}</span>
+                        <span style="font-size:13px;color:{{ p.txtCor }}">{{ p.txt }}</span>
+                        <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">{{ p.ms }}</span>
+                      </div>
+                    </sc-for>
+                    <sc-if value="{{ resultadoOn }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;align-items:center;gap:9px;padding:10px 12px;border-radius:8px;background:{{ resBg }};border:1px solid {{ resBorda }}">
+                        <span style="font-size:13px;font-weight:700;color:{{ resCor }}">{{ resTxt }}</span>
+                        <span style="margin-left:auto;font-size:12px;color:#8A8F98">{{ resDica }}</span>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ abaSites }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:14px;background:#14141C;border:1px solid #23242F;border-radius:12px;padding:20px;max-width:760px">
+              <div style="display:flex;align-items:center;gap:12px">
+                <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">RVB Isolantes — Blumenau</span>
+                <span style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono';font-size:10.5px;color:#3ECF8E">● EDGE SAUDÁVEL</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <span style="font-size:13px;color:#8A8F98">Modo de processamento do site</span>
+                <div style="display:flex;background:#0A0A0F;border-radius:8px;padding:3px;gap:2px;max-width:380px">
+                  <sc-for list="{{ modos }}" as="m" hint-placeholder-count="3">
+                    <button onClick="{{ m.go }}" style="flex:1;height:36px;border:none;border-radius:6px;background:{{ m.bg }};color:{{ m.cor }};font-size:13px;font-weight:600;cursor:pointer">{{ m.t }}</button>
+                  </sc-for>
+                </div>
+                <span style="font-size:12px;color:#8A8F98">{{ modoDesc }}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">SAÚDE DO JETSON · RVB-01</span>
+                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+                  <sc-for list="{{ jetson }}" as="j" hint-placeholder-count="4">
+                    <div style="display:flex;flex-direction:column;gap:4px;padding:12px 14px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px">
+                      <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.14em;color:#8A8F98">{{ j.k }}</span>
+                      <span style="font-family:'JetBrains Mono';font-weight:700;font-size:20px;color:{{ j.cor }}">{{ j.v }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px">
+                <span style="font-size:13px">Sincronização edge → cloud</span>
+                <span style="font-family:'JetBrains Mono';font-size:12px;color:#3ECF8E">● HÁ 42 S · FILA 0</span>
+                <div style="flex:1"></div>
+                <button style="height:32px;padding:0 13px;background:transparent;border:1px solid #23242F;border-radius:7px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;cursor:pointer">Reiniciar agente</button>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ abaSaude }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:1.1fr 150px 120px 130px 150px;background:#14141C;border:1px solid #23242F;border-radius:10px;overflow:hidden;max-width:900px">
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">CÂMERA</div>
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">STATUS</div>
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F;text-align:right">UPTIME 7D</div>
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F;text-align:right">FPS</div>
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F;text-align:right">ÚLTIMO FRAME</div>
+              <sc-for list="{{ saude }}" as="r" hint-placeholder-count="3">
+                <div style="display:contents">
+                  <span style="padding:13px 16px;font-family:'JetBrains Mono';font-size:13px;font-weight:700;border-bottom:1px solid rgba(138,143,152,.08)">{{ r.nome }}</span>
+                  <span style="padding:13px 16px;border-bottom:1px solid rgba(138,143,152,.08);display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:{{ r.cor }}"><span style="width:9px;height:9px;border-radius:50%;background:{{ r.cor }}"></span>{{ r.st }}</span>
+                  <span style="padding:13px 16px;font-family:'JetBrains Mono';font-size:13px;text-align:right;border-bottom:1px solid rgba(138,143,152,.08)">{{ r.uptime }}</span>
+                  <span style="padding:13px 16px;font-family:'JetBrains Mono';font-size:13px;text-align:right;border-bottom:1px solid rgba(138,143,152,.08)">{{ r.fps }}</span>
+                  <span style="padding:13px 16px;font-family:'JetBrains Mono';font-size:13px;text-align:right;color:{{ r.frameCor }};border-bottom:1px solid rgba(138,143,152,.08)">{{ r.frame }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+      <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}">
+        <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="fullscreen" state="waiting" label="CARREGANDO CÂMERAS" size="96" style="position:absolute;inset:0" hint-size="100%,100%"></x-import>
+      </sc-if>
+      <sc-if value="{{ vazio }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#8A8F98" stroke-width="1.5" stroke-linecap="square"><path d="M3 7h12v10H3zM15 10l6-3v10l-6-3"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Nenhuma câmera cadastrada</span>
+          <span style="font-size:13.5px;color:#8A8F98;max-width:380px;line-height:1.55">Cadastre a primeira câmera do site para começar a detectar.</span>
+          <button style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Adicionar câmera</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{ erro }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#E5484D" stroke-width="1.5" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Não foi possível carregar</span>
+          <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">GET /api/cameras · TIMEOUT 10 S</span>
+          <button style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Tentar novamente</button>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+  <div style="position:fixed;left:16px;bottom:14px;display:flex;align-items:center;gap:6px;background:#14141C;border:1px solid #23242F;border-radius:10px;padding:7px 10px;z-index:130;box-shadow:0 8px 32px rgba(0,0,0,.6)">
+    <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.2em;color:#8A8F98;margin-right:4px">ESTADO</span>
+    <sc-for list="{{ chips }}" as="ch" hint-placeholder-count="4">
+      <button onClick="{{ ch.go }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid {{ ch.borda }};background:{{ ch.bg }};color:{{ ch.cor }};font-family:'JetBrains Mono';font-size:10.5px;cursor:pointer">{{ ch.t }}</button>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:940}}">
+class Component extends DCLogic {
+  CAMS = [
+    { key: 'c1', nome: 'CAM-01 Doca Norte', area: 'Doca Norte', ip: '11', st: 'ONLINE', cor: '#3ECF8E', fundo: 'linear-gradient(155deg,#1A1B26,#101018)', falha: false },
+    { key: 'c4', nome: 'CAM-04 Expedição', area: 'Expedição — Doca 3', ip: '14', st: 'INSTÁVEL', cor: '#E8A13C', fundo: 'linear-gradient(200deg,#191822,#0F0F16)', falha: false },
+    { key: 'c7', nome: 'CAM-07 Linha 2', area: 'Linha 2 — Serra', ip: '17', st: 'OFFLINE', cor: '#E5484D', fundo: '#0A0A0F', falha: true, offline: true },
+  ];
+  state = { estado: 'carregado', aba: 'cameras', sel: 'c1', modo: 'edge', teste: -1, testando: false };
+  componentWillUnmount() { clearTimeout(this._t1); clearTimeout(this._t2); clearTimeout(this._t3); }
+  _testar() {
+    clearTimeout(this._t1); clearTimeout(this._t2); clearTimeout(this._t3);
+    this.setState({ teste: 0, testando: true });
+    this._t1 = setTimeout(() => this.setState({ teste: 1 }), 700);
+    this._t2 = setTimeout(() => this.setState({ teste: 2 }), 1500);
+    this._t3 = setTimeout(() => this.setState({ teste: 3, testando: false }), 2400);
+  }
+  renderVals() {
+    const s = this.state;
+    const chip = (t, k) => ({ t, go: () => this.setState({ estado: k }), bg: s.estado === k ? 'rgba(0,229,255,.09)' : 'transparent', cor: s.estado === k ? '#00E5FF' : '#8A8F98', borda: s.estado === k ? 'rgba(0,229,255,.4)' : '#23242F' });
+    const cam = this.CAMS.find(c => c.key === s.sel);
+    const falhaNo = cam.falha ? 2 : 99;
+    const passosDef = [
+      { txt: 'Resolver endereço da câmera', ms: '38 MS' },
+      { txt: 'Autenticar RTSP', ms: '210 MS' },
+      { txt: 'Receber stream de vídeo', ms: cam.falha ? '—' : '920 MS · 12 FPS' },
+    ];
+    const passos = passosDef.map((p, i) => {
+      const done = s.teste > i || (s.teste === 3 && i < 3);
+      const falhou = s.teste >= 3 && i === falhaNo;
+      const ativo = s.teste === i && s.testando;
+      const ok = done && !falhou && i < falhaNo;
+      return {
+        txt: p.txt, ms: ok ? p.ms : falhou ? 'FALHOU' : ativo ? '…' : '',
+        mark: ok ? '✓' : falhou ? '✕' : String(i + 1),
+        cor: ok ? '#3ECF8E' : falhou ? '#E5484D' : '#8A8F98',
+        borda: ok ? 'rgba(62,207,142,.5)' : falhou ? 'rgba(229,72,77,.5)' : '#3A3D4A',
+        txtCor: ok || falhou || ativo ? '#F4F6F8' : '#8A8F98',
+      };
+    });
+    const modoDescs = { edge: 'Inferência no Jetson do site; eventos sincronizam para a nuvem. Tolerante a queda de link.', dual: 'Edge processa; a nuvem revalida amostras para controle de qualidade do modelo.', cloud: 'Streams sobem para a nuvem. Exige link estável; latência maior.' };
+    return {
+      carregado: s.estado === 'carregado', loading: s.estado === 'loading', vazio: s.estado === 'vazio', erro: s.estado === 'erro',
+      chips: [chip('CARREGADO', 'carregado'), chip('LOADING', 'loading'), chip('VAZIO', 'vazio'), chip('ERRO', 'erro')],
+      abas: [['cameras', 'Câmeras'], ['sites', 'Sites & Edge'], ['saude', 'Saúde']].map(([k, t]) => ({ t, go: () => this.setState({ aba: k }), bg: s.aba === k ? '#0A0A0F' : 'transparent', cor: s.aba === k ? '#00E5FF' : '#8A8F98' })),
+      abaCameras: s.aba === 'cameras', abaSites: s.aba === 'sites', abaSaude: s.aba === 'saude',
+      cams: this.CAMS.map(c => ({ nome: c.nome, area: c.area, stTxt: c.st, stCor: c.cor, borda: s.sel === c.key ? 'rgba(0,229,255,.5)' : '#23242F', go: () => this.setState({ sel: c.key, teste: -1, testando: false }) })),
+      selNome: cam.nome, selStTxt: '● ' + cam.st, selStCor: cam.cor, selArea: cam.area, selIp: cam.ip, selFundo: cam.fundo, selOffline: !!cam.offline,
+      testar: () => this._testar(), testando: s.testando, temTeste: s.teste >= 0,
+      passos,
+      resultadoOn: s.teste >= 3,
+      resTxt: cam.falha ? 'Falha: sem rota até a câmera' : 'Conexão OK · 1,2 s',
+      resDica: cam.falha ? 'Verifique o link do site ou a alimentação da câmera.' : 'Stream saudável no Jetson RVB-01.',
+      resCor: cam.falha ? '#E5484D' : '#3ECF8E',
+      resBg: cam.falha ? 'rgba(229,72,77,.07)' : 'rgba(62,207,142,.07)',
+      resBorda: cam.falha ? 'rgba(229,72,77,.4)' : 'rgba(62,207,142,.4)',
+      modos: [['edge', 'Edge'], ['dual', 'Dual'], ['cloud', 'Cloud']].map(([k, t]) => ({ t, go: () => this.setState({ modo: k }), bg: s.modo === k ? '#14141C' : 'transparent', cor: s.modo === k ? '#00E5FF' : '#8A8F98' })),
+      modoDesc: modoDescs[s.modo],
+      jetson: [
+        { k: 'CPU', v: '41%', cor: '#F4F6F8' }, { k: 'GPU', v: '62%', cor: '#F4F6F8' },
+        { k: 'TEMP', v: '58°C', cor: '#F4F6F8' }, { k: 'DISCO', v: '71%', cor: '#E8A13C' },
+      ],
+      saude: [
+        { nome: 'CAM-01', st: 'Online', cor: '#3ECF8E', uptime: '99,8%', fps: '12', frame: 'AGORA', frameCor: '#8A8F98' },
+        { nome: 'CAM-04', st: 'Instável', cor: '#E8A13C', uptime: '96,1%', fps: '9', frame: 'HÁ 8 S', frameCor: '#E8A13C' },
+        { nome: 'CAM-07', st: 'Offline', cor: '#E5484D', uptime: '87,4%', fps: '—', frame: 'HÁ 26 MIN', frameCor: '#E5484D' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

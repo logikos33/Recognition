@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="./image-slot.js"></script>
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}</style>
+</helmet>
+<div style="width:100%;min-height:100vh;display:flex;flex-direction:column;background:#0A0A0F" data-screen-label="Configuração C1/C2">
+  <header style="height:56px;flex:none;display:flex;align-items:center;gap:24px;padding:0 24px;background:#14141C;border-bottom:1px solid rgba(138,143,152,.16)">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:26px;height:26px;border-radius:50%;border:2px solid #F4F6F8;display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-weight:700;font-size:14px">Λ</div>
+      <span style="font-family:'Space Grotesk';font-weight:700;font-size:16px;letter-spacing:.08em">ΛΟΓΙΚΟΣ</span>
+      <span style="color:#8A8F98;font-size:14px">· Qualidade</span>
+    </div>
+    <nav style="display:flex;gap:4px;height:100%">
+      <a href="Revisão Qualidade.dc.html" style="display:flex;align-items:center;padding:0 16px;font-size:14px;color:#8A8F98;border-bottom:2px solid transparent">Revisão</a>
+      <a href="Configuração Qualidade.dc.html" style="display:flex;align-items:center;padding:0 16px;font-size:14px;font-weight:600;color:#00E5FF;border-bottom:2px solid #00E5FF">Configuração</a>
+      <a href="Gestão Qualidade.dc.html" style="display:flex;align-items:center;padding:0 16px;font-size:14px;color:#8A8F98;border-bottom:2px solid transparent">Gestão</a>
+    </nav>
+    <div style="flex:1"></div>
+    <span style="font-size:13px;color:#8A8F98">RVB Isolantes</span>
+    <span style="width:30px;height:30px;border-radius:50%;background:#0A0A0F;border:1px solid rgba(138,143,152,.3);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600">SA</span>
+  </header>
+  <div style="flex:1;display:flex;flex-direction:column;max-width:1240px;width:100%;margin:0 auto;padding:24px;box-sizing:border-box;gap:18px">
+    <div style="display:flex;align-items:center;gap:16px">
+      <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Configuração</h1>
+      <div style="display:flex;background:#14141C;border-radius:8px;padding:3px;gap:2px">
+        <button onClick="{{ showC1 }}" style="height:36px;padding:0 18px;border:none;border-radius:6px;background:{{ c1Bg }};color:{{ c1Color }};font-size:14px;font-weight:600;cursor:pointer">Pontos &amp; rotas</button>
+        <button onClick="{{ showC2 }}" style="height:36px;padding:0 18px;border:none;border-radius:6px;background:{{ c2Bg }};color:{{ c2Color }};font-size:14px;font-weight:600;cursor:pointer">Limiares &amp; estações</button>
+      </div>
+      <div style="flex:1"></div>
+      <span style="font-size:13px;color:#8A8F98">Alterações valem imediatamente nas estações — sem deploy.</span>
+    </div>
+
+    <!-- ============ C1 · PONTOS & ROTAS ============ -->
+    <sc-if value="{{ isC1 }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;gap:18px;align-items:flex-start">
+        <div style="flex:1;display:flex;flex-direction:column;gap:14px;min-width:0">
+          <div style="display:flex;align-items:center;gap:12px">
+            <h2 style="margin:0;font-size:15px;letter-spacing:.08em;color:#8A8F98;font-weight:600">PONTOS DE INSPEÇÃO</h2>
+            <div style="flex:1"></div>
+            <button style="height:34px;padding:0 14px;background:transparent;border:1px solid #00E5FF;border-radius:6px;color:#00E5FF;font-size:13px;font-weight:600;cursor:pointer">+ Novo ponto</button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <sc-for list="{{ pontos }}" as="p" hint-placeholder-count="5">
+              <div onClick="{{ p.edit }}" style="display:flex;align-items:center;gap:14px;padding:11px 14px;background:#14141C;border:1px solid {{ p.borda }};border-radius:8px;cursor:pointer">
+                <span style="font-family:'JetBrains Mono';font-weight:700;font-size:15px;width:32px">{{ p.code }}</span>
+                <span style="font-size:11px;font-weight:700;color:#0A0A0F;background:#8A8F98;padding:2px 7px;border-radius:4px" title="situação visual">{{ p.sit }}</span>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:14px;font-weight:600">{{ p.nome }}</div>
+                  <div style="font-size:12.5px;color:#8A8F98;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.criterio }}</div>
+                </div>
+                <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">{{ p.tol }}</span>
+                <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98;background:#0A0A0F;padding:3px 8px;border-radius:4px">{{ p.info }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <h2 style="margin:10px 0 0;font-size:15px;letter-spacing:.08em;color:#8A8F98;font-weight:600">ROTAS POR TIPO DE PRODUTO</h2>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <sc-for list="{{ rotas }}" as="r" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;background:#14141C;border-radius:8px">
+                <span style="width:150px;font-size:14px;font-weight:600">{{ r.tipo }}</span>
+                <div style="flex:1;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                  <sc-for list="{{ r.seq }}" as="st" hint-placeholder-count="4">
+                    <span style="display:flex;align-items:center;gap:6px;padding:5px 10px;background:#0A0A0F;border:1px solid rgba(138,143,152,.3);border-radius:6px;font-family:'JetBrains Mono';font-size:13px;cursor:grab"><span style="color:#8A8F98;letter-spacing:-2px">⋮⋮</span>{{ st }}</span>
+                  </sc-for>
+                </div>
+                <span style="font-size:12px;color:#8A8F98">arraste para reordenar</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <div style="width:340px;flex:none;display:flex;flex-direction:column;gap:12px;background:#14141C;border:1px solid rgba(0,229,255,.3);border-radius:12px;padding:18px">
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <span style="font-family:'Space Grotesk';font-weight:700;font-size:18px">Editar {{ selCode }}</span>
+            <span style="font-size:13px;color:#8A8F98">{{ selNome }}</span>
+          </div>
+          <label style="font-size:12px;color:#8A8F98;letter-spacing:.06em">CRITÉRIO (o que o operador lê)</label>
+          <div style="padding:10px 12px;background:#0A0A0F;border:1px solid rgba(138,143,152,.3);border-radius:6px;font-size:14px;line-height:1.4">{{ selCriterio }}</div>
+          <label style="font-size:12px;color:#8A8F98;letter-spacing:.06em">TOLERÂNCIA</label>
+          <div style="display:flex;gap:8px">
+            <div style="flex:1;padding:9px 12px;background:#0A0A0F;border:1px solid rgba(138,143,152,.3);border-radius:6px;font-family:'JetBrains Mono';font-size:14px">{{ selTol }}</div>
+            <div style="padding:9px 12px;background:#0A0A0F;border:1px solid rgba(138,143,152,.3);border-radius:6px;font-family:'JetBrains Mono';font-size:14px;color:#8A8F98">mm</div>
+          </div>
+          <label style="font-size:12px;color:#8A8F98;letter-spacing:.06em">FOTO ESPECIFICADO</label>
+          <div style="height:150px;border-radius:8px;overflow:hidden;border:1px solid rgba(138,143,152,.25)">
+            <image-slot id="cfg-esp-{{ selCode }}" shape="rect" placeholder="Foto Especificado {{ selCode }}"></image-slot>
+          </div>
+          <label style="font-size:12px;color:#8A8F98;letter-spacing:.06em">DOCUMENTO INFO / FP</label>
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:#0A0A0F;border:1px solid rgba(138,143,152,.3);border-radius:6px">
+            <span style="font-family:'JetBrains Mono';font-size:13px">{{ selInfo }}</span>
+            <span style="font-size:12px;color:#8A8F98">· revisão C · 12/07/2026</span>
+          </div>
+          <button style="height:48px;margin-top:6px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Space Grotesk';font-weight:700;font-size:15px;letter-spacing:.03em;cursor:pointer">PUBLICAR ALTERAÇÃO</button>
+          <span style="font-size:12px;color:#8A8F98;text-align:center">vale imediatamente para todas as estações</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ============ C2 · LIMIARES & ESTAÇÕES ============ -->
+    <sc-if value="{{ isC2 }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <h2 style="margin:0;font-size:15px;letter-spacing:.08em;color:#8A8F98;font-weight:600">LIMIARES DAS 3 FAIXAS POR PONTO</h2>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <sc-for list="{{ limiares }}" as="l" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:18px;padding:14px 16px;background:#14141C;border-radius:8px">
+              <span style="font-family:'JetBrains Mono';font-weight:700;font-size:15px;width:32px">{{ l.code }}</span>
+              <span style="width:200px;font-size:14px">{{ l.nome }}</span>
+              <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+                <div style="position:relative;height:14px;border-radius:7px;overflow:hidden;display:flex">
+                  <div style="width:{{ l.wNc }};background:#FF5C47"></div>
+                  <div style="width:{{ l.wDuv }};background:#FFB020"></div>
+                  <div style="flex:1;background:#3ECF8E"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">
+                  <span>refazer/NC &lt; {{ l.t1 }}</span><span>dúvida {{ l.t1 }}–{{ l.t2 }}</span><span>conforme ≥ {{ l.t2 }}</span>
+                </div>
+              </div>
+              <div style="width:210px;flex:none;display:flex;flex-direction:column;gap:5px">
+                <span style="font-size:11px;color:#8A8F98;letter-spacing:.06em">PREVIEW — histórico 30 d</span>
+                <div style="display:flex;height:10px;border-radius:5px;overflow:hidden">
+                  <div style="width:{{ l.hNc }};background:#FF5C47"></div>
+                  <div style="width:{{ l.hDuv }};background:#FFB020"></div>
+                  <div style="flex:1;background:#3ECF8E"></div>
+                </div>
+                <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">{{ l.hLabel }}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <h2 style="margin:12px 0 0;font-size:15px;letter-spacing:.08em;color:#8A8F98;font-weight:600">ESTAÇÕES</h2>
+        <div style="display:grid;grid-template-columns:170px 200px 1fr 200px 90px;gap:0;background:#14141C;border-radius:8px;overflow:hidden">
+          <div style="padding:10px 14px;font-size:11px;color:#8A8F98;letter-spacing:.08em;border-bottom:1px solid rgba(138,143,152,.15)">ESTAÇÃO</div>
+          <div style="padding:10px 14px;font-size:11px;color:#8A8F98;letter-spacing:.08em;border-bottom:1px solid rgba(138,143,152,.15)">CÂMERA</div>
+          <div style="padding:10px 14px;font-size:11px;color:#8A8F98;letter-spacing:.08em;border-bottom:1px solid rgba(138,143,152,.15)">PONTOS ATENDIDOS</div>
+          <div style="padding:10px 14px;font-size:11px;color:#8A8F98;letter-spacing:.08em;border-bottom:1px solid rgba(138,143,152,.15)">TOKEN DA ESTAÇÃO</div>
+          <div style="padding:10px 14px;font-size:11px;color:#8A8F98;letter-spacing:.08em;border-bottom:1px solid rgba(138,143,152,.15)">STATUS</div>
+          <sc-for list="{{ estacoes }}" as="e" hint-placeholder-count="2">
+            <div style="display:contents">
+              <div style="padding:13px 14px;font-size:14px;font-weight:600;border-bottom:1px solid rgba(138,143,152,.08)">{{ e.nome }}</div>
+              <div style="padding:13px 14px;font-family:'JetBrains Mono';font-size:13px;color:#8A8F98;border-bottom:1px solid rgba(138,143,152,.08)">{{ e.cam }}</div>
+              <div style="padding:13px 14px;font-family:'JetBrains Mono';font-size:13px;border-bottom:1px solid rgba(138,143,152,.08)">{{ e.pontos }}</div>
+              <div style="padding:13px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(138,143,152,.08)"><span style="font-family:'JetBrains Mono';font-size:13px;color:#8A8F98">••••{{ e.token }}</span><a href="#" style="font-size:12px">regenerar</a></div>
+              <div style="padding:13px 14px;border-bottom:1px solid rgba(138,143,152,.08)"><span style="font-size:12px;font-weight:600;color:#3ECF8E">● ativa</span></div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  PONTOS = [
+    { code: 'P1', sit: 'A', nome: 'Transpasse da cordoalha', criterio: 'Transpasse da cordoalha ≤ 10 mm', tol: '≤ 10 mm', info: 'INFO-038' },
+    { code: 'P2', sit: 'B', nome: 'Detalhe da alma', criterio: 'Alma sem madeira exposta · papel íntegro', tol: '—', info: 'INFO-041' },
+    { code: 'P4', sit: 'C', nome: 'Distanciamento entre espiras', criterio: 'Distância 12 ± 1 mm · display do paquímetro legível', tol: '12 ± 1 mm', info: 'INFO-042' },
+    { code: 'P5', sit: 'A', nome: 'Extremidade do enchimento', criterio: 'Extremidade coberta · sem cordoalha aparente', tol: '—', info: 'INFO-044' },
+    { code: 'H1', sit: 'A', nome: 'Ponta do helicoidal', criterio: 'Ponta coberta com papel aluminizado', tol: '—', info: 'INFO-046' },
+    { code: 'P8', sit: 'D', nome: 'Foto final da peça', criterio: 'Peça inteira no quadro · foco nítido', tol: '—', info: 'INFO-047' },
+  ];
+  state = { tab: 'c1', sel: 'P4' };
+  renderVals() {
+    const s = this.state;
+    const selP = this.PONTOS.find(p => p.code === s.sel) || this.PONTOS[0];
+    return {
+      isC1: s.tab === 'c1', isC2: s.tab === 'c2',
+      showC1: () => this.setState({ tab: 'c1' }), showC2: () => this.setState({ tab: 'c2' }),
+      c1Bg: s.tab === 'c1' ? '#0A0A0F' : 'transparent', c1Color: s.tab === 'c1' ? '#00E5FF' : '#8A8F98',
+      c2Bg: s.tab === 'c2' ? '#0A0A0F' : 'transparent', c2Color: s.tab === 'c2' ? '#00E5FF' : '#8A8F98',
+      pontos: this.PONTOS.map(p => Object.assign({}, p, {
+        borda: p.code === s.sel ? 'rgba(0,229,255,.5)' : 'rgba(138,143,152,.12)',
+        edit: () => this.setState({ sel: p.code }),
+      })),
+      rotas: [
+        { tipo: 'Anel plano', seq: ['P1', 'P2', 'P4', 'P8'] },
+        { tipo: 'Helicoidal', seq: ['H1', 'H2', 'P8'] },
+        { tipo: 'Enchimentos', seq: ['P5', 'P6', 'P7'] },
+      ],
+      selCode: selP.code, selNome: selP.nome, selCriterio: selP.criterio,
+      selTol: selP.tol === '—' ? 'sem tolerância numérica' : selP.tol, selInfo: selP.info,
+      limiares: [
+        { code: 'P1', nome: 'Transpasse da cordoalha', t1: '0,45', t2: '0,72', wNc: '22%', wDuv: '20%', hNc: '6%', hDuv: '9%', hLabel: '85 conf · 9 dúv · 6 ref' },
+        { code: 'P2', nome: 'Detalhe da alma', t1: '0,50', t2: '0,78', wNc: '26%', wDuv: '22%', hNc: '8%', hDuv: '14%', hLabel: '78 conf · 14 dúv · 8 ref' },
+        { code: 'P4', nome: 'Distanciamento entre espiras', t1: '0,40', t2: '0,70', wNc: '20%', wDuv: '22%', hNc: '5%', hDuv: '7%', hLabel: '88 conf · 7 dúv · 5 ref' },
+        { code: 'P8', nome: 'Foto final da peça', t1: '0,35', t2: '0,60', wNc: '17%', wDuv: '18%', hNc: '4%', hDuv: '5%', hLabel: '91 conf · 5 dúv · 4 ref' },
+      ],
+      estacoes: [
+        { nome: 'Estação 1 — Anéis', cam: 'box-edge-01 / cam-04', pontos: 'P1 · P2 · P4 · P8', token: '7f2a' },
+        { nome: 'Estação 2 — Anéis', cam: 'box-edge-01 / cam-07', pontos: 'P1 · P2 · P4 · P8', token: 'c91d' },
+        { nome: 'Estação 3 — Enchimentos', cam: 'box-edge-02 / cam-02', pontos: 'P5 · P6 · P7', token: '4b08' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

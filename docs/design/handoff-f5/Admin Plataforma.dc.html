@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:#23242F;border-radius:5px}</style>
+</helmet>
+<div style="width:100%;height:100vh;display:flex;flex-direction:column;background:#0A0A0F" data-screen-label="Painel Admin">
+  <div style="height:2px;flex:none;background:#E8A13C"></div>
+  <dc-import name="EPI Topbar" modulo="Painel Admin" crumb2="{{ crumb2 }}" style="flex:none" hint-size="100%,56px"></dc-import>
+  <div style="height:42px;flex:none;display:flex;align-items:center;gap:12px;padding:0 20px;background:rgba(232,161,60,.07);border-bottom:1px solid rgba(232,161,60,.35)">
+    <svg viewBox="0 0 24 24" style="width:16px;height:16px" fill="none" stroke="#E8A13C" stroke-width="1.8" stroke-linecap="square"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"></path></svg>
+    <span style="font-family:'JetBrains Mono';font-size:11px;letter-spacing:.18em;color:#E8A13C">VOCÊ ESTÁ NA PLATAFORMA · PAINEL ADMIN</span>
+    <sc-if value="{{ imp }}" hint-placeholder-val="{{ false }}">
+      <span style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#F4F6F8;background:#14141C;border:1px solid rgba(232,161,60,.4);border-radius:6px;padding:4px 10px">Vendo como <b>RVB Isolantes</b><button onClick="{{ sairImp }}" style="background:transparent;border:none;color:#00E5FF;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer;padding:0">sair</button></span>
+    </sc-if>
+    <div style="flex:1"></div>
+    <a href="Shell Logikos Vision.dc.html" style="height:28px;display:flex;align-items:center;padding:0 12px;border:1px solid rgba(232,161,60,.5);border-radius:6px;color:#E8A13C;font-size:12px;font-weight:600">Voltar ao módulo</a>
+  </div>
+  <div style="flex:1;display:flex;min-height:0">
+    <aside style="width:236px;flex:none;box-sizing:border-box;display:flex;flex-direction:column;background:#14141C;border-right:1px solid #23242F;padding:14px 0">
+      <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.22em;color:#8A8F98;padding:0 20px 10px">PLATAFORMA · ADMIN</span>
+      <nav style="display:flex;flex-direction:column;gap:2px;padding:0 8px">
+        <sc-for list="{{ itens }}" as="it" hint-placeholder-count="6">
+          <a onClick="{{ it.go }}" style="display:flex;align-items:center;gap:11px;height:38px;padding:0 12px;border-radius:8px;border-left:2px solid {{ it.borda }};color:{{ it.cor }};background:{{ it.bg }};font-size:13.5px;font-weight:{{ it.peso }};cursor:pointer;white-space:nowrap;overflow:hidden" style-hover="background:#0A0A0F">
+            <svg viewBox="0 0 24 24" style="width:18px;height:18px;flex:none" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="square"><path d="{{ it.d }}"></path></svg>
+            <span>{{ it.nome }}</span>
+          </a>
+        </sc-for>
+      </nav>
+      <div style="flex:1"></div>
+      <div style="padding:10px 20px;border-top:1px solid #23242F;display:flex;flex-direction:column;gap:2px">
+        <span style="font-family:'JetBrains Mono';font-size:10px;color:#8A8F98">SUPERADMIN LOGIKOS</span>
+        <span style="font-size:12px;color:#8A8F98">Ana Ribeiro</span>
+      </div>
+    </aside>
+    <main style="flex:1;min-width:0;overflow:auto;position:relative">
+      <sc-if value="{{ carregado }}" hint-placeholder-val="{{ true }}">
+
+        <sc-if value="{{ showVisao }}" hint-placeholder-val="{{ true }}">
+          <div style="max-width:1280px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+            <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Visão geral</h1>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+              <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+                <div style="display:flex;flex-direction:column;gap:6px;padding:16px 18px;background:#14141C;border:1px solid #23242F;border-radius:12px;border-top:2px solid {{ k.cor }}">
+                  <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">{{ k.label }}</span>
+                  <span style="font-family:'JetBrains Mono';font-weight:700;font-size:34px;line-height:1;color:{{ k.corValor }}">{{ k.valor }}</span>
+                  <span style="font-size:12px;color:#8A8F98">{{ k.sub }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:12px">
+              <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+                <span style="font-size:14px;font-weight:600">Saúde por tenant</span>
+                <sc-for list="{{ saudeTenants }}" as="t" hint-placeholder-count="4">
+                  <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px">
+                    <span style="width:9px;height:9px;border-radius:50%;background:{{ t.cor }};flex:none"></span>
+                    <span style="font-size:13px;font-weight:600;width:200px">{{ t.nome }}</span>
+                    <span style="font-family:'JetBrains Mono';font-size:11.5px;color:#8A8F98">{{ t.cams }}</span>
+                    <span style="font-family:'JetBrains Mono';font-size:11.5px;color:#8A8F98">{{ t.edge }}</span>
+                    <div style="flex:1"></div>
+                    <span style="font-size:12px;font-weight:600;color:{{ t.cor }}">{{ t.st }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+                <span style="font-size:14px;font-weight:600">Pendências da plataforma</span>
+                <div style="display:flex;gap:10px;padding:10px 12px;background:#0A0A0F;border:1px solid rgba(232,161,60,.35);border-radius:8px"><span style="color:#E8A13C;font-weight:700">▲</span><span style="font-size:12.5px;line-height:1.5">Jetson RVB-01 com disco a 71% — agendar limpeza de buffer.</span></div>
+                <div style="display:flex;gap:10px;padding:10px 12px;background:#0A0A0F;border:1px solid rgba(232,161,60,.35);border-radius:8px"><span style="color:#E8A13C;font-weight:700">▲</span><span style="font-size:12.5px;line-height:1.5">2 dispositivos de kiosk aguardando reivindicação há 3 dias.</span></div>
+                <div style="display:flex;gap:10px;padding:10px 12px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px"><span style="color:#3ECF8E;font-weight:700">✓</span><span style="font-size:12.5px;line-height:1.5">Backups e sync edge→cloud em dia nos 4 tenants.</span></div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ showTenantDetalhe }}" hint-placeholder-val="{{ false }}">
+          <div style="max-width:1180px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <a onClick="{{ fecharTenant }}" style="font-size:13px;font-weight:600;cursor:pointer">← Tenants</a>
+              <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">RVB Isolantes</h1>
+              <span style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:#3ECF8E"><span style="width:8px;height:8px;border-radius:50%;background:#3ECF8E"></span>Ativo</span>
+              <div style="flex:1"></div>
+              <button onClick="{{ verComoTenant }}" style="height:38px;padding:0 16px;background:transparent;border:1px solid rgba(232,161,60,.5);border-radius:8px;color:#E8A13C;font-family:'Inter';font-size:13px;font-weight:600;cursor:pointer">Ver como tenant</button>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start">
+              <div style="display:flex;flex-direction:column;gap:12px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">DADOS</span>
+                <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 16px;font-size:13px">
+                  <span style="color:#8A8F98">Identificador</span><span style="font-family:'JetBrains Mono';font-size:12px">rvb-isolantes</span>
+                  <span style="color:#8A8F98">Site</span><span>RVB Isolantes — Blumenau/SC</span>
+                  <span style="color:#8A8F98">Processamento</span><span>Edge · Jetson RVB-01</span>
+                  <span style="color:#8A8F98">Desde</span><span style="font-family:'JetBrains Mono';font-size:12px">03/2026</span>
+                </div>
+                <div style="border-top:1px solid #23242F;padding-top:12px;display:flex;flex-direction:column;gap:8px">
+                  <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">LIMITES DO PLANO</span>
+                  <div style="display:flex;align-items:center;gap:10px"><span style="font-size:12.5px;width:80px;color:#8A8F98">Câmeras</span><div style="flex:1;height:8px;background:#0A0A0F;border-radius:4px;overflow:hidden"><div style="width:30%;height:100%;background:#00E5FF"></div></div><span style="font-family:'JetBrains Mono';font-size:12px">3/10</span></div>
+                  <div style="display:flex;align-items:center;gap:10px"><span style="font-size:12.5px;width:80px;color:#8A8F98">Usuários</span><div style="flex:1;height:8px;background:#0A0A0F;border-radius:4px;overflow:hidden"><div style="width:56%;height:100%;background:#00E5FF"></div></div><span style="font-family:'JetBrains Mono';font-size:12px">14/25</span></div>
+                </div>
+                <div style="border-top:1px solid #23242F;padding-top:12px;display:flex;flex-direction:column;gap:8px">
+                  <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">MÓDULOS HABILITADOS</span>
+                  <sc-for list="{{ modulosTenant }}" as="m" hint-placeholder-count="4">
+                    <button onClick="{{ m.go }}" style="display:flex;align-items:center;gap:10px;background:transparent;border:none;padding:3px 0;cursor:pointer;text-align:left">
+                      <span style="width:30px;height:16px;border-radius:8px;background:{{ m.track }};position:relative;flex:none"><span style="position:absolute;top:2px;left:{{ m.knob }};width:12px;height:12px;border-radius:50%;background:#F4F6F8;transition:left .1s steps(2,end)"></span></span>
+                      <span style="font-size:13px;color:#F4F6F8">{{ m.nome }}</span>
+                      <span style="font-size:11.5px;color:#8A8F98">{{ m.nota }}</span>
+                    </button>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:12px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">MARCA DO TENANT · WHITE-LABEL</span>
+                <span style="font-size:12.5px;color:#8A8F98;line-height:1.5">Sobrescreve os tokens <span style="font-family:'JetBrains Mono';font-size:11px">--lk-*</span> via <span style="font-family:'JetBrains Mono';font-size:11px">/v1/tenant/branding</span>. Estados semânticos (--st-*) não são sobrescritíveis.</span>
+                <div style="display:flex;flex-direction:column;gap:6px">
+                  <span style="font-size:13px;color:#8A8F98">Cor de acento (substitui o ciano)</span>
+                  <div style="display:flex;gap:8px">
+                    <sc-for list="{{ acentos }}" as="a" hint-placeholder-count="4">
+                      <button onClick="{{ a.go }}" style="width:40px;height:40px;border-radius:8px;background:{{ a.hex }};border:2px solid {{ a.borda }};cursor:pointer;padding:0"></button>
+                    </sc-for>
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px">
+                  <span style="font-size:13px;color:#8A8F98">Logo do tenant (sidebar e kiosk)</span>
+                  <div style="display:flex;align-items:center;justify-content:center;height:64px;border:1px dashed #3A3D4A;border-radius:8px;color:#8A8F98;font-size:12.5px">Arraste o SVG/PNG — mínimo 90px de largura</div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#0A0A0F;border:1px solid #23242F;border-radius:10px">
+                  <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.18em;color:#8A8F98">PRÉVIA</span>
+                  <div style="display:flex;align-items:center;gap:10px">
+                    <span style="height:34px;display:flex;align-items:center;padding:0 14px;border-radius:7px;background:{{ acentoSel }};color:#0A0A0F;font-size:13px;font-weight:700">Botão primário</span>
+                    <span style="height:34px;display:flex;align-items:center;gap:8px;padding:0 12px;border-radius:7px;border-left:2px solid {{ acentoSel }};background:#14141C;color:{{ acentoSel }};font-size:13px;font-weight:600">Item ativo</span>
+                    <a style="font-size:13px;font-weight:600;color:{{ acentoSel }}">link</a>
+                  </div>
+                </div>
+                <button style="height:38px;border:none;border-radius:8px;background:{{ acentoSel }};color:#0A0A0F;font-family:'Inter';font-size:13px;font-weight:700;cursor:pointer">Salvar marca</button>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ showTenants }}" hint-placeholder-val="{{ false }}">
+          <div style="max-width:1280px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Tenants</h1>
+              <div style="flex:1"></div>
+              <button style="height:38px;padding:0 16px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Novo tenant</button>
+            </div>
+            <div style="display:grid;grid-template-columns:1.3fr 1fr 110px 110px 120px 150px;background:#14141C;border:1px solid #23242F;border-radius:10px;overflow:hidden">
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">TENANT</div>
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">MÓDULOS</div>
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F;text-align:right">CÂMERAS</div>
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F;text-align:right">USUÁRIOS</div>
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">STATUS</div>
+              <div style="padding:10px 16px;border-bottom:1px solid #23242F"></div>
+              <sc-for list="{{ tenants }}" as="t" hint-placeholder-count="4">
+                <div style="display:contents">
+                  <span onClick="{{ t.abrir }}" style="padding:12px 16px;font-size:13.5px;font-weight:600;border-bottom:1px solid rgba(138,143,152,.08);cursor:pointer" style-hover="color:#00E5FF">{{ t.nome }}</span>
+                  <span style="padding:12px 16px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;border-bottom:1px solid rgba(138,143,152,.08)">
+                    <sc-for list="{{ t.modulos }}" as="m" hint-placeholder-count="3"><span style="font-family:'JetBrains Mono';font-size:10px;color:#8A8F98;border:1px solid #23242F;border-radius:5px;padding:2px 7px">{{ m.n }}</span></sc-for>
+                  </span>
+                  <span style="padding:12px 16px;font-family:'JetBrains Mono';font-size:13px;text-align:right;border-bottom:1px solid rgba(138,143,152,.08)">{{ t.cams }}</span>
+                  <span style="padding:12px 16px;font-family:'JetBrains Mono';font-size:13px;text-align:right;border-bottom:1px solid rgba(138,143,152,.08)">{{ t.users }}</span>
+                  <span style="padding:12px 16px;border-bottom:1px solid rgba(138,143,152,.08)"><span style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:{{ t.stCor }}"><span style="width:8px;height:8px;border-radius:50%;background:{{ t.stCor }}"></span>{{ t.st }}</span></span>
+                  <span style="padding:12px 16px;border-bottom:1px solid rgba(138,143,152,.08);display:flex;align-items:center;justify-content:flex-end"><button onClick="{{ t.ver }}" style="height:32px;padding:0 13px;background:transparent;border:1px solid #23242F;border-radius:7px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer" style-hover="border-color:#E8A13C;color:#E8A13C">Ver como tenant</button></span>
+                </div>
+              </sc-for>
+            </div>
+            <span style="font-size:12.5px;color:#8A8F98">"Ver como tenant" ativa a impersonação com o banner âmbar no topo — toda ação fica registrada na auditoria como sua.</span>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ showUsuarios }}" hint-placeholder-val="{{ false }}">
+          <div style="max-width:1280px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Usuários</h1>
+              <div style="flex:1"></div>
+              <select style="height:36px;background:#14141C;border:1px solid #23242F;border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 10px"><option>Todos os tenants</option><option>RVB Isolantes</option><option>Roccatextil</option></select>
+              <button style="height:38px;padding:0 16px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Convidar usuário</button>
+            </div>
+            <div style="display:grid;grid-template-columns:1.2fr 1.3fr 1fr 120px 210px;background:#14141C;border:1px solid #23242F;border-radius:10px;overflow:hidden">
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">NOME</div>
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">PAPEL · TENANT</div>
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">E-MAIL</div>
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F;text-align:right">ÚLTIMO ACESSO</div>
+              <div style="padding:10px 16px;border-bottom:1px solid #23242F"></div>
+              <sc-for list="{{ usuarios }}" as="u" hint-placeholder-count="4">
+                <div style="display:contents">
+                  <span style="padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(138,143,152,.08)"><span style="width:28px;height:28px;border-radius:50%;background:#0A0A0F;border:1px solid #3A3D4A;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex:none">{{ u.ini }}</span><span style="font-size:13.5px;font-weight:600;color:{{ u.nomeCor }}">{{ u.nome }}</span></span>
+                  <span style="padding:12px 16px;display:flex;flex-direction:column;justify-content:center;gap:1px;border-bottom:1px solid rgba(138,143,152,.08)"><span style="font-size:12.5px">{{ u.papel }}</span><span style="font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98">{{ u.tenant }}</span></span>
+                  <span style="padding:12px 16px;font-family:'JetBrains Mono';font-size:12px;color:#8A8F98;display:flex;align-items:center;border-bottom:1px solid rgba(138,143,152,.08)">{{ u.email }}</span>
+                  <span style="padding:12px 16px;font-family:'JetBrains Mono';font-size:12px;text-align:right;display:flex;align-items:center;justify-content:flex-end;color:#8A8F98;border-bottom:1px solid rgba(138,143,152,.08)">{{ u.acesso }}</span>
+                  <span style="padding:12px 16px;display:flex;align-items:center;justify-content:flex-end;gap:8px;border-bottom:1px solid rgba(138,143,152,.08)">
+                    <button onClick="{{ u.reset }}" style="height:32px;padding:0 13px;background:transparent;border:1px solid #23242F;border-radius:7px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer" style-hover="border-color:#00E5FF;color:#00E5FF">Resetar senha</button>
+                    <button onClick="{{ u.toggleAtivo }}" style="height:32px;padding:0 13px;background:transparent;border:1px solid #23242F;border-radius:7px;color:{{ u.ativarCor }};font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">{{ u.ativarTxt }}</button>
+                  </span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ showDispositivos }}" hint-placeholder-val="{{ false }}">
+          <div style="max-width:1080px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Dispositivos</h1>
+              <span style="font-size:12.5px;color:#8A8F98">kiosks e andons — acesso por código, sem login interativo</span>
+              <div style="flex:1"></div>
+              <button onClick="{{ gerarCodigo }}" style="height:38px;padding:0 16px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Gerar código de reivindicação</button>
+            </div>
+            <sc-if value="{{ codigoNovo }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;background:rgba(0,229,255,.05);border:1px solid rgba(0,229,255,.35);border-radius:10px">
+                <span style="font-size:13px">Digite este código no dispositivo:</span>
+                <span style="font-family:'JetBrains Mono';font-weight:700;font-size:26px;letter-spacing:.28em">{{ codigo }}</span>
+                <span style="font-family:'JetBrains Mono';font-size:11px;color:#E8A13C">EXPIRA EM 15 MIN</span>
+              </div>
+            </sc-if>
+            <div style="display:grid;grid-template-columns:1.2fr 1fr 130px 150px 130px;background:#14141C;border:1px solid #23242F;border-radius:10px;overflow:hidden">
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">DISPOSITIVO</div>
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">VÍNCULO</div>
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">TIPO</div>
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">STATUS</div>
+              <div style="padding:10px 16px;border-bottom:1px solid #23242F"></div>
+              <sc-for list="{{ dispositivos }}" as="d" hint-placeholder-count="4">
+                <div style="display:contents">
+                  <span style="padding:12px 16px;font-family:'JetBrains Mono';font-size:12.5px;font-weight:700;border-bottom:1px solid rgba(138,143,152,.08)">{{ d.nome }}</span>
+                  <span style="padding:12px 16px;font-size:12.5px;color:#8A8F98;border-bottom:1px solid rgba(138,143,152,.08)">{{ d.vinculo }}</span>
+                  <span style="padding:12px 16px;font-size:12.5px;border-bottom:1px solid rgba(138,143,152,.08)">{{ d.tipo }}</span>
+                  <span style="padding:12px 16px;border-bottom:1px solid rgba(138,143,152,.08)"><span style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:{{ d.stCor }}"><span style="width:8px;height:8px;border-radius:50%;background:{{ d.stCor }}"></span>{{ d.st }}</span></span>
+                  <span style="padding:12px 16px;display:flex;align-items:center;justify-content:flex-end;border-bottom:1px solid rgba(138,143,152,.08)"><button style="height:32px;padding:0 13px;background:transparent;border:1px solid #23242F;border-radius:7px;color:#8A8F98;font-family:'Inter';font-size:12.5px;cursor:pointer" style-hover="border-color:#E5484D;color:#E5484D">Revogar</button></span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ showLinks }}" hint-placeholder-val="{{ false }}">
+          <div style="max-width:1080px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Links compartilhados</h1>
+              <span style="font-size:12.5px;color:#8A8F98">criados no detalhe do evento · expiram sozinhos</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1.4fr 1fr 130px 150px 110px;background:#14141C;border:1px solid #23242F;border-radius:10px;overflow:hidden">
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">EVIDÊNCIA</div>
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">CRIADO POR</div>
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">PERMISSÃO</div>
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">EXPIRA</div>
+              <div style="padding:10px 16px;border-bottom:1px solid #23242F"></div>
+              <sc-for list="{{ links }}" as="l" hint-placeholder-count="3">
+                <div style="display:contents">
+                  <span style="padding:12px 16px;display:flex;flex-direction:column;gap:1px;border-bottom:1px solid rgba(138,143,152,.08)"><span style="font-size:13px;font-weight:600">{{ l.titulo }}</span><span style="font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98">{{ l.evento }}</span></span>
+                  <span style="padding:12px 16px;font-size:12.5px;color:#8A8F98;display:flex;align-items:center;border-bottom:1px solid rgba(138,143,152,.08)">{{ l.autor }}</span>
+                  <span style="padding:12px 16px;display:flex;align-items:center;border-bottom:1px solid rgba(138,143,152,.08)"><span style="font-family:'JetBrains Mono';font-size:10px;color:#8A8F98;border:1px solid #23242F;border-radius:5px;padding:3px 8px">{{ l.perm }}</span></span>
+                  <span style="padding:12px 16px;font-family:'JetBrains Mono';font-size:12px;font-weight:700;color:{{ l.expCor }};display:flex;align-items:center;border-bottom:1px solid rgba(138,143,152,.08)">{{ l.exp }}</span>
+                  <span style="padding:12px 16px;display:flex;align-items:center;justify-content:flex-end;border-bottom:1px solid rgba(138,143,152,.08)"><button onClick="{{ l.revogar }}" style="height:32px;padding:0 13px;background:transparent;border:1px solid #23242F;border-radius:7px;color:{{ l.revCor }};font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">{{ l.revTxt }}</button></span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ showAuditoria }}" hint-placeholder-val="{{ false }}">
+          <div style="max-width:1080px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Auditoria</h1>
+              <div style="flex:1"></div>
+              <select style="height:36px;background:#14141C;border:1px solid #23242F;border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 10px"><option>Últimas 24h</option><option>7 dias</option></select>
+              <button style="height:36px;padding:0 14px;background:transparent;border:1px solid #23242F;border-radius:6px;color:#F4F6F8;font-family:'Inter';font-size:13px;cursor:pointer">Exportar CSV</button>
+            </div>
+            <div style="display:flex;flex-direction:column;background:#14141C;border:1px solid #23242F;border-radius:10px;overflow:hidden">
+              <sc-for list="{{ auditoria }}" as="a" hint-placeholder-count="6">
+                <div style="display:flex;align-items:center;gap:16px;padding:11px 16px;border-bottom:1px solid rgba(138,143,152,.08)">
+                  <span style="font-family:'JetBrains Mono';font-size:11.5px;color:#8A8F98;width:110px;flex:none">{{ a.quando }}</span>
+                  <span style="font-size:12.5px;font-weight:600;width:130px;flex:none">{{ a.quem }}</span>
+                  <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.06em;color:{{ a.cor }};border:1px solid {{ a.borda }};border-radius:5px;padding:3px 8px;flex:none">{{ a.tipo }}</span>
+                  <span style="font-size:12.5px;color:#8A8F98">{{ a.detalhe }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+      </sc-if>
+      <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}">
+        <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="fullscreen" state="waiting" label="CARREGANDO ADMIN" size="96" style="position:absolute;inset:0" hint-size="100%,100%"></x-import>
+      </sc-if>
+      <sc-if value="{{ vazio }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#8A8F98" stroke-width="1.5" stroke-linecap="square"><path d="M4 13h5l2 3h2l2-3h5M4 13V6h16v7M4 13v5h16v-5"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Nada por aqui</span>
+          <span style="font-size:13.5px;color:#8A8F98;max-width:380px;line-height:1.55">Nenhum registro com os filtros atuais.</span>
+          <button onClick="{{ voltarCarregado }}" style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Limpar filtros</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{ erro }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#E5484D" stroke-width="1.5" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Não foi possível carregar</span>
+          <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">GET /v1/admin · TIMEOUT 10 S</span>
+          <button onClick="{{ voltarCarregado }}" style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Tentar novamente</button>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+
+  <sc-if value="{{ resetOn }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ fecharReset }}" style="position:fixed;inset:0;background:rgba(10,10,15,.72);z-index:150;display:flex;align-items:center;justify-content:center">
+      <div onClick="{{ stop }}" style="width:460px;max-width:92vw;background:#14141C;border:1px solid #23242F;border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.8);padding:22px;display:flex;flex-direction:column;gap:14px;box-sizing:border-box">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Resetar senha</span>
+          <button onClick="{{ fecharReset }}" style="margin-left:auto;width:28px;height:28px;background:transparent;border:1px solid #23242F;border-radius:6px;color:#8A8F98;cursor:pointer;font-size:13px">✕</button>
+        </div>
+        <span style="font-size:13px;color:#8A8F98;line-height:1.55">Uma senha temporária será gerada para <b style="color:#F4F6F8">{{ resetNome }}</b>. No próximo login, o sistema exige a troca.</span>
+        <sc-if value="{{ resetFeito }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:12px;padding:14px;background:#0A0A0F;border:1px solid rgba(0,229,255,.35);border-radius:10px">
+            <span style="font-family:'JetBrains Mono';font-weight:700;font-size:22px;letter-spacing:.14em">{{ senhaTemp }}</span>
+            <div style="flex:1"></div>
+            <button onClick="{{ copiarSenha }}" style="height:34px;padding:0 13px;border:none;border-radius:7px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:12.5px;font-weight:700;cursor:pointer">{{ copiaTxt }}</button>
+          </div>
+          <span style="font-size:12px;color:#E8A13C">▲ Mostrada uma única vez — copie agora e envie por canal seguro.</span>
+        </sc-if>
+        <sc-if value="{{ resetPendente }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;gap:8px">
+            <button onClick="{{ confirmarReset }}" style="flex:1;height:44px;border:none;border-radius:9px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:14px;font-weight:700;cursor:pointer">Gerar senha temporária</button>
+            <button onClick="{{ fecharReset }}" style="height:44px;padding:0 18px;background:transparent;border:1px solid #23242F;border-radius:9px;color:#F4F6F8;font-family:'Inter';font-size:14px;font-weight:600;cursor:pointer">Cancelar</button>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="position:fixed;left:16px;bottom:14px;display:flex;align-items:center;gap:6px;background:#14141C;border:1px solid #23242F;border-radius:10px;padding:7px 10px;z-index:130;box-shadow:0 8px 32px rgba(0,0,0,.6)">
+    <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.2em;color:#8A8F98;margin-right:4px">ESTADO</span>
+    <sc-for list="{{ chips }}" as="ch" hint-placeholder-count="4">
+      <button onClick="{{ ch.go }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid {{ ch.borda }};background:{{ ch.bg }};color:{{ ch.cor }};font-family:'JetBrains Mono';font-size:10.5px;cursor:pointer">{{ ch.t }}</button>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:940}}">
+class Component extends DCLogic {
+  ITENS = [
+    { key: 'visao', nome: 'Visão geral', d: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z' },
+    { key: 'tenants', nome: 'Tenants', d: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6' },
+    { key: 'usuarios', nome: 'Usuários', d: 'M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4 21c0-4 3.5-6 8-6s8 2 8 6' },
+    { key: 'dispositivos', nome: 'Dispositivos', d: 'M4 4h16v12H4zM8 20h8M12 16v4' },
+    { key: 'links', nome: 'Links compartilhados', d: 'M18 5a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM6 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM18 15a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM8 11l8-4M8 13l8 4' },
+    { key: 'auditoria', nome: 'Auditoria', d: 'M6 3h9l4 4v14H6zM9 12h6M9 16h6M9 8h3' },
+  ];
+  USUARIOS = [
+    { id: 1, nome: 'Ana Ribeiro', ini: 'AR', papel: 'Superadmin Logikos', tenant: 'PLATAFORMA', email: 'ana@logikos.com.br', acesso: 'AGORA' },
+    { id: 2, nome: 'Carlos M.', ini: 'CM', papel: 'Técnico de segurança', tenant: 'RVB ISOLANTES', email: 'carlos.m@rvb.com.br', acesso: 'HÁ 2 H' },
+    { id: 3, nome: 'Sandra L.', ini: 'SL', papel: 'Analista de qualidade', tenant: 'RVB ISOLANTES', email: 'sandra.l@rvb.com.br', acesso: 'HÁ 25 MIN' },
+    { id: 4, nome: 'Juliana P.', ini: 'JP', papel: 'Gestora da planta', tenant: 'RVB ISOLANTES', email: 'juliana.p@rvb.com.br', acesso: 'ONTEM' },
+    { id: 5, nome: 'Rafael T.', ini: 'RT', papel: 'Admin do tenant', tenant: 'ROCCATEXTIL', email: 'rafael.t@roccatextil.com.br', acesso: 'HÁ 3 D' },
+  ];
+  state = { estado: 'carregado', aba: 'visao', imp: false, resetUser: null, resetFeito: false, copiado: false, codigoNovo: false, inativos: [], revogados: [], tenantSel: null, acento: '#00E5FF', mods: { EPI: true, QUALIDADE: true, CARGA: true, 'ESTÚDIO': false } };
+  renderVals() {
+    const s = this.state;
+    const chip = (t, k) => ({ t, go: () => this.setState({ estado: k }), bg: s.estado === k ? 'rgba(0,229,255,.09)' : 'transparent', cor: s.estado === k ? '#00E5FF' : '#8A8F98', borda: s.estado === k ? 'rgba(0,229,255,.4)' : '#23242F' });
+    const resetUser = this.USUARIOS.find(u => u.id === s.resetUser);
+    return {
+      crumb2: this.ITENS.find(i => i.key === s.aba).nome,
+      itens: this.ITENS.map(it => ({
+        nome: it.nome, d: it.d,
+        cor: s.aba === it.key ? '#00E5FF' : '#8A8F98',
+        bg: s.aba === it.key ? 'rgba(0,229,255,.06)' : 'transparent',
+        borda: s.aba === it.key ? '#00E5FF' : 'transparent',
+        peso: s.aba === it.key ? '600' : '500',
+        go: () => this.setState({ aba: it.key, estado: 'carregado' }),
+      })),
+      showVisao: s.aba === 'visao', showTenants: s.aba === 'tenants' && !s.tenantSel, showTenantDetalhe: s.aba === 'tenants' && !!s.tenantSel, showUsuarios: s.aba === 'usuarios',
+      fecharTenant: () => this.setState({ tenantSel: null }),
+      verComoTenant: () => this.setState({ imp: true }),
+      modulosTenant: Object.keys(s.mods).map(k => ({
+        nome: k.charAt(0) + k.slice(1).toLowerCase(), nota: k === 'ESTÚDIO' ? 'persona técnica · gate estudio:acesso' : '',
+        track: s.mods[k] ? '#0091AD' : '#23242F', knob: s.mods[k] ? '16px' : '2px',
+        go: () => this.setState(p => ({ mods: { ...p.mods, [k]: !p.mods[k] } })),
+      })),
+      acentos: ['#00E5FF', '#7CE38B', '#FFB86B', '#B39DFF'].map(hex => ({ hex, borda: s.acento === hex ? '#F4F6F8' : 'transparent', go: () => this.setState({ acento: hex }) })),
+      acentoSel: s.acento,
+      showDispositivos: s.aba === 'dispositivos', showLinks: s.aba === 'links', showAuditoria: s.aba === 'auditoria',
+      carregado: s.estado === 'carregado', loading: s.estado === 'loading', vazio: s.estado === 'vazio', erro: s.estado === 'erro',
+      chips: [chip('CARREGADO', 'carregado'), chip('LOADING', 'loading'), chip('VAZIO', 'vazio'), chip('ERRO', 'erro')],
+      voltarCarregado: () => this.setState({ estado: 'carregado' }),
+      imp: s.imp, sairImp: () => this.setState({ imp: false }),
+      kpis: [
+        { label: 'TENANTS ATIVOS', valor: '4', sub: '2 em onboarding', cor: 'rgba(138,143,152,.4)', corValor: '#F4F6F8' },
+        { label: 'CÂMERAS', valor: '38', sub: '35 online', cor: '#3ECF8E', corValor: '#F4F6F8' },
+        { label: 'BOXES EDGE', valor: '5', sub: '1 com disco a 71%', cor: '#E8A13C', corValor: '#F4F6F8' },
+        { label: 'USUÁRIOS', valor: '62', sub: '9 ativos agora', cor: 'rgba(138,143,152,.4)', corValor: '#F4F6F8' },
+      ],
+      saudeTenants: [
+        { nome: 'RVB Isolantes — Blumenau', cams: '3 CAMS', edge: 'EDGE RVB-01', st: 'Saudável', cor: '#3ECF8E' },
+        { nome: 'Roccatextil — Brusque', cams: '12 CAMS', edge: 'EDGE RCT-01/02', st: 'Saudável', cor: '#3ECF8E' },
+        { nome: 'Metalfrio — Joinville', cams: '18 CAMS', edge: 'CLOUD', st: 'Instável', cor: '#E8A13C' },
+        { nome: 'Cerâmica Sul — Tijucas', cams: '5 CAMS', edge: 'EDGE CSU-01', st: 'Onboarding', cor: '#8A8F98' },
+      ],
+      tenants: [
+        { nome: 'RVB Isolantes', modulos: [{ n: 'EPI' }, { n: 'QUALIDADE' }, { n: 'CARGA' }], cams: 3, users: 14, st: 'Ativo', stCor: '#3ECF8E', ver: () => this.setState({ imp: true }), abrir: () => this.setState({ tenantSel: 'rvb' }) },
+        { nome: 'Roccatextil', modulos: [{ n: 'EPI' }, { n: 'CARGA' }], cams: 12, users: 22, st: 'Ativo', stCor: '#3ECF8E', ver: () => this.setState({ imp: true }), abrir: () => {} },
+        { nome: 'Metalfrio', modulos: [{ n: 'EPI' }], cams: 18, users: 19, st: 'Ativo', stCor: '#3ECF8E', ver: () => this.setState({ imp: true }), abrir: () => {} },
+        { nome: 'Cerâmica Sul', modulos: [{ n: 'QUALIDADE' }], cams: 5, users: 7, st: 'Onboarding', stCor: '#8A8F98', ver: () => this.setState({ imp: true }), abrir: () => {} },
+      ],
+      usuarios: this.USUARIOS.map(u => {
+        const inativo = s.inativos.includes(u.id);
+        return { ...u,
+          nomeCor: inativo ? '#8A8F98' : '#F4F6F8',
+          reset: () => this.setState({ resetUser: u.id, resetFeito: false, copiado: false }),
+          toggleAtivo: () => this.setState(p => ({ inativos: inativo ? p.inativos.filter(i => i !== u.id) : [...p.inativos, u.id] })),
+          ativarTxt: inativo ? 'Reativar' : 'Desativar', ativarCor: inativo ? '#3ECF8E' : '#8A8F98',
+        };
+      }),
+      resetOn: !!resetUser, resetNome: resetUser ? resetUser.nome : '',
+      resetPendente: !s.resetFeito, resetFeito: s.resetFeito,
+      confirmarReset: () => this.setState({ resetFeito: true }),
+      fecharReset: () => this.setState({ resetUser: null }),
+      stop: (e) => e.stopPropagation(),
+      senhaTemp: 'LK-9T4M-QZ2V', copiarSenha: () => this.setState({ copiado: true }), copiaTxt: s.copiado ? 'Copiado ✓' : 'Copiar',
+      codigoNovo: s.codigoNovo, codigo: 'K7Q-3ZM', gerarCodigo: () => this.setState({ codigoNovo: true }),
+      dispositivos: [
+        { nome: 'KIOSK-EST-01', vinculo: 'RVB · Estação 1', tipo: 'Kiosk tablet', st: 'Reivindicado', stCor: '#3ECF8E' },
+        { nome: 'KIOSK-EST-02', vinculo: 'RVB · Estação 2', tipo: 'Kiosk tablet', st: 'Reivindicado', stCor: '#3ECF8E' },
+        { nome: 'TV-RVB-01', vinculo: 'RVB · Produção', tipo: 'Andon / TV', st: 'Reivindicado', stCor: '#3ECF8E' },
+        { nome: 'KIOSK-RCT-01', vinculo: 'Roccatextil · Expedição', tipo: 'Kiosk tablet', st: 'Aguardando há 3 d', stCor: '#E8A13C' },
+      ],
+      links: [
+        { id: 1, titulo: 'Sem capacete · CAM-04', evento: 'EVENTO #1284 · VÍDEO + FRAMES', autor: 'Ana Ribeiro', perm: 'VER + BAIXAR', exp: '22 H', expCor: '#F4F6F8' },
+        { id: 2, titulo: 'Sem colete · CAM-01', evento: 'EVENTO #1266 · FRAMES', autor: 'Carlos M.', perm: 'SÓ VER', exp: '43 MIN', expCor: '#E8A13C' },
+        { id: 3, titulo: 'Divergência CG-0412', evento: 'CARGA · SESSÃO CG-0412', autor: 'Juliana P.', perm: 'SÓ VER', exp: '6 D', expCor: '#F4F6F8' },
+      ].map(l => {
+        const rev = s.revogados.includes(l.id);
+        return { ...l, exp: rev ? 'REVOGADO' : l.exp, expCor: rev ? '#E5484D' : l.expCor,
+          revogar: () => this.setState(p => ({ revogados: [...p.revogados, l.id] })),
+          revTxt: rev ? 'Revogado' : 'Revogar', revCor: rev ? '#8A8F98' : '#E5484D' };
+      }),
+      auditoria: [
+        { quando: 'HOJE 14:41', quem: 'Ana Ribeiro', tipo: 'RESET SENHA', cor: '#E8A13C', borda: 'rgba(232,161,60,.4)', detalhe: 'Senha temporária gerada para Sandra L. (RVB)' },
+        { quando: 'HOJE 14:32', quem: 'sistema', tipo: 'EVENTO', cor: '#8A8F98', borda: '#23242F', detalhe: 'Violação sem capacete registrada · CAM-04 · tenant RVB' },
+        { quando: 'HOJE 13:58', quem: 'Carlos M.', tipo: 'SHARE LINK', cor: '#00E5FF', borda: 'rgba(0,229,255,.4)', detalhe: 'Link de evidência criado (só ver, 24h) · evento #1266' },
+        { quando: 'HOJE 11:20', quem: 'Ana Ribeiro', tipo: 'IMPERSONAÇÃO', cor: '#E8A13C', borda: 'rgba(232,161,60,.4)', detalhe: 'Sessão "ver como tenant" iniciada · Roccatextil · 14 min' },
+        { quando: 'HOJE 09:05', quem: 'Rafael T.', tipo: 'CONFIG', cor: '#8A8F98', borda: '#23242F', detalhe: 'Modo de processamento do site alterado para Dual · Roccatextil' },
+        { quando: 'ONTEM 18:12', quem: 'sistema', tipo: 'MODELO', cor: '#8A8F98', borda: '#23242F', detalhe: 'Modelo EPI v11 ativado nas câmeras do tenant RVB' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

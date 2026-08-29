@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:#23242F;border-radius:5px}</style>
+</helmet>
+<div style="width:100%;height:100vh;display:flex;flex-direction:column;background:#0A0A0F" data-screen-label="EPI Eventos">
+  <dc-import name="EPI Topbar" crumb2="Eventos" style="flex:none" hint-size="100%,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <dc-import name="EPI Sidebar" ativa="Eventos" style="flex:none;align-self:stretch" hint-size="237px,100%"></dc-import>
+    <main style="flex:1;min-width:0;overflow:auto;position:relative">
+      <sc-if value="{{ carregado }}" hint-placeholder-val="{{ true }}">
+        <div style="max-width:1280px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Eventos</h1>
+            <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">23 HOJE · 4 NOVOS</span>
+            <div style="flex:1"></div>
+            <select style="height:36px;background:#14141C;border:1px solid #23242F;border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 10px"><option>Hoje</option><option>7 dias</option><option>30 dias</option></select>
+            <select style="height:36px;background:#14141C;border:1px solid #23242F;border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 10px"><option>Todas as câmeras</option><option>CAM-01 Doca Norte</option><option>CAM-04 Expedição</option><option>CAM-07 Linha 2</option></select>
+            <select style="height:36px;background:#14141C;border:1px solid #23242F;border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 10px"><option>Todas as classes</option><option>Capacete</option><option>Colete</option><option>Óculos</option><option>Luvas</option></select>
+            <select style="height:36px;background:#14141C;border:1px solid #23242F;border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 10px"><option>Todos os status</option><option>Novo</option><option>Reconhecido</option><option>Descartado</option></select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;padding:16px 18px;background:#14141C;border:1px solid #23242F;border-radius:10px">
+            <div style="display:flex;align-items:baseline;gap:10px">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">EVENTOS POR HORA</span>
+              <span style="margin-left:auto;display:flex;gap:14px;font-family:'JetBrains Mono';font-size:10px;color:#8A8F98"><span><span style="color:#E8A13C">■</span> EVENTO</span><span><span style="color:#E5484D">■</span> VIOLAÇÃO CONFIRMADA</span></span>
+            </div>
+            <div style="display:flex;align-items:flex-end;gap:4px;height:56px">
+              <sc-for list="{{ timeline }}" as="b" hint-placeholder-count="24">
+                <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:1px;height:100%">
+                  <div style="width:100%;height:{{ b.hv }};background:#E5484D;border-radius:2px 2px 0 0"></div>
+                  <div style="width:100%;height:{{ b.he }};background:#E8A13C"></div>
+                  <div style="width:100%;height:{{ b.hb }};background:#23242F;border-radius:0 0 2px 2px"></div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono';font-size:10px;color:#8A8F98"><span>00H</span><span>06H</span><span>12H</span><span>18H</span><span>23H</span></div>
+          </div>
+          <sc-if value="{{ temSelecao }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;background:rgba(0,229,255,.05);border:1px solid rgba(0,229,255,.3);border-radius:8px">
+              <span style="font-size:13px;font-weight:600;color:#00E5FF">{{ nSel }} selecionados</span>
+              <div style="flex:1"></div>
+              <button onClick="{{ ackSel }}" style="height:34px;padding:0 16px;border:none;border-radius:7px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13px;font-weight:700;cursor:pointer">Reconhecer selecionados</button>
+              <button onClick="{{ limparSel }}" style="height:34px;padding:0 14px;background:transparent;border:1px solid #23242F;border-radius:7px;color:#F4F6F8;font-family:'Inter';font-size:13px;cursor:pointer">Limpar</button>
+            </div>
+          </sc-if>
+          <div style="display:grid;grid-template-columns:40px 92px 1.1fr 1fr 76px 120px 210px;background:#14141C;border:1px solid #23242F;border-radius:10px;overflow:hidden">
+            <div style="padding:10px 0 10px 14px;border-bottom:1px solid #23242F;display:flex;align-items:center"><button onClick="{{ toggleTodos }}" style="width:16px;height:16px;border-radius:4px;border:1px solid {{ todosBorda }};background:{{ todosBg }};cursor:pointer;padding:0"></button></div>
+            <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F;display:flex;align-items:center">DETECÇÃO</div>
+            <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F;display:flex;align-items:center">CLASSE</div>
+            <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F;display:flex;align-items:center">CÂMERA</div>
+            <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F;display:flex;align-items:center">HORA</div>
+            <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F;display:flex;align-items:center">STATUS</div>
+            <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F;display:flex;align-items:center"></div>
+            <sc-for list="{{ eventos }}" as="ev" hint-placeholder-count="6">
+              <div style="display:contents">
+                <div style="padding:12px 0 12px 14px;border-bottom:1px solid rgba(138,143,152,.08);display:flex;align-items:center"><button onClick="{{ ev.toggle }}" style="width:16px;height:16px;border-radius:4px;border:1px solid {{ ev.ckBorda }};background:{{ ev.ckBg }};cursor:pointer;padding:0;color:#0A0A0F;font-size:11px;font-weight:700;line-height:1">{{ ev.ckMark }}</button></div>
+                <div style="padding:12px 14px 12px 14px;border-bottom:1px solid rgba(138,143,152,.08);display:flex;align-items:center">
+                  <div style="position:relative;width:64px;height:44px;border-radius:5px;overflow:hidden;background:{{ ev.fundo }};border:1px solid #23242F">
+                    <div style="position:absolute;top:{{ ev.bt }};left:{{ ev.bl }};width:{{ ev.bw }};height:{{ ev.bh }};border:1.5px solid {{ ev.bcor }};border-radius:2px"></div>
+                  </div>
+                </div>
+                <div style="padding:12px 14px;border-bottom:1px solid rgba(138,143,152,.08);display:flex;align-items:center;gap:9px">
+                  <svg viewBox="0 0 24 24" style="width:17px;height:17px;flex:none" fill="none" stroke="{{ ev.classeCor }}" stroke-width="1.7" stroke-linecap="square"><path d="{{ ev.d }}"></path></svg>
+                  <span style="font-size:13.5px;font-weight:600;color:{{ ev.classeCor }}">{{ ev.classe }}</span>
+                </div>
+                <div style="padding:12px 14px;border-bottom:1px solid rgba(138,143,152,.08);display:flex;align-items:center;font-size:13px;color:#F4F6F8">{{ ev.cam }}</div>
+                <div style="padding:12px 14px;border-bottom:1px solid rgba(138,143,152,.08);display:flex;align-items:center;font-family:'JetBrains Mono';font-size:13px">{{ ev.hora }}</div>
+                <div style="padding:12px 14px;border-bottom:1px solid rgba(138,143,152,.08);display:flex;align-items:center"><span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.08em;color:{{ ev.stCor }};border:1px solid {{ ev.stBorda }};border-radius:5px;padding:3px 8px">{{ ev.status }}</span></div>
+                <div style="padding:12px 14px;border-bottom:1px solid rgba(138,143,152,.08);display:flex;align-items:center;gap:8px;justify-content:flex-end">
+                  <sc-if value="{{ ev.podeAck }}" hint-placeholder-val="{{ true }}">
+                    <button onClick="{{ ev.ack }}" style="height:32px;padding:0 13px;background:transparent;border:1px solid #23242F;border-radius:7px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer" style-hover="border-color:#00E5FF;color:#00E5FF">Reconhecer</button>
+                  </sc-if>
+                  <a href="EPI Evento Detalhe.dc.html" style="height:32px;display:flex;align-items:center;padding:0 13px;border:1px solid transparent;border-radius:7px;font-size:12.5px;font-weight:600">Abrir →</a>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <span style="font-size:12px;color:#8A8F98">Reconhecer é sempre um clique explícito — nunca hover. Do evento dá para agir em ≤2 cliques: Abrir → Confirmar / Criar ação.</span>
+        </div>
+      </sc-if>
+      <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}">
+        <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="fullscreen" state="waiting" label="CARREGANDO EVENTOS" size="96" style="position:absolute;inset:0" hint-size="100%,100%"></x-import>
+      </sc-if>
+      <sc-if value="{{ vazio }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#8A8F98" stroke-width="1.5" stroke-linecap="square"><path d="M4 13h5l2 3h2l2-3h5M4 13V6h16v7M4 13v5h16v-5"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Nenhum evento no período</span>
+          <span style="font-size:13.5px;color:#8A8F98;max-width:380px;line-height:1.55">Nenhuma detecção com os filtros atuais. Bom sinal — ou filtro demais.</span>
+          <button style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Limpar filtros</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{ erro }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#E5484D" stroke-width="1.5" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Não foi possível carregar</span>
+          <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">GET /api/epi/eventos · TIMEOUT 10 S</span>
+          <button style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Tentar novamente</button>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+  <div style="position:fixed;left:16px;bottom:14px;display:flex;align-items:center;gap:6px;background:#14141C;border:1px solid #23242F;border-radius:10px;padding:7px 10px;z-index:130;box-shadow:0 8px 32px rgba(0,0,0,.6)">
+    <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.2em;color:#8A8F98;margin-right:4px">ESTADO</span>
+    <sc-for list="{{ chips }}" as="ch" hint-placeholder-count="4">
+      <button onClick="{{ ch.go }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid {{ ch.borda }};background:{{ ch.bg }};color:{{ ch.cor }};font-family:'JetBrains Mono';font-size:10.5px;cursor:pointer">{{ ch.t }}</button>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:940}}">
+class Component extends DCLogic {
+  ICONS = {
+    capacete: 'M5 14a7 7 0 0 1 14 0M3 14h18v3H3zM10 5h4v3',
+    colete: 'M8 3L5 7l2 2v12h10V9l2-2-3-4-4 3z',
+    oculos: 'M4 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0zM14 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0zM10 12h4M2 12h2M20 12h2',
+    luvas: 'M8 21v-7L5 10V4h3v5h1V3h3v6h1V4h3v6h1V6h2v9l-3 6z',
+  };
+  DADOS = [
+    { id: 1, classe: 'Sem capacete', icone: 'capacete', cam: 'CAM-04 Expedição', hora: '14:32', status: 'NOVO', fundo: 'linear-gradient(200deg,#191822,#0F0F16)', box: ['30%', '42%', '18%', '58%', '#E5484D'] },
+    { id: 2, classe: 'Sem colete', icone: 'colete', cam: 'CAM-01 Doca Norte', hora: '14:07', status: 'NOVO', fundo: 'linear-gradient(155deg,#1A1B26,#101018)', box: ['26%', '20%', '20%', '62%', '#E5484D'] },
+    { id: 3, classe: 'Sem capacete', icone: 'capacete', cam: 'CAM-04 Expedição', hora: '13:44', status: 'NOVO', fundo: 'linear-gradient(200deg,#191822,#0F0F16)', box: ['34%', '58%', '16%', '54%', '#E5484D'] },
+    { id: 4, classe: 'Sem óculos', icone: 'oculos', cam: 'CAM-07 Linha 2', hora: '11:52', status: 'NOVO', fundo: 'linear-gradient(175deg,#181926,#0E0E15)', box: ['22%', '35%', '22%', '60%', '#E5484D'] },
+    { id: 5, classe: 'Sem colete', icone: 'colete', cam: 'CAM-01 Doca Norte', hora: '11:07', status: 'RECONHECIDO', fundo: 'linear-gradient(155deg,#1A1B26,#101018)', box: ['28%', '48%', '18%', '58%', '#E8A13C'] },
+    { id: 6, classe: 'Sem capacete', icone: 'capacete', cam: 'CAM-04 Expedição', hora: '09:18', status: 'DESCARTADO', fundo: 'linear-gradient(200deg,#191822,#0F0F16)', box: ['36%', '30%', '16%', '52%', '#8A8F98'] },
+  ];
+  state = { estado: 'carregado', sel: [], ack: [] };
+  renderVals() {
+    const s = this.state;
+    const chip = (t, k) => ({ t, go: () => this.setState({ estado: k }), bg: s.estado === k ? 'rgba(0,229,255,.09)' : 'transparent', cor: s.estado === k ? '#00E5FF' : '#8A8F98', borda: s.estado === k ? 'rgba(0,229,255,.4)' : '#23242F' });
+    const stCores = { NOVO: ['#E8A13C', 'rgba(232,161,60,.4)'], RECONHECIDO: ['#3ECF8E', 'rgba(62,207,142,.4)'], DESCARTADO: ['#8A8F98', '#23242F'] };
+    const bars = [[2,0,0],[1,0,0],[0,0,0],[1,0,0],[0,0,0],[1,0,0],[3,1,0],[4,1,0],[5,2,1],[4,1,0],[3,1,0],[4,2,0],[2,0,0],[3,1,0],[6,3,2],[4,2,1],[2,1,0],[1,0,0],[1,0,0],[0,0,0],[1,0,0],[0,0,0],[0,0,0],[0,0,0]];
+    return {
+      carregado: s.estado === 'carregado', loading: s.estado === 'loading', vazio: s.estado === 'vazio', erro: s.estado === 'erro',
+      chips: [chip('CARREGADO', 'carregado'), chip('LOADING', 'loading'), chip('VAZIO', 'vazio'), chip('ERRO', 'erro')],
+      timeline: bars.map(b => ({ hb: (b[0] * 9) + 'px', he: (b[1] * 9) + 'px', hv: (b[2] * 9) + 'px' })),
+      temSelecao: s.sel.length > 0, nSel: s.sel.length,
+      ackSel: () => this.setState(p => ({ ack: [...new Set([...p.ack, ...p.sel])], sel: [] })),
+      limparSel: () => this.setState({ sel: [] }),
+      toggleTodos: () => this.setState(p => ({ sel: p.sel.length ? [] : this.DADOS.filter(e => e.status === 'NOVO').map(e => e.id) })),
+      todosBg: s.sel.length ? '#00E5FF' : 'transparent', todosBorda: s.sel.length ? '#00E5FF' : '#3A3D4A',
+      eventos: this.DADOS.map(e => {
+        const status = s.ack.includes(e.id) ? 'RECONHECIDO' : e.status;
+        const sel = s.sel.includes(e.id);
+        return {
+          classe: e.classe, d: this.ICONS[e.icone], cam: e.cam, hora: e.hora, status,
+          classeCor: status === 'DESCARTADO' ? '#8A8F98' : '#F4F6F8',
+          stCor: stCores[status][0], stBorda: stCores[status][1],
+          fundo: e.fundo, bt: e.box[0], bl: e.box[1], bw: e.box[2], bh: e.box[3], bcor: e.box[4],
+          podeAck: status === 'NOVO',
+          ack: () => this.setState(p => ({ ack: [...p.ack, e.id], sel: p.sel.filter(i => i !== e.id) })),
+          toggle: () => this.setState(p => ({ sel: sel ? p.sel.filter(i => i !== e.id) : [...p.sel, e.id] })),
+          ckBg: sel ? '#00E5FF' : 'transparent', ckBorda: sel ? '#00E5FF' : '#3A3D4A', ckMark: sel ? '✓' : '',
+        };
+      }),
+    };
+  }
+}
+</script>
+</body>
+</html>

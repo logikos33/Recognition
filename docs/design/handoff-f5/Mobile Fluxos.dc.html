@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{background:#23242F;border-radius:4px}input::placeholder{color:#3A3D4A}</style>
+</helmet>
+<div style="min-height:100vh;background:#0A0A0F;display:flex;gap:32px;padding:32px;box-sizing:border-box;justify-content:center;align-items:flex-start" data-screen-label="Mobile Fluxos">
+  <div style="width:320px;flex:none;display:flex;flex-direction:column;gap:14px;position:sticky;top:32px">
+    <span style="font-family:'JetBrains Mono';font-size:11px;letter-spacing:.2em;color:#8A8F98">LOGIKOS VISION · MOBILE</span>
+    <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:24px">Fluxos críticos no celular</h1>
+    <span style="font-size:13px;color:#8A8F98;line-height:1.55">Mesma identidade, dois tamanhos de tela. Sistema de layout, classificação e navegação por perfil: <a href="Mobile Sistema.dc.html">Mobile Sistema →</a></span>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <sc-for list="{{ fluxos }}" as="f" hint-placeholder-count="6">
+        <button onClick="{{ f.go }}" style="display:flex;flex-direction:column;gap:3px;padding:12px 14px;background:{{ f.bg }};border:1px solid {{ f.borda }};border-radius:10px;cursor:pointer;text-align:left">
+          <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:{{ f.cor }}">{{ f.tag }}</span>
+          <span style="font-size:13.5px;font-weight:600;color:#F4F6F8">{{ f.nome }}</span>
+          <span style="font-size:12px;color:#8A8F98;line-height:1.45">{{ f.desc }}</span>
+        </button>
+      </sc-for>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:7px;padding:14px;background:#14141C;border:1px solid #23242F;border-radius:10px;font-size:12px;color:#8A8F98;line-height:1.5">
+      <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.16em;color:#8A8F98">REGRAS DE TOQUE</span>
+      <span>· Alvos ≥44px; ação primária na zona do polegar (rodapé)</span>
+      <span>· Gesto nunca é o único caminho: pinch-zoom tem botões +/−</span>
+      <span>· Safe areas respeitadas (notch e barra inferior)</span>
+      <span>· Sino presente e desligado — notificações previstas, não prometidas</span>
+    </div>
+  </div>
+
+  <div style="width:390px;flex:none;height:824px;background:#0A0A0F;border:1px solid #2B2C38;border-radius:44px;overflow:hidden;box-shadow:0 30px 90px rgba(0,0,0,.75);display:flex;flex-direction:column;position:relative">
+    <div style="height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:relative">
+      <span style="font-family:'JetBrains Mono';font-size:12.5px;font-weight:700">09:41</span>
+      <span style="position:absolute;left:50%;transform:translateX(-50%);top:9px;width:118px;height:26px;background:#000;border-radius:14px"></span>
+      <span style="display:flex;align-items:flex-end;gap:1.5px"><span style="width:3px;height:5px;background:#F4F6F8;border-radius:1px"></span><span style="width:3px;height:7px;background:#F4F6F8;border-radius:1px"></span><span style="width:3px;height:9px;background:#F4F6F8;border-radius:1px"></span><span style="width:3px;height:11px;background:#8A8F98;border-radius:1px"></span><span style="width:22px;height:11px;border:1px solid #8A8F98;border-radius:3px;margin-left:5px;position:relative"><span style="position:absolute;inset:1.5px;right:6px;background:#F4F6F8;border-radius:1px"></span></span></span>
+    </div>
+
+    <sc-if value="{{ logged }}" hint-placeholder-val="{{ true }}">
+      <div style="height:50px;flex:none;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid #23242F">
+        <sc-if value="{{ mostraVoltar }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ voltar }}" style="width:44px;height:44px;margin-left:-12px;display:flex;align-items:center;justify-content:center;background:transparent;border:none;color:#F4F6F8;cursor:pointer"><svg viewBox="0 0 24 24" style="width:20px;height:20px" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><path d="M15 5l-7 7 7 7"></path></svg></button>
+        </sc-if>
+        <sc-if value="{{ mostraLogo }}" hint-placeholder-val="{{ true }}">
+          <svg viewBox="0 0 100 100" style="width:24px;height:24px;flex:none"><defs><mask id="khM"><rect width="100" height="100" fill="white"></rect><g transform="translate(24,22.4) scale(0.52)"><path d="M40 55.3 A20 20 0 1 1 60 55.3 L67 88 L33 88 Z" fill="black"></path></g></mask></defs><circle cx="50" cy="50" r="44" fill="#F4F6F8" mask="url(#khM)"></circle></svg>
+        </sc-if>
+        <div style="display:flex;flex-direction:column;min-width:0">
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:15.5px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ titulo }}</span>
+          <span style="font-family:'JetBrains Mono';font-size:9px;letter-spacing:.12em;color:#8A8F98">{{ subtitulo }}</span>
+        </div>
+        <div style="flex:1"></div>
+        <button title="Notificações — em breve" style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:transparent;border:none;opacity:.35;cursor:default"><svg viewBox="0 0 24 24" style="width:19px;height:19px" fill="none" stroke="#8A8F98" stroke-width="1.7" stroke-linecap="square"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 3H4zM10 21h4"></path></svg></button>
+        <span style="width:32px;height:32px;border-radius:50%;background:#14141C;border:1px solid #3A3D4A;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex:none">{{ avatar }}</span>
+      </div>
+      <sc-if value="{{ bannerCtx }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:none;display:flex;align-items:center;gap:8px;padding:7px 16px;background:rgba(232,161,60,.08);border-bottom:1px solid rgba(232,161,60,.35)">
+          <span style="font-family:'JetBrains Mono';font-size:9px;letter-spacing:.14em;color:#E8A13C">PLATAFORMA · CONTEXTO: {{ tenantNome }}</span>
+          <button onClick="{{ sairCtx }}" style="margin-left:auto;height:24px;padding:0 9px;background:transparent;border:1px solid rgba(232,161,60,.5);border-radius:5px;color:#E8A13C;font-family:'Inter';font-size:10.5px;font-weight:600;cursor:pointer">Sair</button>
+        </div>
+      </sc-if>
+    </sc-if>
+
+    <div style="flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column">
+
+      <sc-if value="{{ tLogin }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:18px;padding:0 28px">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:8px">
+            <svg viewBox="0 0 100 100" style="width:56px;height:56px"><defs><mask id="khL"><rect width="100" height="100" fill="white"></rect><g transform="translate(24,22.4) scale(0.52)"><path d="M40 55.3 A20 20 0 1 1 60 55.3 L67 88 L33 88 Z" fill="black"></path></g></mask></defs><circle cx="50" cy="50" r="44" fill="#F4F6F8" mask="url(#khL)"></circle></svg>
+            <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px;letter-spacing:.16em">LOGIKOS</span>
+            <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.2em;color:#8A8F98">RECOGNITION · ACESSO</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <span style="font-size:12.5px;color:#8A8F98">E-mail</span>
+            <input value="{{ email }}" onChange="{{ setEmail }}" placeholder="voce@empresa.com.br" style="height:48px;background:#14141C;border:1px solid #23242F;border-radius:10px;color:#F4F6F8;font-size:15px;padding:0 14px;outline:none" style-focus="border-color:#00E5FF" />
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <span style="font-size:12.5px;color:#8A8F98">Senha</span>
+            <input type="password" value="{{ senha }}" onChange="{{ setSenha }}" placeholder="••••••••" style="height:48px;background:#14141C;border:1px solid #23242F;border-radius:10px;color:#F4F6F8;font-size:15px;padding:0 14px;outline:none" style-focus="border-color:#00E5FF" />
+          </div>
+          <button onClick="{{ entrar }}" style="height:50px;border:none;border-radius:11px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:15px;font-weight:700;cursor:pointer">Entrar</button>
+          <a style="text-align:center;font-size:13px;font-weight:600;cursor:pointer">Esqueci a senha</a>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ tTenant }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:12px;padding:20px 16px">
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:20px">Assumir contexto</span>
+          <span style="font-size:12.5px;color:#8A8F98;line-height:1.5">Você entrou como plataforma. Escolha o cliente — a marca dele acompanha o contexto.</span>
+          <sc-for list="{{ tenants }}" as="t" hint-placeholder-count="2">
+            <button onClick="{{ t.go }}" style="display:flex;align-items:center;gap:12px;padding:14px;background:#14141C;border:1px solid #23242F;border-radius:12px;cursor:pointer;text-align:left" style-hover="border-color:rgba(0,229,255,.4)">
+              <span style="width:44px;height:44px;border-radius:10px;background:{{ t.corBg }};border:1px solid #23242F;display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-weight:700;font-size:15px;color:{{ t.cor }};flex:none">{{ t.mono }}</span>
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <span style="font-size:14.5px;font-weight:600;color:#F4F6F8">{{ t.nome }}</span>
+                <span style="font-family:'JetBrains Mono';font-size:10px;color:#8A8F98">{{ t.meta }}</span>
+              </div>
+              <svg viewBox="0 0 24 24" style="width:18px;height:18px;margin-left:auto;flex:none" fill="none" stroke="#8A8F98" stroke-width="2" stroke-linecap="square"><path d="M9 5l7 7-7 7"></path></svg>
+            </button>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ tFila }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:10px;padding:14px 16px">
+          <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:2px">
+            <span style="height:32px;display:flex;align-items:center;padding:0 12px;background:rgba(0,229,255,.08);border:1px solid rgba(0,229,255,.4);border-radius:16px;font-size:12px;font-weight:600;color:#00E5FF;flex:none">Hoje</span>
+            <span style="height:32px;display:flex;align-items:center;padding:0 12px;border:1px solid #23242F;border-radius:16px;font-size:12px;color:#8A8F98;flex:none">Todas as câmeras</span>
+            <span style="height:32px;display:flex;align-items:center;padding:0 12px;border:1px solid #23242F;border-radius:16px;font-size:12px;color:#8A8F98;flex:none">Novas</span>
+          </div>
+          <sc-if value="{{ temFila }}" hint-placeholder-val="{{ true }}">
+            <sc-for list="{{ filaCards }}" as="ev" hint-placeholder-count="3">
+              <button onClick="{{ ev.abrir }}" style="display:flex;gap:12px;padding:10px;background:#14141C;border:1px solid #23242F;border-radius:12px;cursor:pointer;text-align:left">
+                <div style="position:relative;width:104px;height:66px;flex:none;border-radius:8px;overflow:hidden;background:{{ ev.fundo }}">
+                  <div style="position:absolute;top:{{ ev.bt }};left:{{ ev.bl }};width:{{ ev.bw }};height:{{ ev.bh }};border:1.5px solid #E5484D;border-radius:2px"></div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
+                  <span style="display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:700;color:#E5484D"><svg viewBox="0 0 24 24" style="width:13px;height:13px;flex:none" fill="none" stroke="#E5484D" stroke-width="2.2" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>{{ ev.classe }}</span>
+                  <span style="font-size:12px;color:#F4F6F8">{{ ev.cam }}</span>
+                  <span style="font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98">HOJE {{ ev.hora }} · <span style="color:#E8A13C">NOVO</span></span>
+                </div>
+                <svg viewBox="0 0 24 24" style="width:16px;height:16px;align-self:center;flex:none" fill="none" stroke="#8A8F98" stroke-width="2" stroke-linecap="square"><path d="M9 5l7 7-7 7"></path></svg>
+              </button>
+            </sc-for>
+          </sc-if>
+          <sc-if value="{{ filaVazia }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:56px 20px;text-align:center">
+              <svg viewBox="0 0 24 24" style="width:32px;height:32px" fill="none" stroke="#3ECF8E" stroke-width="1.8" stroke-linecap="square"><path d="M5 12l5 5 9-10"></path></svg>
+              <span style="font-family:'Space Grotesk';font-weight:700;font-size:17px">Fila zerada</span>
+              <span style="font-size:12.5px;color:#8A8F98;line-height:1.5">{{ decididos }} vereditos neste turno. Novas violações chegam aqui.</span>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ tDetalhe }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:12px;padding:14px 16px">
+          <div style="position:relative;border-radius:12px;overflow:hidden;border:1px solid #23242F;background:#0A0A0F">
+            <div style="aspect-ratio:16/9;position:relative;overflow:hidden">
+              <div style="position:absolute;inset:0;background:{{ evFundo }};transform:scale({{ zoom }});transition:transform .12s steps(2,end)">
+                <div style="position:absolute;top:{{ evBt }};left:{{ evBl }};width:{{ evBw }};height:{{ evBh }};border:2px solid #E5484D;border-radius:3px">
+                  <span style="position:absolute;top:-20px;left:-2px;background:#E5484D;color:#0A0A0F;font-family:'JetBrains Mono';font-size:8.5px;font-weight:700;padding:2px 6px;border-radius:2px;white-space:nowrap">{{ evClasse }}</span>
+                </div>
+              </div>
+              <span style="position:absolute;top:8px;left:8px;background:rgba(10,10,15,.8);border-radius:4px;padding:2px 7px;font-family:'JetBrains Mono';font-size:9px">{{ evCam }}</span>
+              <div style="position:absolute;bottom:8px;right:8px;display:flex;gap:5px">
+                <button onClick="{{ zoomOut }}" style="width:40px;height:40px;border:1px solid #23242F;border-radius:8px;background:rgba(10,10,15,.85);color:#F4F6F8;font-size:17px;cursor:pointer">−</button>
+                <button onClick="{{ zoomIn }}" style="width:40px;height:40px;border:1px solid #23242F;border-radius:8px;background:rgba(10,10,15,.85);color:#F4F6F8;font-size:17px;cursor:pointer">+</button>
+              </div>
+              <span style="position:absolute;bottom:8px;left:8px;font-family:'JetBrains Mono';font-size:8.5px;color:#8A8F98;background:rgba(10,10,15,.7);border-radius:4px;padding:2px 6px">PINCH OU +/− · {{ zoomTxt }}</span>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:12.5px;padding:0 2px">
+            <span style="color:#8A8F98">Horário</span><span style="font-family:'JetBrains Mono';font-size:12px">HOJE {{ evHora }}</span>
+            <span style="color:#8A8F98">Zona</span><span>{{ evZona }}</span>
+            <span style="color:#8A8F98">Confiança</span><span>{{ evConf }} · alta</span>
+          </div>
+          <sc-if value="{{ vereditoOn }}" hint-placeholder-val="{{ true }}"><a style="font-size:13px;font-weight:600;padding:0 2px;cursor:pointer">Criar ação corretiva depois do veredito →</a></sc-if>
+          <sc-if value="{{ roDetalhe }}" hint-placeholder-val="{{ false }}"><span style="display:flex;align-items:center;gap:8px;padding:11px 12px;background:#14141C;border:1px solid #23242F;border-radius:9px;font-size:12px;color:#8A8F98">Somente leitura — o veredito é da equipe de segurança.</span></sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ tPainel }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:10px;padding:14px 16px">
+          <div style="display:flex;flex-direction:column;gap:8px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:12px;border-top:2px solid #E5484D">
+            <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.16em;color:#8A8F98">ONDE ESTÁ O PROBLEMA AGORA</span>
+            <span style="font-family:'Space Grotesk';font-weight:700;font-size:21px">Expedição · Doca 3</span>
+            <span style="font-size:12.5px;color:#8A8F98">14 dos 23 eventos de hoje · pico na troca de turno (14h)</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:12px;border-top:2px solid #3ECF8E">
+            <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.16em;color:#8A8F98">ESTÁ MELHORANDO?</span>
+            <div style="display:flex;align-items:flex-end;gap:12px">
+              <span style="font-family:'Space Grotesk';font-weight:700;font-size:52px;line-height:.95">87</span>
+              <div style="display:flex;flex-direction:column;gap:2px;padding-bottom:5px">
+                <span style="display:flex;align-items:center;gap:4px;font-size:13px;font-weight:600;color:#3ECF8E"><svg viewBox="0 0 24 24" style="width:12px;height:12px" fill="none" stroke="#3ECF8E" stroke-width="2.4" stroke-linecap="square"><path d="M12 19V5M6 11l6-6 6 6"></path></svg>+5 vs ontem</span>
+                <span style="font-size:11px;color:#8A8F98">score · 1º turno</span>
+              </div>
+              <svg viewBox="0 0 120 40" style="width:96px;height:40px;margin-left:auto"><polyline points="0,28 20,31 40,24 60,26 80,17 100,20 120,10" fill="none" stroke="#3ECF8E" stroke-width="2.5"></polyline></svg>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:12px;border-top:2px solid #00E5FF">
+            <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.16em;color:#8A8F98">O QUE EU TRATO AGORA</span>
+            <button onClick="{{ irFila }}" style="display:flex;align-items:center;gap:10px;padding:12px;background:#0A0A0F;border:1px solid #23242F;border-radius:9px;cursor:pointer;text-align:left">
+              <span style="width:8px;height:8px;border-radius:50%;background:#E5484D;flex:none"></span>
+              <span style="font-size:13px;font-weight:600;color:#F4F6F8;flex:1">{{ nFila }} violações aguardam veredito</span>
+              <span style="font-family:'JetBrains Mono';font-size:11px;color:#00E5FF">TRIAR →</span>
+            </button>
+            <div style="display:flex;align-items:center;gap:10px;padding:12px;background:#0A0A0F;border:1px solid #23242F;border-radius:9px">
+              <span style="width:8px;height:8px;border-radius:50%;background:#E8A13C;flex:none"></span>
+              <span style="font-size:13px;color:#F4F6F8;flex:1">Ação "Reforçar DDS" vence hoje · Carlos M.</span>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ tCams }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:8px;padding:14px 16px">
+          <sc-for list="{{ cams }}" as="c" hint-placeholder-count="3">
+            <button onClick="{{ c.go }}" style="display:flex;align-items:center;gap:11px;padding:13px 14px;background:#14141C;border:1px solid #23242F;border-radius:11px;cursor:pointer;text-align:left">
+              <span style="width:10px;height:10px;border-radius:50%;background:{{ c.cor }};flex:none"></span>
+              <div style="display:flex;flex-direction:column;gap:1px;min-width:0;flex:1">
+                <span style="font-size:13.5px;font-weight:600;color:#F4F6F8">{{ c.nome }}</span>
+                <span style="font-family:'JetBrains Mono';font-size:10px;color:#8A8F98">{{ c.meta }}</span>
+              </div>
+              <span style="font-family:'JetBrains Mono';font-size:10px;font-weight:700;color:{{ c.cor }}">{{ c.st }}</span>
+              <sc-if value="{{ c.seta }}" hint-placeholder-val="{{ false }}"><svg viewBox="0 0 24 24" style="width:16px;height:16px;flex:none" fill="none" stroke="#8A8F98" stroke-width="2" stroke-linecap="square"><path d="M9 5l7 7-7 7"></path></svg></sc-if>
+            </button>
+          </sc-for>
+          <sc-if value="{{ ehAdmin }}" hint-placeholder-val="{{ false }}">
+            <span style="font-size:11.5px;color:#8A8F98;padding:2px 2px 0">Toque numa câmera para abrir a ficha e ajustar o escopo de classes.</span>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ tFicha }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:12px;padding:14px 16px">
+          <div style="position:relative;aspect-ratio:16/9;border-radius:12px;overflow:hidden;border:1px solid #23242F;background:linear-gradient(200deg,#191822,#0F0F16)">
+            <span style="position:absolute;top:8px;left:8px;background:rgba(10,10,15,.8);border-radius:4px;padding:2px 7px;font-family:'JetBrains Mono';font-size:9px">CAM-04 EXPEDIÇÃO</span>
+            <span style="position:absolute;top:8px;right:8px;display:flex;align-items:center;gap:5px;background:rgba(10,10,15,.8);border-radius:4px;padding:2px 7px;font-family:'JetBrains Mono';font-size:9px;color:#E8A13C">▲ INSTÁVEL</span>
+          </div>
+          <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:12.5px;padding:0 2px">
+            <span style="color:#8A8F98">Site</span><span>RVB Isolantes — Blumenau</span>
+            <span style="color:#8A8F98">Processa em</span><span>Edge · Jetson RVB-01</span>
+            <span style="color:#8A8F98">Modelo</span><span>EPI v11 <span style="color:#8A8F98">(herdado do site)</span></span>
+            <span style="color:#8A8F98">Escopo</span><span>{{ escopoResumo }}</span>
+          </div>
+          <button onClick="{{ abrirSheet }}" style="height:48px;border:none;border-radius:11px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:14px;font-weight:700;cursor:pointer">Escopo de classes</button>
+          <button style="height:46px;border:1px solid #23242F;border-radius:11px;background:transparent;color:#F4F6F8;font-family:'Inter';font-size:13.5px;font-weight:600;cursor:pointer">Testar conexão</button>
+          <span style="font-size:11.5px;color:#8A8F98;line-height:1.5;padding:0 2px">ROI e linha de contagem se desenham no desktop — aqui você consulta e ativa/desativa.</span>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ tAprova }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:12px;padding:14px 16px">
+          <sc-if value="{{ temProp }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.16em;color:#8A8F98">PROPOSTAS DA MÁQUINA</span>
+              <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:11px;font-weight:700;color:#E8A13C">{{ propRestam }} RESTANTES</span>
+            </div>
+            <div style="position:relative;aspect-ratio:16/9;border-radius:12px;overflow:hidden;border:1px solid #23242F;background:{{ propFundo }}">
+              <div style="position:absolute;top:{{ propBt }};left:{{ propBl }};width:{{ propBw }};height:{{ propBh }};border:2px dashed {{ propCor }};border-radius:3px">
+                <span style="position:absolute;top:-20px;left:-2px;background:{{ propCor }};color:#0A0A0F;font-family:'JetBrains Mono';font-size:8.5px;font-weight:700;padding:2px 6px;border-radius:2px;white-space:nowrap">◌ PROPOSTA · {{ propClasse }}</span>
+              </div>
+              <span style="position:absolute;top:8px;left:8px;background:rgba(10,10,15,.8);border-radius:4px;padding:2px 7px;font-family:'JetBrains Mono';font-size:9px">{{ propCam }}</span>
+              <span style="position:absolute;bottom:8px;left:8px;background:rgba(10,10,15,.8);border-radius:4px;padding:2px 7px;font-family:'JetBrains Mono';font-size:8.5px;color:#8A8F98">ORIGEM: {{ propOrigem }} · CONFIANÇA {{ propConf }}</span>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button onClick="{{ aprovarProp }}" style="flex:1.2;height:52px;display:flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:12px;background:#3ECF8E;color:#0A0A0F;font-family:'Inter';font-size:14.5px;font-weight:700;cursor:pointer"><svg viewBox="0 0 24 24" style="width:15px;height:15px" fill="none" stroke="#0A0A0F" stroke-width="2.6" stroke-linecap="square"><path d="M5 12l5 5 9-10"></path></svg>Aprovar</button>
+              <button onClick="{{ rejeitarProp }}" style="flex:1;height:52px;display:flex;align-items:center;justify-content:center;gap:7px;background:transparent;border:1.5px solid rgba(229,72,77,.55);border-radius:12px;color:#E5484D;font-family:'Inter';font-size:14.5px;font-weight:700;cursor:pointer"><svg viewBox="0 0 24 24" style="width:13px;height:13px" fill="none" stroke="#E5484D" stroke-width="2.6" stroke-linecap="square"><path d="M6 6l12 12M18 6L6 18"></path></svg>Rejeitar</button>
+            </div>
+            <span style="font-size:11.5px;color:#8A8F98;line-height:1.5;padding:0 2px">Ajustar a caixa antes de aprovar é melhor no desktop — aqui você aprova, rejeita e mantém a fila andando. Nada entra no treino sem esta conferência.</span>
+          </sc-if>
+          <sc-if value="{{ propVazia }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:56px 20px;text-align:center">
+              <svg viewBox="0 0 24 24" style="width:32px;height:32px" fill="none" stroke="#3ECF8E" stroke-width="1.8" stroke-linecap="square"><path d="M5 12l5 5 9-10"></path></svg>
+              <span style="font-family:'Space Grotesk';font-weight:700;font-size:17px">Propostas zeradas</span>
+              <span style="font-size:12.5px;color:#8A8F98;line-height:1.5">As aprovadas entram com selo APROVADA. Rode buscas novas no Estúdio do desktop.</span>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ tTreinos }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:12px;padding:14px 16px">
+          <div style="display:flex;flex-direction:column;gap:9px;padding:14px;background:#14141C;border:1px solid rgba(0,229,255,.35);border-radius:12px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:13.5px;font-weight:600">Treino EPI — dataset v2</span>
+              <span style="font-family:'JetBrains Mono';font-size:9px;color:#00E5FF;border:1px solid rgba(0,229,255,.4);border-radius:4px;padding:2px 6px">AO VIVO</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="flex:1;height:8px;background:#0A0A0F;border-radius:4px;overflow:hidden"><div style="width:64%;height:100%;background:#00E5FF"></div></div>
+              <span style="font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98">38/60 · FALTA 1H 12M</span>
+            </div>
+          </div>
+          <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.16em;color:#8A8F98;padding:2px 2px 0">APROVAÇÕES DE TREINO</span>
+          <sc-for list="{{ treinos }}" as="tr" hint-placeholder-count="2">
+            <div style="display:flex;flex-direction:column;gap:9px;padding:14px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+              <span style="font-size:13.5px;font-weight:600">{{ tr.nome }}</span>
+              <span style="font-family:'JetBrains Mono';font-size:10px;color:#8A8F98">{{ tr.meta }}</span>
+              <div style="display:flex;gap:8px">
+                <button onClick="{{ tr.aprovar }}" style="flex:1.2;height:46px;border:none;border-radius:10px;background:#3ECF8E;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Aprovar treino</button>
+                <button onClick="{{ tr.rejeitar }}" style="flex:1;height:46px;background:transparent;border:1.5px solid rgba(229,72,77,.55);border-radius:10px;color:#E5484D;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Rejeitar</button>
+              </div>
+            </div>
+          </sc-for>
+          <sc-if value="{{ trVazio }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;gap:9px;padding:14px;background:#14141C;border:1px solid rgba(62,207,142,.4);border-radius:11px">
+              <svg viewBox="0 0 24 24" style="width:15px;height:15px;flex:none" fill="none" stroke="#3ECF8E" stroke-width="2.4" stroke-linecap="square"><path d="M5 12l5 5 9-10"></path></svg>
+              <span style="font-size:12.5px;font-weight:600">Nenhuma aprovação pendente</span>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ tMenu }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:8px;padding:14px 16px">
+          <div style="display:flex;align-items:center;gap:12px;padding:14px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+            <span style="width:42px;height:42px;border-radius:50%;background:#0A0A0F;border:1px solid #3A3D4A;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600">{{ avatar }}</span>
+            <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:14px;font-weight:600">{{ menuNome }}</span><span style="font-size:11.5px;color:#8A8F98">{{ menuPapel }}</span></div>
+          </div>
+          <sc-for list="{{ menuItens }}" as="m" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:11px;height:48px;padding:0 14px;background:#14141C;border:1px solid #23242F;border-radius:11px">
+              <span style="font-size:13.5px;font-weight:600;flex:1">{{ m.t }}</span>
+              <span style="font-family:'JetBrains Mono';font-size:9.5px;color:#8A8F98">{{ m.tag }}</span>
+            </div>
+          </sc-for>
+          <span style="font-family:'JetBrains Mono';font-size:10px;color:#8A8F98;text-align:center;padding-top:6px">RECOGNITION MOBILE · PWA INSTALÁVEL · v2.0</span>
+        </div>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{ vereditoOn }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:none;display:flex;gap:8px;padding:10px 16px 4px;border-top:1px solid #23242F;background:#0A0A0F">
+        <button onClick="{{ procedente }}" style="flex:1.2;height:52px;display:flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:12px;background:#3ECF8E;color:#0A0A0F;font-family:'Inter';font-size:14.5px;font-weight:700;cursor:pointer"><svg viewBox="0 0 24 24" style="width:16px;height:16px" fill="none" stroke="#0A0A0F" stroke-width="2.6" stroke-linecap="square"><path d="M5 12l5 5 9-10"></path></svg>Procedente</button>
+        <button onClick="{{ falso }}" style="flex:1;height:52px;display:flex;align-items:center;justify-content:center;gap:7px;background:transparent;border:1.5px solid rgba(229,72,77,.55);border-radius:12px;color:#E5484D;font-family:'Inter';font-size:14.5px;font-weight:700;cursor:pointer"><svg viewBox="0 0 24 24" style="width:14px;height:14px" fill="none" stroke="#E5484D" stroke-width="2.6" stroke-linecap="square"><path d="M6 6l12 12M18 6L6 18"></path></svg>Falso</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ temToast }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;bottom:112px;left:16px;right:16px;z-index:20;display:flex;align-items:center;gap:9px;background:#14141C;border:1px solid rgba(62,207,142,.45);border-radius:11px;padding:12px 14px;box-shadow:0 12px 40px rgba(0,0,0,.7)">
+        <svg viewBox="0 0 24 24" style="width:15px;height:15px;flex:none" fill="none" stroke="#3ECF8E" stroke-width="2.4" stroke-linecap="square"><path d="M5 12l5 5 9-10"></path></svg>
+        <span style="font-size:12.5px;font-weight:600">{{ toast }}</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ sheetOn }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ fecharSheet }}" style="position:absolute;inset:0;z-index:30;background:rgba(10,10,15,.72)"></div>
+      <div style="position:absolute;left:0;right:0;bottom:0;z-index:31;background:#14141C;border-top:1px solid #2B2C38;border-radius:22px 22px 0 0;padding:10px 16px 30px;display:flex;flex-direction:column;gap:10px">
+        <span style="width:40px;height:4px;border-radius:2px;background:#3A3D4A;align-self:center"></span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:17px">Escopo de classes</span>
+          <span style="font-family:'JetBrains Mono';font-size:9.5px;color:#8A8F98">CAM-04</span>
+        </div>
+        <span style="font-size:12px;color:#8A8F98;line-height:1.45">O que esta câmera detecta. Cada classe monitora a <b style="color:#F4F6F8">ausência</b> do EPI.</span>
+        <sc-for list="{{ escopoRows }}" as="e" hint-placeholder-count="4">
+          <button onClick="{{ e.go }}" style="display:flex;align-items:center;gap:11px;height:50px;padding:0 13px;background:#0A0A0F;border:1px solid {{ e.borda }};border-radius:11px;cursor:pointer;text-align:left">
+            <span style="width:14px;height:14px;border-radius:4px;background:{{ e.cor }};flex:none"></span>
+            <span style="font-size:14px;font-weight:600;color:#F4F6F8;flex:1">{{ e.nome }}</span>
+            <span style="width:40px;height:22px;border-radius:11px;background:{{ e.track }};position:relative;flex:none"><span style="position:absolute;top:2px;left:{{ e.knob }};width:18px;height:18px;border-radius:50%;background:#F4F6F8;transition:left .1s steps(2,end)"></span></span>
+          </button>
+        </sc-for>
+        <button onClick="{{ salvarEscopo }}" style="height:50px;border:none;border-radius:12px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:14.5px;font-weight:700;cursor:pointer">Salvar escopo</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ logged }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:none;display:flex;border-top:1px solid #23242F;background:#0E0E14;padding:4px 6px 0">
+        <sc-for list="{{ nav }}" as="n" hint-placeholder-count="4">
+          <button onClick="{{ n.go }}" style="flex:1;height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:transparent;border:none;border-top:2px solid {{ n.topo }};cursor:pointer;position:relative">
+            <svg viewBox="0 0 24 24" style="width:20px;height:20px" fill="none" stroke="{{ n.cor }}" stroke-width="1.8" stroke-linecap="square"><path d="{{ n.d }}"></path></svg>
+            <span style="font-size:9.5px;font-weight:600;color:{{ n.cor }}">{{ n.t }}</span>
+            <sc-if value="{{ n.badge }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:6px;left:calc(50% + 6px);min-width:15px;height:15px;border-radius:8px;background:#E5484D;color:#F4F6F8;font-family:'JetBrains Mono';font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px">{{ n.n }}</span></sc-if>
+          </button>
+        </sc-for>
+      </div>
+    </sc-if>
+    <div style="height:22px;flex:none;display:flex;align-items:center;justify-content:center;background:{{ homeBg }}"><span style="width:134px;height:5px;border-radius:3px;background:#3A3D4A"></span></div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:820,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  EVS = [
+    { id: 1, classe: 'SEM CAPACETE', cam: 'CAM-04 Expedição', hora: '14:32', zona: 'Zona de capacete obrigatório', conf: '87%', fundo: 'linear-gradient(200deg,#191822,#0F0F16)', box: ['30%', '42%', '16%', '54%'] },
+    { id: 2, classe: 'SEM COLETE', cam: 'CAM-01 Doca Norte', hora: '14:07', zona: 'Doca norte — carga', conf: '91%', fundo: 'linear-gradient(155deg,#1A1B26,#101018)', box: ['26%', '20%', '18%', '58%'] },
+    { id: 3, classe: 'SEM ÓCULOS', cam: 'CAM-07 Serra', hora: '11:52', zona: 'Serra — linha 2', conf: '74%', fundo: 'linear-gradient(175deg,#181926,#0E0E15)', box: ['22%', '36%', '20%', '58%'] },
+  ];
+  ICONS = { fila: 'M12 4l9 16H3zM12 10v4M12 17v.5', painel: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z', cams: 'M3 7h12v10H3zM15 10l6-3v10l-6-3', menu: 'M4 6h16M4 12h16M4 18h16', users: 'M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4 21c0-4 3.5-6 8-6s8 2 8 6', rel: 'M6 3h9l4 4v14H6zM9 12h6M9 16h6', aprova: 'M4 4h16v16H4zM8 12l3 3 5-6', treino: 'M4 19V5M4 19h16M7 15c3 0 4-7 7-7 2 0 3 3 5 3', tenants: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6' };
+  PROPS = [
+    { id: 1, classe: 'CAPACETE', cor: '#FFD24D', cam: 'CAM-02 EMBARQUE', origem: 'PARECIDAS COM #12', conf: '82%', fundo: 'linear-gradient(155deg,#1A1B26,#101018)', box: ['26%', '20%', '18%', '58%'] },
+    { id: 2, classe: 'COLETE', cor: '#FF8A5C', cam: 'CAM-05 DOCA NORTE', origem: 'BUSCA: "COLETE REFLETIVO"', conf: '77%', fundo: 'linear-gradient(200deg,#191822,#0F0F16)', box: ['30%', '44%', '16%', '52%'] },
+    { id: 3, classe: 'CAPACETE', cor: '#FFD24D', cam: 'CAM-07 SERRA', origem: 'ANOTAÇÃO AUTOMÁTICA', conf: '71%', fundo: 'linear-gradient(175deg,#181926,#0E0E15)', box: ['22%', '36%', '20%', '58%'] },
+  ];
+  TRE = [
+    { id: 1, nome: 'Treino EPI — dataset v3', meta: 'RVB ISOLANTES · 371 IMAGENS · CUSTO EST. R$ 24' },
+    { id: 2, nome: 'Treino Qualidade — dataset v1', meta: 'RVB ISOLANTES · 208 IMAGENS · CUSTO EST. R$ 15' },
+  ];
+  state = { fluxo: 1, perfil: 'analista', tela: 'fila', logged: true, fila: [1, 2, 3], idx: 0, decididos: 0, zoom: 1, toast: '', sheet: false, escopo: { capacete: true, colete: true, oculos: false, luva: false }, email: '', senha: '', tenant: '', ctx: false, propFila: [1, 2, 3], trAprov: [1, 2] };
+  componentWillUnmount() { clearTimeout(this._tt); }
+  _toast(msg) { this.setState({ toast: msg }); clearTimeout(this._tt); this._tt = setTimeout(() => this.setState({ toast: '' }), 2200); }
+  _fluxo(n) {
+    clearTimeout(this._tt);
+    if (n === 1) this.setState({ fluxo: 1, perfil: 'analista', tela: 'fila', logged: true, fila: [1, 2, 3], idx: 0, decididos: 0, zoom: 1, toast: '', sheet: false, ctx: false });
+    else if (n === 2) this.setState({ fluxo: 2, perfil: 'analista', tela: 'painel', logged: true, toast: '', sheet: false, ctx: false });
+    else if (n === 3) this.setState({ fluxo: 3, perfil: 'admin', tela: 'cams', logged: true, toast: '', sheet: false, ctx: false });
+    else if (n === 4) this.setState({ fluxo: 4, perfil: 'super', tela: 'login', logged: false, toast: '', sheet: false, ctx: false, email: '', senha: '', tenant: '' });
+    else if (n === 5) this.setState({ fluxo: 5, perfil: 'usuario', tela: 'painel', logged: true, fila: [1, 2, 3], toast: '', sheet: false, ctx: false });
+    else this.setState({ fluxo: 6, perfil: 'super', tela: 'aprova', logged: true, toast: '', sheet: false, ctx: true, tenant: 'RVB Isolantes', propFila: [1, 2, 3], trAprov: [1, 2] });
+  }
+  _veredito(tipo) {
+    const s = this.state;
+    const resto = s.fila.slice(1);
+    this._toast(tipo === 'p' ? 'Veredito: procedente — próxima da fila' : 'Falso alarme registrado — próxima da fila');
+    this.setState({ fila: resto, decididos: s.decididos + 1, zoom: 1, tela: resto.length ? 'detalhe' : 'fila' });
+  }
+  renderVals() {
+    const s = this.state;
+    const ev = this.EVS.find(e => e.id === s.fila[0]) || this.EVS[0];
+    const CL = [['capacete', 'Capacete', '#FFD24D'], ['colete', 'Colete', '#FF8A5C'], ['oculos', 'Óculos', '#5CC8FF'], ['luva', 'Luva', '#C7A6FF']];
+    const ligadas = CL.filter(([k]) => s.escopo[k]).map(([, n]) => n);
+    const navDef = s.perfil === 'admin'
+      ? [['cams', 'Câmeras', this.ICONS.cams], ['users', 'Usuários', this.ICONS.users], ['rel', 'Relatórios', this.ICONS.rel], ['menu', 'Menu', this.ICONS.menu]]
+      : s.perfil === 'usuario'
+      ? [['painel', 'Painel', this.ICONS.painel], ['fila', 'Eventos', this.ICONS.fila], ['menu', 'Menu', this.ICONS.menu]]
+      : s.perfil === 'super' && s.fluxo === 6
+      ? [['aprova', 'Aprovações', this.ICONS.aprova], ['treinos', 'Treinos', this.ICONS.treino], ['tenants', 'Tenants', this.ICONS.tenants], ['menu', 'Menu', this.ICONS.menu]]
+      : [['fila', 'Violações', this.ICONS.fila], ['painel', 'Painel', this.ICONS.painel], ['cams', 'Câmeras', this.ICONS.cams], ['menu', 'Menu', this.ICONS.menu]];
+    const telaNav = s.tela === 'detalhe' ? 'fila' : s.tela === 'ficha' ? 'cams' : s.tela;
+    const titulos = { fila: s.perfil === 'usuario' ? 'Eventos' : 'Violações', detalhe: s.perfil === 'usuario' ? 'Evento #1284' : 'Violação #1284', painel: 'Painel', cams: 'Câmeras', ficha: 'CAM-04 Expedição', menu: 'Menu', users: 'Usuários', rel: 'Relatórios', aprova: 'Estúdio · Aprovações', treinos: 'Estúdio · Treinos', tenants: 'Tenants', login: '', tenant: '' };
+    const camsAnalista = [
+      { nome: 'CAM-01 Doca Norte', meta: 'EPI · edge', st: 'ONLINE', cor: '#3ECF8E', seta: false },
+      { nome: 'CAM-04 Expedição', meta: 'EPI · edge', st: 'INSTÁVEL', cor: '#E8A13C', seta: false },
+      { nome: 'CAM-07 Serra', meta: 'EPI · edge', st: 'OFFLINE', cor: '#E5484D', seta: false },
+    ];
+    return {
+      fluxos: [
+        { tag: 'FLUXO 1 · ANALISTA', nome: 'Violação → veredito em 30 s', desc: 'Fila → evidência com zoom e caixa ancorada → procedente/falso com um toque → próxima.' },
+        { tag: 'FLUXO 2 · ANALISTA', nome: 'Painel das 3 perguntas', desc: 'Onde está o problema · está melhorando · o que eu trato agora — legível em 10 s.' },
+        { tag: 'FLUXO 3 · ADMIN', nome: 'Escopo de classes da câmera', desc: 'Lista → ficha da CAM-04 → bottom sheet com toggles ≥44px → salvar propaga ao edge.' },
+        { tag: 'FLUXO 4 · PLATAFORMA', nome: 'Login e troca de tenant', desc: 'Entrar → assumir contexto com a marca do cliente → banner de plataforma.' },
+        { tag: 'FLUXO 5 · USUÁRIO', nome: 'Leitura no bolso', desc: 'Painel e eventos somente leitura — quem acessa pelo celular sem papel de gestão. Nav própria, sem veredito.' },
+        { tag: 'FLUXO 6 · SUPERADMIN', nome: 'Estúdio no bolso: aprovar', desc: 'Propostas da máquina e aprovações de treino com o polegar. Anotar caixa nova fica no desktop.' },
+      ].map((f, i) => ({ ...f, go: () => this._fluxo(i + 1), bg: s.fluxo === i + 1 ? 'rgba(0,229,255,.06)' : '#14141C', borda: s.fluxo === i + 1 ? 'rgba(0,229,255,.45)' : '#23242F', cor: s.fluxo === i + 1 ? '#00E5FF' : '#8A8F98' })),
+      logged: s.logged,
+      tLogin: !s.logged && s.tela === 'login', tTenant: (!s.logged && s.tela === 'tenant') || (s.logged && s.tela === 'tenants'),
+      tAprova: s.logged && s.tela === 'aprova', tTreinos: s.logged && s.tela === 'treinos',
+      vereditoOn: s.logged && s.tela === 'detalhe' && s.perfil !== 'usuario', roDetalhe: s.perfil === 'usuario',
+      tFila: s.logged && s.tela === 'fila', tDetalhe: s.logged && s.tela === 'detalhe', tPainel: s.logged && s.tela === 'painel',
+      tCams: s.logged && s.tela === 'cams', tFicha: s.logged && s.tela === 'ficha', tMenu: s.logged && (s.tela === 'menu' || s.tela === 'users' || s.tela === 'rel'),
+      mostraVoltar: s.tela === 'detalhe' || s.tela === 'ficha', mostraLogo: s.tela !== 'detalhe' && s.tela !== 'ficha',
+      voltar: () => this.setState({ tela: s.tela === 'detalhe' ? 'fila' : 'cams', zoom: 1 }),
+      titulo: titulos[s.tela] || 'Recognition',
+      subtitulo: s.ctx ? s.tenant.toUpperCase() : 'RVB ISOLANTES — BLUMENAU',
+      avatar: s.perfil === 'admin' ? 'CM' : s.perfil === 'super' ? 'LG' : s.perfil === 'usuario' ? 'JS' : 'AR',
+      temProp: s.propFila.length > 0, propVazia: s.propFila.length === 0, propRestam: s.propFila.length,
+      propFundo: (this.PROPS.find(p => p.id === s.propFila[0]) || this.PROPS[0]).fundo,
+      propClasse: (this.PROPS.find(p => p.id === s.propFila[0]) || this.PROPS[0]).classe,
+      propCor: (this.PROPS.find(p => p.id === s.propFila[0]) || this.PROPS[0]).cor,
+      propCam: (this.PROPS.find(p => p.id === s.propFila[0]) || this.PROPS[0]).cam,
+      propOrigem: (this.PROPS.find(p => p.id === s.propFila[0]) || this.PROPS[0]).origem,
+      propConf: (this.PROPS.find(p => p.id === s.propFila[0]) || this.PROPS[0]).conf,
+      propBt: (this.PROPS.find(p => p.id === s.propFila[0]) || this.PROPS[0]).box[0],
+      propBl: (this.PROPS.find(p => p.id === s.propFila[0]) || this.PROPS[0]).box[1],
+      propBw: (this.PROPS.find(p => p.id === s.propFila[0]) || this.PROPS[0]).box[2],
+      propBh: (this.PROPS.find(p => p.id === s.propFila[0]) || this.PROPS[0]).box[3],
+      aprovarProp: () => { this.setState(p => ({ propFila: p.propFila.slice(1) })); this._toast('Aprovada — entra no dataset com selo APROVADA'); },
+      rejeitarProp: () => { this.setState(p => ({ propFila: p.propFila.slice(1) })); this._toast('Rejeitada — não entra no treino'); },
+      treinos: this.TRE.filter(t => s.trAprov.includes(t.id)).map(t => ({
+        nome: t.nome, meta: t.meta,
+        aprovar: () => { this.setState(p => ({ trAprov: p.trAprov.filter(i => i !== t.id) })); this._toast('Treino aprovado — entra na fila da GPU'); },
+        rejeitar: () => { this.setState(p => ({ trAprov: p.trAprov.filter(i => i !== t.id) })); this._toast('Treino rejeitado — o tenant vê o motivo'); },
+      })),
+      trVazio: s.trAprov.length === 0,
+      bannerCtx: s.logged && s.ctx, tenantNome: s.tenant.toUpperCase(),
+      sairCtx: () => this._fluxo(4),
+      email: s.email, setEmail: (e) => this.setState({ email: e.target.value }),
+      senha: s.senha, setSenha: (e) => this.setState({ senha: e.target.value }),
+      entrar: () => this.setState({ tela: 'tenant' }),
+      tenants: [
+        { nome: 'RVB Isolantes — Blumenau', meta: 'EPI · QUALIDADE · CARGA', mono: 'RVB', cor: '#F4F6F8', corBg: '#0A0A0F' },
+        { nome: 'Metalúrgica Aurora', meta: 'EPI · 12 CÂMERAS', mono: 'MA', cor: '#E8A13C', corBg: 'rgba(232,161,60,.08)' },
+      ].map(t => ({ ...t, go: () => { this.setState({ logged: true, ctx: true, tenant: t.nome.split(' —')[0], perfil: 'analista', tela: 'painel' }); this._toast('Contexto assumido — a marca do tenant acompanha'); } })),
+      temFila: s.fila.length > 0, filaVazia: s.fila.length === 0, decididos: s.decididos, nFila: s.fila.length,
+      filaCards: s.fila.map(id => { const e = this.EVS.find(x => x.id === id); return { classe: e.classe, cam: e.cam, hora: e.hora, fundo: e.fundo, bt: e.box[0], bl: e.box[1], bw: e.box[2], bh: e.box[3], abrir: () => this.setState({ tela: 'detalhe', zoom: 1 }) }; }),
+      evFundo: ev.fundo, evClasse: ev.classe, evCam: ev.cam.toUpperCase(), evHora: ev.hora, evZona: ev.zona, evConf: ev.conf,
+      evBt: ev.box[0], evBl: ev.box[1], evBw: ev.box[2], evBh: ev.box[3],
+      zoom: s.zoom, zoomTxt: s.zoom.toFixed(1) + '×',
+      zoomIn: () => this.setState(p => ({ zoom: Math.min(2.6, p.zoom + 0.5) })),
+      zoomOut: () => this.setState(p => ({ zoom: Math.max(1, p.zoom - 0.5) })),
+      procedente: () => this._veredito('p'), falso: () => this._veredito('f'),
+      irFila: () => this.setState({ tela: 'fila' }),
+      cams: s.perfil === 'admin'
+        ? camsAnalista.map(c => ({ ...c, seta: true, go: () => this.setState({ tela: 'ficha' }) }))
+        : camsAnalista.map(c => ({ ...c, go: () => {} })),
+      ehAdmin: s.perfil === 'admin',
+      escopoResumo: ligadas.length ? ligadas.join(' · ') : 'nenhuma classe ativa',
+      abrirSheet: () => this.setState({ sheet: true }), fecharSheet: () => this.setState({ sheet: false }),
+      sheetOn: s.sheet,
+      escopoRows: CL.map(([k, nome, cor]) => ({ nome, cor, borda: s.escopo[k] ? 'rgba(0,229,255,.35)' : '#23242F', track: s.escopo[k] ? '#0091AD' : '#23242F', knob: s.escopo[k] ? '20px' : '2px', go: () => this.setState(p => ({ escopo: { ...p.escopo, [k]: !p.escopo[k] } })) })),
+      salvarEscopo: () => { this.setState({ sheet: false }); this._toast('Escopo salvo — propaga ao edge em ~60 s'); },
+      menuNome: s.perfil === 'admin' ? 'Carlos M.' : s.perfil === 'super' ? 'Plataforma Logikos' : s.perfil === 'usuario' ? 'João Souza' : 'Ana Ribeiro',
+      menuPapel: s.perfil === 'admin' ? 'Administrador do tenant' : s.perfil === 'super' ? 'Superadmin' : s.perfil === 'usuario' ? 'Operacional — leitura' : 'Técnica de segurança',
+      menuItens: (s.perfil === 'admin'
+        ? [{ t: 'Configurações do tenant', tag: 'RETENÇÃO · CANAIS' }, { t: 'Sites & edge', tag: '' }, { t: 'Trocar módulo', tag: 'EPI' }, { t: 'Sair', tag: '' }]
+        : s.perfil === 'usuario'
+        ? [{ t: 'Kiosk da estação', tag: 'NO TABLET' }, { t: 'TV do site', tag: 'NO TELÃO' }, { t: 'Trocar módulo', tag: 'EPI' }, { t: 'Sair', tag: '' }]
+        : s.perfil === 'super' && s.fluxo === 6
+        ? [{ t: 'Comunicados', tag: '' }, { t: 'Workers', tag: '' }, { t: 'Auditoria', tag: '' }, { t: 'Assumir outro contexto', tag: '' }, { t: 'Sair', tag: '' }]
+        : [{ t: 'Ações corretivas', tag: '2 ABERTAS' }, { t: 'Verificação', tag: '12 NA FILA' }, { t: 'Estúdio · consulta', tag: 'MELHOR NO DESKTOP' }, { t: 'Trocar módulo', tag: 'EPI' }, { t: 'Sair', tag: '' }]),
+      nav: navDef.map(([k, t, d]) => ({
+        t, d, go: () => this.setState({ tela: k, zoom: 1 }),
+        cor: telaNav === k ? '#00E5FF' : '#8A8F98', topo: telaNav === k ? '#00E5FF' : 'transparent',
+        badge: (k === 'fila' && s.fila.length > 0) || (k === 'aprova' && s.propFila.length > 0), n: k === 'aprova' ? s.propFila.length : s.fila.length,
+      })),
+      temToast: !!s.toast, toast: s.toast,
+      homeBg: s.sheet ? '#14141C' : 'transparent',
+    };
+  }
+}
+</script>
+</body>
+</html>

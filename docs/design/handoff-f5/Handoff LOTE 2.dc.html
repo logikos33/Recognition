@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}</style>
+</helmet>
+<div style="min-height:100vh;background:#0A0A0F;display:flex;flex-direction:column;gap:28px;padding:48px;max-width:1080px;margin:0 auto;box-sizing:border-box" data-screen-label="Handoff LOTE 2">
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <span style="font-family:'JetBrains Mono';font-size:11px;letter-spacing:.2em;color:#8A8F98">LOGIKOS VISION · REDESIGN TO-BE · 04/08/2026</span>
+    <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:32px">Handoff — LOTE 2 · Jornada EPI</h1>
+    <span style="font-size:13.5px;color:#8A8F98;max-width:640px;line-height:1.6">7 telas + relatórios, todas dentro do shell do LOTE 1. Jornada-mestra DETECTAR → TRIAR → AGIR → PROVAR: nenhuma tela mostra detecção sem oferecer o próximo passo. Tokens, tipografia e medidas idem <a href="Handoff LOTE 1.dc.html">Handoff LOTE 1</a>.</span>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:19px">Telas do lote</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <sc-for list="{{ telas }}" as="t" hint-placeholder-count="8">
+        <a href="{{ t.href }}" style="display:flex;flex-direction:column;gap:6px;padding:16px 18px;background:#14141C;border:1px solid #23242F;border-radius:10px;color:#F4F6F8" style-hover="border-color:rgba(0,229,255,.4)">
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <span style="font-family:'JetBrains Mono';font-size:11px;color:#00E5FF">{{ t.rota }}</span>
+            <span style="font-size:14px;font-weight:600">{{ t.nome }}</span>
+          </div>
+          <span style="font-size:12.5px;color:#8A8F98;line-height:1.55">{{ t.desc }}</span>
+        </a>
+      </sc-for>
+    </div>
+    <span style="font-size:12.5px;color:#8A8F98">Cada tela tem os 4 estados (barra ESTADO no canto): carregado · loading (LogikosLoader) · vazio (EmptyState com CTA) · erro (com retry). Estados extras: tile de reconexão com TENTATIVA N (Ao Vivo), fila zerada como estado feliz (Verificação), teste de conexão passo a passo com falha (Câmeras · CAM-07).</span>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:19px">Componentes</h2>
+    <div style="display:grid;grid-template-columns:210px 120px 1fr;background:#14141C;border:1px solid #23242F;border-radius:10px;overflow:hidden">
+      <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">COMPONENTE</div>
+      <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">STATUS</div>
+      <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">NOTAS</div>
+      <sc-for list="{{ comps }}" as="c" hint-placeholder-count="14">
+        <div style="display:contents">
+          <span style="padding:11px 16px;font-size:13px;font-weight:600;border-bottom:1px solid rgba(138,143,152,.08)">{{ c.nome }}</span>
+          <span style="padding:11px 16px;border-bottom:1px solid rgba(138,143,152,.08)"><span style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.08em;color:{{ c.cor }};border:1px solid {{ c.borda }};border-radius:5px;padding:3px 8px">{{ c.status }}</span></span>
+          <span style="padding:11px 16px;font-size:12.5px;color:#8A8F98;border-bottom:1px solid rgba(138,143,152,.08);line-height:1.5">{{ c.nota }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:19px">Regras que a jornada cumpre</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <sc-for list="{{ regras }}" as="r" hint-placeholder-count="6">
+        <div style="display:flex;flex-direction:column;gap:5px;padding:14px 16px;background:#14141C;border:1px solid #23242F;border-radius:10px">
+          <span style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.16em;color:#8A8F98">{{ r.tag }}</span>
+          <span style="font-size:13px;line-height:1.55">{{ r.txt }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:19px">Responsivo</h2>
+    <div style="padding:16px 18px;background:#14141C;border:1px solid #23242F;border-radius:10px;font-size:13.5px;line-height:1.8;color:#8A8F98">
+      <span style="color:#F4F6F8">Desktop-first ≥1280px</span> — referência de todas as telas.<br/>
+      <span style="color:#F4F6F8">Mobile &lt;768px</span> — só leitura: lista de eventos (thumbnail + classe + hora + Reconhecer) e lista de ações (título + prazo + concluir). Detalhe abre com player simples + Confirmar/Descartar; Ao Vivo, Verificação e Câmeras não têm versão mobile.<br/>
+      <span style="color:#F4F6F8">Ao Vivo</span> — grid 4×3 pensado para 1080p+; em 1280px o drawer da câmera sobrepõe o grid.
+    </div>
+  </div>
+
+  <span style="font-size:12px;color:#8A8F98;padding-bottom:24px">LOTE 3 (Carga · Estúdio · TV) aguarda aprovação deste lote.</span>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1120,&quot;height&quot;:1400}}">
+class Component extends DCLogic {
+  renderVals() {
+    const st = { EXISTENTE: ['#3ECF8E', 'rgba(62,207,142,.4)'], ESTENDIDO: ['#E8A13C', 'rgba(232,161,60,.4)'], NOVO: ['#00E5FF', 'rgba(0,229,255,.4)'] };
+    const row = (nome, status, nota) => ({ nome, status, nota, cor: st[status][0], borda: st[status][1] });
+    return {
+      telas: [
+        { rota: '/epi/dashboard', nome: 'Dashboard', href: 'EPI Dashboard.dc.html', desc: 'Score 0–100 com tooltip "como é calculado" e tendência 7d; KPIs; widgets arrastáveis; seletor site/turno persistente.' },
+        { rota: '/epi/live', nome: 'Ao Vivo', href: 'EPI Ao Vivo.dc.html', desc: 'VMS único: grid 2×2/3×3/4×3 + colunas personalizadas (2–6) + modo DESTAQUE (1 grande + trilho); overlay com toggle; tile de reconexão com TENTATIVA N; drawer da câmera.' },
+        { rota: '/epi/eventos', nome: 'Eventos', href: 'EPI Eventos.dc.html', desc: 'Fila de triagem: thumbnail com bbox real, classe com ícone, câmera por nome, ack explícito, seleção múltipla, timeline de barras.' },
+        { rota: '/epi/eventos/:id', nome: 'Detalhe do evento', href: 'EPI Evento Detalhe.dc.html', desc: 'Player com faixa 24h color-coded e scrubbing; câmeras vizinhas; veredito Confirmar/Descartar/Criar ação; compartilhar com expiração.' },
+        { rota: '/epi/acoes', nome: 'Ações', href: 'EPI Ações.dc.html', desc: 'Kanban/lista de ações: origem no evento, responsável, prazo (vencida em vermelho), minhas ações, taxa de conclusão. Nova ação também nasce aqui (preventiva, sem evento) — ciclo começo → meio → fim.' },
+        { rota: '/epi/verificacao', nome: 'Verificação', href: 'EPI Verificação.dc.html', desc: 'Evidência grande com zoom lado a lado com a detecção proposta; Confirmar/Rejeitar grandes; contador; atalhos ← → C R A. Enviar para anotação alimenta a fila do Estúdio (LOTE 3).' },
+        { rota: '/epi/cameras', nome: 'Câmeras & Sites', href: 'EPI Câmeras.dc.html', desc: 'Lista + detalhe com teste de conexão passo a passo; abas Sites & Edge (modo edge/dual/cloud, saúde do Jetson) e Saúde (semáforo).' },
+        { rota: '/epi/relatorios', nome: 'Relatórios', href: 'EPI Relatórios.dc.html', desc: 'Export por período/formato e digest diário por e-mail: horário, destinatários, conteúdo, prévia.' },
+      ],
+      comps: [
+        row('ScoreCard', 'NOVO', 'Número grande em Space Grotesk 700, tendência com ícone+palavra, sparkline 7d, tooltip de cálculo. Nunca ciano — score não é estado interativo.'),
+        row('KPICard / KPIRow', 'EXISTENTE', 'Re-tokenizado: borda superior 2px na cor do estado; valor em JetBrains Mono; link de ação no rodapé.'),
+        row('WidgetShell', 'EXISTENTE', 'Alça de arrastar (grip) no cabeçalho; grid de widgets do dashboard permanece o mecanismo atual.'),
+        row('CameraGrid / GridToolbar', 'ESTENDIDO', 'Ganha seletor 2×2/3×3/4×3, toggle de overlay e slot vazio "Adicionar câmera". Tile de reconexão usa LogikosLoader V2 com TENTATIVA N.'),
+        row('CameraPlayer (HLS)', 'EXISTENTE', 'Feed dos tiles e do drawer. Sem mudança de contrato.'),
+        row('DetectionOverlay', 'ESTENDIDO', 'Rótulo do bbox vira cor + palavra ("sem capacete"), sem % de confiança na tela — detalhe técnico fica em divulgação progressiva.'),
+        row('Timeline de barras (eventos/hora)', 'NOVO', 'Empilha ok/evento/violação por hora; mesma linguagem na faixa 24h do player.'),
+        row('DataTable', 'ESTENDIDO', 'Linha de evento: thumbnail com bbox, classe com ícone, câmera por nome (nunca ID), ack por botão explícito, seleção múltipla com barra de ações.'),
+        row('Faixa 24h com scrubbing', 'NOVO', 'Segmentos cinza/âmbar/vermelho clicáveis; playhead ciano (interação); Prev/Próx câmera vizinha.'),
+        row('Painel de veredito', 'NOVO', 'Máx. 3 escolhas (Hick): Confirmar / Descartar / Criar ação. Sugestões de ação por tipo de violação; responsável + prazo.'),
+        row('Popover Compartilhar', 'ESTENDIDO', 'Popover existente + expiração 1h/24h/7d e permissão ver / ver+baixar; copiar link.'),
+        row('Kanban de ações', 'NOVO', 'Duas colunas (abertas/concluídas); cartão com origem, responsável, prazo; vencida com borda vermelha.'),
+        row('Verificação split', 'NOVO', 'Evidência com zoom + detecção proposta; botões ≥48px; atalhos de teclado; contador de restantes.'),
+        row('Stepper', 'EXISTENTE', 'Teste de conexão da câmera passo a passo, com resultado verde/vermelho + o que fazer.'),
+      ],
+      regras: [
+        { tag: 'LOOP FECHADO', txt: 'De qualquer evento: Abrir → Confirmar / Criar ação / Compartilhar em ≤2 cliques. Ação criada aponta de volta ao evento de origem.' },
+        { tag: 'ACK EXPLÍCITO', txt: 'Reconhecer é sempre botão — nunca hover, nunca automático. Seleção múltipla para triagem em lote.' },
+        { tag: 'ZERO JARGÃO DE ML', txt: '"Veredito", "detecção proposta", "revisar detecção". Nenhum nome de algoritmo, nenhuma % de confiança na tela.' },
+        { tag: 'COR = ESTADO', txt: 'Verde/âmbar/vermelho só para estado, sempre cor + ícone + palavra. Ciano só em interação (item ativo, playhead, links, primário).' },
+        { tag: 'FITTS & HICK', txt: 'Ação primária grande, no fluxo da mão (veredito ≥48px, verificação ≥56px); máx. 3 escolhas nas telas de decisão.' },
+        { tag: 'ESPERA = LOGIKOSLOADER', txt: 'Fullscreen na troca de rota, tile na reconexão de câmera (com TENTATIVA N), spinner ≤24px em botões (Exportar, Testar conexão).' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

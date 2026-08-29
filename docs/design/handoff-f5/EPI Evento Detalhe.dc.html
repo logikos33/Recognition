@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:#23242F;border-radius:5px}</style>
+</helmet>
+<div style="width:100%;height:100vh;display:flex;flex-direction:column;background:#0A0A0F" data-screen-label="EPI Evento Detalhe">
+  <dc-import name="EPI Topbar" crumb2="Eventos" crumb3="CAM-04 Expedição" style="flex:none" hint-size="100%,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <dc-import name="EPI Sidebar" ativa="Eventos" style="flex:none;align-self:stretch" hint-size="237px,100%"></dc-import>
+    <main style="flex:1;min-width:0;overflow:auto;position:relative">
+      <sc-if value="{{ carregado }}" hint-placeholder-val="{{ true }}">
+        <div style="max-width:1360px;margin:0 auto;padding:20px 24px;box-sizing:border-box;display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <a href="EPI Eventos.dc.html" style="font-size:13px;font-weight:600">← Eventos</a>
+            <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:22px">Evento <span style="font-family:'JetBrains Mono';font-size:18px;color:#8A8F98">#1284</span></h1>
+            <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.08em;color:{{ stCor }};border:1px solid {{ stBorda }};border-radius:5px;padding:3px 9px">{{ stTxt }}</span>
+          </div>
+          <div style="display:flex;gap:14px;align-items:flex-start">
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:10px">
+              <div style="position:relative;aspect-ratio:16/9;border-radius:12px;overflow:hidden;border:1px solid #23242F;background:linear-gradient(200deg,#191822 0%,#0F0F16 60%,#0B0B12 100%)">
+                <span style="position:absolute;top:10px;left:10px;z-index:3;background:rgba(10,10,15,.75);border-radius:5px;padding:4px 9px;font-family:'JetBrains Mono';font-size:11px;letter-spacing:.1em">CAM-04 EXPEDIÇÃO</span>
+                <span style="position:absolute;top:10px;right:10px;z-index:3;background:rgba(10,10,15,.75);border-radius:5px;padding:4px 9px;font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">HOJE · {{ tempoAtual }}</span>
+                <div style="position:absolute;top:30%;left:41%;width:15%;height:56%;border:2.5px solid #E5484D;border-radius:4px;z-index:2">
+                  <span style="position:absolute;top:-24px;left:-2px;background:#E5484D;color:#0A0A0F;font-family:'JetBrains Mono';font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:3px;white-space:nowrap">SEM CAPACETE</span>
+                </div>
+                <div style="position:absolute;top:26%;left:12%;width:13%;height:52%;border:2px solid #3ECF8E;border-radius:4px;z-index:2">
+                  <span style="position:absolute;top:-22px;left:-2px;background:#3ECF8E;color:#0A0A0F;font-family:'JetBrains Mono';font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;white-space:nowrap">capacete ✓</span>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <button style="height:38px;padding:0 13px;background:#14141C;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer" title="Câmera vizinha anterior">← CAM-03</button>
+                <div style="flex:1"></div>
+                <button onClick="{{ togglePlay }}" style="width:44px;height:44px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-size:15px;font-weight:700;cursor:pointer">{{ playIco }}</button>
+                <button style="height:38px;padding:0 12px;background:#14141C;border:1px solid #23242F;border-radius:8px;color:#8A8F98;font-family:'JetBrains Mono';font-size:12px;cursor:pointer">1×</button>
+                <div style="flex:1"></div>
+                <button style="height:38px;padding:0 13px;background:#14141C;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer" title="Próxima câmera vizinha">CAM-05 →</button>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;padding:14px 16px;background:#14141C;border:1px solid #23242F;border-radius:10px">
+                <div style="display:flex;align-items:baseline;gap:10px">
+                  <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">ÚLTIMAS 24H · CLIQUE PARA NAVEGAR</span>
+                  <span style="margin-left:auto;display:flex;gap:12px;font-family:'JetBrains Mono';font-size:10px;color:#8A8F98"><span><span style="color:#3A3D4A">■</span> OK</span><span><span style="color:#E8A13C">■</span> EVENTO</span><span><span style="color:#E5484D">■</span> VIOLAÇÃO</span></span>
+                </div>
+                <div onClick="{{ scrub }}" style="position:relative;display:flex;height:26px;border-radius:5px;overflow:hidden;cursor:pointer">
+                  <sc-for list="{{ faixa }}" as="f" hint-placeholder-count="24">
+                    <div style="flex:1;background:{{ f.cor }};border-right:1px solid #0A0A0F"></div>
+                  </sc-for>
+                  <div style="position:absolute;top:0;bottom:0;left:{{ posPct }};width:2px;background:#00E5FF;z-index:2"></div>
+                  <div style="position:absolute;top:-2px;left:calc({{ posPct }} - 4px);width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #00E5FF;z-index:2"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono';font-size:10px;color:#8A8F98"><span>−24H</span><span>−18H</span><span>−12H</span><span>−6H</span><span>AGORA</span></div>
+              </div>
+            </div>
+            <div style="width:380px;flex:none;display:flex;flex-direction:column;gap:14px;background:#14141C;border:1px solid #23242F;border-radius:12px;padding:18px;box-sizing:border-box;position:relative">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="display:flex;align-items:center;gap:7px;background:rgba(229,72,77,.1);border:1px solid rgba(229,72,77,.4);border-radius:6px;padding:6px 11px;color:#E5484D;font-size:13px;font-weight:700">
+                  <svg viewBox="0 0 24 24" style="width:14px;height:14px" fill="none" stroke="#E5484D" stroke-width="2" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+                  SEM CAPACETE
+                </span>
+                <div style="flex:1"></div>
+                <button onClick="{{ toggleShare }}" title="Compartilhar" style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid {{ shareBorda }};border-radius:8px;color:{{ shareCor }};cursor:pointer">
+                  <svg viewBox="0 0 24 24" style="width:16px;height:16px" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"><path d="M18 5a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM6 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM18 15a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM8 11l8-4M8 13l8 4"></path></svg>
+                </button>
+              </div>
+              <sc-if value="{{ shareOn }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;top:60px;right:18px;left:18px;z-index:20;background:#0A0A0F;border:1px solid #23242F;border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:11px;box-shadow:0 12px 48px rgba(0,0,0,.8)">
+                  <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">COMPARTILHAR EVIDÊNCIA</span>
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <span style="font-size:12px;color:#8A8F98">Link expira em</span>
+                    <div style="display:flex;background:#14141C;border-radius:7px;padding:3px;gap:2px">
+                      <sc-for list="{{ expOpts }}" as="o" hint-placeholder-count="3">
+                        <button onClick="{{ o.go }}" style="flex:1;height:30px;border:none;border-radius:5px;background:{{ o.bg }};color:{{ o.cor }};font-family:'JetBrains Mono';font-size:11.5px;font-weight:600;cursor:pointer">{{ o.t }}</button>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <span style="font-size:12px;color:#8A8F98">Permissão</span>
+                    <div style="display:flex;background:#14141C;border-radius:7px;padding:3px;gap:2px">
+                      <sc-for list="{{ escopoOpts }}" as="o" hint-placeholder-count="2">
+                        <button onClick="{{ o.go }}" style="flex:1;height:30px;border:none;border-radius:5px;background:{{ o.bg }};color:{{ o.cor }};font-size:12px;font-weight:600;cursor:pointer">{{ o.t }}</button>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <button onClick="{{ copiar }}" style="height:38px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13px;font-weight:700;cursor:pointer">{{ copiarTxt }}</button>
+                </div>
+              </sc-if>
+              <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:12.5px">
+                <span style="color:#8A8F98">Câmera</span><span>CAM-04 Expedição · Doca 3</span>
+                <span style="color:#8A8F98">Horário</span><span style="font-family:'JetBrains Mono'">HOJE 14:32:08</span>
+                <span style="color:#8A8F98">Zona</span><span>Zona de capacete obrigatório</span>
+                <span style="color:#8A8F98">Pessoas</span><span>2 na cena · 1 em violação</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">EVIDÊNCIAS · FRAMES</span>
+                <div style="display:flex;gap:8px">
+                  <sc-for list="{{ evidencias }}" as="fr" hint-placeholder-count="3">
+                    <button onClick="{{ fr.go }}" style="flex:1;aspect-ratio:16/10;border-radius:7px;border:2px solid {{ fr.borda }};background:linear-gradient(200deg,#191822,#0F0F16);cursor:pointer;position:relative;padding:0">
+                      <span style="position:absolute;bottom:4px;left:6px;font-family:'JetBrains Mono';font-size:9.5px;color:#8A8F98">{{ fr.t }}</span>
+                    </button>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px;margin-top:auto">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">VEREDITO</span>
+                <div style="display:flex;gap:8px">
+                  <button onClick="{{ confirmar }}" style="flex:1;height:48px;display:flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:9px;background:#3ECF8E;color:#0A0A0F;font-family:'Inter';font-size:14px;font-weight:700;cursor:pointer">
+                    <svg viewBox="0 0 24 24" style="width:16px;height:16px" fill="none" stroke="#0A0A0F" stroke-width="2.4" stroke-linecap="square"><path d="M5 12l5 5 9-10"></path></svg>
+                    Confirmar
+                  </button>
+                  <button onClick="{{ descartar }}" style="flex:1;height:48px;display:flex;align-items:center;justify-content:center;gap:8px;background:transparent;border:1px solid #23242F;border-radius:9px;color:#F4F6F8;font-family:'Inter';font-size:14px;font-weight:600;cursor:pointer" style-hover="border-color:#E5484D;color:#E5484D">
+                    <svg viewBox="0 0 24 24" style="width:15px;height:15px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+                    Descartar
+                  </button>
+                </div>
+                <button onClick="{{ toggleAcao }}" style="height:48px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid {{ acaoBorda }};border-radius:9px;background:{{ acaoBg }};color:{{ acaoCor }};font-family:'Inter';font-size:14px;font-weight:700;cursor:pointer">
+                  <svg viewBox="0 0 24 24" style="width:16px;height:16px" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><path d="M12 5v14M5 12h14"></path></svg>
+                  Criar ação corretiva
+                </button>
+                <sc-if value="{{ acaoOn }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:10px;padding:14px;background:#0A0A0F;border:1px solid #23242F;border-radius:10px">
+                    <span style="font-size:12px;color:#8A8F98">Sugestões para "sem capacete":</span>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px">
+                      <sc-for list="{{ sugestoes }}" as="sg" hint-placeholder-count="3">
+                        <button onClick="{{ sg.go }}" style="height:30px;padding:0 11px;border-radius:15px;border:1px solid {{ sg.borda }};background:{{ sg.bg }};color:{{ sg.cor }};font-size:12px;cursor:pointer">{{ sg.t }}</button>
+                      </sc-for>
+                    </div>
+                    <input value="{{ acaoTitulo }}" onChange="{{ setTitulo }}" placeholder="Título da ação" style="height:38px;background:#14141C;border:1px solid #23242F;border-radius:7px;color:#F4F6F8;font-family:'Inter';font-size:13px;padding:0 11px;outline:none" />
+                    <div style="display:flex;gap:8px">
+                      <select style="flex:1;height:38px;background:#14141C;border:1px solid #23242F;border-radius:7px;color:#F4F6F8;font-size:13px;padding:0 9px"><option>Carlos M.</option><option>Juliana P.</option><option>Ana Ribeiro</option></select>
+                      <select style="width:120px;height:38px;background:#14141C;border:1px solid #23242F;border-radius:7px;color:#F4F6F8;font-size:13px;padding:0 9px"><option>08/08</option><option>11/08</option><option>15/08</option></select>
+                    </div>
+                    <button onClick="{{ criarAcao }}" style="height:40px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13px;font-weight:700;cursor:pointer">{{ criarTxt }}</button>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}">
+        <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="fullscreen" state="waiting" label="CARREGANDO EVENTO" size="96" style="position:absolute;inset:0" hint-size="100%,100%"></x-import>
+      </sc-if>
+      <sc-if value="{{ vazio }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#8A8F98" stroke-width="1.5" stroke-linecap="square"><path d="M10 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12zM14.5 14.5L20 20"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Evento não encontrado</span>
+          <span style="font-size:13.5px;color:#8A8F98;max-width:380px;line-height:1.55">O evento pode ter sido removido pela política de retenção (90 dias).</span>
+          <a href="EPI Eventos.dc.html" style="display:flex;align-items:center;height:40px;padding:0 18px;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-size:13.5px;font-weight:700">Voltar aos eventos</a>
+        </div>
+      </sc-if>
+      <sc-if value="{{ erro }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#E5484D" stroke-width="1.5" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Falha ao carregar o vídeo</span>
+          <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">HLS /streams/cam-04 · SEM SEGMENTOS</span>
+          <button style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Tentar novamente</button>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+  <div style="position:fixed;left:16px;bottom:14px;display:flex;align-items:center;gap:6px;background:#14141C;border:1px solid #23242F;border-radius:10px;padding:7px 10px;z-index:130;box-shadow:0 8px 32px rgba(0,0,0,.6)">
+    <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.2em;color:#8A8F98;margin-right:4px">ESTADO</span>
+    <sc-for list="{{ chips }}" as="ch" hint-placeholder-count="4">
+      <button onClick="{{ ch.go }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid {{ ch.borda }};background:{{ ch.bg }};color:{{ ch.cor }};font-family:'JetBrains Mono';font-size:10.5px;cursor:pointer">{{ ch.t }}</button>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:940}}">
+class Component extends DCLogic {
+  state = { estado: 'carregado', pos: 89, playing: false, evid: 1, shareOn: false, exp: '24h', escopo: 'ver', copiado: false, acaoOn: false, sug: 0, titulo: 'Reforçar DDS na doca 3', criado: false, veredito: null };
+  SUGS = ['Reforçar DDS na doca 3', 'Checagem de EPI na entrada do turno', 'Sinalizar zona de capacete'];
+  renderVals() {
+    const s = this.state;
+    const chip = (t, k) => ({ t, go: () => this.setState({ estado: k }), bg: s.estado === k ? 'rgba(0,229,255,.09)' : 'transparent', cor: s.estado === k ? '#00E5FF' : '#8A8F98', borda: s.estado === k ? 'rgba(0,229,255,.4)' : '#23242F' });
+    const faixaCor = ['#23242F','#23242F','#23242F','#23242F','#3A3D4A','#23242F','#23242F','#E8A13C','#23242F','#23242F','#E8A13C','#23242F','#23242F','#23242F','#E8A13C','#23242F','#3A3D4A','#23242F','#E8A13C','#23242F','#23242F','#E5484D','#E8A13C','#23242F'];
+    const minsAgo = Math.round((100 - s.pos) / 100 * 24 * 60);
+    const now = 14 * 60 + 41;
+    let t = now - minsAgo; if (t < 0) t += 24 * 60;
+    const hh = String(Math.floor(t / 60)).padStart(2, '0'), mi = String(t % 60).padStart(2, '0');
+    const st = s.veredito === 'confirmado' ? ['VIOLAÇÃO CONFIRMADA', '#E5484D', 'rgba(229,72,77,.4)'] : s.veredito === 'descartado' ? ['DESCARTADO', '#8A8F98', '#23242F'] : ['NOVO · AGUARDA VEREDITO', '#E8A13C', 'rgba(232,161,60,.4)'];
+    return {
+      carregado: s.estado === 'carregado', loading: s.estado === 'loading', vazio: s.estado === 'vazio', erro: s.estado === 'erro',
+      chips: [chip('CARREGADO', 'carregado'), chip('LOADING', 'loading'), chip('VAZIO', 'vazio'), chip('ERRO', 'erro')],
+      stTxt: st[0], stCor: st[1], stBorda: st[2],
+      tempoAtual: hh + ':' + mi + ':08',
+      togglePlay: () => this.setState(p => ({ playing: !p.playing })), playIco: s.playing ? '⏸' : '▶',
+      faixa: faixaCor.map(cor => ({ cor })),
+      posPct: s.pos.toFixed(1) + '%',
+      scrub: (e) => { const r = e.currentTarget.getBoundingClientRect(); this.setState({ pos: Math.max(0, Math.min(100, (e.clientX - r.left) / r.width * 100)) }); },
+      evidencias: [0, 1, 2].map(i => ({ t: ['T−2S', 'T', 'T+2S'][i], borda: s.evid === i ? '#00E5FF' : '#23242F', go: () => this.setState({ evid: i }) })),
+      shareOn: s.shareOn, toggleShare: () => this.setState(p => ({ shareOn: !p.shareOn, copiado: false })),
+      shareBorda: s.shareOn ? 'rgba(0,229,255,.5)' : '#23242F', shareCor: s.shareOn ? '#00E5FF' : '#8A8F98',
+      expOpts: ['1h', '24h', '7d'].map(o => ({ t: o.toUpperCase(), go: () => this.setState({ exp: o }), bg: s.exp === o ? '#0A0A0F' : 'transparent', cor: s.exp === o ? '#00E5FF' : '#8A8F98' })),
+      escopoOpts: [['ver', 'Só ver'], ['baixar', 'Ver + baixar']].map(([k, t]) => ({ t, go: () => this.setState({ escopo: k }), bg: s.escopo === k ? '#0A0A0F' : 'transparent', cor: s.escopo === k ? '#00E5FF' : '#8A8F98' })),
+      copiar: () => this.setState({ copiado: true }), copiarTxt: s.copiado ? 'Link copiado ✓' : 'Copiar link',
+      acaoOn: s.acaoOn, toggleAcao: () => this.setState(p => ({ acaoOn: !p.acaoOn })),
+      acaoBorda: s.acaoOn ? 'rgba(0,229,255,.5)' : '#23242F', acaoBg: s.acaoOn ? 'rgba(0,229,255,.06)' : 'transparent', acaoCor: s.acaoOn ? '#00E5FF' : '#F4F6F8',
+      sugestoes: this.SUGS.map((t, i) => ({ t, go: () => this.setState({ sug: i, titulo: t }), bg: s.sug === i ? 'rgba(0,229,255,.08)' : 'transparent', cor: s.sug === i ? '#00E5FF' : '#8A8F98', borda: s.sug === i ? 'rgba(0,229,255,.4)' : '#23242F' })),
+      acaoTitulo: s.titulo, setTitulo: (e) => this.setState({ titulo: e.target.value, sug: -1 }),
+      criarAcao: () => this.setState({ criado: true, acaoOn: false }),
+      criarTxt: s.criado ? 'Ação criada ✓' : 'Criar ação',
+      confirmar: () => this.setState({ veredito: 'confirmado' }),
+      descartar: () => this.setState({ veredito: 'descartado' }),
+    };
+  }
+}
+</script>
+</body>
+</html>

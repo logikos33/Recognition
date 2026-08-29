@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}</style>
+</helmet>
+<div style="min-height:100vh;background:#0A0A0F;display:flex;flex-direction:column;gap:28px;padding:40px 48px;box-sizing:border-box" data-screen-label="LogikosLoader">
+  <div style="display:flex;align-items:flex-end;gap:20px">
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <span style="font-family:'JetBrains Mono';font-size:11px;letter-spacing:.2em;color:#8A8F98">LOGIKOS VISION · ESTADO DE ESPERA</span>
+      <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:28px">LogikosLoader</h1>
+      <span style="font-size:13px;color:#8A8F98">Conceito C2 — tranca de cofre. Ticks em steps(8), glitch só em entrada · retry · saída.</span>
+    </div>
+    <div style="flex:1"></div>
+    <div style="display:flex;gap:10px">
+      <button onClick="{{ start }}" style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:14px;font-weight:700;cursor:pointer">Iniciar espera</button>
+      <button onClick="{{ retry }}" style="height:40px;padding:0 18px;background:transparent;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:14px;font-weight:600;cursor:pointer">Disparar retry</button>
+      <button onClick="{{ resolve }}" style="height:40px;padding:0 18px;background:transparent;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:14px;font-weight:600;cursor:pointer">Resolver</button>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:16px;align-items:stretch">
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <span style="font-family:'JetBrains Mono';font-size:11px;letter-spacing:.18em;color:#8A8F98">V1 · FULLSCREEN — TROCA DE ROTA / MÓDULO</span>
+      <div style="position:relative;border:1px solid #23242F;border-radius:12px;overflow:hidden;height:420px">
+        <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="fullscreen" state="{{ st }}" retries="{{ tries }}" label="{{ v1Label }}" size="112" style="position:absolute;inset:0" hint-size="100%,420px"></x-import>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <span style="font-family:'JetBrains Mono';font-size:11px;letter-spacing:.18em;color:#8A8F98">V2 · TILE — CÂMERA RECONECTANDO</span>
+        <div style="position:relative;border:1px solid #23242F;border-radius:10px;overflow:hidden;aspect-ratio:16/9">
+          <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="tile" state="{{ st }}" retries="{{ tries }}" label="{{ v2Label }}" size="48" style="position:absolute;inset:0" hint-size="100%,200px"></x-import>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <span style="font-family:'JetBrains Mono';font-size:11px;letter-spacing:.18em;color:#8A8F98">V3 · SPINNER ≤24 PX — SEM GLITCH</span>
+        <div style="display:flex;flex-direction:column;gap:12px;background:#14141C;border:1px solid #23242F;border-radius:10px;padding:18px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <button style="height:40px;padding:0 18px;display:flex;align-items:center;gap:10px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:14px;font-weight:700;cursor:default;opacity:.85">
+              <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="spinner" state="{{ st }}" size="18" hint-size="18px,18px"></x-import>
+              Salvando…
+            </button>
+            <span style="font-size:12.5px;color:#8A8F98">botão em progresso</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px">
+            <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="spinner" state="{{ st }}" size="20" hint-size="20px,20px"></x-import>
+            <span style="font-family:'JetBrains Mono';font-size:13px">CAM-07 Linha 2</span>
+            <span style="font-size:12.5px;color:#8A8F98;margin-left:auto">carregando eventos…</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex;gap:24px;font-family:'JetBrains Mono';font-size:11.5px;color:#8A8F98;letter-spacing:.04em">
+    <span>ESTADO: <span style="color:#F4F6F8">{{ stLabel }}</span></span>
+    <span>TENTATIVA: <span style="color:#F4F6F8">{{ tries }}</span></span>
+    <span>--lk-tick-dur 1.2s · --lk-steps 8 · --lk-glitch-dur 0.5s</span>
+    <span>prefers-reduced-motion → pulso de opacidade em steps</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:760}}">
+class Component extends DCLogic {
+  state = { st: 'waiting', tries: 1 };
+  renderVals() {
+    const s = this.state;
+    return {
+      st: s.st, tries: String(s.tries),
+      stLabel: s.st.toUpperCase(),
+      v1Label: s.st === 'resolving' ? 'PRONTO' : 'CARREGANDO MÓDULO',
+      v2Label: s.st === 'resolving' ? 'SINAL RESTABELECIDO' : 'RECONECTANDO · CAM-04 · TENTATIVA ' + s.tries,
+      start: () => this.setState({ st: 'entering', tries: 1 }),
+      retry: () => this.setState(p => ({ st: 'retry', tries: p.tries + 1 })),
+      resolve: () => this.setState({ st: 'resolving' }),
+    };
+  }
+}
+</script>
+</body>
+</html>

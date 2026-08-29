@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}input::placeholder{color:#3A3D4A}</style>
+</helmet>
+<div style="width:100%;height:100vh;display:flex;align-items:center;justify-content:center;background:#0A0A0F;background-image:repeating-linear-gradient(66deg,transparent 0 64px,#14141C 64px 65px),repeating-linear-gradient(-66deg,transparent 0 64px,#14141C 64px 65px)" data-screen-label="Acesso">
+  <div style="width:400px;display:flex;flex-direction:column;gap:22px">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:12px">
+      <svg viewBox="0 0 100 100" style="width:56px;height:56px"><defs><mask id="khLg"><rect width="100" height="100" fill="white"></rect><g transform="translate(24,22.4) scale(0.52)"><path d="M40 55.3 A20 20 0 1 1 60 55.3 L67 88 L33 88 Z" fill="black"></path></g></mask></defs><circle cx="50" cy="50" r="44" fill="#F4F6F8" mask="url(#khLg)"></circle></svg>
+      <span style="font-family:'Space Grotesk';font-weight:700;font-size:22px;letter-spacing:.16em">LOGIKOS</span>
+      <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.24em;color:#8A8F98">VISION · A RAZÃO QUE ENXERGA</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;background:#14141C;border:1px solid #23242F;border-radius:14px;padding:26px;box-shadow:0 24px 80px rgba(0,0,0,.5)">
+
+      <sc-if value="{{ telaLogin }}" hint-placeholder-val="{{ true }}">
+        <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Entrar</span>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <span style="font-size:13px;color:#8A8F98">E-mail</span>
+          <input placeholder="voce@empresa.com.br" style="height:44px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:14px;padding:0 13px;outline:none" style-focus="border-color:#00E5FF" />
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:baseline"><span style="font-size:13px;color:#8A8F98">Senha</span><a onClick="{{ irEsqueci }}" style="margin-left:auto;font-size:12.5px;font-weight:600;cursor:pointer">Esqueci minha senha</a></div>
+          <input type="password" placeholder="••••••••" style="height:44px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:14px;padding:0 13px;outline:none" style-focus="border-color:#00E5FF" />
+        </div>
+        <sc-if value="{{ erroLogin }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:9px;padding:10px 12px;background:rgba(229,72,77,.07);border:1px solid rgba(229,72,77,.4);border-radius:8px">
+            <svg viewBox="0 0 24 24" style="width:14px;height:14px;flex:none" fill="none" stroke="#E5484D" stroke-width="2" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+            <span style="font-size:12.5px;color:#E5484D;font-weight:600">E-mail ou senha incorretos. 3 tentativas restantes.</span>
+          </div>
+        </sc-if>
+        <button onClick="{{ entrar }}" style="height:48px;display:flex;align-items:center;justify-content:center;gap:9px;border:none;border-radius:9px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:14.5px;font-weight:700;cursor:pointer">
+          <sc-if value="{{ entrando }}" hint-placeholder-val="{{ false }}"><x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="spinner" state="waiting" size="18" hint-size="18px,18px"></x-import></sc-if>
+          Entrar
+        </button>
+      </sc-if>
+
+      <sc-if value="{{ telaEsqueci }}" hint-placeholder-val="{{ false }}">
+        <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Recuperar acesso</span>
+        <sc-if value="{{ enviadoNao }}" hint-placeholder-val="{{ true }}">
+          <span style="font-size:13px;color:#8A8F98;line-height:1.55">Informe seu e-mail. Se ele existir na plataforma, enviamos um link de redefinição válido por 30 minutos.</span>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <span style="font-size:13px;color:#8A8F98">E-mail</span>
+            <input placeholder="voce@empresa.com.br" style="height:44px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:14px;padding:0 13px;outline:none" style-focus="border-color:#00E5FF" />
+          </div>
+          <button onClick="{{ enviarLink }}" style="height:48px;border:none;border-radius:9px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:14.5px;font-weight:700;cursor:pointer">Enviar link</button>
+        </sc-if>
+        <sc-if value="{{ enviadoSim }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px;text-align:center">
+            <svg viewBox="0 0 24 24" style="width:30px;height:30px" fill="none" stroke="#3ECF8E" stroke-width="2" stroke-linecap="square"><path d="M5 12l5 5 9-10"></path></svg>
+            <span style="font-size:14px;font-weight:600">Verifique seu e-mail</span>
+            <span style="font-size:12.5px;color:#8A8F98;line-height:1.55">Se o endereço existir, o link chega em instantes. Vale por 30 minutos.</span>
+          </div>
+        </sc-if>
+        <a onClick="{{ irLogin }}" style="font-size:13px;font-weight:600;text-align:center;cursor:pointer">← Voltar ao login</a>
+      </sc-if>
+
+      <sc-if value="{{ telaTroca }}" hint-placeholder-val="{{ false }}">
+        <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Defina sua nova senha</span>
+        <div style="display:flex;align-items:center;gap:9px;padding:10px 12px;background:rgba(232,161,60,.07);border:1px solid rgba(232,161,60,.4);border-radius:8px">
+          <svg viewBox="0 0 24 24" style="width:14px;height:14px;flex:none" fill="none" stroke="#E8A13C" stroke-width="2" stroke-linecap="square"><path d="M6 11V8a6 6 0 0 1 12 0v3M4 11h16v10H4zM12 15v3"></path></svg>
+          <span style="font-size:12.5px;color:#E8A13C;font-weight:600">Você entrou com uma senha temporária — a troca é obrigatória.</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <span style="font-size:13px;color:#8A8F98">Nova senha</span>
+          <input type="password" value="{{ novaSenha }}" onChange="{{ setNovaSenha }}" placeholder="mínimo 10 caracteres" style="height:44px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:14px;padding:0 13px;outline:none" style-focus="border-color:#00E5FF" />
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <span style="font-size:13px;color:#8A8F98">Confirmar nova senha</span>
+          <input type="password" style="height:44px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:14px;padding:0 13px;outline:none" style-focus="border-color:#00E5FF" />
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px;padding:12px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px">
+          <sc-for list="{{ requisitos }}" as="r" hint-placeholder-count="3">
+            <span style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:{{ r.cor }}"><span style="font-weight:700">{{ r.mark }}</span>{{ r.t }}</span>
+          </sc-for>
+        </div>
+        <button onClick="{{ concluirTroca }}" style="height:48px;border:none;border-radius:9px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:14.5px;font-weight:700;cursor:pointer">Salvar e entrar</button>
+      </sc-if>
+
+    </div>
+    <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;text-align:center">ACESSO REGISTRADO NA AUDITORIA · SUPORTE@LOGIKOS.COM.BR</span>
+  </div>
+  <sc-if value="{{ loaderOn }}" hint-placeholder-val="{{ false }}">
+    <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="fullscreen" state="{{ loaderSt }}" label="ABRINDO LOGIKOS VISION" size="112" style="position:fixed;inset:0;z-index:120" hint-size="100%,100%"></x-import>
+  </sc-if>
+  <div style="position:fixed;left:16px;bottom:14px;display:flex;align-items:center;gap:6px;background:#14141C;border:1px solid #23242F;border-radius:10px;padding:7px 10px;z-index:130;box-shadow:0 8px 32px rgba(0,0,0,.6)">
+    <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.2em;color:#8A8F98;margin-right:4px">TELA</span>
+    <sc-for list="{{ chips }}" as="ch" hint-placeholder-count="4">
+      <button onClick="{{ ch.go }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid {{ ch.borda }};background:{{ ch.bg }};color:{{ ch.cor }};font-family:'JetBrains Mono';font-size:10.5px;cursor:pointer">{{ ch.t }}</button>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:940}}">
+class Component extends DCLogic {
+  state = { tela: 'login', erro: false, enviado: false, entrando: false, loaderOn: false, loaderSt: 'entering', senha: '' };
+  componentWillUnmount() { clearTimeout(this._t1); clearTimeout(this._t2); clearTimeout(this._t3); }
+  renderVals() {
+    const s = this.state;
+    const chip = (t, k, extra) => ({ t, go: () => this.setState({ tela: k, enviado: false, ...extra }), bg: (s.tela === k && !(extra && extra.erro !== s.erro)) ? 'rgba(0,229,255,.09)' : 'transparent', cor: s.tela === k ? '#00E5FF' : '#8A8F98', borda: s.tela === k ? 'rgba(0,229,255,.4)' : '#23242F' });
+    const senha = s.senha;
+    const reqs = [
+      { t: 'Mínimo de 10 caracteres', ok: senha.length >= 10 },
+      { t: 'Letras e números', ok: /[a-zA-Z]/.test(senha) && /[0-9]/.test(senha) },
+      { t: 'Diferente da senha temporária', ok: senha.length > 0 && senha !== 'LK-9T4M-QZ2V' },
+    ];
+    return {
+      telaLogin: s.tela === 'login', telaEsqueci: s.tela === 'esqueci', telaTroca: s.tela === 'troca',
+      erroLogin: s.erro, entrando: s.entrando,
+      enviadoNao: !s.enviado, enviadoSim: s.enviado,
+      irEsqueci: () => this.setState({ tela: 'esqueci', enviado: false }),
+      irLogin: () => this.setState({ tela: 'login', erro: false }),
+      enviarLink: () => this.setState({ enviado: true }),
+      entrar: () => {
+        this.setState({ entrando: true, erro: false });
+        clearTimeout(this._t1); clearTimeout(this._t2); clearTimeout(this._t3);
+        this._t1 = setTimeout(() => this.setState({ entrando: false, loaderOn: true, loaderSt: 'entering' }), 700);
+        this._t2 = setTimeout(() => this.setState({ loaderSt: 'resolving' }), 1800);
+        this._t3 = setTimeout(() => { this.setState({ loaderOn: false }); window.location.href = 'Shell Logikos Vision.dc.html'; }, 2350);
+      },
+      novaSenha: s.senha, setNovaSenha: (e) => this.setState({ senha: e.target.value }),
+      requisitos: reqs.map(r => ({ t: r.t, mark: r.ok ? '✓' : '·', cor: r.ok ? '#3ECF8E' : '#8A8F98' })),
+      concluirTroca: () => this.setState({ tela: 'login', erro: false, senha: '' }),
+      loaderOn: s.loaderOn, loaderSt: s.loaderSt,
+      chips: [
+        chip('LOGIN', 'login', { erro: false }),
+        { t: 'LOGIN · ERRO', go: () => this.setState({ tela: 'login', erro: true }), bg: s.tela === 'login' && s.erro ? 'rgba(0,229,255,.09)' : 'transparent', cor: s.tela === 'login' && s.erro ? '#00E5FF' : '#8A8F98', borda: s.tela === 'login' && s.erro ? 'rgba(0,229,255,.4)' : '#23242F' },
+        chip('ESQUECI', 'esqueci'),
+        chip('TROCA OBRIGATÓRIA', 'troca'),
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>
