@@ -48,6 +48,8 @@ const Carga = lazy(() => import('./carga/Carga').then((m) => ({ default: m.Carga
 const Modulos = lazy(() => import('./modulos/Modulos').then((m) => ({ default: m.Modulos })))
 const Estudio = lazy(() => import('./estudio/Estudio').then((m) => ({ default: m.Estudio })))
 const DadosEstudio = lazy(() => import('./estudio/Dados').then((m) => ({ default: m.Dados })))
+const CoberturaEstudio = lazy(() => import('./estudio/Cobertura').then((m) => ({ default: m.Cobertura })))
+const ClassificarEstudio = lazy(() => import('./estudio/Classificar').then((m) => ({ default: m.Classificar })))
 
 /**
  * Prefixo do front novo enquanto os dois convivem. Sai no tombamento.
@@ -101,6 +103,8 @@ export const ROTAS_NOVAS: ReactElement[] = [
   <Route key="es" path="estudio" element={<Estudio />}>
     <Route key="esi" index element={<Navigate to="dados" replace />} />
     <Route key="esd" path="dados" element={<DadosEstudio />} />
+    <Route key="esc" path="cobertura" element={<CoberturaEstudio />} />
+    <Route key="escl" path="classificar" element={<ClassificarEstudio />} />
   </Route>,
 ]
 

@@ -10,6 +10,7 @@
  *
  * Estes testes fecham essa porta.
  */
+import type { ReactElement } from 'react'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -21,10 +22,28 @@ import { PREFIXO_NOVO, ROTAS_NOVAS } from './RotasNovas'
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const leia = (rel: string) => fs.readFileSync(path.join(SRC, rel), 'utf-8')
 
+/**
+ * Desce em `props.children` — rota aninhada (Estúdio, PR-B: `cobertura`,
+ * `classificar` dentro de `estudio`) tem de passar pela MESMA checagem que a
+ * de primeiro nível. Um `.map` raso deixaria caminho absoluto filho passar
+ * batido, sem teste vermelho nenhum.
+ */
+function todosOsCaminhos(rotas: ReactElement[]): string[] {
+  const caminhos: string[] = []
+  const visita = (r: ReactElement) => {
+    const props = r.props as { path?: unknown; children?: unknown }
+    if (typeof props.path === 'string') caminhos.push(props.path)
+    const filhos = props.children
+    if (Array.isArray(filhos)) filhos.forEach(visita)
+    else if (filhos) visita(filhos as ReactElement)
+  }
+  rotas.forEach(visita)
+  return caminhos
+}
+
 describe('front novo e front antigo convivem', () => {
-  it('nenhuma rota nova é absoluta — só existe dentro do prefixo', () => {
-    const absolutas = ROTAS_NOVAS.map((r) => r.props?.path)
-      .filter((p): p is string => typeof p === 'string' && p.startsWith('/'))
+  it('nenhuma rota nova é absoluta — nem no topo, nem aninhada — só existe dentro do prefixo', () => {
+    const absolutas = todosOsCaminhos(ROTAS_NOVAS).filter((p) => p.startsWith('/'))
     expect(
       absolutas,
       'rota com caminho absoluto escapa do prefixo e engole a tela antiga de ' +
