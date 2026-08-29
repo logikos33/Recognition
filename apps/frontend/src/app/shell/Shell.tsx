@@ -24,7 +24,7 @@
  */
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { Menu, Search } from 'lucide-react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { useAuth } from '../../hooks/useAuth'
 import { getSessionTokenExpMs } from '../../services/tenantContext'
@@ -54,8 +54,20 @@ export interface ShellProps {
   carregando?: boolean
 }
 
+/**
+ * Módulos que trazem a PRÓPRIA navegação e por isso não recebem a barra lateral.
+ *
+ * Não é economia de espaço: os desenhos de Qualidade e Carga importam só o
+ * `EPI Topbar`, nunca o `EPI Sidebar` — a navegação deles é a barra de abas
+ * dentro da tela. Impor o menu do EPI ali mostra "Eventos" e "Verificação" para
+ * quem está inspecionando peça, e some com a navegação que a tela realmente tem.
+ */
+const SEM_BARRA_LATERAL = [`${PREFIXO_NOVO}/quality`, `${PREFIXO_NOVO}/carga`]
+
 export function Shell({ carregando }: ShellProps) {
   const { can } = useAuth()
+  const { pathname } = useLocation()
+  const comBarraLateral = !SEM_BARRA_LATERAL.some((r) => pathname.startsWith(r))
   // Publica --lk-marca clampada; os tokens leem dela. Ver DECISÃO v2 item 3.
   useMarcaDoTenant()
   const navegar = useNavigate()
@@ -112,14 +124,16 @@ export function Shell({ carregando }: ShellProps) {
   return (
     <div className={s.raiz}>
       <header className={s.topbar}>
-        <button
-          className={s.botaoIcone}
-          onClick={() => setColapsada((v) => !v)}
-          aria-label={colapsada ? 'Expandir menu' : 'Recolher menu'}
-          aria-expanded={!colapsada}
-        >
-          <Menu size={18} strokeWidth={1.7} />
-        </button>
+        {comBarraLateral && (
+          <button
+            className={s.botaoIcone}
+            onClick={() => setColapsada((v) => !v)}
+            aria-label={colapsada ? 'Expandir menu' : 'Recolher menu'}
+            aria-expanded={!colapsada}
+          >
+            <Menu size={18} strokeWidth={1.7} />
+          </button>
+        )}
         <Marca />
         <span className={s.espacador} />
         <SeletorTenant />
@@ -134,6 +148,7 @@ export function Shell({ carregando }: ShellProps) {
       </header>
 
       <div className={s.corpo}>
+        {comBarraLateral && (
         <nav
           className={colapsada ? `${s.sidebar} ${s.sidebarColapsada}` : s.sidebar}
           aria-label="Navegação principal"
@@ -162,6 +177,7 @@ export function Shell({ carregando }: ShellProps) {
             </div>
           ))}
         </nav>
+        )}
 
         <main className={s.conteudo}>
           <div className={s.conteudoInterno}>
