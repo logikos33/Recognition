@@ -137,3 +137,101 @@ estar de pé, então é a mesma evidência.
 Três agentes de inventário (pipeline · prontidão · calibração) rodaram ~7 min e ~570k tokens
 **e voltaram sem relatório** ("Idle." / "Aguardando." / "Sem ação pendente."). O levantamento
 acima foi feito à mão. Registrado para não repetir a aposta.
+
+---
+
+## S1 · IMPLEMENTADO (29/08) — commit `545efeee`
+
+O Caminho B foi escrito inteiro do lado da nuvem, como desenhado. ⛔ Zero linha
+em `services/edge-sync-agent` ⇒ zero OTA no box antes do dia do cliente.
+
+| peça | onde |
+|---|---|
+| leitor de segmento | `tasks/hls_frame_source.py::FonteHlsDoEdge` |
+| fonte parametrizada | `tasks/inference.py::inference_loop(fonte=...)` |
+| keepalive + ressurreição do laço | `tasks/live_shadow.py` (beat de 30s) |
+| badge + latência | migration `129_alert_origem_latencia.sql` |
+
+**Verificação:** 5111 passando · 102 skipped · ruff limpo. As 7 falhas de
+`test_quality_inference_onnx.py` são **pré-existentes** — conferido com
+baseline por `git stash` (as mesmas 7 sem nenhuma mudança minha).
+
+### Decisões de desenho que valem registro
+
+- **Ordem do segmento vem da PLAYLIST, ⛔ nunca do nome.** `stream10.ts` é
+  posterior a `stream9.ts`, e ordenar por nome faria o consumidor andar para
+  trás sem erro nenhum. Há teste que prova que ordenar quebraria.
+- **A fonte HLS não passa pelo `_INFERENCE_EVERY_N`.** Aquele estrangulador
+  existe para descartar o excesso do RTSP; na fonte HLS (1 frame por segmento
+  de ~2s) ele descartaria o pouco.
+- **Latência é MEDIDA ou NULL.** Idade do segmento pelo TTL restante
+  (resolução ~1s, é um PISO) + tempo gasto no laço. Sem medida, `NULL` — a
+  tela diz "não medida" em vez de mostrar número bonito e falso.
+- **`import cv2` fica colado no decode, não no topo da função.** Nasceu no
+  topo e a suíte inteira reprovou: os caminhos que voltam sem decodificar
+  (playlist ausente, nada novo, segmento expirado) não têm por que exigir o
+  decodificador. ⚠️ Erro meu, pego pelo teste — fica registrado.
+- **A sombra nasce DESLIGADA.** Sem `SHADOW_AO_VIVO_CAMERAS` a task devolve
+  "desligado" sem tocar no Redis. Ligar faz o box transmitir e o cliente pagar
+  banda de subida; o interruptor é de operação, não de código.
+
+---
+
+## 🔧 JANELA DO BOX — segunda de manhã (⛔ NUNCA na véspera)
+
+### Estado ATUAL registrado ANTES de tocar (29/08 21:47Z)
+
+```
+RECORDER_CHANNEL_MAP={"eb1501db-82ad-485a-a441-5c665b4e5a28": 1}
+RECORDER_STREAM_SUBTYPE=0
+```
+
+### O que muda
+1. `RECORDER_CHANNEL_MAP` ← os 14 pares `camera_id: canal`, **copiados do
+   config poll** (a nuvem já sabe: `cameras[].channel`, ADR-0058).
+2. `RECORDER_STREAM_SUBTYPE` ← `1` (sub-stream).
+3. `systemctl --user restart edge-live-view.service`
+
+### Rollback (trivial, testado no papel)
+Restaurar as duas linhas acima e repetir o restart. O arquivo já tem `.bak-*`
+versionados por data no próprio box.
+
+### ⚖️ Trade aceito e datado
+Sub-stream **rebaixa a qualidade do live view HUMANO** durante esta semana.
+Aceito pelo Vitor em 29/08; volta ao normal depois do onboarding.
+
+---
+
+## 📈 RAMPA — medir antes de escalar (⛔ não ligar as 14 de uma vez)
+
+Ordem obrigatória: **só as 2-4 câmeras do roteiro do dia D primeiro.**
+
+Três números a colher antes de qualquer escalada:
+
+| número | como medir |
+|---|---|
+| carga do box | `uptime` + tegrastats com N transcodificações ativas (hoje, ocioso: load **0,14**) |
+| MB/s de upload real | tamanho do segmento no Redis × frequência — ⚠️ a estimativa de mesa dá **~67 Mbps para 14 no stream principal**, e é o número que pode derrubar a demo |
+| perda por TTL | `segmentos_perdidos_ttl` no retorno do `inference_loop` (instrumentado no commit) |
+
+**Meta das 14 contínuas é pós-onboarding, com os números na mão.** Quarta
+precisa apenas das câmeras do roteiro ao vivo.
+
+---
+
+## ⏭️ PRÓXIMO PASSO
+1. Roteiro do dia D com URL exata por passo (contrato do congelamento).
+2. Bench de usuários 2× pela tela — cadastro pelo front **ANTIGO**, link
+   copiável como caminho oficial (decisão do Vitor, 29/08).
+3. Backup: provar 2×/dia por listagem do R2 das últimas 24h.
+4. Janela do box na segunda + rampa medida.
+
+## 🔗 Issues desta rodada
+- **#566** — live view lê canais de env à mão em vez do config que já chega
+  (fix B, exige OTA, pós-onboarding). É lá que o env à mão morre.
+
+## 🤝 Sincronização entre pistas (29/08)
+- Minha pista: nada mergeado na `develop`. Tudo em `mutirao/semana-cliente-tempo-real`.
+- Pedido enviado à sessão da migração do front; **resposta ainda não chegou**.
+- ⚠️ A `develop` andou 9 commits (#556→#563) durante o meu levantamento e o DEV
+  redeployou sozinho. **Congelamento de terça = congelamento de MERGE.**
