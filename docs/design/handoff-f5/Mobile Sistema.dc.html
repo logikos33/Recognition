@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:#23242F;border-radius:5px}</style>
+</helmet>
+<div style="min-height:100vh;background:#0A0A0F;display:flex;flex-direction:column" data-screen-label="Mobile Sistema">
+  <header style="position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;padding:14px 28px;background:#14141C;border-bottom:1px solid #23242F">
+    <svg viewBox="0 0 100 100" style="width:26px;height:26px;flex:none"><defs><mask id="khS"><rect width="100" height="100" fill="white"></rect><g transform="translate(24,22.4) scale(0.52)"><path d="M40 55.3 A20 20 0 1 1 60 55.3 L67 88 L33 88 Z" fill="black"></path></g></mask></defs><circle cx="50" cy="50" r="44" fill="#F4F6F8" mask="url(#khS)"></circle></svg>
+    <div style="display:flex;flex-direction:column">
+      <span style="font-family:'Space Grotesk';font-weight:700;font-size:16px">Mobile — sistema completo</span>
+      <span style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.12em;color:#8A8F98">UMA MARCA, DOIS TAMANHOS DE TELA · 100% DAS TELAS CLASSIFICADAS · 25/08/2026</span>
+    </div>
+    <div style="flex:1"></div>
+    <a href="Mobile Fluxos.dc.html" style="height:36px;display:flex;align-items:center;padding:0 14px;border:1px solid rgba(0,229,255,.4);border-radius:8px;font-size:13px;font-weight:600">Fluxos desenhados →</a>
+  </header>
+  <nav style="position:sticky;top:57px;z-index:29;display:flex;gap:2px;padding:10px 28px;background:#0A0A0F;border-bottom:1px solid #23242F;flex-wrap:wrap">
+    <sc-for list="{{ abas }}" as="a" hint-placeholder-count="5">
+      <button onClick="{{ a.go }}" style="height:36px;padding:0 16px;border:1px solid {{ a.borda }};border-radius:8px;background:{{ a.bg }};color:{{ a.cor }};font-family:'Inter';font-size:13.5px;font-weight:600;cursor:pointer">{{ a.t }}</button>
+    </sc-for>
+  </nav>
+  <main style="flex:1;padding:22px 28px 60px;max-width:1240px;width:100%;margin:0 auto;box-sizing:border-box">
+
+    <sc-if value="{{ vClass }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;gap:10px">
+          <sc-for list="{{ niveis }}" as="n" hint-placeholder-count="3">
+            <div style="flex:1;display:flex;flex-direction:column;gap:5px;padding:14px 16px;background:#14141C;border:1px solid #23242F;border-radius:10px;border-top:2px solid {{ n.cor }}">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:{{ n.cor }}">{{ n.tag }}</span>
+              <span style="font-size:13px;font-weight:600">{{ n.nome }}</span>
+              <span style="font-size:12px;color:#8A8F98;line-height:1.5">{{ n.criterio }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <span style="font-size:12.5px;color:#8A8F98">Critério declarado: <b style="color:#F4F6F8">quem usa em pé ganha nível 1</b>; gestão que cabe em coluna única é nível 2; densidade de desktop (desenho de caixa, matrizes, curadoria em massa) é nível 3 — funciona, avisa, nunca quebra. Nível 3 é o piso, não a exclusão.</span>
+        <div style="display:grid;grid-template-columns:minmax(220px,1.3fr) 150px minmax(280px,2fr);background:#14141C;border:1px solid #23242F;border-radius:10px;overflow:hidden">
+          <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">TELA</div>
+          <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">MOBILE</div>
+          <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">COMO FICA NO CELULAR</div>
+          <sc-for list="{{ rows }}" as="r" hint-placeholder-count="40">
+            <div style="display:contents">
+              <span style="padding:9px 14px;font-size:12.5px;font-weight:{{ r.peso }};background:{{ r.bg }};border-bottom:1px solid rgba(138,143,152,.07)">{{ r.tela }}</span>
+              <span style="padding:9px 14px;background:{{ r.bg }};border-bottom:1px solid rgba(138,143,152,.07)"><sc-if value="{{ r.temNivel }}" hint-placeholder-val="{{ true }}"><span style="font-family:'JetBrains Mono';font-size:9.5px;font-weight:700;letter-spacing:.06em;color:{{ r.nCor }};border:1px solid {{ r.nBorda }};border-radius:4px;padding:2px 7px;white-space:nowrap">{{ r.nivel }}</span></sc-if></span>
+              <span style="padding:9px 14px;font-size:12px;color:#8A8F98;line-height:1.5;background:{{ r.bg }};border-bottom:1px solid rgba(138,143,152,.07)">{{ r.como }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ vLayout }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;gap:10px">
+          <div style="flex:1;display:flex;flex-direction:column;gap:4px;padding:14px 16px;background:#14141C;border:1px solid #23242F;border-radius:10px"><span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#00E5FF">MOBILE · ≤767px</span><span style="font-size:12.5px;color:#8A8F98;line-height:1.5">Coluna única, bottom nav, sheets. Base 390px; nada quebra até 320px.</span></div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:4px;padding:14px 16px;background:#14141C;border:1px solid #23242F;border-radius:10px"><span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98">TABLET · 768–1279px</span><span style="font-size:12.5px;color:#8A8F98;line-height:1.5">Sidebar colapsada (64px), grids 2 colunas. Kiosk vive aqui.</span></div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:4px;padding:14px 16px;background:#14141C;border:1px solid #23242F;border-radius:10px"><span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98">DESKTOP · ≥1280px</span><span style="font-size:12.5px;color:#8A8F98;line-height:1.5">Layout de referência dos lotes 1–3, intocado.</span></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <sc-for list="{{ reflow }}" as="r" hint-placeholder-count="12">
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:#14141C;border:1px solid #23242F;border-radius:9px">
+              <span style="font-size:12.5px;color:#8A8F98;width:170px;flex:none">{{ r.de }}</span>
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;flex:none" fill="none" stroke="#00E5FF" stroke-width="2" stroke-linecap="square"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+              <span style="font-size:12.5px;line-height:1.45">{{ r.para }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:10px;font-size:12.5px;color:#8A8F98;line-height:1.7">
+          <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">TOQUE E SEGURANÇA VISUAL</span>
+          <span>· Alvos <b style="color:#F4F6F8">≥44px</b>; ação primária fixa na <b style="color:#F4F6F8">zona do polegar</b> (rodapé), nunca no topo · gestos (pinch, swipe) sempre com alternativa em botão · <b style="color:#F4F6F8">safe areas</b> via env(safe-area-inset-*) no topo, rodapé e sheets</span>
+          <span>· Mesmo dark theme e tokens do manual: ciano <b style="color:#F4F6F8">só acento interativo</b> (nav ativa, links, primário), nunca superfície; estado sempre cor + ícone + palavra; contraste AA · tipografia idêntica ao desktop com corpo mínimo 12px/negrito em mono para dados</span>
+          <span>· Zero scroll horizontal em qualquer viewport; imagens e tabelas sempre dentro de contêiner com reflow ou rolagem própria vertical</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ vNav }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <span style="font-size:12.5px;color:#8A8F98">Bottom nav com 3–4 destinos <b style="color:#F4F6F8">por perfil</b> — ninguém vê o que não pode usar. O sino existe em todos, desligado, aguardando canais de notificação (pedido já registrado ao backend).</span>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <sc-for list="{{ mapas }}" as="m" hint-placeholder-count="4">
+            <div style="display:flex;flex-direction:column;gap:10px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:12px;border-top:2px solid {{ m.cor }}">
+              <div style="display:flex;align-items:baseline;gap:8px"><span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:{{ m.cor }}">{{ m.perfil }}</span><span style="font-size:12px;color:#8A8F98">{{ m.quem }}</span></div>
+              <div style="display:flex;gap:4px;background:#0E0E14;border:1px solid #23242F;border-radius:10px;padding:6px 4px">
+                <sc-for list="{{ m.tabs }}" as="t" hint-placeholder-count="4">
+                  <span style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:7px 2px;border-top:2px solid {{ t.topo }}"><span style="font-size:10.5px;font-weight:600;color:{{ t.cor }};text-align:center">{{ t.t }}</span></span>
+                </sc-for>
+              </div>
+              <span style="font-size:12px;color:#8A8F98;line-height:1.55"><b style="color:#F4F6F8">Menu leva a:</b> {{ m.menu }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ vPwa }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:14px;max-width:980px">
+        <div style="display:flex;flex-direction:column;gap:8px;padding:18px;background:#14141C;border:1px solid rgba(0,229,255,.35);border-radius:12px">
+          <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#00E5FF">RECOMENDAÇÃO — A DECISÃO É SUA</span>
+          <span style="font-size:14px;line-height:1.7"><b>Web responsivo + PWA instalável agora; nativo só quando um gatilho concreto aparecer.</b> Uma base de código, a mesma identidade e as mesmas telas do desktop; instala pelo navegador sem loja; atualização instantânea (importante com o backend ainda em correção); white-label por tenant sem republicar app. Os três gatilhos que justificariam nativo estão listados abaixo — nenhum é o caso do RVB hoje.</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:10px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+            <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#3ECF8E">PWA · O QUE JÁ COBRE</span>
+            <sc-for list="{{ pwaSim }}" as="p" hint-placeholder-count="5"><span style="font-size:12.5px;color:#8A8F98;line-height:1.55">· {{ p.t }}</span></sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+            <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#E8A13C">GATILHOS PARA NATIVO</span>
+            <sc-for list="{{ pwaNao }}" as="p" hint-placeholder-count="3"><span style="font-size:12.5px;color:#8A8F98;line-height:1.55">· {{ p.t }}</span></sc-for>
+            <span style="font-size:12px;color:#8A8F98;line-height:1.5;border-top:1px solid #23242F;padding-top:10px">Caminho de meio: empacotar o mesmo PWA em Capacitor se um único gatilho disparar — sem reescrever telas.</span>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ vDuvidas }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:8px;max-width:980px">
+        <span style="font-size:12.5px;color:#8A8F98;padding-bottom:6px">O fluxo reverso de sempre — o que preciso de você (ou do backend) antes de fechar o mobile:</span>
+        <sc-for list="{{ duvidas }}" as="d" hint-placeholder-count="8">
+          <div style="display:flex;gap:12px;padding:13px 16px;background:#14141C;border:1px solid #23242F;border-radius:10px">
+            <span style="font-family:'JetBrains Mono';font-size:11px;font-weight:700;color:#00E5FF;flex:none">{{ d.n }}</span>
+            <span style="font-size:13px;line-height:1.6"><b>{{ d.t }}</b> — <span style="color:#8A8F98">{{ d.d }}</span></span>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1240,&quot;height&quot;:940}}">
+class Component extends DCLogic {
+  state = { aba: 'class' };
+  renderVals() {
+    const s = this.state;
+    const tab = (t, k) => ({ t, go: () => this.setState({ aba: k }), bg: s.aba === k ? 'rgba(0,229,255,.08)' : '#14141C', cor: s.aba === k ? '#00E5FF' : '#8A8F98', borda: s.aba === k ? 'rgba(0,229,255,.45)' : '#23242F' });
+    const NC = { 1: ['#00E5FF', 'rgba(0,229,255,.4)', 'PRIMÁRIO'], 2: ['#3ECF8E', 'rgba(62,207,142,.4)', 'ADAPTADO'], 3: ['#E8A13C', 'rgba(232,161,60,.4)', 'FUNCIONAL'] };
+    const R = (tela, n, como) => ({ tela, nivel: NC[n][2], nCor: NC[n][0], nBorda: NC[n][1], como, temNivel: true, peso: '500', bg: 'transparent' });
+    const H = (tela) => ({ tela, nivel: '', como: '', temNivel: false, peso: '700', bg: '#0A0A0F', nCor: '', nBorda: '' });
+    return {
+      abas: [tab('Classificação · 100%', 'class'), tab('Sistema de layout', 'layout'), tab('Navegação por perfil', 'nav'), tab('PWA × nativo', 'pwa'), tab('Dúvidas ao Vitor', 'duvidas')],
+      vClass: s.aba === 'class', vLayout: s.aba === 'layout', vNav: s.aba === 'nav', vPwa: s.aba === 'pwa', vDuvidas: s.aba === 'duvidas',
+      niveis: [
+        { tag: 'NÍVEL 1 · MOBILE-PRIMÁRIO', nome: 'Desenho dedicado e polido', criterio: 'Quem usa NO CHÃO, em pé: fila, evidência, veredito, painel das 3 perguntas.', cor: '#00E5FF' },
+        { tag: 'NÍVEL 2 · MOBILE-ADAPTADO', nome: 'Reorganizado, plenamente usável', criterio: 'Gestão do admin: tabelas viram cards, wizards viram passos, modais viram sheets.', cor: '#3ECF8E' },
+        { tag: 'NÍVEL 3 · MOBILE-FUNCIONAL', nome: 'Usável sem quebra, desktop recomendado', criterio: 'Densidade de desktop: consulta e confirmação leve no celular, com aviso elegante.', cor: '#E8A13C' },
+      ],
+      rows: [
+        H('OPERAÇÃO — ANALISTA / TST (chão de fábrica)'),
+        R('Login · sessão · troca de tenant', 1, 'Fluxo F4 desenhado: campos 48px, white-label do tenant no contexto, banner de plataforma.'),
+        R('Shell (nav, busca, sino)', 1, 'Bottom nav por perfil; busca vira tela cheia; sino presente e desligado (previsto).'),
+        R('EPI · Eventos (fila de violações)', 1, 'Fluxo F1: cards com thumbnail + bbox, badge de novas, filtros em chips.'),
+        R('EPI · Evento detalhe (evidência)', 1, 'Frame inteiro, caixa ancorada no zoom (pinch + botões), veredito fixo na zona do polegar.'),
+        R('EPI · Verificação', 1, 'Mesmo padrão de veredito um-por-vez; contador; teclas viram toques grandes.'),
+        R('EPI · Dashboard (3 perguntas)', 1, 'Fluxo F2: onde está o problema · está melhorando · o que trato agora — <10 s.'),
+        R('EPI · Ações corretivas', 1, 'Kanban vira abas Abertas/Concluídas; concluir com um toque; vencidas primeiro.'),
+        R('Carga · validação de contagem', 1, 'Decisão de pátio em pé: contado vs manual em números grandes, 2 botões.'),
+        H('OPERAÇÃO — GESTÃO DO TENANT (admin)'),
+        R('EPI · Ao Vivo', 2, 'Grid vira lista 1×N; um tile por vez em tela cheia; multi-grid 3×3+ é desktop.'),
+        R('Câmeras · lista + saúde', 2, 'Cards com semáforo (F3); filtros em sheet.'),
+        R('Câmera · ficha (conexão, modelos, retenção)', 2, 'Ficha em coluna única com sheet de escopo (F3 desenhado); teste de conexão passo a passo.'),
+        R('Câmera · operações & ROI', 3, 'Consulta e ativar/desativar; desenhar ROI/linha exige precisão de mouse — aviso "melhor no desktop".'),
+        R('Sites & edge · onboarding do box', 2, 'Token e comandos em lista; QR para parear é dúvida ao Vitor (D3).'),
+        R('Usuários · papéis · permissões', 2, 'Cards + sheet de ações; matriz de permissões completa é nível 3 (consulta + override pontual).'),
+        R('Configurações do tenant (retenção, canais)', 2, 'Formulários em coluna única, toggles nativos de toque.'),
+        R('EPI · Relatórios + compliance', 2, 'Export e digest em coluna única; PDF abre no viewer do aparelho.'),
+        H('QUALIDADE E CARGA'),
+        R('Qualidade · Dashboard', 2, 'Cockpit empilha: totais primeiro, estações como cards.'),
+        R('Qualidade · Inspeções + detalhe', 2, 'Lista em cards; evidência com o mesmo zoom do EPI; feedback com um toque.'),
+        R('Qualidade · Peças e Retrabalho', 2, 'Fila e fechamento com duração; drill-down empilhado.'),
+        R('Qualidade · Anotação (frames NOK)', 3, 'Aprovar/rejeitar proposta funciona; desenhar caixa nova é desktop.'),
+        R('Qualidade · Config (bancadas, classes)', 2, 'Formulários e toggles; ordem = tecla mantida com drag simples.'),
+        R('Carga · dashboard, baias, eventos', 2, 'KPIs 2×2, baias como cards com contador grande.'),
+        R('Carga · revisão de placas (LPR)', 1, 'Um-por-vez com foto grande e correção rápida — trabalho de pátio.'),
+        H('ESTÚDIO (persona técnica)'),
+        R('Estúdio · Dados (galeria)', 3, 'Consulta, seleção e curadoria leve; anotar em sequência é desktop.'),
+        R('Estúdio · Anotador', 3, 'Abre para conferir e aprovar propostas com zoom; desenho de caixa tem aviso "melhor no desktop".'),
+        R('Estúdio · Ferramentas de IA + fila', 2, 'Aprovação um-por-vez é excelente no toque: aprovar/rejeitar com o polegar.'),
+        R('Estúdio · Classes', 2, 'Lista com toggles e contagem; alerta de desbalanceamento igual ao desktop.'),
+        R('Estúdio · Dataset (split, versões)', 3, 'Leitura do split e avisos; montar versão é desktop.'),
+        R('Estúdio · Treinos', 3, 'Acompanhar é útil no bolso: progresso, ETA, custo; criar treino é desktop.'),
+        R('Estúdio · Modelos', 3, 'Métricas por classe/câmera compactas; promover exige confirmação dupla.'),
+        H('PLATAFORMA (superadmin)'),
+        R('Admin · Visão geral', 2, 'KPIs empilhados; drill em cards.'),
+        R('Tenants + detalhe, plano, suspensão', 2, 'Cards; suspender com motivo em sheet.'),
+        R('Usuários globais + sessões', 2, 'Cards + ações em sheet; senha temporária exibida uma vez.'),
+        R('Suporte (tickets)', 2, 'Thread vira chat — mobile é o formato natural.'),
+        R('Aprovações de treino', 2, 'Fila um-por-vez com amostras.'),
+        R('Comunicados (publicar + inbox)', 2, 'Composer simples; inbox do cliente com "marcar como lido".'),
+        R('Workers · Observabilidade · Saúde', 3, 'Status e séries compactas para plantão; ações destrutivas pedem confirmação.'),
+        R('White-label · Integrações · Versões', 3, 'Consulta e teste de conexão; editor de marca e rollback são desktop.'),
+        R('Console de teste · Dados demo', 3, 'Leitura rotulada como simulação.'),
+        R('Auditoria', 2, 'Filtros em sheet; export mantido.'),
+        H('CHÃO DE FÁBRICA (formatos próprios)'),
+        R('Kiosk da bancada', 2, 'O alvo é o tablet da estação (768–1279). No celular funciona como contingência de leitura + ações grandes.'),
+        R('TV / Andon', 3, 'Formato é o telão; no celular o painel das 3 perguntas cobre a leitura.'),
+        H('ENTREGAS FUTURAS (9 do contrato)'),
+        R('P1–P3 · todas as telas novas', 2, 'Nascem já com o nível aplicado por este critério — a classificação é regra do sistema, não exceção por tela.'),
+      ],
+      reflow: [
+        { de: 'DataTable (todas)', para: 'Cards empilhados com linha-resumo; coluna-chave vira título do card' },
+        { de: 'Modal / ConfirmDialog', para: 'Bottom sheet com alça, botões ≥48px, cancelar sempre visível' },
+        { de: 'Sidebar de módulo', para: 'Bottom nav (3–4 destinos do perfil) + Menu para o resto' },
+        { de: 'TopBar + breadcrumb', para: 'Título da tela + voltar; contexto (site/tenant) vira subtítulo mono' },
+        { de: 'Wizard multi-etapa', para: 'Passos em tela cheia com progresso e "voltar" persistente' },
+        { de: 'KPIRow (4 colunas)', para: 'Grade 2×2; número grande preservado, sparkline compacta' },
+        { de: 'Gráficos e curvas', para: 'Número + delta + spark; série completa em paisagem ou desktop' },
+        { de: 'Kanban', para: 'Abas por coluna (Abertas · Concluídas) com badge de contagem' },
+        { de: 'Busca ⌘K', para: 'Tela de busca com teclado aberto e resultados por seção' },
+        { de: 'Filtros em linha', para: 'Sheet "Filtrar" com contagem viva e chips do que está ativo' },
+        { de: 'Barra de ações em lote', para: 'Barra fixa acima da bottom nav (mesma zona do polegar)' },
+        { de: 'Player com faixa 24h', para: 'Faixa full-width com alças maiores; scrub por arraste + botões ±15 min' },
+        { de: 'Tooltip (hover)', para: 'Linha de texto visível ou ícone "i" que abre sheet — hover não existe' },
+        { de: 'Tabela de permissões (matriz)', para: 'Lista por usuário com busca; matriz completa fica no desktop (nível 3)' },
+      ],
+      mapas: [
+        { perfil: 'ANALISTA / TST', quem: 'persona nº 1 — anda pela planta', cor: '#3ECF8E', menu: 'Ações, Verificação, Relatórios, Estúdio (consulta), trocar módulo, sair.', tabs: [{ t: 'Violações', on: 1 }, { t: 'Painel', on: 0 }, { t: 'Câmeras', on: 0 }, { t: 'Menu', on: 0 }] },
+        { perfil: 'ADMIN DO TENANT', quem: 'gestor — configura o próprio site', cor: '#00E5FF', menu: 'Configurações (retenção, canais, papéis), Sites & edge, módulos, sair.', tabs: [{ t: 'Câmeras', on: 1 }, { t: 'Usuários', on: 0 }, { t: 'Relatórios', on: 0 }, { t: 'Menu', on: 0 }] },
+        { perfil: 'SUPERADMIN', quem: 'plataforma Logikos', cor: '#E8A13C', menu: 'Workers, aprovações, comunicados, flags, auditoria, assumir contexto (aí vira a nav do tenant).', tabs: [{ t: 'Visão geral', on: 1 }, { t: 'Tenants', on: 0 }, { t: 'Suporte', on: 0 }, { t: 'Menu', on: 0 }] },
+        { perfil: 'USUÁRIO', quem: 'operacional — leitura', cor: '#8A8F98', menu: 'Trocar módulo, sair. Kiosk e TV vivem no chão, não no bolso.', tabs: [{ t: 'Painel', on: 1 }, { t: 'Eventos', on: 0 }, { t: 'Menu', on: 0 }] },
+      ].map(m => ({ ...m, tabs: m.tabs.map(t => ({ t: t.t, cor: t.on ? '#00E5FF' : '#8A8F98', topo: t.on ? '#00E5FF' : 'transparent' })) })),
+      pwaSim: [
+        { t: 'Uma base de código = mesma identidade e zero divergência entre desktop e celular; white-label por tenant sem republicar em loja' },
+        { t: 'Instalável (ícone, tela cheia, splash) direto do navegador; atualização instantânea a cada deploy — crítico com o backend ainda em correção' },
+        { t: 'Push: funciona no Android; no iOS via Web Push com o app instalado (16.4+) — mas depende do backend de canais de notificação (pedido já registrado)' },
+        { t: 'Câmera do aparelho via getUserMedia/input capture — suficiente para foto de evidência e QR de pareamento' },
+        { t: 'Offline leve com service worker: shell, fila em cache e reenvio de veredito quando a rede volta (padrão "retido no aparelho" já desenhado no Estúdio)' },
+      ],
+      pwaNao: [
+        { t: 'Push de missão crítica no iOS (alarme que ACORDA o TST): Web Push exige instalação e é menos confiável que APNs nativo' },
+        { t: 'Offline profundo (turno inteiro sem rede, com vídeo): IndexedDB não basta; nativo tem armazenamento e sync robustos' },
+        { t: 'Integração de hardware além da câmera (BLE com sensores, NFC de crachá)' },
+      ],
+      duvidas: [
+        { n: 'D1', t: 'Veredito no celular = mesma permissão do desktop?', d: 'Ou o mobile exige revisão posterior? Afeta o peso do botão "Procedente" no fluxo F1.' },
+        { n: 'D2', t: 'Prioridade do push', d: 'O sino está desenhado e desligado. Ativar depende dos canais de notificação no backend (pedido nº 6 do contrato). Puxo essa prioridade?' },
+        { n: 'D3', t: 'QR para parear o box do edge', d: 'O token one-time do onboarding poderia virar QR lido pelo celular do instalador — antecipo isso na entrega P2?' },
+        { n: 'D4', t: 'Foto do aparelho como evidência', d: 'TST fotografar a cena (além do frame da câmera) entra no escopo? Muda o detalhe da violação e o upload.' },
+        { n: 'D5', t: 'Kiosk no celular', d: 'Classifiquei como contingência (nível 2 no tablet, leitura no phone). Confirma, ou proibimos o kiosk fora do tablet da estação?' },
+        { n: 'D6', t: 'Biometria no login', d: 'WebAuthn (Face/Touch ID) para o TST em pé — vale a fricção a menos? Depende de suporte no backend de auth.' },
+        { n: 'D7', t: 'Modo economia de dados', d: 'Thumbnails em 4G: carrego miniatura leve por padrão e frame cheio sob demanda?' },
+        { n: 'D8', t: 'Confiança visível no mobile (O-4)', d: 'Mantive "confiança 87% · alta" no detalhe da violação, como proposto no contrato. Confirma para o celular também?' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

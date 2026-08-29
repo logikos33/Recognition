@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}</style>
+</helmet>
+<div style="width:100%;min-height:100vh;display:flex;flex-direction:column;background:#0A0A0F" data-screen-label="Gestão D1/D2/D3">
+  <header style="height:56px;flex:none;display:flex;align-items:center;gap:24px;padding:0 24px;background:#14141C;border-bottom:1px solid rgba(138,143,152,.16)">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:26px;height:26px;border-radius:50%;border:2px solid #F4F6F8;display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-weight:700;font-size:14px">Λ</div>
+      <span style="font-family:'Space Grotesk';font-weight:700;font-size:16px;letter-spacing:.08em">ΛΟΓΙΚΟΣ</span>
+      <span style="color:#8A8F98;font-size:14px">· Qualidade</span>
+    </div>
+    <nav style="display:flex;gap:4px;height:100%">
+      <a href="Revisão Qualidade.dc.html" style="display:flex;align-items:center;padding:0 16px;font-size:14px;color:#8A8F98;border-bottom:2px solid transparent">Revisão</a>
+      <a href="Configuração Qualidade.dc.html" style="display:flex;align-items:center;padding:0 16px;font-size:14px;color:#8A8F98;border-bottom:2px solid transparent">Configuração</a>
+      <a href="Gestão Qualidade.dc.html" style="display:flex;align-items:center;padding:0 16px;font-size:14px;font-weight:600;color:#00E5FF;border-bottom:2px solid #00E5FF">Gestão</a>
+    </nav>
+    <div style="flex:1"></div>
+    <span style="font-size:13px;color:#8A8F98">RVB Isolantes</span>
+    <span style="width:30px;height:30px;border-radius:50%;background:#0A0A0F;border:1px solid rgba(138,143,152,.3);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600">SA</span>
+  </header>
+  <div style="flex:1;display:flex;flex-direction:column;max-width:1280px;width:100%;margin:0 auto;padding:24px;box-sizing:border-box;gap:18px">
+    <div style="display:flex;align-items:center;gap:16px">
+      <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Gestão</h1>
+      <div style="display:flex;background:#14141C;border-radius:8px;padding:3px;gap:2px">
+        <button onClick="{{ showD1 }}" style="height:36px;padding:0 18px;border:none;border-radius:6px;background:{{ d1Bg }};color:{{ d1Color }};font-size:14px;font-weight:600;cursor:pointer">Dashboard</button>
+        <button onClick="{{ showD2 }}" style="height:36px;padding:0 18px;border:none;border-radius:6px;background:{{ d2Bg }};color:{{ d2Color }};font-size:14px;font-weight:600;cursor:pointer">Peças &amp; OPs</button>
+        <button onClick="{{ showD3 }}" style="height:36px;padding:0 18px;border:none;border-radius:6px;background:{{ d3Bg }};color:{{ d3Color }};font-size:14px;font-weight:600;cursor:pointer">Relatórios</button>
+      </div>
+      <div style="flex:1"></div>
+      <select style="height:36px;background:#14141C;border:1px solid rgba(138,143,152,.25);border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 10px"><option>Hoje</option><option>7 dias</option><option>30 dias</option></select>
+    </div>
+
+    <!-- ============ D1 · DASHBOARD ============ -->
+    <sc-if value="{{ isD1 }}" hint-placeholder-val="{{ true }}">
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px">
+        <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="6">
+          <div style="display:flex;flex-direction:column;gap:6px;padding:16px;background:#14141C;border-radius:10px;border-top:2px solid {{ k.cor }}">
+            <span style="font-size:11px;color:#8A8F98;letter-spacing:.07em">{{ k.label }}</span>
+            <span style="font-family:'JetBrains Mono';font-weight:700;font-size:30px;line-height:1;color:{{ k.corValor }}">{{ k.valor }}</span>
+            <span style="font-size:12px;color:#8A8F98">{{ k.sub }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+        <div style="display:flex;flex-direction:column;gap:12px;padding:18px;background:#14141C;border-radius:10px">
+          <div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:14px;font-weight:600">NC + refazer por ponto</span><a href="Revisão Qualidade.dc.html" style="font-size:12px;margin-left:auto">ver fila →</a></div>
+          <sc-for list="{{ porPonto }}" as="b" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-family:'JetBrains Mono';font-size:13px;width:26px">{{ b.code }}</span>
+              <div style="flex:1;height:16px;background:#0A0A0F;border-radius:4px;overflow:hidden"><div style="width:{{ b.w }};height:100%;background:#FF5C47"></div></div>
+              <span style="font-family:'JetBrains Mono';font-size:13px;width:30px;text-align:right">{{ b.n }}</span>
+            </div>
+          </sc-for>
+          <span style="font-size:12px;color:#8A8F98">P2 concentra as NCs — candidato a reencenação do modelo.</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px;padding:18px;background:#14141C;border-radius:10px">
+          <div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:14px;font-weight:600">Por classe</span><a href="#d2" onClick="{{ showD2 }}" style="font-size:12px;margin-left:auto">drill-down →</a></div>
+          <sc-for list="{{ porClasse }}" as="b" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-size:12.5px;width:150px;color:#F4F6F8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ b.nome }}</span>
+              <div style="flex:1;height:16px;background:#0A0A0F;border-radius:4px;overflow:hidden"><div style="width:{{ b.w }};height:100%;background:{{ b.cor }}"></div></div>
+              <span style="font-family:'JetBrains Mono';font-size:13px;width:30px;text-align:right">{{ b.n }}</span>
+            </div>
+          </sc-for>
+          <span style="font-size:12px;color:#8A8F98">Discordância do operador por classe: madeira exposta 18%.</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border-radius:10px">
+          <span style="font-size:14px;font-weight:600">Tendência 30 dias — % fora de conforme</span>
+          <svg viewBox="0 0 300 110" style="width:100%;height:110px">
+            <line x1="0" y1="30" x2="300" y2="30" stroke="rgba(138,143,152,.15)" stroke-width="1"></line>
+            <line x1="0" y1="60" x2="300" y2="60" stroke="rgba(138,143,152,.15)" stroke-width="1"></line>
+            <line x1="0" y1="90" x2="300" y2="90" stroke="rgba(138,143,152,.15)" stroke-width="1"></line>
+            <polyline points="0,42 25,48 50,40 75,55 100,50 125,62 150,58 175,70 200,66 225,74 250,72 275,80 300,78" fill="none" stroke="#3ECF8E" stroke-width="2.5"></polyline>
+            <polyline points="0,42 25,48 50,40 75,55 100,50 125,62 150,58 175,70 200,66 225,74 250,72 275,80 300,78 300,110 0,110" fill="rgba(62,207,142,.08)" stroke="none"></polyline>
+          </svg>
+          <div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono';font-size:11px;color:#8A8F98"><span>06/07</span><span>hoje</span></div>
+          <span style="font-size:12px;color:#8A8F98">De 9,4% para 4,7% em 30 dias.</span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:12px">
+        <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border-radius:10px">
+          <span style="font-size:14px;font-weight:600">Tempo médio por ponto × estação</span>
+          <div style="display:grid;grid-template-columns:1fr repeat(3,90px);gap:0;font-size:13px">
+            <span style="padding:8px 0;color:#8A8F98;font-size:11px;letter-spacing:.07em;border-bottom:1px solid rgba(138,143,152,.15)">PONTO</span>
+            <span style="padding:8px 0;color:#8A8F98;font-size:11px;letter-spacing:.07em;border-bottom:1px solid rgba(138,143,152,.15);text-align:right">EST. 1</span>
+            <span style="padding:8px 0;color:#8A8F98;font-size:11px;letter-spacing:.07em;border-bottom:1px solid rgba(138,143,152,.15);text-align:right">EST. 2</span>
+            <span style="padding:8px 0;color:#8A8F98;font-size:11px;letter-spacing:.07em;border-bottom:1px solid rgba(138,143,152,.15);text-align:right">META</span>
+            <sc-for list="{{ tempos }}" as="t" hint-placeholder-count="4">
+              <div style="display:contents">
+                <span style="padding:9px 0;border-bottom:1px solid rgba(138,143,152,.08)">{{ t.nome }}</span>
+                <span style="padding:9px 0;border-bottom:1px solid rgba(138,143,152,.08);text-align:right;font-family:'JetBrains Mono'">{{ t.e1 }}</span>
+                <span style="padding:9px 0;border-bottom:1px solid rgba(138,143,152,.08);text-align:right;font-family:'JetBrains Mono';color:{{ t.e2cor }}">{{ t.e2 }}</span>
+                <span style="padding:9px 0;border-bottom:1px solid rgba(138,143,152,.08);text-align:right;font-family:'JetBrains Mono';color:#8A8F98">{{ t.meta }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <span style="font-size:12px;color:#8A8F98">P4 na Estação 2 acima da meta — verificar iluminação/guia de captura.</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border-radius:10px">
+          <span style="font-size:14px;font-weight:600">Fila de revisão — tamanho e idade</span>
+          <div style="display:flex;gap:24px;align-items:baseline">
+            <div><span style="font-family:'JetBrains Mono';font-weight:700;font-size:38px">7</span><span style="font-size:13px;color:#8A8F98"> itens</span></div>
+            <div><span style="font-family:'JetBrains Mono';font-weight:700;font-size:38px;color:#FFB020">38</span><span style="font-size:13px;color:#8A8F98"> min (mais antigo)</span></div>
+          </div>
+          <div style="display:flex;height:12px;border-radius:6px;overflow:hidden"><div style="width:43%;background:#FF5C47"></div><div style="flex:1;background:#FFB020"></div></div>
+          <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">3 suspeitas de NC · 4 dúvidas · decisão média 11 s/item</span>
+          <span style="font-size:12px;color:#8A8F98">Se a idade crescer, o limiar de dúvida está largo — ajustar em <a href="Configuração Qualidade.dc.html">Limiares</a>.</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ============ D2 · PEÇAS & OPs ============ -->
+    <sc-if value="{{ isD2 }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;gap:16px;align-items:flex-start">
+        <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+          <sc-for list="{{ pecas }}" as="p" hint-placeholder-count="6">
+            <div onClick="{{ p.open }}" style="display:flex;align-items:center;gap:16px;padding:12px 16px;background:#14141C;border:1px solid {{ p.borda }};border-radius:8px;cursor:pointer">
+              <span style="font-family:'JetBrains Mono';font-weight:500;font-size:14px;width:110px">{{ p.code }}</span>
+              <span style="font-size:13px;color:#8A8F98;width:110px">{{ p.op }}</span>
+              <span style="font-size:13px;flex:1">{{ p.tipo }}</span>
+              <span style="font-family:'JetBrains Mono';font-size:13px;color:#3ECF8E">{{ p.pontos }}</span>
+              <span style="font-size:12px;font-weight:600;color:{{ p.stCor }};width:120px;text-align:right">{{ p.status }}</span>
+              <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98;width:52px;text-align:right">{{ p.tempo }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="width:430px;flex:none;display:flex;flex-direction:column;gap:12px;background:#14141C;border-radius:12px;padding:18px">
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">{{ selCode }}</span>
+            <span style="font-size:13px;color:#8A8F98">{{ selOp }} · Anel plano · 1º turno</span>
+          </div>
+          <div style="font-size:12px;color:#8A8F98;letter-spacing:.07em">LINHA DO TEMPO DOS PONTOS</div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <sc-for list="{{ selTimeline }}" as="ev" hint-placeholder-count="4">
+              <div style="display:flex;gap:12px">
+                <div style="width:64px;height:44px;flex:none;background:#0A0A0F;border:1px solid rgba(138,143,152,.25);border-radius:5px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono';font-size:9px;color:#8A8F98">foto</div>
+                <div style="flex:1;display:flex;flex-direction:column;gap:2px">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span style="font-family:'JetBrains Mono';font-size:13px;font-weight:700">{{ ev.code }}</span>
+                    <span style="font-size:13px;color:{{ ev.cor }};font-weight:600">{{ ev.icone }} {{ ev.veredito }}</span>
+                    <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98;margin-left:auto">{{ ev.hora }}</span>
+                  </div>
+                  <span style="font-size:12.5px;color:#8A8F98">{{ ev.detalhe }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="padding-top:10px;border-top:1px solid rgba(138,143,152,.15);font-size:12.5px;color:#8A8F98;line-height:1.5">Rastreabilidade completa: cada linha guarda foto, veredito do sistema, ação do operador e decisão da qualidade.</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ============ D3 · RELATÓRIOS ============ -->
+    <sc-if value="{{ isD3 }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;gap:10px;align-items:center">
+          <select style="height:38px;background:#14141C;border:1px solid rgba(138,143,152,.25);border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 10px"><option>OP 2024-1187</option><option>OP 2024-1186</option><option>OP 2024-1190</option></select>
+          <select style="height:38px;background:#14141C;border:1px solid rgba(138,143,152,.25);border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 10px"><option>Corte: por ponto</option><option>Corte: por classe</option><option>Corte: por turno</option></select>
+          <div style="flex:1"></div>
+          <button style="height:44px;padding:0 20px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-size:14px;font-weight:700;cursor:pointer">Exportar WISER</button>
+          <button style="height:44px;padding:0 20px;background:transparent;border:1px solid rgba(138,143,152,.4);border-radius:8px;color:#F4F6F8;font-size:14px;font-weight:600;cursor:pointer">CSV</button>
+        </div>
+        <div style="display:grid;grid-template-columns:80px 1fr 110px 110px 110px 130px;background:#14141C;border-radius:8px;overflow:hidden">
+          <div style="padding:10px 14px;font-size:11px;color:#8A8F98;letter-spacing:.08em;border-bottom:1px solid rgba(138,143,152,.15)">PONTO</div>
+          <div style="padding:10px 14px;font-size:11px;color:#8A8F98;letter-spacing:.08em;border-bottom:1px solid rgba(138,143,152,.15)">INSPEÇÃO</div>
+          <div style="padding:10px 14px;font-size:11px;color:#8A8F98;letter-spacing:.08em;border-bottom:1px solid rgba(138,143,152,.15);text-align:right">FOTOS</div>
+          <div style="padding:10px 14px;font-size:11px;color:#8A8F98;letter-spacing:.08em;border-bottom:1px solid rgba(138,143,152,.15);text-align:right">CONFORME</div>
+          <div style="padding:10px 14px;font-size:11px;color:#8A8F98;letter-spacing:.08em;border-bottom:1px solid rgba(138,143,152,.15);text-align:right">NC CONFIRM.</div>
+          <div style="padding:10px 14px;font-size:11px;color:#8A8F98;letter-spacing:.08em;border-bottom:1px solid rgba(138,143,152,.15);text-align:right">RETRABALHO MÉD.</div>
+          <sc-for list="{{ relatorio }}" as="r" hint-placeholder-count="4">
+            <div style="display:contents">
+              <span style="padding:11px 14px;font-family:'JetBrains Mono';font-weight:700;font-size:13px;border-bottom:1px solid rgba(138,143,152,.08)">{{ r.code }}</span>
+              <span style="padding:11px 14px;font-size:13px;border-bottom:1px solid rgba(138,143,152,.08)">{{ r.nome }}</span>
+              <span style="padding:11px 14px;font-family:'JetBrains Mono';font-size:13px;text-align:right;border-bottom:1px solid rgba(138,143,152,.08)">{{ r.fotos }}</span>
+              <span style="padding:11px 14px;font-family:'JetBrains Mono';font-size:13px;text-align:right;color:#3ECF8E;border-bottom:1px solid rgba(138,143,152,.08)">{{ r.conf }}</span>
+              <span style="padding:11px 14px;font-family:'JetBrains Mono';font-size:13px;text-align:right;color:{{ r.ncCor }};border-bottom:1px solid rgba(138,143,152,.08)">{{ r.nc }}</span>
+              <span style="padding:11px 14px;font-family:'JetBrains Mono';font-size:13px;text-align:right;color:#8A8F98;border-bottom:1px solid rgba(138,143,152,.08)">{{ r.retr }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <span style="font-size:12.5px;color:#8A8F98">Base do export WISER já existente — este corte por ponto/classe entra como anexo da OP. Cada número abre a lista de peças com foto-evidência.</span>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  PECAS = [
+    { code: 'AN-24-0785', op: 'OP 2024-1187', tipo: 'Anel plano', pontos: '4/4 ✓', status: 'Concluída', stCor: '#3ECF8E', tempo: '6:12' },
+    { code: 'AN-24-0784', op: 'OP 2024-1187', tipo: 'Anel plano', pontos: '4/4 ✓', status: 'Concluída', stCor: '#3ECF8E', tempo: '5:48' },
+    { code: 'AN-24-0783', op: 'OP 2024-1187', tipo: 'Anel plano', pontos: '3/4', status: 'Em revisão', stCor: '#FFB020', tempo: '7:02' },
+    { code: 'AN-24-0782', op: 'OP 2024-1186', tipo: 'Anel plano', pontos: '4/4 ✓', status: 'Concluída', stCor: '#3ECF8E', tempo: '5:31' },
+    { code: 'AN-24-0781', op: 'OP 2024-1186', tipo: 'Anel plano', pontos: '2/4', status: 'NC em revisão', stCor: '#FF5C47', tempo: '9:44' },
+    { code: 'EN-24-0112', op: 'OP 2024-1190', tipo: 'Enchimento', pontos: '3/3 ✓', status: 'Em revisão', stCor: '#FFB020', tempo: '3:20' },
+  ];
+  state = { tab: 'd1', sel: 'AN-24-0785' };
+  renderVals() {
+    const s = this.state;
+    const selPeca = this.PECAS.find(p => p.code === s.sel) || this.PECAS[0];
+    return {
+      isD1: s.tab === 'd1', isD2: s.tab === 'd2', isD3: s.tab === 'd3',
+      showD1: () => this.setState({ tab: 'd1' }), showD2: () => this.setState({ tab: 'd2' }), showD3: () => this.setState({ tab: 'd3' }),
+      d1Bg: s.tab === 'd1' ? '#0A0A0F' : 'transparent', d1Color: s.tab === 'd1' ? '#00E5FF' : '#8A8F98',
+      d2Bg: s.tab === 'd2' ? '#0A0A0F' : 'transparent', d2Color: s.tab === 'd2' ? '#00E5FF' : '#8A8F98',
+      d3Bg: s.tab === 'd3' ? '#0A0A0F' : 'transparent', d3Color: s.tab === 'd3' ? '#00E5FF' : '#8A8F98',
+      kpis: [
+        { label: 'PEÇAS HOJE', valor: '148', sub: '2 estações · 1º turno', cor: 'rgba(138,143,152,.4)', corValor: '#F4F6F8' },
+        { label: '% CONFORME', valor: '87,2', sub: 'das fotos validadas', cor: '#3ECF8E', corValor: '#3ECF8E' },
+        { label: '% DÚVIDA', valor: '8,1', sub: 'segue + fila de revisão', cor: '#FFB020', corValor: '#FFB020' },
+        { label: '% NC / REFAZER', valor: '4,7', sub: 'interrompe na estação', cor: '#FF5C47', corValor: '#FF5C47' },
+        { label: 'LATÊNCIA P95', valor: '1,4 s', sub: 'meta < 2 s', cor: 'rgba(138,143,152,.4)', corValor: '#F4F6F8' },
+        { label: 'FILA REVISÃO', valor: '7', sub: 'idade máx 38 min', cor: '#FFB020', corValor: '#F4F6F8' },
+      ],
+      porPonto: [
+        { code: 'P2', w: '86%', n: 19 }, { code: 'P1', w: '50%', n: 11 },
+        { code: 'P4', w: '36%', n: 8 }, { code: 'P8', w: '18%', n: 4 },
+      ],
+      porClasse: [
+        { nome: 'Madeira exposta', w: '80%', n: 14, cor: '#FF5C47' },
+        { nome: 'Transpasse > 10 mm', w: '51%', n: 9, cor: '#FF5C47' },
+        { nome: 'Foto borrada (refazer)', w: '46%', n: 8, cor: '#8A8F98' },
+        { nome: 'Distância fora da tolerância', w: '29%', n: 5, cor: '#FF5C47' },
+      ],
+      tempos: [
+        { nome: 'P1 Transpasse', e1: '0:42', e2: '0:39', e2cor: '#F4F6F8', meta: '0:45' },
+        { nome: 'P2 Alma', e1: '0:58', e2: '1:02', e2cor: '#F4F6F8', meta: '1:10' },
+        { nome: 'P4 Distanciamento', e1: '1:21', e2: '1:58', e2cor: '#FFB020', meta: '1:30' },
+        { nome: 'P8 Foto final', e1: '0:31', e2: '0:28', e2cor: '#F4F6F8', meta: '0:40' },
+      ],
+      pecas: this.PECAS.map(p => Object.assign({}, p, {
+        borda: p.code === s.sel ? 'rgba(0,229,255,.5)' : 'rgba(138,143,152,.12)',
+        open: () => this.setState({ sel: p.code }),
+      })),
+      selCode: selPeca.code, selOp: selPeca.op,
+      selTimeline: [
+        { code: 'P1', veredito: 'Conforme (dúvida interna)', icone: '✓', cor: '#3ECF8E', hora: '09:12', detalhe: 'Sistema em dúvida → fila · qualidade confirmou conforme às 09:41' },
+        { code: 'P2', veredito: 'Refazer → conforme', icone: '⟳', cor: '#8A8F98', hora: '09:15', detalhe: 'Foto borrada na 1ª captura · conforme na 2ª' },
+        { code: 'P4', veredito: 'Suspeita de NC → corrigida', icone: '✕', cor: '#FF5C47', hora: '09:18', detalhe: 'Distância 13,4 mm · retrabalho 2:40 · conforme na recaptura' },
+        { code: 'P8', veredito: 'Conforme', icone: '✓', cor: '#3ECF8E', hora: '09:24', detalhe: 'Exportada para o WISER às 09:25' },
+      ],
+      relatorio: [
+        { code: 'P1', nome: 'Transpasse da cordoalha', fotos: 152, conf: 141, nc: 3, ncCor: '#FF5C47', retr: '1:50' },
+        { code: 'P2', nome: 'Detalhe da alma', fotos: 149, conf: 128, nc: 8, ncCor: '#FF5C47', retr: '2:35' },
+        { code: 'P4', nome: 'Distanciamento entre espiras', fotos: 151, conf: 139, nc: 4, ncCor: '#FF5C47', retr: '2:10' },
+        { code: 'P8', nome: 'Foto final da peça', fotos: 148, conf: 144, nc: 0, ncCor: '#8A8F98', retr: '—' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

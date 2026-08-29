@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:#23242F;border-radius:5px}</style>
+</helmet>
+<div style="width:100%;height:100vh;display:flex;flex-direction:column;background:#0A0A0F" data-screen-label="EPI Dashboard">
+  <dc-import name="EPI Topbar" style="flex:none" hint-size="100%,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <dc-import name="EPI Sidebar" ativa="Dashboard" style="flex:none;align-self:stretch" hint-size="237px,100%"></dc-import>
+    <main style="flex:1;min-width:0;overflow:auto;position:relative">
+      <sc-if value="{{ carregado }}" hint-placeholder-val="{{ true }}">
+        <div style="max-width:1280px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Dashboard</h1>
+            <div style="flex:1"></div>
+            <select style="height:36px;background:#14141C;border:1px solid #23242F;border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 10px"><option>RVB Isolantes — Blumenau</option></select>
+            <select style="height:36px;background:#14141C;border:1px solid #23242F;border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 10px"><option>1º turno</option><option>2º turno</option><option>Dia inteiro</option></select>
+            <button style="height:36px;padding:0 14px;background:transparent;border:1px solid #23242F;border-radius:6px;color:#8A8F98;font-family:'Inter';font-size:13px;cursor:pointer">Personalizar widgets</button>
+          </div>
+          <div style="display:grid;grid-template-columns:360px 1fr 1fr 1fr;gap:12px">
+            <div style="grid-row:span 1;display:flex;flex-direction:column;gap:10px;padding:20px;background:#14141C;border:1px solid #23242F;border-radius:12px;position:relative">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">SCORE DE CONFORMIDADE</span>
+                <span onMouseEnter="{{ tipOn }}" onMouseLeave="{{ tipOff }}" style="width:16px;height:16px;border-radius:50%;border:1px solid #3A3D4A;color:#8A8F98;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:help">i</span>
+              </div>
+              <sc-if value="{{ tip }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;top:44px;left:20px;right:20px;z-index:10;background:#0A0A0F;border:1px solid #23242F;border-radius:8px;padding:12px;font-size:12px;color:#8A8F98;line-height:1.55;box-shadow:0 8px 32px rgba(0,0,0,.7)">Como é calculado: 100 − penalidade por violação confirmada, ponderada pela severidade da classe, sobre o total de detecções válidas do site/turno. Eventos descartados não contam.</div>
+              </sc-if>
+              <div style="display:flex;align-items:flex-end;gap:14px">
+                <span style="font-family:'Space Grotesk';font-weight:700;font-size:84px;line-height:.9">87</span>
+                <div style="display:flex;flex-direction:column;gap:2px;padding-bottom:8px">
+                  <span style="display:flex;align-items:center;gap:5px;font-size:13px;font-weight:600;color:#3ECF8E"><svg viewBox="0 0 24 24" style="width:13px;height:13px" fill="none" stroke="#3ECF8E" stroke-width="2.2" stroke-linecap="square"><path d="M12 19V5M6 11l6-6 6 6"></path></svg>+5 vs ontem (82)</span>
+                  <span style="font-size:12px;color:#8A8F98">site · 1º turno</span>
+                </div>
+              </div>
+              <svg viewBox="0 0 300 56" style="width:100%;height:56px">
+                <polyline points="0,38 50,42 100,34 150,36 200,26 250,30 300,18" fill="none" stroke="#3ECF8E" stroke-width="2.5"></polyline>
+                <polyline points="0,38 50,42 100,34 150,36 200,26 250,30 300,18 300,56 0,56" fill="rgba(62,207,142,.08)" stroke="none"></polyline>
+              </svg>
+              <div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98"><span>7 DIAS</span><span>ATUALIZADO 14:41</span></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;padding:16px 18px;background:#14141C;border:1px solid #23242F;border-radius:12px;border-top:2px solid rgba(138,143,152,.4)">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">EVENTOS HOJE</span>
+              <span style="font-family:'JetBrains Mono';font-weight:700;font-size:34px;line-height:1">23</span>
+              <span style="font-size:12px;color:#8A8F98">−18% vs média 7d</span>
+              <a href="EPI Eventos.dc.html" style="font-size:12.5px;font-weight:600;margin-top:auto">triar eventos →</a>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;padding:16px 18px;background:#14141C;border:1px solid #23242F;border-radius:12px;border-top:2px solid #E5484D">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">AÇÕES ABERTAS</span>
+              <span style="font-family:'JetBrains Mono';font-weight:700;font-size:34px;line-height:1">6</span>
+              <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:#E5484D;font-weight:600"><svg viewBox="0 0 24 24" style="width:12px;height:12px" fill="none" stroke="#E5484D" stroke-width="2" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>2 vencidas</span>
+              <a href="EPI Ações.dc.html" style="font-size:12.5px;font-weight:600;margin-top:auto">ver ações →</a>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;padding:16px 18px;background:#14141C;border:1px solid #23242F;border-radius:12px;border-top:2px solid #E8A13C">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">CÂMERAS ONLINE</span>
+              <span style="font-family:'JetBrains Mono';font-weight:700;font-size:34px;line-height:1">2<span style="font-size:20px;color:#8A8F98">/3</span></span>
+              <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:#E8A13C;font-weight:600"><svg viewBox="0 0 24 24" style="width:12px;height:12px" fill="none" stroke="#E8A13C" stroke-width="2" stroke-linecap="square"><path d="M12 4l9 16H3z"></path></svg>CAM-07 offline há 26 min</span>
+              <a href="EPI Câmeras.dc.html" style="font-size:12.5px;font-weight:600;margin-top:auto">ver saúde →</a>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:12px">
+            <div style="display:flex;flex-direction:column;gap:12px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <svg viewBox="0 0 24 24" style="width:14px;height:14px;cursor:grab" fill="none" stroke="#3A3D4A" stroke-width="2"><path d="M9 6h.5M14.5 6h.5M9 12h.5M14.5 12h.5M9 18h.5M14.5 18h.5"></path></svg>
+                <span style="font-size:14px;font-weight:600">Eventos por hora</span>
+                <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98">HOJE · 06H–15H</span>
+              </div>
+              <div style="display:flex;align-items:flex-end;gap:5px;height:110px">
+                <sc-for list="{{ horas }}" as="h" hint-placeholder-count="10">
+                  <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;height:100%;justify-content:flex-end">
+                    <div style="width:100%;height:{{ h.h }};background:{{ h.cor }};border-radius:3px 3px 0 0"></div>
+                    <span style="font-family:'JetBrains Mono';font-size:9.5px;color:#8A8F98">{{ h.t }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <span style="font-size:12px;color:#8A8F98">Pico às 14h coincide com a troca de turno na expedição.</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <svg viewBox="0 0 24 24" style="width:14px;height:14px;cursor:grab" fill="none" stroke="#3A3D4A" stroke-width="2"><path d="M9 6h.5M14.5 6h.5M9 12h.5M14.5 12h.5M9 18h.5M14.5 18h.5"></path></svg>
+                <span style="font-size:14px;font-weight:600">Violações por classe</span>
+              </div>
+              <sc-for list="{{ classes }}" as="c" hint-placeholder-count="4">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <svg viewBox="0 0 24 24" style="width:16px;height:16px;flex:none" fill="none" stroke="#8A8F98" stroke-width="1.7" stroke-linecap="square"><path d="{{ c.d }}"></path></svg>
+                  <span style="font-size:12.5px;width:76px">{{ c.nome }}</span>
+                  <div style="flex:1;height:14px;background:#0A0A0F;border-radius:4px;overflow:hidden"><div style="width:{{ c.w }};height:100%;background:#E5484D"></div></div>
+                  <span style="font-family:'JetBrains Mono';font-size:13px;width:24px;text-align:right">{{ c.n }}</span>
+                </div>
+              </sc-for>
+              <span style="font-size:12px;color:#8A8F98">Capacete concentra 52% — candidato a DDS.</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <svg viewBox="0 0 24 24" style="width:14px;height:14px;cursor:grab" fill="none" stroke="#3A3D4A" stroke-width="2"><path d="M9 6h.5M14.5 6h.5M9 12h.5M14.5 12h.5M9 18h.5M14.5 18h.5"></path></svg>
+                <span style="font-size:14px;font-weight:600">Ações recentes</span>
+                <a href="EPI Ações.dc.html" style="font-size:12px;margin-left:auto">todas →</a>
+              </div>
+              <sc-for list="{{ acoes }}" as="a" hint-placeholder-count="3">
+                <div style="display:flex;flex-direction:column;gap:3px;padding:10px 12px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px">
+                  <span style="font-size:12.5px;font-weight:600">{{ a.titulo }}</span>
+                  <div style="display:flex;gap:8px;font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98"><span>{{ a.resp }}</span><span style="margin-left:auto;color:{{ a.cor }}">{{ a.prazo }}</span></div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}">
+        <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="fullscreen" state="waiting" label="CARREGANDO DASHBOARD" size="96" style="position:absolute;inset:0" hint-size="100%,100%"></x-import>
+      </sc-if>
+      <sc-if value="{{ vazio }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#8A8F98" stroke-width="1.5" stroke-linecap="square"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Sem dados para este turno</span>
+          <span style="font-size:13.5px;color:#8A8F98;max-width:380px;line-height:1.55">O 2º turno ainda não começou. O score aparece após as primeiras detecções.</span>
+          <button style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Ver 1º turno</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{ erro }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#E5484D" stroke-width="1.5" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Não foi possível carregar</span>
+          <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">GET /api/epi/dashboard · TIMEOUT 10 S</span>
+          <button style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Tentar novamente</button>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+  <div style="position:fixed;left:16px;bottom:14px;display:flex;align-items:center;gap:6px;background:#14141C;border:1px solid #23242F;border-radius:10px;padding:7px 10px;z-index:130;box-shadow:0 8px 32px rgba(0,0,0,.6)">
+    <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.2em;color:#8A8F98;margin-right:4px">ESTADO</span>
+    <sc-for list="{{ chips }}" as="ch" hint-placeholder-count="4">
+      <button onClick="{{ ch.go }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid {{ ch.borda }};background:{{ ch.bg }};color:{{ ch.cor }};font-family:'JetBrains Mono';font-size:10.5px;cursor:pointer">{{ ch.t }}</button>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:940}}">
+class Component extends DCLogic {
+  state = { estado: 'carregado', tip: false };
+  renderVals() {
+    const s = this.state;
+    const chip = (t, k) => ({ t, go: () => this.setState({ estado: k }), bg: s.estado === k ? 'rgba(0,229,255,.09)' : 'transparent', cor: s.estado === k ? '#00E5FF' : '#8A8F98', borda: s.estado === k ? 'rgba(0,229,255,.4)' : '#23242F' });
+    return {
+      carregado: s.estado === 'carregado', loading: s.estado === 'loading', vazio: s.estado === 'vazio', erro: s.estado === 'erro',
+      chips: [chip('CARREGADO', 'carregado'), chip('LOADING', 'loading'), chip('VAZIO', 'vazio'), chip('ERRO', 'erro')],
+      tip: s.tip, tipOn: () => this.setState({ tip: true }), tipOff: () => this.setState({ tip: false }),
+      horas: [
+        { t: '06', h: '18%', cor: '#23242F' }, { t: '07', h: '30%', cor: '#23242F' }, { t: '08', h: '52%', cor: '#E8A13C' },
+        { t: '09', h: '38%', cor: '#23242F' }, { t: '10', h: '26%', cor: '#23242F' }, { t: '11', h: '44%', cor: '#E8A13C' },
+        { t: '12', h: '14%', cor: '#23242F' }, { t: '13', h: '34%', cor: '#23242F' }, { t: '14', h: '92%', cor: '#E5484D' }, { t: '15', h: '48%', cor: '#E8A13C' },
+      ],
+      classes: [
+        { nome: 'Capacete', n: 12, w: '92%', d: 'M5 14a7 7 0 0 1 14 0M3 14h18v3H3zM10 5h4v3' },
+        { nome: 'Colete', n: 6, w: '46%', d: 'M8 3L5 7l2 2v12h10V9l2-2-3-4-4 3z' },
+        { nome: 'Óculos', n: 3, w: '23%', d: 'M4 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0zM14 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0zM10 12h4M2 12h2M20 12h2' },
+        { nome: 'Luvas', n: 2, w: '15%', d: 'M8 21v-7L5 10V4h3v5h1V3h3v6h1V4h3v6h1V6h2v9l-3 6z' },
+      ],
+      acoes: [
+        { titulo: 'Reforçar DDS na doca', resp: 'CARLOS M.', prazo: 'VENCE 08/08', cor: '#E8A13C' },
+        { titulo: 'Sinalizar zona de capacete na doca 3', resp: 'JULIANA P.', prazo: 'VENCIDA 02/08', cor: '#E5484D' },
+        { titulo: 'Checagem de EPI na entrada do turno', resp: 'CARLOS M.', prazo: 'CONCLUÍDA', cor: '#3ECF8E' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

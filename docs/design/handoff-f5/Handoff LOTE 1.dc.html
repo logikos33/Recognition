@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}</style>
+</helmet>
+<div style="min-height:100vh;background:#0A0A0F;display:flex;flex-direction:column;gap:28px;padding:48px;max-width:1080px;margin:0 auto;box-sizing:border-box" data-screen-label="Handoff LOTE 1">
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <span style="font-family:'JetBrains Mono';font-size:11px;letter-spacing:.2em;color:#8A8F98">LOGIKOS VISION · REDESIGN TO-BE · 04/08/2026</span>
+    <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:32px">Handoff — LOTE 1 · Shell único</h1>
+    <div style="display:flex;gap:18px;font-size:13.5px">
+      <a href="Shell Logikos Vision.dc.html">Demo do shell →</a>
+      <a href="Logikos Loading.dc.html">Demo do LogikosLoader →</a>
+      <a href="Gestão Qualidade.dc.html">Referência: Gestão Qualidade (aprovada) →</a>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:19px">Tokens usados</h2>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">
+      <div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#14141C;border:1px solid #23242F;border-radius:10px"><div style="height:44px;border-radius:6px;background:#0A0A0F;border:1px solid #23242F"></div><span style="font-family:'JetBrains Mono';font-size:11px">--lk-preto<br/>#0A0A0F</span><span style="font-size:11.5px;color:#8A8F98">fundo</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#14141C;border:1px solid #23242F;border-radius:10px"><div style="height:44px;border-radius:6px;background:#14141C;border:1px solid #23242F"></div><span style="font-family:'JetBrains Mono';font-size:11px">--lk-grafite<br/>#14141C</span><span style="font-size:11.5px;color:#8A8F98">superfícies, topbar, sidebar</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#14141C;border:1px solid #23242F;border-radius:10px"><div style="height:44px;border-radius:6px;background:#23242F"></div><span style="font-family:'JetBrains Mono';font-size:11px">--lk-borda<br/>#23242F</span><span style="font-size:11.5px;color:#8A8F98">bordas 1px, divisores</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#14141C;border:1px solid #23242F;border-radius:10px"><div style="height:44px;border-radius:6px;background:#F4F6F8"></div><span style="font-family:'JetBrains Mono';font-size:11px">--lk-branco-sinal<br/>#F4F6F8</span><span style="font-size:11.5px;color:#8A8F98">texto, logo</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#14141C;border:1px solid #23242F;border-radius:10px"><div style="height:44px;border-radius:6px;background:#8A8F98"></div><span style="font-family:'JetBrains Mono';font-size:11px">--lk-cinza-nevoa<br/>#8A8F98</span><span style="font-size:11.5px;color:#8A8F98">secundário, labels</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#14141C;border:1px solid #23242F;border-radius:10px"><div style="height:44px;border-radius:6px;background:#00E5FF"></div><span style="font-family:'JetBrains Mono';font-size:11px">--lk-ciano-visao<br/>#00E5FF</span><span style="font-size:11.5px;color:#8A8F98">SÓ interativo: item ativo, foco, botão primário. ≤10% da tela, nunca fundo</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#14141C;border:1px solid #23242F;border-radius:10px"><div style="height:44px;border-radius:6px;background:#FF2E63"></div><span style="font-family:'JetBrains Mono';font-size:11px">--lk-magenta-glitch<br/>#FF2E63</span><span style="font-size:11.5px;color:#8A8F98">SÓ franja de glitch do loader</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#14141C;border:1px solid #23242F;border-radius:10px"><div style="height:44px;border-radius:6px;background:#3ECF8E"></div><span style="font-family:'JetBrains Mono';font-size:11px">--st-ok<br/>#3ECF8E</span><span style="font-size:11.5px;color:#8A8F98">estado: online/conforme</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#14141C;border:1px solid #23242F;border-radius:10px"><div style="height:44px;border-radius:6px;background:#E8A13C"></div><span style="font-family:'JetBrains Mono';font-size:11px">--st-atencao<br/>#E8A13C</span><span style="font-size:11.5px;color:#8A8F98">estado: instável, sessão, contexto admin</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#14141C;border:1px solid #23242F;border-radius:10px"><div style="height:44px;border-radius:6px;background:#E5484D"></div><span style="font-family:'JetBrains Mono';font-size:11px">--st-nc<br/>#E5484D</span><span style="font-size:11.5px;color:#8A8F98">estado: violação, erro, vencida</span></div>
+    </div>
+    <span style="font-size:12.5px;color:#8A8F98">White-label: nenhum hex solto no código — tudo referencia os tokens <span style="font-family:'JetBrains Mono'">--lk-*</span> / <span style="font-family:'JetBrains Mono'">--st-*</span>; o tenant sobrescreve. Estado sempre cor + ícone + palavra (WCAG 1.4.1). Nota: as telas aprovadas do Qualidade usam #FFB020/#FF5C47 para atenção/NC — na implementação convergem para --st-atencao/--st-nc via token, sem retrabalho de tela.</span>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:19px">Tipografia e medidas</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:10px">
+        <span style="font-family:'Space Grotesk';font-weight:700;font-size:22px">Space Grotesk — títulos, números grandes, LOGIKOS</span>
+        <span style="font-family:'Inter';font-size:14px">Inter — UI, corpo, botões, formulários</span>
+        <span style="font-family:'JetBrains Mono';font-size:13px">JetBrains Mono — dados, códigos, timers, LABELS OVERLINE (tracking .16–.22em)</span>
+      </div>
+      <div style="padding:18px;background:#14141C;border:1px solid #23242F;border-radius:10px;font-family:'JetBrains Mono';font-size:12px;line-height:2;color:#8A8F98">
+        topbar <span style="color:#F4F6F8">56px</span> · sidebar <span style="color:#F4F6F8">236px / 64px colapsada</span> · item de nav <span style="color:#F4F6F8">38px</span><br/>
+        banner admin <span style="color:#F4F6F8">42px + faixa 2px âmbar</span> · conteúdo <span style="color:#F4F6F8">max 1280px, padding 24px</span><br/>
+        grid <span style="color:#F4F6F8">8pt</span> · raio <span style="color:#F4F6F8">8–12px</span> · borda <span style="color:#F4F6F8">1px #23242F</span> · palette ⌘K <span style="color:#F4F6F8">600px</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:19px">Componentes</h2>
+    <div style="display:grid;grid-template-columns:190px 120px 1fr;background:#14141C;border:1px solid #23242F;border-radius:10px;overflow:hidden">
+      <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">COMPONENTE</div>
+      <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">STATUS</div>
+      <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">NOTAS</div>
+      <sc-for list="{{ comps }}" as="c" hint-placeholder-count="12">
+        <div style="display:contents">
+          <span style="padding:11px 16px;font-size:13px;font-weight:600;border-bottom:1px solid rgba(138,143,152,.08)">{{ c.nome }}</span>
+          <span style="padding:11px 16px;border-bottom:1px solid rgba(138,143,152,.08)"><span style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.08em;color:{{ c.cor }};border:1px solid {{ c.borda }};border-radius:5px;padding:3px 8px">{{ c.status }}</span></span>
+          <span style="padding:11px 16px;font-size:12.5px;color:#8A8F98;border-bottom:1px solid rgba(138,143,152,.08);line-height:1.5">{{ c.nota }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:19px">Estados do shell</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <sc-for list="{{ estados }}" as="e" hint-placeholder-count="8">
+        <div style="display:flex;flex-direction:column;gap:5px;padding:14px 16px;background:#14141C;border:1px solid #23242F;border-radius:10px">
+          <span style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.16em;color:#8A8F98">{{ e.tag }}</span>
+          <span style="font-size:13px;line-height:1.55">{{ e.txt }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:19px">Prova de encaixe</h2>
+    <div style="padding:16px 18px;background:#14141C;border:1px solid #23242F;border-radius:10px;font-size:13.5px;line-height:1.6;color:#8A8F98">
+      No demo, a tela <span style="color:#F4F6F8">Gestão Qualidade</span> (aprovada) renderiza <span style="color:#F4F6F8">intocada</span> dentro do shell — TopBar global + sidebar de Qualidade em volta. O ajuste foi só no shell: o contêiner de conteúdo desloca a tela em −56px para absorver o header local que ela trazia como página solta. Na implementação, as telas de módulo deixam de renderizar header próprio; o shell fornece TopBar, breadcrumb e navegação. Nenhum outro pixel da tela muda.
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:19px">Responsivo</h2>
+    <div style="padding:16px 18px;background:#14141C;border:1px solid #23242F;border-radius:10px;font-size:13.5px;line-height:1.8;color:#8A8F98">
+      <span style="color:#F4F6F8">Desktop-first ≥1280px</span> — layout de referência.<br/>
+      <span style="color:#F4F6F8">1024–1280px</span> — sidebar inicia colapsada (64px); breadcrumb encurta para os 2 últimos níveis.<br/>
+      <span style="color:#F4F6F8">Mobile &lt;768px</span> — sidebar vira drawer (hambúrguer); só leitura de eventos e ações (LOTE 2); busca ⌘K vira tela cheia.<br/>
+      <span style="color:#F4F6F8">/tv 1080p</span> — sem chrome nenhum (LOTE 3).
+    </div>
+  </div>
+
+  <span style="font-size:12px;color:#8A8F98;padding-bottom:24px">LOTE 2 (jornada EPI, 7 telas) aguarda aprovação deste lote. O handoff vira prompts de Claude Code nas fases F1–F5.</span>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1120,&quot;height&quot;:1400}}">
+class Component extends DCLogic {
+  renderVals() {
+    const st = { EXISTENTE: ['#3ECF8E', 'rgba(62,207,142,.4)'], ESTENDIDO: ['#E8A13C', 'rgba(232,161,60,.4)'], NOVO: ['#00E5FF', 'rgba(0,229,255,.4)'] };
+    const row = (nome, status, nota) => ({ nome, status, nota, cor: st[status][0], borda: st[status][1] });
+    return {
+      comps: [
+        row('TopBar', 'ESTENDIDO', 'Existe em layout/TopBar. Ganha: switcher de módulo, breadcrumb site → área → câmera, busca ⌘K, papel do usuário em PT.'),
+        row('Sidebar', 'ESTENDIDO', 'Existe em layout/Sidebar. Vira contextual por módulo (a do EPI nunca aparece em Qualidade/Carga), colapsável a 64px, rodapé Trocar módulo · Admin (superadmin).'),
+        row('Command palette ⌘K', 'NOVO', 'Busca global: câmeras, eventos, telas, ações — com atalhos exibidos. Abre por clique ou ⌘K/Ctrl+K; fecha com ESC.'),
+        row('LogikosLoader (lk-loader)', 'NOVO', 'Substitui LoadingSpinner. 3 variantes (fullscreen / tile / spinner ≤24px), estados entering·waiting·retry·resolving·idle, glitch só em entrada/retry/saída, steps(8), CSS vars --lk-tick-dur · --lk-steps · --lk-glitch-dur, prefers-reduced-motion.'),
+        row('Banner de contexto Admin', 'ESTENDIDO', 'Base no Banner existente: faixa 2px âmbar no topo + banner "você está na plataforma" com tenant em foco e Voltar ao módulo.'),
+        row('Toast de sessão', 'ESTENDIDO', 'Toast existente + countdown mono (aviso 5 min antes) e ação primária Renovar sessão.'),
+        row('NotificationBell', 'EXISTENTE', 'Re-tokenizado: badge âmbar, itens com ponto de estado (cor + palavra).'),
+        row('AppDrawer', 'EXISTENTE', 'Usado como drawer da sidebar no mobile.'),
+        row('EmptyState', 'EXISTENTE', 'Sempre com CTA. Usado no estado vazio do conteúdo.'),
+        row('Button · Badge · Popover · Modal', 'EXISTENTE', 'Re-tokenizados para --lk-*: primário ciano com texto preto, ghost com borda --lk-borda.'),
+        row('Skeleton', 'EXISTENTE', 'Só para listas/tabelas parciais; espera de tela inteira é sempre LogikosLoader.'),
+        row('Breadcrumb', 'NOVO', 'Site → área → câmera, dinâmico por rota; último nível em --lk-branco-sinal.'),
+      ],
+      estados: [
+        { tag: 'SIDEBAR COLAPSADA', txt: '64px, só ícones com title; botão Recolher no rodapé espelha a seta.' },
+        { tag: 'MOBILE · DRAWER', txt: 'TopBar de 52px (hambúrguer + logo + sino); sidebar vira drawer sobre scrim; alvos ≥44px.' },
+        { tag: 'TROCA DE MÓDULO', txt: 'LogikosLoader fullscreen: entering (glitch 0,5s) → waiting → resolving (~1,7s no total); label ABRINDO {MÓDULO}.' },
+        { tag: 'SESSÃO EXPIRANDO', txt: 'Aviso 5 min antes, countdown mono, Renovar sessão (primária) ou Sair. Âmbar = atenção, com ícone + palavra.' },
+        { tag: 'CONTEXTO ADMIN', txt: 'Faixa 2px + banner âmbar "você está na plataforma"; admin em si não é redesenhado neste lote.' },
+        { tag: 'CONTEÚDO · LOADING', txt: 'LogikosLoader fullscreen dentro do contêiner de conteúdo (rota interna).' },
+        { tag: 'CONTEÚDO · VAZIO', txt: 'EmptyState com causa provável e CTA (ex.: Limpar filtros).' },
+        { tag: 'CONTEÚDO · ERRO', txt: 'Ícone + palavra + detalhe técnico em mono + Tentar novamente e Ver status.' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

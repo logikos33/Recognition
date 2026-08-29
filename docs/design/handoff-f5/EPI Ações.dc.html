@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:#23242F;border-radius:5px}</style>
+</helmet>
+<div style="width:100%;height:100vh;display:flex;flex-direction:column;background:#0A0A0F" data-screen-label="EPI Ações">
+  <dc-import name="EPI Topbar" crumb2="Ações" style="flex:none" hint-size="100%,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <dc-import name="EPI Sidebar" ativa="Ações" style="flex:none;align-self:stretch" hint-size="237px,100%"></dc-import>
+    <main style="flex:1;min-width:0;overflow:auto;position:relative">
+      <sc-if value="{{ carregado }}" hint-placeholder-val="{{ true }}">
+        <div style="max-width:1280px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+          <div style="display:flex;align-items:center;gap:14px">
+            <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Ações corretivas</h1>
+            <div style="flex:1"></div>
+            <div style="display:flex;background:#14141C;border-radius:8px;padding:3px;gap:2px">
+              <sc-for list="{{ filtros }}" as="f" hint-placeholder-count="3">
+                <button onClick="{{ f.go }}" style="height:32px;padding:0 14px;border:none;border-radius:6px;background:{{ f.bg }};color:{{ f.cor }};font-size:13px;font-weight:600;cursor:pointer">{{ f.t }}</button>
+              </sc-for>
+            </div>
+            <div style="display:flex;background:#14141C;border-radius:8px;padding:3px;gap:2px">
+              <sc-for list="{{ vistas }}" as="v" hint-placeholder-count="2">
+                <button onClick="{{ v.go }}" style="height:32px;padding:0 14px;border:none;border-radius:6px;background:{{ v.bg }};color:{{ v.cor }};font-size:13px;font-weight:600;cursor:pointer">{{ v.t }}</button>
+              </sc-for>
+            </div>
+            <button onClick="{{ abrirNova }}" style="height:38px;display:flex;align-items:center;gap:8px;padding:0 16px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">
+              <svg viewBox="0 0 24 24" style="width:15px;height:15px" fill="none" stroke="#0A0A0F" stroke-width="2.2" stroke-linecap="square"><path d="M12 5v14M5 12h14"></path></svg>
+              Nova ação
+            </button>
+          </div>
+          <div style="display:flex;align-items:center;gap:24px;padding:16px 20px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+            <div style="display:flex;align-items:baseline;gap:8px">
+              <span style="font-family:'Space Grotesk';font-weight:700;font-size:38px;line-height:1">78%</span>
+              <span style="font-size:12.5px;color:#8A8F98">taxa de conclusão · 30 dias</span>
+            </div>
+            <div style="flex:1;height:10px;background:#0A0A0F;border-radius:5px;overflow:hidden"><div style="width:78%;height:100%;background:#3ECF8E"></div></div>
+            <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">23/30 CONCLUÍDAS · <span style="color:#E5484D">2 VENCIDAS</span></span>
+          </div>
+          <sc-if value="{{ kanbanOn }}" hint-placeholder-val="{{ true }}">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start">
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;align-items:center;gap:8px;padding:0 4px"><span style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.18em;color:#8A8F98">ABERTAS</span><span style="font-family:'JetBrains Mono';font-size:11px;color:#F4F6F8;background:#14141C;border:1px solid #23242F;border-radius:10px;padding:1px 8px">{{ nAbertas }}</span></div>
+                <sc-for list="{{ abertas }}" as="a" hint-placeholder-count="4">
+                  <div style="display:flex;flex-direction:column;gap:8px;padding:14px 16px;background:#14141C;border:1px solid {{ a.borda }};border-radius:10px">
+                    <span style="font-size:13.5px;font-weight:600">{{ a.titulo }}</span>
+                    <a href="EPI Evento Detalhe.dc.html" style="font-family:'JetBrains Mono';font-size:11px">{{ a.origem }}</a>
+                    <div style="display:flex;align-items:center;gap:8px">
+                      <span style="width:24px;height:24px;border-radius:50%;background:#0A0A0F;border:1px solid #3A3D4A;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600">{{ a.ini }}</span>
+                      <span style="font-size:12px;color:#8A8F98">{{ a.resp }}</span>
+                      <span style="margin-left:auto;display:flex;align-items:center;gap:5px;font-family:'JetBrains Mono';font-size:10.5px;font-weight:700;color:{{ a.prazoCor }}">
+                        <svg viewBox="0 0 24 24" style="width:12px;height:12px" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l4 2"></path></svg>
+                        {{ a.prazo }}
+                      </span>
+                    </div>
+                    <button onClick="{{ a.concluir }}" style="height:34px;border:1px solid #23242F;border-radius:7px;background:transparent;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer" style-hover="border-color:#3ECF8E;color:#3ECF8E">Marcar concluída</button>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;align-items:center;gap:8px;padding:0 4px"><span style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.18em;color:#8A8F98">CONCLUÍDAS</span><span style="font-family:'JetBrains Mono';font-size:11px;color:#F4F6F8;background:#14141C;border:1px solid #23242F;border-radius:10px;padding:1px 8px">{{ nConcluidas }}</span></div>
+                <sc-for list="{{ concluidas }}" as="a" hint-placeholder-count="2">
+                  <div style="display:flex;flex-direction:column;gap:8px;padding:14px 16px;background:#14141C;border:1px solid #23242F;border-radius:10px;opacity:.65">
+                    <span style="font-size:13.5px;font-weight:600">{{ a.titulo }}</span>
+                    <a href="EPI Evento Detalhe.dc.html" style="font-family:'JetBrains Mono';font-size:11px">{{ a.origem }}</a>
+                    <div style="display:flex;align-items:center;gap:8px">
+                      <span style="width:24px;height:24px;border-radius:50%;background:#0A0A0F;border:1px solid #3A3D4A;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600">{{ a.ini }}</span>
+                      <span style="font-size:12px;color:#8A8F98">{{ a.resp }}</span>
+                      <span style="margin-left:auto;display:flex;align-items:center;gap:5px;font-family:'JetBrains Mono';font-size:10.5px;font-weight:700;color:#3ECF8E">
+                        <svg viewBox="0 0 24 24" style="width:12px;height:12px" fill="none" stroke="#3ECF8E" stroke-width="2.2" stroke-linecap="square"><path d="M5 12l5 5 9-10"></path></svg>
+                        {{ a.prazo }}
+                      </span>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ listaOn }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:1.4fr 1fr 160px 130px 130px;background:#14141C;border:1px solid #23242F;border-radius:10px;overflow:hidden">
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">AÇÃO</div>
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">ORIGEM</div>
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">RESPONSÁVEL</div>
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">PRAZO</div>
+              <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">STATUS</div>
+              <sc-for list="{{ todasLista }}" as="a" hint-placeholder-count="6">
+                <div style="display:contents">
+                  <span style="padding:12px 16px;font-size:13px;font-weight:600;border-bottom:1px solid rgba(138,143,152,.08)">{{ a.titulo }}</span>
+                  <span style="padding:12px 16px;border-bottom:1px solid rgba(138,143,152,.08)"><a href="EPI Evento Detalhe.dc.html" style="font-family:'JetBrains Mono';font-size:11.5px">{{ a.origem }}</a></span>
+                  <span style="padding:12px 16px;font-size:12.5px;color:#8A8F98;border-bottom:1px solid rgba(138,143,152,.08)">{{ a.resp }}</span>
+                  <span style="padding:12px 16px;font-family:'JetBrains Mono';font-size:12px;font-weight:700;color:{{ a.prazoCor }};border-bottom:1px solid rgba(138,143,152,.08)">{{ a.prazo }}</span>
+                  <span style="padding:12px 16px;border-bottom:1px solid rgba(138,143,152,.08)"><span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.08em;color:{{ a.stCor }};border:1px solid {{ a.stBorda }};border-radius:5px;padding:3px 8px">{{ a.status }}</span></span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+      <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}">
+        <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="fullscreen" state="waiting" label="CARREGANDO AÇÕES" size="96" style="position:absolute;inset:0" hint-size="100%,100%"></x-import>
+      </sc-if>
+      <sc-if value="{{ vazio }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#8A8F98" stroke-width="1.5" stroke-linecap="square"><path d="M4 4h16v16H4zM8 12l3 3 5-6"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Nenhuma ação aberta</span>
+          <span style="font-size:13.5px;color:#8A8F98;max-width:400px;line-height:1.55">Ações nascem de eventos confirmados. Na fila de eventos, use Criar ação.</span>
+          <a href="EPI Eventos.dc.html" style="display:flex;align-items:center;height:40px;padding:0 18px;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-size:13.5px;font-weight:700">Ir para eventos</a>
+        </div>
+      </sc-if>
+      <sc-if value="{{ erro }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#E5484D" stroke-width="1.5" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Não foi possível carregar</span>
+          <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">GET /api/epi/acoes · TIMEOUT 10 S</span>
+          <button style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Tentar novamente</button>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+  <sc-if value="{{ modalOn }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ fecharNova }}" style="position:fixed;inset:0;background:rgba(10,10,15,.72);z-index:150;display:flex;align-items:center;justify-content:center">
+      <div onClick="{{ stop }}" style="width:480px;max-width:92vw;background:#14141C;border:1px solid #23242F;border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.8);padding:22px;display:flex;flex-direction:column;gap:14px;box-sizing:border-box">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Nova ação corretiva</span>
+          <button onClick="{{ fecharNova }}" style="margin-left:auto;width:28px;height:28px;background:transparent;border:1px solid #23242F;border-radius:6px;color:#8A8F98;cursor:pointer;font-size:13px">✕</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <span style="font-size:13px;color:#8A8F98">Título</span>
+          <input value="{{ novoTitulo }}" onChange="{{ setNovoTitulo }}" placeholder="O que precisa ser feito" style="height:40px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:13.5px;padding:0 12px;outline:none" />
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <span style="font-size:13px;color:#8A8F98">Origem</span>
+          <select style="height:40px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-size:13px;padding:0 11px"><option>Preventiva — sem evento de origem</option><option>Evento #1284 · CAM-04 · sem capacete</option><option>Evento #1271 · CAM-04 · sem capacete</option><option>Evento #1266 · CAM-07 · sem colete</option></select>
+          <span style="font-size:11.5px;color:#8A8F98">Ações preventivas fecham o ciclo começo → meio → fim mesmo sem violação registrada.</span>
+        </div>
+        <div style="display:flex;gap:10px">
+          <div style="flex:1.4;display:flex;flex-direction:column;gap:6px">
+            <span style="font-size:13px;color:#8A8F98">Responsável</span>
+            <select style="height:40px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-size:13px;padding:0 11px"><option>Carlos M.</option><option>Juliana P.</option><option>Ana Ribeiro</option></select>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+            <span style="font-size:13px;color:#8A8F98">Prazo</span>
+            <select style="height:40px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-size:13px;padding:0 11px"><option>08/08</option><option>11/08</option><option>15/08</option><option>29/08</option></select>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <button onClick="{{ criarNova }}" style="flex:1;height:44px;border:none;border-radius:9px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:14px;font-weight:700;cursor:pointer">Criar ação</button>
+          <button onClick="{{ fecharNova }}" style="height:44px;padding:0 18px;background:transparent;border:1px solid #23242F;border-radius:9px;color:#F4F6F8;font-family:'Inter';font-size:14px;font-weight:600;cursor:pointer">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+  <div style="position:fixed;left:16px;bottom:14px;display:flex;align-items:center;gap:6px;background:#14141C;border:1px solid #23242F;border-radius:10px;padding:7px 10px;z-index:130;box-shadow:0 8px 32px rgba(0,0,0,.6)">
+    <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.2em;color:#8A8F98;margin-right:4px">ESTADO</span>
+    <sc-for list="{{ chips }}" as="ch" hint-placeholder-count="4">
+      <button onClick="{{ ch.go }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid {{ ch.borda }};background:{{ ch.bg }};color:{{ ch.cor }};font-family:'JetBrains Mono';font-size:10.5px;cursor:pointer">{{ ch.t }}</button>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:940}}">
+class Component extends DCLogic {
+  DADOS = [
+    { id: 1, titulo: 'Reforçar DDS na doca 3', origem: 'EVENTO #1284 · CAM-04', resp: 'Carlos M.', ini: 'CM', prazo: 'VENCE 08/08', prazoCor: '#E8A13C', status: 'ABERTA' },
+    { id: 2, titulo: 'Sinalizar zona de capacete na doca 3', origem: 'EVENTO #1271 · CAM-04', resp: 'Juliana P.', ini: 'JP', prazo: 'VENCIDA 02/08', prazoCor: '#E5484D', status: 'ABERTA' },
+    { id: 3, titulo: 'Repor coletes no vestiário da linha 2', origem: 'EVENTO #1266 · CAM-07', resp: 'Ana Ribeiro', ini: 'AR', prazo: 'VENCE 11/08', prazoCor: '#8A8F98', status: 'ABERTA' },
+    { id: 4, titulo: 'Revisar iluminação da doca norte', origem: 'EVENTO #1259 · CAM-01', resp: 'Carlos M.', ini: 'CM', prazo: 'VENCIDA 30/07', prazoCor: '#E5484D', status: 'ABERTA' },
+    { id: 5, titulo: 'Checagem de EPI na entrada do turno', origem: 'EVENTO #1240 · CAM-04', resp: 'Carlos M.', ini: 'CM', prazo: '28/07', prazoCor: '#3ECF8E', status: 'CONCLUÍDA' },
+    { id: 6, titulo: 'Treinamento de óculos na serra', origem: 'EVENTO #1233 · CAM-07', resp: 'Ana Ribeiro', ini: 'AR', prazo: '25/07', prazoCor: '#3ECF8E', status: 'CONCLUÍDA' },
+  ];
+  state = { estado: 'carregado', filtro: 'todas', vista: 'kanban', done: [], novas: [], modalOn: false, novoTitulo: '' };
+  renderVals() {
+    const s = this.state;
+    const chip = (t, k) => ({ t, go: () => this.setState({ estado: k }), bg: s.estado === k ? 'rgba(0,229,255,.09)' : 'transparent', cor: s.estado === k ? '#00E5FF' : '#8A8F98', borda: s.estado === k ? 'rgba(0,229,255,.4)' : '#23242F' });
+    let dados = [...s.novas, ...this.DADOS].map(a => s.done.includes(a.id) ? { ...a, status: 'CONCLUÍDA', prazo: 'HOJE', prazoCor: '#3ECF8E' } : a);
+    if (s.filtro === 'minhas') dados = dados.filter(a => a.resp === 'Ana Ribeiro');
+    if (s.filtro === 'vencidas') dados = dados.filter(a => a.prazo.startsWith('VENCIDA'));
+    const abertas = dados.filter(a => a.status === 'ABERTA');
+    const concluidas = dados.filter(a => a.status === 'CONCLUÍDA');
+    return {
+      carregado: s.estado === 'carregado', loading: s.estado === 'loading', vazio: s.estado === 'vazio', erro: s.estado === 'erro',
+      chips: [chip('CARREGADO', 'carregado'), chip('LOADING', 'loading'), chip('VAZIO', 'vazio'), chip('ERRO', 'erro')],
+      filtros: [['todas', 'Todas'], ['minhas', 'Minhas ações'], ['vencidas', 'Vencidas']].map(([k, t]) => ({ t, go: () => this.setState({ filtro: k }), bg: s.filtro === k ? '#0A0A0F' : 'transparent', cor: s.filtro === k ? '#00E5FF' : '#8A8F98' })),
+      vistas: [['kanban', 'Kanban'], ['lista', 'Lista']].map(([k, t]) => ({ t, go: () => this.setState({ vista: k }), bg: s.vista === k ? '#0A0A0F' : 'transparent', cor: s.vista === k ? '#00E5FF' : '#8A8F98' })),
+      kanbanOn: s.vista === 'kanban', listaOn: s.vista === 'lista',
+      nAbertas: abertas.length, nConcluidas: concluidas.length,
+      abertas: abertas.map(a => ({ ...a, borda: a.prazo.startsWith('VENCIDA') ? 'rgba(229,72,77,.45)' : '#23242F', concluir: () => this.setState(p => ({ done: [...p.done, a.id] })) })),
+      concluidas,
+      todasLista: dados.map(a => ({ ...a, stCor: a.status === 'ABERTA' ? '#E8A13C' : '#3ECF8E', stBorda: a.status === 'ABERTA' ? 'rgba(232,161,60,.4)' : 'rgba(62,207,142,.4)' })),
+      modalOn: s.modalOn, stop: (e) => e.stopPropagation(),
+      abrirNova: () => this.setState({ modalOn: true, novoTitulo: '' }),
+      fecharNova: () => this.setState({ modalOn: false }),
+      novoTitulo: s.novoTitulo, setNovoTitulo: (e) => this.setState({ novoTitulo: e.target.value }),
+      criarNova: () => this.setState(p => ({
+        modalOn: false,
+        novas: [{ id: 100 + p.novas.length, titulo: p.novoTitulo || 'Nova ação corretiva', origem: 'PREVENTIVA · SEM EVENTO', resp: 'Carlos M.', ini: 'CM', prazo: 'VENCE 08/08', prazoCor: '#E8A13C', status: 'ABERTA' }, ...p.novas],
+      })),
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}::-webkit-scrollbar{width:0}</style>
+</helmet>
+<div style="width:100%;min-height:100vh;display:flex;align-items:center;justify-content:center;gap:40px;background:#0A0A0F;padding:24px;box-sizing:border-box" data-screen-label="Mobile EPI">
+  <div style="width:390px;height:800px;flex:none;background:#0A0A0F;border:1px solid #23242F;border-radius:28px;overflow:hidden;position:relative;display:flex;flex-direction:column;box-shadow:0 20px 80px rgba(0,0,0,.6)">
+    <header style="height:52px;flex:none;display:flex;align-items:center;gap:12px;padding:0 14px;background:#14141C;border-bottom:1px solid #23242F">
+      <svg viewBox="0 0 100 100" style="width:24px;height:24px"><defs><mask id="khM"><rect width="100" height="100" fill="white"></rect><g transform="translate(24,22.4) scale(0.52)"><path d="M40 55.3 A20 20 0 1 1 60 55.3 L67 88 L33 88 Z" fill="black"></path></g></mask></defs><circle cx="50" cy="50" r="44" fill="#F4F6F8" mask="url(#khM)"></circle></svg>
+      <div style="display:flex;flex-direction:column">
+        <span style="font-family:'Space Grotesk';font-weight:700;font-size:13px;letter-spacing:.14em;line-height:1.2">LOGIKOS</span>
+        <span style="font-family:'JetBrains Mono';font-size:9px;color:#8A8F98;line-height:1.2">EPI · RVB BLUMENAU</span>
+      </div>
+      <div style="flex:1"></div>
+      <span style="font-family:'JetBrains Mono';font-size:10px;color:#8A8F98;border:1px solid #23242F;border-radius:5px;padding:3px 8px">SÓ LEITURA</span>
+      <div style="position:relative;width:44px;height:44px;display:flex;align-items:center;justify-content:center;margin-right:-8px">
+        <svg viewBox="0 0 24 24" style="width:19px;height:19px" fill="none" stroke="#8A8F98" stroke-width="1.7" stroke-linecap="square"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 3H4zM10 21h4"></path></svg>
+        <span style="position:absolute;top:6px;right:6px;min-width:14px;height:14px;border-radius:7px;background:#E8A13C;color:#0A0A0F;font-family:'JetBrains Mono';font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center">3</span>
+      </div>
+    </header>
+
+    <div style="flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:10px;padding:14px;box-sizing:border-box">
+      <sc-if value="{{ tabEventos }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Eventos</span>
+          <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">HOJE · 4 NOVOS</span>
+        </div>
+        <sc-for list="{{ eventos }}" as="ev" hint-placeholder-count="4">
+          <div style="display:flex;flex-direction:column;gap:10px;padding:12px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+            <div onClick="{{ ev.abrir }}" style="display:flex;align-items:center;gap:12px;cursor:pointer">
+              <div style="position:relative;width:80px;height:54px;flex:none;border-radius:7px;overflow:hidden;background:{{ ev.fundo }};border:1px solid #23242F">
+                <div style="position:absolute;top:{{ ev.bt }};left:{{ ev.bl }};width:{{ ev.bw }};height:{{ ev.bh }};border:1.5px solid {{ ev.bcor }};border-radius:2px"></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                <span style="font-size:14.5px;font-weight:700;color:{{ ev.cor }}">{{ ev.icone }} {{ ev.classe }}</span>
+                <span style="font-size:12.5px;color:#8A8F98">{{ ev.cam }}</span>
+              </div>
+              <span style="margin-left:auto;font-family:'JetBrains Mono';font-weight:700;font-size:14px">{{ ev.hora }}</span>
+            </div>
+            <sc-if value="{{ ev.podeAck }}" hint-placeholder-val="{{ true }}">
+              <button onClick="{{ ev.ack }}" style="height:44px;border:1px solid #23242F;border-radius:9px;background:transparent;color:#F4F6F8;font-family:'Inter';font-size:14px;font-weight:600;cursor:pointer">Reconhecer</button>
+            </sc-if>
+            <sc-if value="{{ ev.reconhecido }}" hint-placeholder-val="{{ false }}">
+              <span style="display:flex;align-items:center;justify-content:center;gap:7px;height:44px;font-size:13.5px;font-weight:600;color:#3ECF8E">✓ Reconhecido</span>
+            </sc-if>
+          </div>
+        </sc-for>
+        <span style="font-size:12px;color:#8A8F98;text-align:center;padding:6px 20px;line-height:1.5">Triagem completa, veredito e ao vivo ficam no desktop.</span>
+      </sc-if>
+
+      <sc-if value="{{ tabAcoes }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Minhas ações</span>
+          <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">2 ABERTAS</span>
+        </div>
+        <sc-for list="{{ acoes }}" as="a" hint-placeholder-count="3">
+          <div style="display:flex;flex-direction:column;gap:10px;padding:14px;background:#14141C;border:1px solid {{ a.borda }};border-radius:12px">
+            <span style="font-size:14.5px;font-weight:700;color:{{ a.tituloCor }}">{{ a.titulo }}</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">{{ a.origem }}</span>
+              <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:12px;font-weight:700;color:{{ a.prazoCor }}">{{ a.prazo }}</span>
+            </div>
+            <sc-if value="{{ a.aberta }}" hint-placeholder-val="{{ true }}">
+              <button onClick="{{ a.concluir }}" style="height:44px;border:1px solid #23242F;border-radius:9px;background:transparent;color:#F4F6F8;font-family:'Inter';font-size:14px;font-weight:600;cursor:pointer" style-hover="border-color:#3ECF8E;color:#3ECF8E">Marcar concluída</button>
+            </sc-if>
+            <sc-if value="{{ a.feita }}" hint-placeholder-val="{{ false }}">
+              <span style="display:flex;align-items:center;justify-content:center;gap:7px;height:44px;font-size:13.5px;font-weight:600;color:#3ECF8E">✓ Concluída</span>
+            </sc-if>
+          </div>
+        </sc-for>
+      </sc-if>
+    </div>
+
+    <nav style="height:64px;flex:none;display:flex;background:#14141C;border-top:1px solid #23242F">
+      <button onClick="{{ irEventos }}" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:transparent;border:none;cursor:pointer;color:{{ evTabCor }}">
+        <svg viewBox="0 0 24 24" style="width:20px;height:20px" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+        <span style="font-size:11px;font-weight:600">Eventos</span>
+      </button>
+      <button onClick="{{ irAcoes }}" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:transparent;border:none;cursor:pointer;color:{{ acTabCor }}">
+        <svg viewBox="0 0 24 24" style="width:20px;height:20px" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="square"><path d="M4 4h16v16H4zM8 12l3 3 5-6"></path></svg>
+        <span style="font-size:11px;font-weight:600">Ações</span>
+      </button>
+    </nav>
+
+    <sc-if value="{{ sheetOn }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ fecharSheet }}" style="position:absolute;inset:0;background:rgba(10,10,15,.7);z-index:10"></div>
+      <div style="position:absolute;left:0;right:0;bottom:0;z-index:11;background:#14141C;border-top:1px solid #23242F;border-radius:18px 18px 0 0;padding:16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box">
+        <div style="width:40px;height:4px;border-radius:2px;background:#3A3D4A;align-self:center"></div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:16px;font-weight:700;color:#E5484D">✕ {{ sheetClasse }}</span>
+          <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">{{ sheetHora }}</span>
+        </div>
+        <div style="position:relative;aspect-ratio:16/9;border-radius:10px;overflow:hidden;background:{{ sheetFundo }};border:1px solid #23242F">
+          <div style="position:absolute;top:30%;left:40%;width:17%;height:56%;border:2px solid #E5484D;border-radius:3px"></div>
+          <span style="position:absolute;top:8px;left:8px;background:rgba(10,10,15,.75);border-radius:5px;padding:3px 8px;font-family:'JetBrains Mono';font-size:10px">{{ sheetCam }}</span>
+          <button style="position:absolute;bottom:8px;left:8px;width:44px;height:44px;border:none;border-radius:8px;background:rgba(10,10,15,.8);color:#F4F6F8;font-size:15px;cursor:pointer">▶</button>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onClick="{{ sheetConfirmar }}" style="flex:1;height:48px;display:flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:10px;background:#3ECF8E;color:#0A0A0F;font-family:'Inter';font-size:14.5px;font-weight:700;cursor:pointer">✓ Confirmar</button>
+          <button onClick="{{ sheetDescartar }}" style="flex:1;height:48px;background:transparent;border:1.5px solid rgba(229,72,77,.55);border-radius:10px;color:#E5484D;font-family:'Inter';font-size:14.5px;font-weight:700;cursor:pointer">✕ Descartar</button>
+        </div>
+        <span style="font-size:11.5px;color:#8A8F98;text-align:center">Criar ação e compartilhar ficam no desktop.</span>
+      </div>
+    </sc-if>
+  </div>
+
+  <div style="width:300px;display:flex;flex-direction:column;gap:12px">
+    <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.2em;color:#8A8F98">MOBILE &lt;768PX · SÓ LEITURA</span>
+    <span style="font-size:13.5px;color:#8A8F98;line-height:1.65">No celular o shell entrega consulta e reação rápida: reconhecer eventos, confirmar/descartar pelo detalhe (bottom sheet) e concluir as próprias ações. Alvos ≥44px. Triagem pesada, Ao Vivo, Verificação e configuração ficam no desktop.</span>
+    <a href="EPI Eventos.dc.html" style="font-size:13px;font-weight:600">Versão desktop →</a>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  EVENTOS = [
+    { id: 1, classe: 'Sem capacete', icone: '✕', cor: '#E5484D', cam: 'CAM-04 Expedição', hora: '14:32', fundo: 'linear-gradient(200deg,#191822,#0F0F16)', box: ['30%', '42%', '18%', '58%', '#E5484D'] },
+    { id: 2, classe: 'Sem colete', icone: '✕', cor: '#E5484D', cam: 'CAM-01 Doca Norte', hora: '14:07', fundo: 'linear-gradient(155deg,#1A1B26,#101018)', box: ['26%', '20%', '20%', '62%', '#E5484D'] },
+    { id: 3, classe: 'Sem capacete', icone: '✕', cor: '#E5484D', cam: 'CAM-04 Expedição', hora: '13:44', fundo: 'linear-gradient(200deg,#191822,#0F0F16)', box: ['34%', '58%', '16%', '54%', '#E5484D'] },
+    { id: 4, classe: 'Sem óculos', icone: '✕', cor: '#E5484D', cam: 'CAM-07 Linha 2', hora: '11:52', fundo: 'linear-gradient(175deg,#181926,#0E0E15)', box: ['22%', '35%', '22%', '60%', '#E5484D'] },
+  ];
+  state = { tab: 'eventos', ack: [], done: [], sheet: null };
+  renderVals() {
+    const s = this.state;
+    const sheet = this.EVENTOS.find(e => e.id === s.sheet);
+    return {
+      tabEventos: s.tab === 'eventos', tabAcoes: s.tab === 'acoes',
+      irEventos: () => this.setState({ tab: 'eventos' }), irAcoes: () => this.setState({ tab: 'acoes' }),
+      evTabCor: s.tab === 'eventos' ? '#00E5FF' : '#8A8F98', acTabCor: s.tab === 'acoes' ? '#00E5FF' : '#8A8F98',
+      eventos: this.EVENTOS.map(e => ({
+        ...e, bt: e.box[0], bl: e.box[1], bw: e.box[2], bh: e.box[3], bcor: e.box[4],
+        podeAck: !s.ack.includes(e.id), reconhecido: s.ack.includes(e.id),
+        ack: () => this.setState(p => ({ ack: [...p.ack, e.id] })),
+        abrir: () => this.setState({ sheet: e.id }),
+      })),
+      acoes: [
+        { id: 1, titulo: 'Repor coletes no vestiário da linha 2', origem: 'EVENTO #1266 · CAM-07', prazo: 'VENCE 11/08', prazoCor: '#E8A13C', borda: '#23242F' },
+        { id: 2, titulo: 'Treinamento de óculos na serra', origem: 'EVENTO #1233 · CAM-07', prazo: 'VENCIDA 30/07', prazoCor: '#E5484D', borda: 'rgba(229,72,77,.45)' },
+      ].map(a => {
+        const feita = s.done.includes(a.id);
+        return { ...a, aberta: !feita, feita, tituloCor: feita ? '#8A8F98' : '#F4F6F8',
+          prazo: feita ? 'HOJE' : a.prazo, prazoCor: feita ? '#3ECF8E' : a.prazoCor,
+          borda: feita ? '#23242F' : a.borda,
+          concluir: () => this.setState(p => ({ done: [...p.done, a.id] })) };
+      }),
+      sheetOn: !!sheet, fecharSheet: () => this.setState({ sheet: null }),
+      sheetClasse: sheet ? sheet.classe.toUpperCase() : '', sheetHora: sheet ? 'HOJE ' + sheet.hora : '',
+      sheetCam: sheet ? sheet.cam.toUpperCase() : '', sheetFundo: sheet ? sheet.fundo : '#0A0A0F',
+      sheetConfirmar: () => this.setState(p => ({ sheet: null, ack: [...p.ack, p.sheet] })),
+      sheetDescartar: () => this.setState(p => ({ sheet: null, ack: [...p.ack, p.sheet] })),
+    };
+  }
+}
+</script>
+</body>
+</html>

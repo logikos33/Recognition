@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:#23242F;border-radius:5px}</style>
+</helmet>
+<div style="width:100%;height:100vh;display:flex;flex-direction:column;background:#0A0A0F" data-screen-label="EPI Verificação">
+  <dc-import name="EPI Topbar" crumb2="Verificação" style="flex:none" hint-size="100%,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <dc-import name="EPI Sidebar" ativa="Verificação" style="flex:none;align-self:stretch" hint-size="237px,100%"></dc-import>
+    <main style="flex:1;min-width:0;overflow:auto;position:relative">
+      <sc-if value="{{ carregado }}" hint-placeholder-val="{{ true }}">
+        <div style="max-width:1360px;margin:0 auto;padding:20px 24px;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;height:100%">
+          <div style="display:flex;align-items:center;gap:14px">
+            <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Verificação</h1>
+            <span style="font-family:'JetBrains Mono';font-size:13px;color:#E8A13C;font-weight:700">{{ restantes }} RESTANTES</span>
+            <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">· {{ anotados }} ENVIADOS P/ ANOTAÇÃO</span>
+            <div style="width:180px;height:8px;background:#14141C;border-radius:4px;overflow:hidden"><div style="width:{{ progresso }};height:100%;background:#00E5FF"></div></div>
+            <div style="flex:1"></div>
+            <span style="display:flex;gap:14px;font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">
+              <span><span style="border:1px solid #23242F;border-radius:4px;padding:2px 6px">←</span> <span style="border:1px solid #23242F;border-radius:4px;padding:2px 6px">→</span> NAVEGAR</span>
+              <span><span style="border:1px solid #23242F;border-radius:4px;padding:2px 6px">C</span> CONFIRMAR</span>
+              <span><span style="border:1px solid #23242F;border-radius:4px;padding:2px 6px">R</span> REJEITAR</span>
+              <span><span style="border:1px solid #23242F;border-radius:4px;padding:2px 6px">A</span> ANOTAR</span>
+            </span>
+          </div>
+          <div style="flex:1;display:flex;gap:14px;min-height:0">
+            <div style="flex:1;min-width:0;position:relative;border-radius:12px;overflow:hidden;border:1px solid #23242F;background:{{ itemFundo }}">
+              <div style="position:absolute;inset:0;transform:scale({{ zoom }});transform-origin:center">
+                <div style="position:absolute;top:{{ bt }};left:{{ bl }};width:{{ bw }};height:{{ bh }};border:2.5px solid #E5484D;border-radius:4px">
+                  <span style="position:absolute;top:-24px;left:-2px;background:#E5484D;color:#0A0A0F;font-family:'JetBrains Mono';font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:3px;white-space:nowrap">{{ itemClasse }}</span>
+                </div>
+              </div>
+              <span style="position:absolute;top:10px;left:10px;background:rgba(10,10,15,.75);border-radius:5px;padding:4px 9px;font-family:'JetBrains Mono';font-size:11px;letter-spacing:.1em">{{ itemCam }}</span>
+              <div style="position:absolute;bottom:10px;right:10px;display:flex;gap:6px">
+                <button onClick="{{ zoomOut }}" style="width:34px;height:34px;border:1px solid #23242F;border-radius:7px;background:rgba(10,10,15,.8);color:#F4F6F8;font-size:15px;cursor:pointer">−</button>
+                <span style="height:34px;display:flex;align-items:center;padding:0 10px;border:1px solid #23242F;border-radius:7px;background:rgba(10,10,15,.8);font-family:'JetBrains Mono';font-size:11.5px">{{ zoomTxt }}</span>
+                <button onClick="{{ zoomIn }}" style="width:34px;height:34px;border:1px solid #23242F;border-radius:7px;background:rgba(10,10,15,.8);color:#F4F6F8;font-size:15px;cursor:pointer">+</button>
+              </div>
+            </div>
+            <div style="width:340px;flex:none;display:flex;flex-direction:column;gap:14px;background:#14141C;border:1px solid #23242F;border-radius:12px;padding:18px;box-sizing:border-box">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">DETECÇÃO PROPOSTA</span>
+              <div style="display:flex;align-items:center;gap:10px">
+                <svg viewBox="0 0 24 24" style="width:20px;height:20px" fill="none" stroke="#E5484D" stroke-width="1.7" stroke-linecap="square"><path d="{{ itemIcone }}"></path></svg>
+                <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">{{ itemClasseNome }}</span>
+              </div>
+              <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:12.5px">
+                <span style="color:#8A8F98">Câmera</span><span>{{ itemCamNome }}</span>
+                <span style="color:#8A8F98">Horário</span><span style="font-family:'JetBrains Mono'">{{ itemHora }}</span>
+                <span style="color:#8A8F98">Zona</span><span>{{ itemZona }}</span>
+              </div>
+              <div style="position:relative;aspect-ratio:16/10;border-radius:8px;overflow:hidden;border:1px solid #23242F;background:{{ itemFundo }}">
+                <div style="position:absolute;top:22%;left:34%;width:32%;height:62%;border:2px solid #E5484D;border-radius:3px"></div>
+                <span style="position:absolute;bottom:5px;left:8px;font-family:'JetBrains Mono';font-size:9.5px;color:#8A8F98">RECORTE DA DETECÇÃO</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px;margin-top:auto">
+                <button onClick="{{ confirmar }}" style="height:56px;display:flex;align-items:center;justify-content:center;gap:9px;border:none;border-radius:10px;background:#3ECF8E;color:#0A0A0F;font-family:'Inter';font-size:15px;font-weight:700;cursor:pointer">
+                  <svg viewBox="0 0 24 24" style="width:17px;height:17px" fill="none" stroke="#0A0A0F" stroke-width="2.4" stroke-linecap="square"><path d="M5 12l5 5 9-10"></path></svg>
+                  Confirmar <span style="font-family:'JetBrains Mono';font-size:11px;opacity:.7">C</span>
+                </button>
+                <button onClick="{{ rejeitar }}" style="height:56px;display:flex;align-items:center;justify-content:center;gap:9px;background:transparent;border:1.5px solid rgba(229,72,77,.55);border-radius:10px;color:#E5484D;font-family:'Inter';font-size:15px;font-weight:700;cursor:pointer" style-hover="background:rgba(229,72,77,.08)">
+                  <svg viewBox="0 0 24 24" style="width:16px;height:16px" fill="none" stroke="#E5484D" stroke-width="2.4" stroke-linecap="square"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+                  Rejeitar <span style="font-family:'JetBrains Mono';font-size:11px;opacity:.7">R</span>
+                </button>
+                <button onClick="{{ anotar }}" style="height:40px;display:flex;align-items:center;justify-content:center;gap:9px;background:transparent;border:1px dashed #3A3D4A;border-radius:9px;color:#8A8F98;font-family:'Inter';font-size:13px;font-weight:600;cursor:pointer" style-hover="border-color:#00E5FF;color:#00E5FF">
+                  <svg viewBox="0 0 24 24" style="width:14px;height:14px" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"><path d="M4 20l4-1L20 7l-3-3L5 16zM14 6l3 3"></path></svg>
+                  Enviar para anotação · Estúdio <span style="font-family:'JetBrains Mono';font-size:10.5px;opacity:.7">A</span>
+                </button>
+                <span style="font-size:11.5px;color:#8A8F98;text-align:center;line-height:1.5">Cada decisão vira dado de treino. Casos ambíguos vão para a fila de anotação do Estúdio (LOTE 3) sem travar a verificação.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}">
+        <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="fullscreen" state="waiting" label="CARREGANDO FILA" size="96" style="position:absolute;inset:0" hint-size="100%,100%"></x-import>
+      </sc-if>
+      <sc-if value="{{ vazio }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#3ECF8E" stroke-width="1.5" stroke-linecap="square"><path d="M5 12l5 5 9-10"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Fila zerada</span>
+          <span style="font-size:13.5px;color:#8A8F98;max-width:380px;line-height:1.55">Nenhuma detecção aguarda verificação. As decisões de hoje já alimentam o próximo treino.</span>
+          <a href="EPI Dashboard.dc.html" style="display:flex;align-items:center;height:40px;padding:0 18px;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-size:13.5px;font-weight:700">Voltar ao dashboard</a>
+        </div>
+      </sc-if>
+      <sc-if value="{{ erro }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#E5484D" stroke-width="1.5" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Não foi possível carregar a fila</span>
+          <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">GET /api/epi/verificacao · TIMEOUT 10 S</span>
+          <button style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Tentar novamente</button>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+  <div style="position:fixed;left:16px;bottom:14px;display:flex;align-items:center;gap:6px;background:#14141C;border:1px solid #23242F;border-radius:10px;padding:7px 10px;z-index:130;box-shadow:0 8px 32px rgba(0,0,0,.6)">
+    <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.2em;color:#8A8F98;margin-right:4px">ESTADO</span>
+    <sc-for list="{{ chips }}" as="ch" hint-placeholder-count="4">
+      <button onClick="{{ ch.go }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid {{ ch.borda }};background:{{ ch.bg }};color:{{ ch.cor }};font-family:'JetBrains Mono';font-size:10.5px;cursor:pointer">{{ ch.t }}</button>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:940}}">
+class Component extends DCLogic {
+  ITENS = [
+    { classe: 'SEM CAPACETE', nome: 'Sem capacete', icone: 'M5 14a7 7 0 0 1 14 0M3 14h18v3H3zM10 5h4v3', cam: 'CAM-04 EXPEDIÇÃO', camNome: 'CAM-04 Expedição', hora: 'HOJE 14:32:08', zona: 'Zona de capacete obrigatório', fundo: 'linear-gradient(200deg,#191822,#0F0F16)', box: ['30%', '42%', '16%', '56%'] },
+    { classe: 'SEM COLETE', nome: 'Sem colete', icone: 'M8 3L5 7l2 2v12h10V9l2-2-3-4-4 3z', cam: 'CAM-01 DOCA NORTE', camNome: 'CAM-01 Doca Norte', hora: 'HOJE 14:07:51', zona: 'Doca norte — carga', fundo: 'linear-gradient(155deg,#1A1B26,#101018)', box: ['24%', '22%', '20%', '62%'] },
+    { classe: 'SEM ÓCULOS', nome: 'Sem óculos', icone: 'M4 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0zM14 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0zM10 12h4M2 12h2M20 12h2', cam: 'CAM-07 LINHA 2', camNome: 'CAM-07 Linha 2', hora: 'HOJE 11:52:19', zona: 'Serra — linha 2', fundo: 'linear-gradient(175deg,#181926,#0E0E15)', box: ['20%', '36%', '22%', '58%'] },
+  ];
+  state = { estado: 'carregado', idx: 0, restantes: 12, zoom: 1, anotados: 3 };
+  componentDidMount() {
+    this._kd = (e) => {
+      if (this.state.estado !== 'carregado') return;
+      if (e.key === 'ArrowRight') this._next();
+      else if (e.key === 'ArrowLeft') this.setState(p => ({ idx: (p.idx + this.ITENS.length - 1) % this.ITENS.length, zoom: 1 }));
+      else if (e.key === 'c' || e.key === 'C') this._decidir();
+      else if (e.key === 'r' || e.key === 'R') this._decidir();
+      else if (e.key === 'a' || e.key === 'A') this._anotar();
+    };
+    window.addEventListener('keydown', this._kd);
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this._kd); }
+  _next() { this.setState(p => ({ idx: (p.idx + 1) % this.ITENS.length, zoom: 1 })); }
+  _decidir() { this.setState(p => ({ restantes: Math.max(0, p.restantes - 1), estado: p.restantes <= 1 ? 'vazio' : p.estado })); this._next(); }
+  _anotar() { this.setState(p => ({ anotados: p.anotados + 1, restantes: Math.max(0, p.restantes - 1), estado: p.restantes <= 1 ? 'vazio' : p.estado })); this._next(); }
+  renderVals() {
+    const s = this.state;
+    const chip = (t, k) => ({ t, go: () => this.setState({ estado: k, restantes: k === 'carregado' ? 12 : s.restantes }), bg: s.estado === k ? 'rgba(0,229,255,.09)' : 'transparent', cor: s.estado === k ? '#00E5FF' : '#8A8F98', borda: s.estado === k ? 'rgba(0,229,255,.4)' : '#23242F' });
+    const it = this.ITENS[s.idx];
+    return {
+      carregado: s.estado === 'carregado', loading: s.estado === 'loading', vazio: s.estado === 'vazio', erro: s.estado === 'erro',
+      chips: [chip('CARREGADO', 'carregado'), chip('LOADING', 'loading'), chip('VAZIO', 'vazio'), chip('ERRO', 'erro')],
+      restantes: s.restantes, progresso: Math.round((12 - s.restantes) / 12 * 100) + '%',
+      itemClasse: it.classe, itemClasseNome: it.nome, itemIcone: it.icone, itemCam: it.cam, itemCamNome: it.camNome,
+      itemHora: it.hora, itemZona: it.zona, itemFundo: it.fundo,
+      bt: it.box[0], bl: it.box[1], bw: it.box[2], bh: it.box[3],
+      zoom: s.zoom, zoomTxt: s.zoom.toFixed(1) + '×',
+      zoomIn: () => this.setState(p => ({ zoom: Math.min(3, p.zoom + 0.5) })),
+      zoomOut: () => this.setState(p => ({ zoom: Math.max(1, p.zoom - 0.5) })),
+      confirmar: () => this._decidir(), rejeitar: () => this._decidir(),
+      anotar: () => this._anotar(), anotados: s.anotados,
+    };
+  }
+}
+</script>
+</body>
+</html>

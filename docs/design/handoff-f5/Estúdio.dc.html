@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:#23242F;border-radius:5px}input::placeholder{color:#3A3D4A}</style>
+</helmet>
+<div style="width:100%;height:100vh;display:flex;flex-direction:column;background:#0A0A0F;position:relative" data-screen-label="Estúdio v2">
+  <dc-import name="EPI Topbar" modulo="Estúdio" crumb2="{{ crumb2 }}" style="flex:none" hint-size="100%,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <aside style="width:220px;flex:none;box-sizing:border-box;display:flex;flex-direction:column;background:#14141C;border-right:1px solid #23242F;padding:14px 0">
+      <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.22em;color:#8A8F98;padding:0 20px 10px">ESTÚDIO · RVB</span>
+      <nav style="display:flex;flex-direction:column;gap:2px;padding:0 8px">
+        <sc-for list="{{ navItens }}" as="it" hint-placeholder-count="6">
+          <a onClick="{{ it.go }}" style="display:flex;align-items:center;gap:11px;height:38px;padding:0 12px;border-radius:8px;border-left:2px solid {{ it.borda }};color:{{ it.cor }};background:{{ it.bg }};font-size:13.5px;font-weight:{{ it.peso }};cursor:pointer;white-space:nowrap;overflow:hidden" style-hover="background:#0A0A0F">
+            <svg viewBox="0 0 24 24" style="width:18px;height:18px;flex:none" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="square"><path d="{{ it.d }}"></path></svg>
+            <span>{{ it.nome }}</span>
+          </a>
+        </sc-for>
+      </nav>
+      <div style="flex:1"></div>
+      <div style="display:flex;flex-direction:column;gap:8px;padding:14px 20px;border-top:1px solid #23242F">
+        <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">PROGRESSO DA COLETA</span>
+        <span style="font-family:'JetBrains Mono';font-weight:700;font-size:20px;line-height:1">{{ anotadosN }}<span style="font-size:13px;color:#8A8F98"> de 500 anotados</span></span>
+        <div style="height:8px;background:#0A0A0F;border-radius:4px;overflow:hidden"><div style="width:{{ progW }};height:100%;background:#00E5FF"></div></div>
+        <a href="Shell Logikos Vision.dc.html" style="font-size:12.5px;font-weight:600;margin-top:6px">← Trocar módulo</a>
+      </div>
+    </aside>
+
+    <main style="flex:1;min-width:0;overflow:auto;position:relative">
+
+      <sc-if value="{{ showDados }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;min-height:100%">
+          <div style="position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:8px;padding:14px 24px;background:#0A0A0F;border-bottom:1px solid #23242F;flex-wrap:wrap">
+            <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:22px">Dados</h1>
+            <div style="display:flex;align-items:center;gap:6px">
+              <select value="{{ fCam }}" onChange="{{ setFCam }}" style="height:34px;background:#14141C;border:1px solid #23242F;border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 8px">
+                <option value="todas">Todas as câmeras</option>
+                <sc-for list="{{ camOpts }}" as="c" hint-placeholder-count="8"><option value="{{ c.v }}">{{ c.t }}</option></sc-for>
+              </select>
+              <sc-if value="{{ podeRenomear }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ abrirRename }}" title="Renomear câmera" style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;background:#14141C;border:1px solid #23242F;border-radius:6px;color:#8A8F98;cursor:pointer" style-hover="color:#00E5FF;border-color:#00E5FF"><svg viewBox="0 0 24 24" style="width:14px;height:14px" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"><path d="M4 20l4-1L20 7l-3-3L5 16zM14 6l3 3"></path></svg></button>
+              </sc-if>
+              <sc-if value="{{ renameOn }}" hint-placeholder-val="{{ false }}">
+                <input value="{{ renameVal }}" onChange="{{ setRenameVal }}" style="height:34px;width:130px;background:#0A0A0F;border:1px solid #00E5FF;border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 9px;outline:none" />
+                <button onClick="{{ salvarRename }}" style="height:34px;padding:0 11px;border:none;border-radius:6px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:12.5px;font-weight:700;cursor:pointer">OK</button>
+              </sc-if>
+            </div>
+            <select value="{{ fStatus }}" onChange="{{ setFStatus }}" style="height:34px;background:#14141C;border:1px solid #23242F;border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 8px">
+              <option value="todos">Todos os status</option><option value="nao">Não anotados</option><option value="anotado">Anotados</option><option value="proposta">Proposta pendente</option><option value="duvida">Em dúvida</option><option value="excluido">Excluídos</option>
+            </select>
+            <select value="{{ fClasse }}" onChange="{{ setFClasse }}" style="height:34px;background:#14141C;border:1px solid #23242F;border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 8px">
+              <option value="todas">Todas as classes</option><option value="capacete">Já tem capacete</option><option value="colete">Já tem colete</option><option value="sem">Sem nenhuma</option>
+            </select>
+            <select value="{{ fSessao }}" onChange="{{ setFSessao }}" style="height:34px;background:#14141C;border:1px solid #23242F;border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 8px">
+              <option value="todas">Todas as sessões</option><option value="enc">Encenação · 15/07</option><option value="op">Operação · 22/07</option>
+            </select>
+            <select value="{{ fTipo }}" onChange="{{ setFTipo }}" style="height:34px;background:#14141C;border:1px solid #23242F;border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 8px">
+              <option value="todos">Imagens e vídeos</option><option value="img">Só imagens</option><option value="vid">Só vídeos</option>
+            </select>
+            <sc-if value="{{ fModeloErra }}" hint-placeholder-val="{{ false }}">
+              <span style="display:flex;align-items:center;gap:7px;height:34px;padding:0 11px;background:rgba(0,229,255,.07);border:1px solid rgba(0,229,255,.4);border-radius:6px;font-family:'JetBrains Mono';font-size:11px;color:#00E5FF">ONDE O MODELO ERRA<button onClick="{{ limparErra }}" style="background:none;border:none;color:#00E5FF;cursor:pointer;font-size:13px;padding:0">✕</button></span>
+            </sc-if>
+            <div style="flex:1"></div>
+            <span style="font-family:'JetBrains Mono';font-size:12px;color:#F4F6F8">{{ contagem }}</span>
+            <button onClick="{{ selTodos }}" style="height:34px;padding:0 11px;background:transparent;border:1px solid #23242F;border-radius:6px;color:#8A8F98;font-family:'Inter';font-size:12.5px;cursor:pointer" style-hover="color:#F4F6F8">{{ selTodosTxt }}</button>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;padding:18px 24px 110px">
+            <sc-for list="{{ cards }}" as="f" hint-placeholder-count="12">
+              <div style="display:flex;flex-direction:column;background:#14141C;border:1px solid {{ f.borda }};border-radius:10px;overflow:hidden;position:relative">
+                <button onClick="{{ f.toggleSel }}" title="Selecionar (Shift para intervalo)" style="position:absolute;top:8px;left:8px;z-index:3;width:22px;height:22px;border-radius:5px;border:1.5px solid {{ f.ckBorda }};background:{{ f.ckBg }};color:#0A0A0F;font-size:13px;font-weight:700;cursor:pointer;padding:0;line-height:1">{{ f.ckMark }}</button>
+                <div onClick="{{ f.abrir }}" style="position:relative;aspect-ratio:16/10;cursor:pointer;background:{{ f.fundo }}" title="Abrir no anotador">
+                  <sc-if value="{{ f.quebrada }}" hint-placeholder-val="{{ false }}">
+                    <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:#0A0A0F">
+                      <span style="font-size:13px;font-weight:600;color:#E8A13C">⚠ Não carregou</span>
+                      <button style="height:28px;padding:0 11px;border:1px solid #23242F;border-radius:6px;background:transparent;color:#F4F6F8;font-family:'Inter';font-size:12px;cursor:pointer">Tentar de novo</button>
+                    </div>
+                  </sc-if>
+                  <sc-for list="{{ f.thumbBoxes }}" as="b" hint-placeholder-count="1">
+                    <div style="position:absolute;top:{{ b.t }};left:{{ b.l }};width:{{ b.w }};height:{{ b.h }};border:1.5px {{ b.traço }} {{ b.cor }};border-radius:2px"></div>
+                  </sc-for>
+                  <sc-if value="{{ f.video }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:8px;right:8px;background:rgba(10,10,15,.8);border-radius:4px;padding:2px 7px;font-family:'JetBrains Mono';font-size:9.5px">▶ VÍDEO</span></sc-if>
+                  <span style="position:absolute;bottom:6px;right:8px;font-family:'JetBrains Mono';font-size:10px;color:#8A8F98;background:rgba(10,10,15,.7);border-radius:4px;padding:2px 6px">{{ f.nCaixas }}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;padding:9px 11px">
+                  <span style="display:flex;align-items:center;gap:5px;font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.08em;font-weight:700;color:{{ f.seloCor }};border:1.5px {{ f.seloTraço }} {{ f.seloBorda }};border-radius:5px;padding:3px 7px;flex:none">{{ f.selo }}</span>
+                  <div style="display:flex;flex-direction:column;min-width:0">
+                    <span style="font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.camNome }}</span>
+                    <span style="font-family:'JetBrains Mono';font-size:9.5px;color:#8A8F98">{{ f.meta }}</span>
+                  </div>
+                  <sc-if value="{{ f.podeRestaurar }}" hint-placeholder-val="{{ false }}">
+                    <button onClick="{{ f.restaurar }}" style="margin-left:auto;height:26px;padding:0 9px;border:1px solid #23242F;border-radius:6px;background:transparent;color:#3ECF8E;font-family:'Inter';font-size:11.5px;font-weight:600;cursor:pointer">Restaurar</button>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+
+          <sc-if value="{{ vazioDados }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:70px 24px;text-align:center">
+              <span style="font-family:'Space Grotesk';font-weight:700;font-size:18px">Nenhum frame com esses filtros</span>
+              <span style="font-size:13px;color:#8A8F98">Combine menos filtros, ou traga frames novos das câmeras.</span>
+              <button onClick="{{ limparFiltros }}" style="height:38px;padding:0 16px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13px;font-weight:700;cursor:pointer">Limpar filtros</button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ temSel }}" hint-placeholder-val="{{ false }}">
+            <div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:8px;background:#14141C;border:1px solid rgba(0,229,255,.4);border-radius:12px;padding:10px 14px;box-shadow:0 16px 60px rgba(0,0,0,.7)">
+              <span style="font-family:'JetBrains Mono';font-size:12px;color:#00E5FF;font-weight:700">{{ nSel }} selecionados</span>
+              <button onClick="{{ anotarSeq }}" style="height:38px;padding:0 16px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13px;font-weight:700;cursor:pointer">Anotar em sequência</button>
+              <button onClick="{{ rodarAuto }}" style="height:38px;padding:0 13px;background:transparent;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">Anotação automática</button>
+              <button onClick="{{ marcarDuvida }}" style="height:38px;padding:0 13px;background:transparent;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">Em dúvida</button>
+              <button onClick="{{ excluirSel }}" style="height:38px;padding:0 13px;background:transparent;border:1px solid #23242F;border-radius:8px;color:#E5484D;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">Excluir da coleta</button>
+              <button onClick="{{ limparSel }}" style="height:38px;padding:0 11px;background:transparent;border:none;color:#8A8F98;font-family:'Inter';font-size:12.5px;cursor:pointer">Limpar</button>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showClasses }}" hint-placeholder-val="{{ false }}">
+        <div style="max-width:860px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:14px;box-sizing:border-box">
+          <div style="display:flex;align-items:center;gap:12px">
+            <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:22px">Classes</h1>
+            <span style="font-size:12.5px;color:#8A8F98">a ordem define a tecla no anotador</span>
+            <div style="flex:1"></div>
+            <button onClick="{{ novaClasse }}" style="height:36px;padding:0 14px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13px;font-weight:700;cursor:pointer">Nova classe</button>
+          </div>
+          <sc-if value="{{ desbalanceado }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:rgba(232,161,60,.07);border:1px solid rgba(232,161,60,.45);border-radius:10px">
+              <svg viewBox="0 0 24 24" style="width:20px;height:20px;flex:none" fill="none" stroke="#E8A13C" stroke-width="2" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+              <span style="font-size:13px;line-height:1.5"><b style="color:#E8A13C">Desbalanceamento:</b> {{ desbTxt }} Classe rara treina mal e falha em produção sem avisar.</span>
+              <button onClick="{{ filtrarRara }}" style="margin-left:auto;height:34px;padding:0 13px;border:1px solid rgba(232,161,60,.5);border-radius:7px;background:transparent;color:#E8A13C;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer;flex:none">Anotar mais {{ classeRara }}</button>
+            </div>
+          </sc-if>
+          <div style="display:flex;flex-direction:column;background:#14141C;border:1px solid #23242F;border-radius:10px;overflow:hidden">
+            <sc-for list="{{ classesRows }}" as="c" hint-placeholder-count="4">
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid rgba(138,143,152,.08);opacity:{{ c.op }}">
+                <span style="font-family:'JetBrains Mono';font-weight:700;font-size:15px;width:26px;height:26px;border:1px solid #23242F;border-radius:6px;display:flex;align-items:center;justify-content:center;flex:none">{{ c.tecla }}</span>
+                <span style="width:16px;height:16px;border-radius:4px;background:{{ c.cor }};flex:none"></span>
+                <sc-if value="{{ c.editando }}" hint-placeholder-val="{{ false }}">
+                  <input value="{{ c.nomeEdit }}" onChange="{{ c.setNome }}" style="height:32px;width:160px;background:#0A0A0F;border:1px solid #00E5FF;border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 9px;outline:none" />
+                  <button onClick="{{ c.salvarNome }}" style="height:32px;padding:0 11px;border:none;border-radius:6px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:12px;font-weight:700;cursor:pointer">OK</button>
+                </sc-if>
+                <sc-if value="{{ c.normal }}" hint-placeholder-val="{{ true }}">
+                  <span style="font-size:14px;font-weight:600;width:160px">{{ c.nome }}</span>
+                  <button onClick="{{ c.editar }}" title="Renomear" style="width:28px;height:28px;background:transparent;border:none;color:#8A8F98;cursor:pointer" style-hover="color:#00E5FF"><svg viewBox="0 0 24 24" style="width:14px;height:14px" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"><path d="M4 20l4-1L20 7l-3-3L5 16zM14 6l3 3"></path></svg></button>
+                </sc-if>
+                <div style="flex:1;height:12px;background:#0A0A0F;border-radius:4px;overflow:hidden"><div style="width:{{ c.w }};height:100%;background:{{ c.cor }}"></div></div>
+                <span style="font-family:'JetBrains Mono';font-size:13px;width:80px;text-align:right;color:{{ c.nCor }}">{{ c.n }} caixas</span>
+                <button onClick="{{ c.subir }}" title="Subir (muda a tecla)" style="width:26px;height:26px;background:transparent;border:1px solid #23242F;border-radius:5px;color:#8A8F98;cursor:pointer;font-size:11px">▲</button>
+                <button onClick="{{ c.descer }}" title="Descer (muda a tecla)" style="width:26px;height:26px;background:transparent;border:1px solid #23242F;border-radius:5px;color:#8A8F98;cursor:pointer;font-size:11px">▼</button>
+                <button onClick="{{ c.arquivar }}" style="height:30px;padding:0 11px;border:1px solid #23242F;border-radius:6px;background:transparent;color:{{ c.arqCor }};font-family:'Inter';font-size:12px;font-weight:600;cursor:pointer">{{ c.arqTxt }}</button>
+              </div>
+            </sc-for>
+          </div>
+          <span style="font-size:12.5px;color:#8A8F98">Renomear é seguro — as caixas seguem a classe. Apagar não existe: classe com caixas é <b style="color:#F4F6F8">arquivada</b> e some das teclas, mas as {{ totalCaixas }} caixas ficam. Dá para criar classe de dentro do anotador; o registro nasce aqui.</span>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showIA }}" hint-placeholder-val="{{ false }}">
+        <div style="max-width:1080px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box">
+          <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:22px">Ferramentas de IA</h1>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div style="display:flex;flex-direction:column;gap:12px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">A · ACHE IMAGENS PARECIDAS COM ESTA</span>
+              <div style="display:flex;gap:12px;align-items:center">
+                <div style="position:relative;width:120px;aspect-ratio:16/10;flex:none;border-radius:7px;overflow:hidden;border:1px solid #23242F;background:linear-gradient(200deg,#191822,#0F0F16)">
+                  <div style="position:absolute;top:28%;left:38%;width:22%;height:52%;border:1.5px solid #FFD24D;border-radius:2px"></div>
+                  <span style="position:absolute;bottom:4px;left:6px;font-family:'JetBrains Mono';font-size:8.5px;color:#8A8F98">FRAME #12 · HUMANA</span>
+                </div>
+                <span style="font-size:12.5px;color:#8A8F98;line-height:1.5">Origem: frame <b style="color:#F4F6F8">anotado</b> selecionado nos Dados. <b style="color:#F4F6F8">312 semelhantes disponíveis</b> no acervo.</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:12.5px;color:#8A8F98">Quantas:</span>
+                <sc-for list="{{ qtds }}" as="q" hint-placeholder-count="4">
+                  <button onClick="{{ q.go }}" style="height:32px;padding:0 13px;border-radius:6px;border:1px solid {{ q.borda }};background:{{ q.bg }};color:{{ q.cor }};font-family:'JetBrains Mono';font-size:12px;font-weight:600;cursor:pointer">{{ q.t }}</button>
+                </sc-for>
+              </div>
+              <button onClick="{{ rodarParecidas }}" style="height:42px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Buscar {{ qtdSel }} parecidas → vira proposta</button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">B · DESCREVA O QUE VOCÊ QUER ENCONTRAR</span>
+              <input value="{{ iaTexto }}" onChange="{{ setIaTexto }}" placeholder='ex.: "pessoa sem capacete"' style="height:42px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-size:13.5px;padding:0 12px;outline:none" style-focus="border-color:#00E5FF" />
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <sc-for list="{{ exemplos }}" as="e" hint-placeholder-count="3">
+                  <button onClick="{{ e.go }}" style="height:28px;padding:0 10px;border-radius:14px;border:1px solid #23242F;background:transparent;color:#8A8F98;font-size:12px;cursor:pointer" style-hover="color:#00E5FF;border-color:#00E5FF">{{ e.t }}</button>
+                </sc-for>
+              </div>
+              <span style="font-size:12px;color:#E8A13C;line-height:1.5">▲ Isto erra bastante. O resultado é ponto de partida para você corrigir — nada entra no treino sem aprovação.</span>
+              <button onClick="{{ rodarBusca }}" style="height:42px;border:1px solid #23242F;border-radius:8px;background:transparent;color:#F4F6F8;font-family:'Inter';font-size:13.5px;font-weight:600;cursor:pointer" style-hover="border-color:#00E5FF;color:#00E5FF">Buscar no acervo → vira proposta</button>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:12px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">FILA DE APROVAÇÃO</span>
+              <span style="font-family:'JetBrains Mono';font-size:12px;color:#E8A13C;font-weight:700">{{ propRestam }} RESTANTES</span>
+              <div style="flex:1"></div>
+              <span style="display:flex;gap:12px;font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98"><span><span style="border:1px solid #23242F;border-radius:4px;padding:2px 6px">↵</span> APROVAR</span><span><span style="border:1px solid #23242F;border-radius:4px;padding:2px 6px">⌫</span> REJEITAR</span></span>
+              <button onClick="{{ aprovarLote }}" style="height:34px;padding:0 13px;border:1px solid rgba(62,207,142,.5);border-radius:7px;background:transparent;color:#3ECF8E;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">Aprovar em lote (as visivelmente boas)</button>
+            </div>
+            <sc-if value="{{ temProp }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;gap:16px">
+                <div style="flex:1;position:relative;aspect-ratio:16/9;border-radius:10px;overflow:hidden;border:1px solid #23242F;background:{{ propFundo }}">
+                  <div style="position:absolute;top:{{ propBt }};left:{{ propBl }};width:{{ propBw }};height:{{ propBh }};border:2.5px dashed {{ propCor }};border-radius:3px">
+                    <span style="position:absolute;top:-24px;left:-2px;background:{{ propCor }};color:#0A0A0F;font-family:'JetBrains Mono';font-size:10px;font-weight:700;padding:3px 7px;border-radius:3px;white-space:nowrap">◌ PROPOSTA · {{ propClasse }}</span>
+                  </div>
+                  <span style="position:absolute;top:8px;left:8px;background:rgba(10,10,15,.8);border-radius:5px;padding:3px 9px;font-family:'JetBrains Mono';font-size:10px">{{ propCam }}</span>
+                  <span style="position:absolute;bottom:8px;left:8px;background:rgba(10,10,15,.8);border-radius:5px;padding:3px 9px;font-family:'JetBrains Mono';font-size:10px;color:#8A8F98">ORIGEM: {{ propOrigem }}</span>
+                </div>
+                <div style="width:250px;flex:none;display:flex;flex-direction:column;gap:8px">
+                  <button onClick="{{ aprovar }}" style="height:52px;border:none;border-radius:10px;background:#3ECF8E;color:#0A0A0F;font-family:'Inter';font-size:14.5px;font-weight:700;cursor:pointer">✓ Aprovar <span style="font-family:'JetBrains Mono';font-size:11px;opacity:.7">↵</span></button>
+                  <button onClick="{{ corrigir }}" style="height:44px;border:1px solid #23242F;border-radius:10px;background:transparent;color:#F4F6F8;font-family:'Inter';font-size:13.5px;font-weight:600;cursor:pointer" style-hover="border-color:#00E5FF;color:#00E5FF">Corrigir a caixa antes de aprovar</button>
+                  <button onClick="{{ rejeitar }}" style="height:44px;border:1.5px solid rgba(229,72,77,.55);border-radius:10px;background:transparent;color:#E5484D;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">✕ Rejeitar <span style="font-family:'JetBrains Mono';font-size:11px;opacity:.7">⌫</span></button>
+                  <span style="font-size:11.5px;color:#8A8F98">Motivo da rejeição (1 clique):</span>
+                  <div style="display:flex;flex-wrap:wrap;gap:5px">
+                    <sc-for list="{{ motivos }}" as="m" hint-placeholder-count="3">
+                      <button onClick="{{ m.go }}" style="height:28px;padding:0 10px;border-radius:14px;border:1px solid {{ m.borda }};background:{{ m.bg }};color:{{ m.cor }};font-size:11.5px;cursor:pointer">{{ m.t }}</button>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ filaZerada }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:36px;text-align:center">
+                <span style="font-size:15px;font-weight:700;color:#3ECF8E">✓ Fila zerada</span>
+                <span style="font-size:12.5px;color:#8A8F98">As aprovadas entraram no dataset com selo APROVADA. Rode uma busca nova acima.</span>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showDataset }}" hint-placeholder-val="{{ false }}">
+        <div style="max-width:1080px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box">
+          <div style="display:flex;align-items:center;gap:12px">
+            <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:22px">Dataset</h1>
+            <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">v3 · EM EDIÇÃO · {{ anotadosN }} IMAGENS ELEGÍVEIS</span>
+            <div style="flex:1"></div>
+            <button style="height:38px;padding:0 16px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Congelar versão v3</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:rgba(232,161,60,.07);border:1px solid rgba(232,161,60,.4);border-radius:10px">
+            <span style="font-size:13px"><b style="color:#E8A13C">23 quase-duplicatas sinalizadas</b> — frames sequenciais da mesma câmera. Revise antes de congelar.</span>
+            <button style="margin-left:auto;height:32px;padding:0 12px;border:1px solid rgba(232,161,60,.5);border-radius:6px;background:transparent;color:#E8A13C;font-family:'Inter';font-size:12px;font-weight:600;cursor:pointer">Revisar</button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px;padding:18px;background:#14141C;border:1px solid {{ splitBorda }};border-radius:12px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">DIVISÃO TREINO / VALIDAÇÃO / TESTE</span>
+              <div style="display:flex;background:#0A0A0F;border-radius:8px;padding:3px;gap:2px;margin-left:auto">
+                <button onClick="{{ splitCam }}" style="height:34px;padding:0 14px;border:none;border-radius:6px;background:{{ scBg }};color:{{ scCor }};font-size:13px;font-weight:600;cursor:pointer">Por câmera e dia (recomendado)</button>
+                <button onClick="{{ splitAle }}" style="height:34px;padding:0 14px;border:none;border-radius:6px;background:{{ saBg }};color:{{ saCor }};font-size:13px;font-weight:600;cursor:pointer">Aleatória por imagem</button>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:70fr 15fr 15fr;gap:8px">
+              <div style="display:flex;flex-direction:column;gap:3px;padding:14px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px"><span style="font-family:'JetBrains Mono';font-size:10px;color:#8A8F98">TREINO · 70%</span><span style="font-family:'JetBrains Mono';font-weight:700;font-size:24px">259</span><span style="font-size:11.5px;color:#8A8F98">CAM 1–5 · 15/07 + 22/07</span></div>
+              <div style="display:flex;flex-direction:column;gap:3px;padding:14px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px"><span style="font-family:'JetBrains Mono';font-size:10px;color:#8A8F98">VALID. · 15%</span><span style="font-family:'JetBrains Mono';font-weight:700;font-size:24px">55</span><span style="font-size:11.5px;color:#8A8F98">CAM-06 · 22/07</span></div>
+              <div style="display:flex;flex-direction:column;gap:3px;padding:14px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px"><span style="font-family:'JetBrains Mono';font-size:10px;color:#8A8F98">TESTE · 15%</span><span style="font-family:'JetBrains Mono';font-weight:700;font-size:24px">56</span><span style="font-size:11.5px;color:#8A8F98">CAM-07/08 · nunca vistas</span></div>
+            </div>
+            <sc-if value="{{ splitAviso }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:rgba(229,72,77,.07);border:1px solid rgba(229,72,77,.5);border-radius:8px">
+                <svg viewBox="0 0 24 24" style="width:18px;height:18px;flex:none" fill="none" stroke="#E5484D" stroke-width="2" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+                <span style="font-size:13px;line-height:1.5;color:#E5484D;font-weight:600">Divisão correlacionada: frames quase idênticos caem no treino E no teste. A métrica vai mentir — o modelo parece bom e falha em produção. Use "por câmera e dia".</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{ splitOk }}" hint-placeholder-val="{{ true }}">
+              <span style="font-size:12.5px;color:#3ECF8E;font-weight:600">✓ O teste contém cenas que o modelo nunca viu (CAM-07 e CAM-08 ficam fora do treino).</span>
+            </sc-if>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">CAIXAS POR CLASSE</span>
+              <sc-for list="{{ distClasses }}" as="c" hint-placeholder-count="4">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span style="font-size:12.5px;width:76px">{{ c.nome }}</span>
+                  <div style="flex:1;height:12px;background:#0A0A0F;border-radius:4px;overflow:hidden"><div style="width:{{ c.w }};height:100%;background:{{ c.cor }}"></div></div>
+                  <span style="font-family:'JetBrains Mono';font-size:12.5px;width:44px;text-align:right;color:{{ c.nCor }}">{{ c.n }}</span>
+                </div>
+              </sc-for>
+              <span style="font-size:12px;color:#8A8F98">Referência honesta: ~300 caixas por classe dão o 1º modelo útil; 1.000+ para produção. <b style="color:#E8A13C">Luva está longe.</b></span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">O QUE O MODELO VAI VER · AUGMENTATION</span>
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+                <div style="aspect-ratio:16/10;border-radius:6px;border:1px solid #23242F;background:linear-gradient(200deg,#191822,#0F0F16)"></div>
+                <div style="aspect-ratio:16/10;border-radius:6px;border:1px solid #23242F;background:linear-gradient(200deg,#191822,#0F0F16);transform:scaleX(-1)"></div>
+                <div style="aspect-ratio:16/10;border-radius:6px;border:1px solid #23242F;background:linear-gradient(200deg,#191822,#0F0F16);filter:brightness(.55)"></div>
+                <div style="aspect-ratio:16/10;border-radius:6px;border:1px solid #23242F;background:linear-gradient(200deg,#191822,#0F0F16);filter:contrast(1.6) brightness(1.2)"></div>
+              </div>
+              <span style="font-family:'JetBrains Mono';font-size:10px;color:#8A8F98">ORIGINAL · ESPELHADO · NOITE · CONTRASTE</span>
+              <div style="border-top:1px solid #23242F;padding-top:10px;display:flex;flex-direction:column;gap:6px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">VERSÕES</span>
+                <span style="font-size:12.5px"><b>v3</b> · em edição · esta tela</span>
+                <span style="font-size:12.5px;color:#8A8F98"><b style="color:#F4F6F8">v2</b> · 28/07 · usada no treino do modelo v11</span>
+                <span style="font-size:12.5px;color:#8A8F98"><b style="color:#F4F6F8">v1</b> · 14/07 · usada no modelo v10</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showTreinos }}" hint-placeholder-val="{{ false }}">
+        <div style="max-width:1080px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box">
+          <div style="display:flex;align-items:center;gap:12px">
+            <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:22px">Treinos</h1>
+            <div style="flex:1"></div>
+            <button style="height:38px;padding:0 16px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Novo treino</button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:14px;background:#14141C;border:1px solid rgba(0,229,255,.35);border-radius:14px;padding:20px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="spinner" state="waiting" size="20" hint-size="20px,20px"></x-import>
+              <span style="font-family:'Space Grotesk';font-weight:700;font-size:17px">Treino EPI — dataset v2</span>
+              <span style="font-family:'JetBrains Mono';font-size:10px;color:#00E5FF;border:1px solid rgba(0,229,255,.4);border-radius:5px;padding:3px 8px">AO VIVO</span>
+              <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">CUSTO ATÉ AGORA R$ 14,20</span>
+              <div style="flex:1"></div>
+              <button style="height:34px;padding:0 13px;border:1px solid #23242F;border-radius:7px;background:transparent;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">Pausar</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px">
+              <div style="flex:1;height:10px;background:#0A0A0F;border-radius:5px;overflow:hidden"><div style="width:64%;height:100%;background:#00E5FF"></div></div>
+              <span style="font-family:'JetBrains Mono';font-size:12.5px;color:#8A8F98">ÉPOCA <span style="color:#F4F6F8">38/60</span> · FALTA <span style="color:#F4F6F8">1H 12M</span></span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#0A0A0F;border:1px solid #23242F;border-radius:10px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">ERRO DE TREINO ↓</span>
+                <svg viewBox="0 0 300 80" style="width:100%;height:80px"><polyline points="0,10 40,24 80,36 120,48 160,56 200,64 240,68 280,71 300,72" fill="none" stroke="#E8A13C" stroke-width="2"></polyline></svg>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#0A0A0F;border:1px solid #23242F;border-radius:10px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">ACERTO NA VALIDAÇÃO ↑</span>
+                <svg viewBox="0 0 300 80" style="width:100%;height:80px"><polyline points="0,70 40,58 80,48 120,38 160,30 200,25 240,21 280,19 300,18" fill="none" stroke="#3ECF8E" stroke-width="2"></polyline></svg>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">HISTÓRICO</span>
+            <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;background:#14141C;border:1px solid #23242F;border-radius:9px"><span style="font-size:13px;font-weight:600">Treino EPI — dataset v2</span><span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">28/07 · R$ 22,80</span><div style="flex:1"></div><span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">→ modelo v11</span><span style="font-size:12px;font-weight:600;color:#3ECF8E">✓ Concluído</span></div>
+            <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;background:#14141C;border:1px solid #23242F;border-radius:9px"><span style="font-size:13px;font-weight:600">Treino EPI — dataset v1</span><span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">14/07 · R$ 19,10</span><div style="flex:1"></div><span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">→ modelo v10</span><span style="font-size:12px;font-weight:600;color:#3ECF8E">✓ Concluído</span></div>
+            <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;background:#14141C;border:1px solid rgba(229,72,77,.4);border-radius:9px"><span style="font-size:13px;font-weight:600">Treino EPI — dataset v1</span><span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">12/07</span><div style="flex:1"></div><span style="font-size:12.5px;color:#E5484D;font-weight:600">✕ Falhou: imagens demais sem caixa — 41 frames vazios no treino. Anote ou exclua e rode de novo.</span></div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showModelos }}" hint-placeholder-val="{{ false }}">
+        <div style="max-width:1080px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box">
+          <div style="display:flex;align-items:center;gap:12px">
+            <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:22px">Modelos</h1>
+            <div style="flex:1"></div>
+            <button onClick="{{ irErra }}" style="height:40px;padding:0 16px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Anotar onde o modelo erra (34 frames)</button>
+          </div>
+          <span style="font-size:12.5px;color:#8A8F98;margin-top:-8px">O botão devolve à galeria filtrada pelas imagens em que o v11 está menos seguro — misturadas com variedade de câmera e horário, para o dataset não afunilar.</span>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+            <sc-for list="{{ modelos }}" as="m" hint-placeholder-count="3">
+              <div style="display:flex;flex-direction:column;gap:8px;padding:16px;background:#14141C;border:1px solid {{ m.borda }};border-radius:12px">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="font-family:'Space Grotesk';font-weight:700;font-size:16px">{{ m.versao }}</span>
+                  <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.08em;color:{{ m.stCor }};border:1px solid {{ m.stBorda }};border-radius:5px;padding:2px 7px">{{ m.st }}</span>
+                </div>
+                <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">DATASET {{ m.ds }} · {{ m.data }}</span>
+                <span style="font-family:'JetBrains Mono';font-size:12.5px">acerto geral <b style="font-size:15px">{{ m.map }}</b></span>
+                <sc-if value="{{ m.podePromover }}" hint-placeholder-val="{{ false }}">
+                  <button onClick="{{ m.promover }}" style="height:34px;border:1px solid rgba(0,229,255,.5);border-radius:7px;background:transparent;color:#00E5FF;font-family:'Inter';font-size:12.5px;font-weight:700;cursor:pointer">Promover para produção</button>
+                </sc-if>
+                <sc-if value="{{ m.podeVoltar }}" hint-placeholder-val="{{ false }}">
+                  <button onClick="{{ m.voltar }}" style="height:34px;border:1px solid #23242F;border-radius:7px;background:transparent;color:#8A8F98;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer" style-hover="color:#F4F6F8">Voltar para esta versão</button>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">{{ emProducao }} · ACERTO POR CLASSE</span>
+              <sc-for list="{{ porClasse }}" as="c" hint-placeholder-count="4">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span style="width:14px;height:14px;border-radius:4px;background:{{ c.cor }};flex:none"></span>
+                  <span style="font-size:12.5px;width:76px">{{ c.nome }}</span>
+                  <div style="flex:1;height:12px;background:#0A0A0F;border-radius:4px;overflow:hidden"><div style="width:{{ c.w }};height:100%;background:{{ c.barCor }}"></div></div>
+                  <span style="font-family:'JetBrains Mono';font-size:12.5px;width:60px;text-align:right;color:{{ c.vCor }}">{{ c.v }}</span>
+                </div>
+              </sc-for>
+              <span style="font-size:12px;color:#E8A13C">▲ Luva: 12 caixas no dataset — anotar mais é o único conserto.</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">{{ emProducao }} · ACERTO POR CÂMERA</span>
+              <sc-for list="{{ porCam }}" as="c" hint-placeholder-count="8">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span style="font-family:'JetBrains Mono';font-size:11.5px;width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.nome }}</span>
+                  <div style="flex:1;height:10px;background:#0A0A0F;border-radius:4px;overflow:hidden"><div style="width:{{ c.w }};height:100%;background:{{ c.barCor }}"></div></div>
+                  <span style="font-family:'JetBrains Mono';font-size:12px;width:52px;text-align:right;color:{{ c.vCor }}">{{ c.v }}</span>
+                </div>
+              </sc-for>
+              <span style="font-size:12px;color:#E5484D">✕ CAM-07 Serra despenca — contraluz da tarde. Anotar frames dela ou reposicionar a câmera.</span>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ loadingView }}" hint-placeholder-val="{{ false }}">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;padding:24px">
+          <sc-for list="{{ skels }}" as="s" hint-placeholder-count="12">
+            <div style="display:flex;flex-direction:column;background:#14141C;border:1px solid #23242F;border-radius:10px;overflow:hidden">
+              <div style="aspect-ratio:16/10;background:linear-gradient(90deg,#14141C 25%,#1B1C26 50%,#14141C 75%)"></div>
+              <div style="height:40px"></div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+
+  <sc-if value="{{ anotadorOn }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;z-index:100;background:#0A0A0F;display:flex;flex-direction:column">
+      <div style="height:52px;flex:none;display:flex;align-items:center;gap:14px;padding:0 16px;background:#14141C;border-bottom:1px solid #23242F">
+        <button onClick="{{ fecharAnotador }}" style="height:34px;padding:0 12px;background:transparent;border:1px solid #23242F;border-radius:7px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">Esc · Galeria</button>
+        <span style="font-family:'JetBrains Mono';font-size:12px">{{ anCam }} · {{ anMeta }}</span>
+        <span style="font-family:'JetBrains Mono';font-size:11px;color:#E8A13C;font-weight:700">FALTAM {{ anFaltam }}</span>
+        <div style="flex:1"></div>
+        <span style="font-family:'JetBrains Mono';font-size:11px;font-weight:700;color:{{ salvoCor }}">{{ salvoTxt }}</span>
+        <button onClick="{{ abrirDiretrizes }}" style="height:34px;padding:0 12px;background:transparent;border:1px solid {{ dirBorda }};border-radius:7px;color:{{ dirCor }};font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">G · Diretrizes</button>
+        <button onClick="{{ abrirAjuda }}" style="width:34px;height:34px;background:transparent;border:1px solid #23242F;border-radius:7px;color:#8A8F98;font-family:'JetBrains Mono';font-size:14px;cursor:pointer">?</button>
+      </div>
+      <sc-if value="{{ erroSalvar }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:none;display:flex;align-items:center;gap:12px;padding:12px 16px;background:rgba(229,72,77,.12);border-bottom:2px solid #E5484D">
+          <svg viewBox="0 0 24 24" style="width:18px;height:18px;flex:none" fill="none" stroke="#E5484D" stroke-width="2.2" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+          <span style="font-size:13.5px;font-weight:700;color:#E5484D">Não foi possível salvar — reconectando. Suas caixas estão retidas neste aparelho, nada se perdeu.</span>
+          <button onClick="{{ tentarSalvar }}" style="margin-left:auto;height:32px;padding:0 13px;border:none;border-radius:7px;background:#E5484D;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:700;cursor:pointer">Tentar agora</button>
+        </div>
+      </sc-if>
+      <div style="flex:1;display:flex;min-height:0">
+        <div style="flex:1;min-width:0;display:flex;align-items:center;justify-content:center;padding:16px;position:relative;overflow:hidden">
+          <div onMouseDown="{{ startDraw }}" onMouseMove="{{ moveDraw }}" onMouseUp="{{ endDraw }}" style="position:relative;width:100%;max-width:1100px;aspect-ratio:16/9;border-radius:10px;border:1px solid #23242F;background:{{ anFundo }};cursor:crosshair;transform:scale({{ zoom }});filter:{{ anFiltro }}">
+            <sc-if value="{{ boxesVisiveis }}" hint-placeholder-val="{{ true }}">
+              <sc-for list="{{ anBoxes }}" as="b" hint-placeholder-count="2">
+                <div onMouseDown="{{ b.sel }}" style="position:absolute;top:{{ b.t }};left:{{ b.l }};width:{{ b.w }};height:{{ b.h }};border:{{ b.bw2 }} solid {{ b.cor }};border-radius:3px;cursor:pointer;box-shadow:{{ b.glow }}">
+                  <span style="position:absolute;top:-22px;left:-2px;background:{{ b.cor }};color:#0A0A0F;font-family:'JetBrains Mono';font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:3px;white-space:nowrap">{{ b.label }}</span>
+                  <sc-if value="{{ b.ativa }}" hint-placeholder-val="{{ false }}">
+                    <span style="position:absolute;top:-4px;left:-4px;width:7px;height:7px;background:{{ b.cor }};border-radius:50%"></span><span style="position:absolute;top:-4px;right:-4px;width:7px;height:7px;background:{{ b.cor }};border-radius:50%"></span><span style="position:absolute;bottom:-4px;left:-4px;width:7px;height:7px;background:{{ b.cor }};border-radius:50%"></span><span style="position:absolute;bottom:-4px;right:-4px;width:7px;height:7px;background:{{ b.cor }};border-radius:50%"></span>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </sc-if>
+            <sc-if value="{{ desenhando }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;top:{{ dT }};left:{{ dL }};width:{{ dW }};height:{{ dH }};border:1.5px dashed #00E5FF;background:rgba(0,229,255,.05)"></div>
+            </sc-if>
+          </div>
+          <div style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);display:flex;gap:12px;background:rgba(20,20,28,.92);border:1px solid #23242F;border-radius:9px;padding:7px 14px;font-family:'JetBrains Mono';font-size:10px;color:#8A8F98;white-space:nowrap">
+            <span>ARRASTE desenha</span><span><b style="color:#F4F6F8">1–{{ nClasses }}</b> classe</span><span><b style="color:#F4F6F8">C</b> copiar anterior</span><span><b style="color:#F4F6F8">D</b> próxima</span><span><b style="color:#F4F6F8">F</b> dúvida</span><span><b style="color:#F4F6F8">H</b> caixas</span><span><b style="color:#F4F6F8">B</b> brilho</span><span><b style="color:#F4F6F8">+−</b> zoom</span><span><b style="color:#F4F6F8">?</b> tudo</span>
+          </div>
+          <sc-if value="{{ brilhoOn }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;background:rgba(20,20,28,.95);border:1px solid #23242F;border-radius:9px;padding:10px 16px">
+              <span style="font-family:'JetBrains Mono';font-size:10px;color:#8A8F98">BRILHO</span>
+              <input type="range" min="60" max="200" value="{{ brilhoVal }}" onChange="{{ setBrilho }}" style="width:140px" />
+              <span style="font-family:'JetBrains Mono';font-size:10px;color:#8A8F98">CONTRASTE</span>
+              <input type="range" min="60" max="180" value="{{ contrasteVal }}" onChange="{{ setContraste }}" style="width:140px" />
+              <span style="font-size:11px;color:#8A8F98">só na exibição — o arquivo não muda</span>
+            </div>
+          </sc-if>
+        </div>
+        <div style="width:264px;flex:none;border-left:1px solid #23242F;background:#14141C;display:flex;flex-direction:column;gap:14px;padding:16px;box-sizing:border-box;overflow:auto">
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">CLASSES · TECLA</span>
+            <sc-for list="{{ classesAnot }}" as="c" hint-placeholder-count="4">
+              <button onClick="{{ c.go }}" style="display:flex;align-items:center;gap:10px;height:36px;padding:0 10px;border-radius:7px;border:1px solid {{ c.borda }};background:{{ c.bg }};cursor:pointer;text-align:left">
+                <span style="font-family:'JetBrains Mono';font-weight:700;font-size:13px;width:18px">{{ c.tecla }}</span>
+                <span style="width:13px;height:13px;border-radius:3px;background:{{ c.cor }};flex:none"></span>
+                <span style="font-size:13px;color:#F4F6F8">{{ c.nome }}</span>
+                <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">{{ c.nFrame }}</span>
+              </button>
+            </sc-for>
+            <button onClick="{{ classeNoAnotador }}" style="height:32px;border:1px dashed #3A3D4A;border-radius:7px;background:transparent;color:#8A8F98;font-size:12px;cursor:pointer" style-hover="color:#00E5FF;border-color:#00E5FF">+ nova classe (registro nasce em Classes)</button>
+          </div>
+          <sc-if value="{{ temBoxSel }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:6px;border-top:1px solid #23242F;padding-top:12px">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">CAIXA SELECIONADA</span>
+              <div style="display:flex;flex-wrap:wrap;gap:5px">
+                <sc-for list="{{ atributos }}" as="a" hint-placeholder-count="3">
+                  <button onClick="{{ a.go }}" style="height:28px;padding:0 10px;border-radius:14px;border:1px solid {{ a.borda }};background:{{ a.bg }};color:{{ a.cor }};font-size:11.5px;cursor:pointer">{{ a.t }}</button>
+                </sc-for>
+              </div>
+              <button onClick="{{ apagarBox }}" style="height:32px;border:1px solid rgba(229,72,77,.5);border-radius:7px;background:transparent;color:#E5484D;font-family:'Inter';font-size:12px;font-weight:600;cursor:pointer">Del · Apagar caixa</button>
+            </div>
+          </sc-if>
+          <div style="display:flex;flex-direction:column;gap:6px;border-top:1px solid #23242F;padding-top:12px">
+            <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">FILA · PRÓXIMAS</span>
+            <sc-for list="{{ filaThumbs }}" as="t" hint-placeholder-count="4">
+              <div style="display:flex;align-items:center;gap:9px;padding:6px;border-radius:7px;border:1px solid {{ t.borda }}">
+                <div style="width:58px;aspect-ratio:16/10;flex:none;border-radius:4px;background:{{ t.fundo }}"></div>
+                <span style="font-family:'JetBrains Mono';font-size:10px;color:{{ t.cor }}">{{ t.label }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="margin-top:auto;display:flex;gap:6px">
+            <button onClick="{{ anAnterior }}" style="flex:1;height:40px;border:1px solid #23242F;border-radius:8px;background:transparent;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">← A</button>
+            <button onClick="{{ anDuvida }}" style="flex:1;height:40px;border:1px solid rgba(232,161,60,.5);border-radius:8px;background:transparent;color:#E8A13C;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">F · dúvida</button>
+            <button onClick="{{ anProxima }}" style="flex:2;height:40px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13px;font-weight:700;cursor:pointer">D · Próxima →</button>
+          </div>
+        </div>
+      </div>
+      <sc-if value="{{ diretrizesOn }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;top:52px;right:264px;bottom:0;width:340px;background:#14141C;border-left:1px solid #23242F;box-shadow:-16px 0 48px rgba(0,0,0,.6);padding:18px;box-sizing:border-box;overflow:auto;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-family:'Space Grotesk';font-weight:700;font-size:16px">Diretrizes de anotação</span>
+            <span style="font-family:'JetBrains Mono';font-size:10px;color:#8A8F98">v3 · 04/08/2026</span>
+            <button onClick="{{ abrirDiretrizes }}" style="margin-left:auto;width:26px;height:26px;background:transparent;border:1px solid #23242F;border-radius:6px;color:#8A8F98;cursor:pointer;font-size:12px">✕</button>
+          </div>
+          <span style="font-size:12.5px;color:#E8A13C;line-height:1.5">Critério inconsistente é o maior destruidor de dataset. Na dúvida, tecla F e siga.</span>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">O QUE SE MARCA</span>
+            <span style="font-size:12.5px;line-height:1.6"><b style="color:#FFD24D">Capacete</b> — só o capacete, não a cabeça inteira.<br/><b style="color:#FF8A5C">Colete</b> — o colete do ombro à cintura, mesmo parcial.<br/><b style="color:#5CC8FF">Óculos</b> — a armação; se não dá para ver, não marca.<br/><b style="color:#C7A6FF">Luva</b> — cada mão com luva é uma caixa.</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">CASOS DE BORDA</span>
+            <sc-for list="{{ bordas }}" as="b" hint-placeholder-count="5">
+              <div style="display:flex;gap:10px;align-items:center;padding:8px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px">
+                <div style="position:relative;width:64px;height:40px;flex:none;border-radius:4px;background:linear-gradient(200deg,#191822,#0F0F16);overflow:hidden"><div style="position:absolute;top:{{ b.et }};left:{{ b.el }};width:{{ b.ew }};height:{{ b.eh }};border:1.5px {{ b.traço }} {{ b.ecor }}"></div></div>
+                <span style="font-size:11.5px;line-height:1.45;color:#8A8F98"><b style="color:#F4F6F8">{{ b.caso }}</b> — {{ b.regra }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ ajudaOn }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ fecharAjuda }}" style="position:fixed;inset:0;z-index:140;background:rgba(10,10,15,.8);display:flex;align-items:center;justify-content:center">
+      <div onClick="{{ stop }}" style="width:640px;max-width:92vw;max-height:84vh;overflow:auto;background:#14141C;border:1px solid #23242F;border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:14px;box-sizing:border-box">
+        <div style="display:flex;align-items:center"><span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Mapa de atalhos</span><button onClick="{{ fecharAjuda }}" style="margin-left:auto;width:28px;height:28px;background:transparent;border:1px solid #23242F;border-radius:6px;color:#8A8F98;cursor:pointer;font-size:13px">✕</button></div>
+        <div style="display:grid;grid-template-columns:110px 1fr 110px 1fr;gap:8px 14px;font-size:12.5px">
+          <sc-for list="{{ mapa }}" as="m" hint-placeholder-count="16">
+            <span style="font-family:'JetBrains Mono';font-size:11.5px;font-weight:700;color:{{ m.cor }}">{{ m.k }}</span><span style="color:#8A8F98">{{ m.a }}</span>
+          </sc-for>
+        </div>
+        <span style="font-size:12px;color:#8A8F98">Teclado antes de mouse: o alvo é menos de 10 segundos por imagem, 500 vezes.</span>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ undoOn }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;bottom:76px;left:50%;transform:translateX(-50%);z-index:70;display:flex;align-items:center;gap:14px;background:#14141C;border:1px solid #23242F;border-radius:10px;padding:12px 16px;box-shadow:0 16px 60px rgba(0,0,0,.7)">
+      <span style="font-size:13px">{{ undoTxt }}</span>
+      <button onClick="{{ desfazer }}" style="height:32px;padding:0 14px;border:none;border-radius:7px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:12.5px;font-weight:700;cursor:pointer">Desfazer</button>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ iaRodando }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;top:70px;right:18px;z-index:80;display:flex;align-items:center;gap:10px;background:#14141C;border:1px solid rgba(0,229,255,.4);border-radius:10px;padding:10px 14px;box-shadow:0 12px 40px rgba(0,0,0,.6)">
+      <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="spinner" state="waiting" size="16" hint-size="16px,16px"></x-import>
+      <span style="font-family:'JetBrains Mono';font-size:11px">{{ iaTxt }}</span>
+      <span style="font-size:11px;color:#8A8F98">você pode seguir anotando</span>
+    </div>
+  </sc-if>
+
+  <div style="position:fixed;left:16px;bottom:14px;display:flex;align-items:center;gap:6px;background:#14141C;border:1px solid #23242F;border-radius:10px;padding:7px 10px;z-index:130;box-shadow:0 8px 32px rgba(0,0,0,.6)">
+    <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.2em;color:#8A8F98;margin-right:4px">ESTADO</span>
+    <sc-for list="{{ chips }}" as="ch" hint-placeholder-count="4">
+      <button onClick="{{ ch.go }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid {{ ch.borda }};background:{{ ch.bg }};color:{{ ch.cor }};font-family:'JetBrains Mono';font-size:10.5px;cursor:pointer">{{ ch.t }}</button>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:940}}">
+class Component extends DCLogic {
+  NAV = [
+    { key: 'dados', nome: 'Dados', d: 'M4 5h16v14H4zM4 15l5-5 4 4 3-3 4 4' },
+    { key: 'classes', nome: 'Classes', d: 'M4 7h10M18 7h2M14 4v6M4 17h2M10 17h10M10 14v6' },
+    { key: 'ia', nome: 'Ferramentas de IA', d: 'M10 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12zM14.5 14.5L20 20M8 10h4M10 8v4' },
+    { key: 'dataset', nome: 'Dataset', d: 'M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12L4 7.5M12 12l8-4.5M12 12v9' },
+    { key: 'treinos', nome: 'Treinos', d: 'M4 19V5M4 19h16M7 15c3 0 4-7 7-7 2 0 3 3 5 3' },
+    { key: 'modelos', nome: 'Modelos', d: 'M4 4h16v16H4zM8 12l3 3 5-6' },
+  ];
+  GRADS = ['linear-gradient(155deg,#1A1B26,#101018)', 'linear-gradient(200deg,#191822,#0F0F16)', 'linear-gradient(175deg,#181926,#0E0E15)', 'linear-gradient(140deg,#181A24,#0E0E14)'];
+  ERRA = [3, 6, 9, 14, 17, 21];
+  constructor(p) {
+    super(p);
+    const F = [];
+    const stBase = ['nao', 'nao', 'humana', 'nao', 'proposta', 'nao', 'nao', 'aprovada', 'nao', 'duvida', 'nao', 'humana', 'nao', 'proposta', 'nao', 'nao', 'rejeitada', 'nao', 'humana', 'nao', 'excluido', 'nao', 'nao', 'nao'];
+    for (let i = 1; i <= 24; i++) {
+      F.push({ id: i, cam: ((i - 1) % 8) + 1, hora: (6 + (i % 10)) + ':' + String((i * 7) % 60).padStart(2, '0'), sessao: i % 3 === 0 ? 'enc' : 'op', tipo: i % 7 === 0 ? 'vid' : 'img', st: stBase[i - 1], grad: (i - 1) % 4, quebrada: i === 7 });
+    }
+    this.FRAMES = F;
+    this.state = {
+      aba: 'dados', view: 'carregado',
+      fCam: 'todas', fStatus: 'todos', fClasse: 'todas', fSessao: 'todas', fTipo: 'todos', fModeloErra: false,
+      camNames: { 1: 'Portaria', 2: 'Embarque', 3: 'Linha 2', 4: 'Expedição', 5: 'Doca Norte', 6: 'Almoxarifado', 7: 'Serra', 8: 'Pátio' },
+      renameOn: false, renameVal: '',
+      sel: [], lastIdx: null, stOver: {}, undo: null,
+      classes: [
+        { id: 'capacete', nome: 'Capacete', cor: '#FFD24D', n: 412, arq: false },
+        { id: 'colete', nome: 'Colete', cor: '#FF8A5C', n: 178, arq: false },
+        { id: 'oculos', nome: 'Óculos', cor: '#5CC8FF', n: 64, arq: false },
+        { id: 'luva', nome: 'Luva', cor: '#C7A6FF', n: 12, arq: false },
+      ], editCls: null, editVal: '',
+      boxes: {
+        3: [{ t: 28, l: 40, w: 16, h: 50, cls: 0, attrs: [] }, { t: 32, l: 14, w: 14, h: 46, cls: 1, attrs: [] }],
+        8: [{ t: 24, l: 55, w: 18, h: 54, cls: 0, attrs: [] }],
+        12: [{ t: 30, l: 30, w: 15, h: 48, cls: 1, attrs: ['ocluído'] }],
+        19: [{ t: 26, l: 46, w: 17, h: 52, cls: 0, attrs: [] }],
+      },
+      anotador: false, fila: [], filaIdx: 0, cls: 0, selBox: null, drawing: null,
+      hideBoxes: false, brilhoOn: false, brilho: 115, contraste: 110, zoom: 1,
+      diretrizes: false, ajuda: false, salvo: 'SALVO · AGORA', erroSalvar: false,
+      qtd: 25, iaTexto: '', propostas: [
+        { id: 1, cam: 'CAM-04 EXPEDIÇÃO', origem: 'PARECIDAS COM #12', cls: 0, grad: 1, box: [30, 42, 16, 54] },
+        { id: 2, cam: 'CAM-02 EMBARQUE', origem: 'PARECIDAS COM #12', cls: 0, grad: 0, box: [26, 20, 18, 58] },
+        { id: 3, cam: 'CAM-07 SERRA', origem: 'BUSCA: "PESSOA SEM CAPACETE"', cls: 1, grad: 2, box: [34, 56, 15, 50] },
+        { id: 4, cam: 'CAM-05 DOCA NORTE', origem: 'BUSCA: "COLETE REFLETIVO"', cls: 1, grad: 3, box: [22, 34, 20, 60] },
+      ], propIdx: 0, motivo: null,
+      split: 'camera', iaRun: null, prod: 'v11', extraAnot: 0,
+    };
+  }
+  componentDidMount() {
+    this._kd = (e) => {
+      const s = this.state, k = e.key;
+      if (s.ajuda) { if (k === 'Escape' || k === '?') this.setState({ ajuda: false }); return; }
+      if (k === '?') { e.preventDefault(); this.setState({ ajuda: true }); return; }
+      if (s.anotador) {
+        if ((e.ctrlKey || e.metaKey) && (k === 'z' || k === 'Z')) { e.preventDefault(); this._undoBox(); return; }
+        if (k === 'Escape') { if (s.drawing) { this._d0 = null; this.setState({ drawing: null }); } else if (s.diretrizes) this.setState({ diretrizes: false }); else this.setState({ anotador: false }); return; }
+        const kl = k.toLowerCase();
+        if (kl === 'd' || k === 'ArrowRight') { e.preventDefault(); this._avancar(false); }
+        else if (kl === 'a' || k === 'ArrowLeft') this._voltar();
+        else if (k >= '1' && k <= '9') this._setCls(parseInt(k, 10) - 1);
+        else if (kl === 'c') this._copiarAnterior();
+        else if (kl === 'f') this._avancar(true);
+        else if (kl === 'h') this.setState(p => ({ hideBoxes: !p.hideBoxes }));
+        else if (kl === 'b') this.setState(p => ({ brilhoOn: !p.brilhoOn }));
+        else if (kl === 'g') this.setState(p => ({ diretrizes: !p.diretrizes }));
+        else if (k === '+' || k === '=') this.setState(p => ({ zoom: Math.min(2.2, p.zoom + 0.2) }));
+        else if (k === '-') this.setState(p => ({ zoom: Math.max(0.6, p.zoom - 0.2) }));
+        else if (k === 'Delete' || k === 'Backspace') { e.preventDefault(); this._apagarBox(); }
+        return;
+      }
+      if (s.aba === 'ia' && s.propIdx < s.propostas.length) {
+        if (k === 'Enter') this._decidirProp(true);
+        else if (k === 'Backspace') { e.preventDefault(); this._decidirProp(false); }
+      }
+    };
+    window.addEventListener('keydown', this._kd);
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this._kd); clearTimeout(this._ut); clearInterval(this._ia); }
+  _st(f) { return this.state.stOver[f.id] || f.st; }
+  _filtrados() {
+    const s = this.state;
+    return this.FRAMES.filter(f => {
+      const st = this._st(f);
+      if (s.fModeloErra && this.ERRA.indexOf(f.id) < 0) return false;
+      if (st === 'excluido' && s.fStatus !== 'excluido') return false;
+      if (s.fCam !== 'todas' && f.cam !== parseInt(s.fCam, 10)) return false;
+      if (s.fStatus === 'nao' && st !== 'nao') return false;
+      if (s.fStatus === 'anotado' && st !== 'humana' && st !== 'aprovada') return false;
+      if (s.fStatus === 'proposta' && st !== 'proposta') return false;
+      if (s.fStatus === 'duvida' && st !== 'duvida') return false;
+      if (s.fStatus === 'excluido' && st !== 'excluido') return false;
+      if (s.fSessao !== 'todas' && f.sessao !== s.fSessao) return false;
+      if (s.fTipo !== 'todos' && f.tipo !== s.fTipo) return false;
+      if (s.fClasse !== 'todas') {
+        const bx = s.boxes[f.id] || [];
+        const tem = (ci) => bx.some(b => b.cls === ci);
+        if (s.fClasse === 'capacete' && !tem(0)) return false;
+        if (s.fClasse === 'colete' && !tem(1)) return false;
+        if (s.fClasse === 'sem' && bx.length > 0) return false;
+      }
+      return true;
+    });
+  }
+  _abrir(id) {
+    const fl = this._filtrados().filter(f => this._st(f) !== 'excluido').map(f => f.id);
+    const i = fl.indexOf(id);
+    this.setState({ anotador: true, fila: fl.slice(i < 0 ? 0 : i), filaIdx: 0, selBox: null, zoom: 1, hideBoxes: false });
+  }
+  _frameAtual() { return this.FRAMES.find(f => f.id === this.state.fila[this.state.filaIdx]); }
+  _mut(fn) {
+    const s = this.state, id = s.fila[s.filaIdx];
+    this._hist = this._hist || [];
+    this._hist.push({ id, bx: JSON.parse(JSON.stringify(s.boxes[id] || [])) });
+    const bx = (s.boxes[id] || []).slice(); fn(bx);
+    this.setState(p => ({ boxes: { ...p.boxes, [id]: bx }, salvo: 'SALVO · AGORA' }));
+  }
+  _undoBox() { const h = (this._hist || []).pop(); if (h) this.setState(p => ({ boxes: { ...p.boxes, [h.id]: h.bx }, selBox: null, salvo: 'SALVO · AGORA' })); }
+  _setCls(i) {
+    const s = this.state;
+    if (i >= s.classes.filter(c => !c.arq).length) return;
+    if (s.selBox != null) this._mut(bx => { if (bx[s.selBox]) bx[s.selBox].cls = i; });
+    this.setState({ cls: i });
+  }
+  _copiarAnterior() {
+    const s = this.state; if (s.filaIdx === 0) return;
+    const prev = s.fila[s.filaIdx - 1], src = s.boxes[prev] || [];
+    if (!src.length) return;
+    this._mut(bx => { src.forEach(b => bx.push(JSON.parse(JSON.stringify(b)))); });
+  }
+  _apagarBox() { const s = this.state; if (s.selBox == null) return; this._mut(bx => bx.splice(s.selBox, 1)); this.setState({ selBox: null }); }
+  _avancar(duvida) {
+    const s = this.state, id = s.fila[s.filaIdx];
+    const tem = (s.boxes[id] || []).length > 0;
+    const over = { ...s.stOver };
+    if (duvida) over[id] = 'duvida';
+    else if (tem) { if (over[id] !== 'humana' && this._st(this.FRAMES.find(f => f.id === id)) !== 'humana') this.setState(p => ({ extraAnot: p.extraAnot + 1 })); over[id] = 'humana'; }
+    if (s.filaIdx + 1 >= s.fila.length) this.setState({ stOver: over, anotador: false });
+    else this.setState({ stOver: over, filaIdx: s.filaIdx + 1, selBox: null, zoom: 1 });
+  }
+  _voltar() { const s = this.state; if (s.filaIdx > 0) this.setState({ filaIdx: s.filaIdx - 1, selBox: null, zoom: 1 }); }
+  _pct(e) { const r = e.currentTarget.getBoundingClientRect(); return { x: Math.max(0, Math.min(100, (e.clientX - r.left) / r.width * 100)), y: Math.max(0, Math.min(100, (e.clientY - r.top) / r.height * 100)) }; }
+  _decidirProp(ok) {
+    const s = this.state; if (s.propIdx >= s.propostas.length) return;
+    this.setState(p => ({ propIdx: p.propIdx + 1, motivo: null, extraAnot: ok ? p.extraAnot + 1 : p.extraAnot }));
+  }
+  _rodarIA(total, label) {
+    clearInterval(this._ia);
+    this.setState({ iaRun: { done: 0, total, label } });
+    this._ia = setInterval(() => {
+      const r = this.state.iaRun; if (!r) return;
+      if (r.done + 5 >= r.total) { clearInterval(this._ia); this.setState({ iaRun: null, propostas: this.state.propostas.slice(), propIdx: Math.min(this.state.propIdx, 0) }); }
+      else this.setState({ iaRun: { ...r, done: r.done + 5 } });
+    }, 600);
+  }
+  renderVals() {
+    const s = this.state;
+    const chip = (t, k, go, on) => ({ t, go, bg: on ? 'rgba(0,229,255,.09)' : 'transparent', cor: on ? '#00E5FF' : '#8A8F98', borda: on ? 'rgba(0,229,255,.4)' : '#23242F' });
+    const ativas = s.classes.filter(c => !c.arq);
+    const camN = (n) => 'CAM-0' + n + ' ' + s.camNames[n];
+    const filt = this._filtrados();
+    const statusLabels = { todos: 'todos', nao: 'não anotados', anotado: 'anotados', proposta: 'propostas', duvida: 'em dúvida', excluido: 'excluídos' };
+    const selos = {
+      nao: ['— NÃO ANOTADO', '#8A8F98', '#23242F', 'solid'],
+      humana: ['● HUMANA', '#3ECF8E', 'rgba(62,207,142,.5)', 'solid'],
+      aprovada: ['✓ APROVADA', '#3ECF8E', 'rgba(62,207,142,.5)', 'solid'],
+      proposta: ['◌ PROPOSTA · NÃO CONFERIDA', '#E8A13C', '#E8A13C', 'dashed'],
+      rejeitada: ['✕ REJEITADA', '#8A8F98', '#23242F', 'solid'],
+      duvida: ['? EM DÚVIDA', '#E8A13C', 'rgba(232,161,60,.5)', 'solid'],
+      excluido: ['✕ EXCLUÍDO', '#E5484D', 'rgba(229,72,77,.5)', 'solid'],
+    };
+    const fAtual = s.anotador ? this._frameAtual() : null;
+    const anBx = fAtual ? (s.boxes[fAtual.id] || []) : [];
+    const prop = s.propostas[s.propIdx];
+    const rara = s.classes.reduce((a, b) => (b.n < a.n && !b.arq ? b : a), s.classes[0]);
+    const maxN = Math.max(...s.classes.map(c => c.n));
+    return {
+      crumb2: this.NAV.find(n => n.key === s.aba).nome,
+      navItens: this.NAV.map(it => ({
+        nome: it.nome, d: it.d,
+        cor: s.aba === it.key ? '#00E5FF' : '#8A8F98', bg: s.aba === it.key ? 'rgba(0,229,255,.06)' : 'transparent',
+        borda: s.aba === it.key ? '#00E5FF' : 'transparent', peso: s.aba === it.key ? '600' : '500',
+        go: () => this.setState({ aba: it.key, view: 'carregado' }),
+      })),
+      anotadosN: 37 + s.extraAnot, progW: Math.round((37 + s.extraAnot) / 500 * 100) + '%',
+      showDados: s.aba === 'dados' && s.view === 'carregado', showClasses: s.aba === 'classes' && s.view === 'carregado',
+      showIA: s.aba === 'ia' && s.view === 'carregado', showDataset: s.aba === 'dataset' && s.view === 'carregado',
+      showTreinos: s.aba === 'treinos' && s.view === 'carregado', showModelos: s.aba === 'modelos' && s.view === 'carregado',
+      loadingView: s.view === 'loading', skels: Array.from({ length: 12 }, () => ({})),
+      chips: [chip('CARREGADO', 0, () => this.setState({ view: 'carregado', erroSalvar: false }), s.view === 'carregado' && !s.erroSalvar),
+        chip('LOADING', 0, () => this.setState({ view: 'loading' }), s.view === 'loading'),
+        chip('ERRO AO SALVAR', 0, () => this.setState(p => ({ erroSalvar: !p.erroSalvar, view: 'carregado' })), s.erroSalvar)],
+      fCam: s.fCam, setFCam: (e) => this.setState({ fCam: e.target.value, renameOn: false }),
+      camOpts: [1, 2, 3, 4, 5, 6, 7, 8].map(n => ({ v: String(n), t: camN(n) })),
+      podeRenomear: s.fCam !== 'todas' && !s.renameOn,
+      renameOn: s.renameOn, renameVal: s.renameVal,
+      abrirRename: () => this.setState({ renameOn: true, renameVal: s.camNames[parseInt(s.fCam, 10)] }),
+      setRenameVal: (e) => this.setState({ renameVal: e.target.value }),
+      salvarRename: () => this.setState(p => ({ renameOn: false, camNames: { ...p.camNames, [parseInt(p.fCam, 10)]: p.renameVal || p.camNames[parseInt(p.fCam, 10)] } })),
+      fStatus: s.fStatus, setFStatus: (e) => this.setState({ fStatus: e.target.value }),
+      fClasse: s.fClasse, setFClasse: (e) => this.setState({ fClasse: e.target.value }),
+      fSessao: s.fSessao, setFSessao: (e) => this.setState({ fSessao: e.target.value }),
+      fTipo: s.fTipo, setFTipo: (e) => this.setState({ fTipo: e.target.value }),
+      fModeloErra: s.fModeloErra, limparErra: () => this.setState({ fModeloErra: false }),
+      limparFiltros: () => this.setState({ fCam: 'todas', fStatus: 'todos', fClasse: 'todas', fSessao: 'todas', fTipo: 'todos', fModeloErra: false }),
+      contagem: filt.length + ' FRAMES · ' + (s.fCam === 'todas' ? 'TODAS' : camN(parseInt(s.fCam, 10)).toUpperCase()) + ' · ' + statusLabels[s.fStatus].toUpperCase(),
+      selTodos: () => this.setState(p => ({ sel: p.sel.length === filt.length ? [] : filt.map(f => f.id) })),
+      selTodosTxt: s.sel.length === filt.length && filt.length > 0 ? 'Limpar seleção' : 'Selecionar visíveis',
+      vazioDados: filt.length === 0,
+      cards: filt.map((f, idx) => {
+        const st = this._st(f), selado = s.sel.indexOf(f.id) >= 0, sl = selos[st];
+        const bx = s.boxes[f.id] || [];
+        return {
+          fundo: this.GRADS[f.grad], quebrada: !!f.quebrada, video: f.tipo === 'vid',
+          camNome: camN(f.cam), meta: (f.sessao === 'enc' ? 'ENC 15/07' : 'OP 22/07') + ' · ' + f.hora,
+          nCaixas: bx.length + ' cx', selo: sl[0], seloCor: sl[1], seloBorda: sl[2], seloTraço: sl[3],
+          borda: selado ? 'rgba(0,229,255,.6)' : '#23242F',
+          ckBg: selado ? '#00E5FF' : 'rgba(10,10,15,.7)', ckBorda: selado ? '#00E5FF' : '#3A3D4A', ckMark: selado ? '✓' : '',
+          thumbBoxes: bx.slice(0, 3).map(b => ({ t: b.t + '%', l: b.l + '%', w: b.w + '%', h: b.h + '%', cor: ativas[b.cls] ? ativas[b.cls].cor : '#8A8F98', traço: st === 'proposta' ? 'dashed' : 'solid' })),
+          podeRestaurar: st === 'excluido',
+          restaurar: () => this.setState(p => { const o = { ...p.stOver }; o[f.id] = 'nao'; return { stOver: o }; }),
+          toggleSel: (e) => {
+            e.stopPropagation();
+            this.setState(p => {
+              let sel = p.sel.slice();
+              if (e.shiftKey && p.lastIdx != null) {
+                const [a, b] = [Math.min(p.lastIdx, idx), Math.max(p.lastIdx, idx)];
+                filt.slice(a, b + 1).forEach(x => { if (sel.indexOf(x.id) < 0) sel.push(x.id); });
+              } else sel = selado ? sel.filter(i => i !== f.id) : [...sel, f.id];
+              return { sel, lastIdx: idx };
+            });
+          },
+          abrir: () => this._abrir(f.id),
+        };
+      }),
+      temSel: s.sel.length > 0, nSel: s.sel.length,
+      limparSel: () => this.setState({ sel: [] }),
+      anotarSeq: () => this.setState({ anotador: true, fila: s.sel.slice(), filaIdx: 0, sel: [], selBox: null, zoom: 1 }),
+      rodarAuto: () => { this._rodarIA(s.sel.length * 2, 'ANOTAÇÃO AUTOMÁTICA'); this.setState({ sel: [] }); },
+      marcarDuvida: () => this.setState(p => { const o = { ...p.stOver }; p.sel.forEach(id => o[id] = 'duvida'); return { stOver: o, sel: [] }; }),
+      excluirSel: () => {
+        const ids = s.sel.slice();
+        this.setState(p => { const o = { ...p.stOver }; ids.forEach(id => o[id] = 'excluido'); return { stOver: o, sel: [], undo: ids }; });
+        clearTimeout(this._ut); this._ut = setTimeout(() => this.setState({ undo: null }), 6000);
+      },
+      undoOn: !!s.undo, undoTxt: s.undo ? s.undo.length + ' excluídos da coleta — continuam recuperáveis no filtro "excluídos"' : '',
+      desfazer: () => this.setState(p => { const o = { ...p.stOver }; (p.undo || []).forEach(id => delete o[id]); return { stOver: o, undo: null }; }),
+      desbalanceado: rara.n < 50, desbTxt: rara.nome.toLowerCase() + ' tem ' + rara.n + ' caixas contra ' + maxN + ' de ' + s.classes[0].nome.toLowerCase() + '.',
+      classeRara: rara.nome.toLowerCase(), filtrarRara: () => this.setState({ aba: 'dados', fStatus: 'nao', fClasse: 'sem' }),
+      totalCaixas: s.classes.reduce((a, c) => a + c.n, 0),
+      novaClasse: () => this.setState(p => ({ classes: [...p.classes, { id: 'nova' + p.classes.length, nome: 'Nova classe', cor: '#7CE38B', n: 0, arq: false }] })),
+      classesRows: s.classes.map((c, i) => {
+        const tecla = ativas.indexOf(c) + 1;
+        return {
+          tecla: c.arq ? '—' : String(tecla), cor: c.cor, nome: c.nome, n: c.n, w: Math.round(c.n / maxN * 100) + '%',
+          nCor: c.n < 50 ? '#E8A13C' : '#F4F6F8', op: c.arq ? '.45' : '1',
+          normal: s.editCls !== i, editando: s.editCls === i, nomeEdit: s.editVal,
+          editar: () => this.setState({ editCls: i, editVal: c.nome }),
+          setNome: (e) => this.setState({ editVal: e.target.value }),
+          salvarNome: () => this.setState(p => { const cl = p.classes.slice(); cl[i] = { ...cl[i], nome: p.editVal || cl[i].nome }; return { classes: cl, editCls: null }; }),
+          subir: () => this.setState(p => { if (i === 0) return {}; const cl = p.classes.slice(); [cl[i - 1], cl[i]] = [cl[i], cl[i - 1]]; return { classes: cl }; }),
+          descer: () => this.setState(p => { if (i === p.classes.length - 1) return {}; const cl = p.classes.slice(); [cl[i + 1], cl[i]] = [cl[i], cl[i + 1]]; return { classes: cl }; }),
+          arquivar: () => this.setState(p => { const cl = p.classes.slice(); cl[i] = { ...cl[i], arq: !cl[i].arq }; return { classes: cl }; }),
+          arqTxt: c.arq ? 'Desarquivar' : (c.n > 0 ? 'Arquivar (' + c.n + ' caixas ficam)' : 'Arquivar'), arqCor: c.arq ? '#3ECF8E' : '#8A8F98',
+        };
+      }),
+      qtds: [10, 25, 50, 100].map(q => ({ t: String(q), go: () => this.setState({ qtd: q }), bg: s.qtd === q ? 'rgba(0,229,255,.08)' : 'transparent', cor: s.qtd === q ? '#00E5FF' : '#8A8F98', borda: s.qtd === q ? 'rgba(0,229,255,.4)' : '#23242F' })),
+      qtdSel: s.qtd,
+      rodarParecidas: () => this._rodarIA(s.qtd, 'BUSCANDO PARECIDAS'),
+      iaTexto: s.iaTexto, setIaTexto: (e) => this.setState({ iaTexto: e.target.value }),
+      exemplos: ['pessoa sem capacete', 'trabalhador com colete refletivo', 'duas pessoas perto da serra'].map(t => ({ t: '"' + t + '"', go: () => this.setState({ iaTexto: t }) })),
+      rodarBusca: () => this._rodarIA(30, 'BUSCA: ' + (s.iaTexto || '…').toUpperCase().slice(0, 24)),
+      iaRodando: !!s.iaRun, iaTxt: s.iaRun ? s.iaRun.label + ' · ' + s.iaRun.done + '/' + s.iaRun.total : '',
+      propRestam: Math.max(0, s.propostas.length - s.propIdx),
+      temProp: !!prop, filaZerada: !prop,
+      propFundo: prop ? this.GRADS[prop.grad] : '', propCam: prop ? prop.cam : '', propOrigem: prop ? prop.origem : '',
+      propClasse: prop ? ativas[prop.cls].nome.toUpperCase() : '', propCor: prop ? ativas[prop.cls].cor : '#E8A13C',
+      propBt: prop ? prop.box[0] + '%' : 0, propBl: prop ? prop.box[1] + '%' : 0, propBw: prop ? prop.box[2] + '%' : 0, propBh: prop ? prop.box[3] + '%' : 0,
+      aprovar: () => this._decidirProp(true), rejeitar: () => this._decidirProp(false),
+      aprovarLote: () => this.setState(p => ({ propIdx: p.propostas.length, extraAnot: p.extraAnot + (p.propostas.length - p.propIdx) })),
+      corrigir: () => { if (prop) this._abrir(1); },
+      motivos: ['caixa errada', 'classe errada', 'imagem ruim'].map(t => ({ t, go: () => { this.setState({ motivo: t }); this._decidirProp(false); }, bg: s.motivo === t ? 'rgba(229,72,77,.1)' : 'transparent', cor: '#8A8F98', borda: '#23242F' })),
+      split: s.split, splitCam: () => this.setState({ split: 'camera' }), splitAle: () => this.setState({ split: 'aleatoria' }),
+      scBg: s.split === 'camera' ? '#14141C' : 'transparent', scCor: s.split === 'camera' ? '#00E5FF' : '#8A8F98',
+      saBg: s.split === 'aleatoria' ? '#14141C' : 'transparent', saCor: s.split === 'aleatoria' ? '#E5484D' : '#8A8F98',
+      splitAviso: s.split === 'aleatoria', splitOk: s.split === 'camera',
+      splitBorda: s.split === 'aleatoria' ? 'rgba(229,72,77,.5)' : '#23242F',
+      distClasses: s.classes.map(c => ({ nome: c.nome, n: c.n, w: Math.round(c.n / maxN * 100) + '%', cor: c.cor, nCor: c.n < 50 ? '#E8A13C' : '#F4F6F8' })),
+      modelos: [
+        { versao: 'v12-rc1', ds: 'v2', data: '04/08', map: '91%', st: s.prod === 'v12-rc1' ? 'EM PRODUÇÃO' : 'CANDIDATO' },
+        { versao: 'v11', ds: 'v2', data: '28/07', map: '87%', st: s.prod === 'v11' ? 'EM PRODUÇÃO' : 'ANTERIOR' },
+        { versao: 'v10', ds: 'v1', data: '14/07', map: '83%', st: s.prod === 'v10' ? 'EM PRODUÇÃO' : 'ARQUIVADO' },
+      ].map(m => ({
+        ...m,
+        stCor: m.st === 'EM PRODUÇÃO' ? '#3ECF8E' : m.st === 'CANDIDATO' ? '#00E5FF' : '#8A8F98',
+        stBorda: m.st === 'EM PRODUÇÃO' ? 'rgba(62,207,142,.4)' : m.st === 'CANDIDATO' ? 'rgba(0,229,255,.4)' : '#23242F',
+        borda: m.st === 'EM PRODUÇÃO' ? 'rgba(62,207,142,.4)' : '#23242F',
+        podePromover: m.st === 'CANDIDATO', podeVoltar: m.st === 'ANTERIOR' || m.st === 'ARQUIVADO',
+        promover: () => this.setState({ prod: m.versao }), voltar: () => this.setState({ prod: m.versao }),
+      })),
+      emProducao: 'MODELO ' + s.prod.toUpperCase() + ' (PRODUÇÃO)',
+      porClasse: [['Capacete', 94, '#FFD24D'], ['Colete', 90, '#FF8A5C'], ['Óculos', 84, '#5CC8FF'], ['Luva', 58, '#C7A6FF']].map(([nome, v, cor]) => ({ nome, cor, v: v + '%', w: v + '%', barCor: v < 70 ? '#E5484D' : '#3ECF8E', vCor: v < 70 ? '#E5484D' : '#F4F6F8' })),
+      porCam: [1, 2, 3, 4, 5, 6, 7, 8].map(n => { const v = [92, 90, 88, 91, 86, 89, 61, 84][n - 1]; return { nome: camN(n), v: v + '%', w: v + '%', barCor: v < 70 ? '#E5484D' : '#3ECF8E', vCor: v < 70 ? '#E5484D' : '#F4F6F8' }; }),
+      irErra: () => this.setState({ aba: 'dados', fModeloErra: true, fStatus: 'todos', fCam: 'todas' }),
+      anotadorOn: s.anotador, fecharAnotador: () => this.setState({ anotador: false }),
+      anCam: fAtual ? camN(fAtual.cam).toUpperCase() : '', anMeta: fAtual ? (fAtual.sessao === 'enc' ? 'ENCENAÇÃO 15/07' : 'OPERAÇÃO 22/07') + ' · ' + fAtual.hora : '',
+      anFaltam: Math.max(0, s.fila.length - s.filaIdx - 1) + ' NA FILA',
+      anFundo: fAtual ? this.GRADS[fAtual.grad] : '#0A0A0F',
+      anFiltro: 'brightness(' + s.brilho / 100 + ') contrast(' + s.contraste / 100 + ')',
+      salvoTxt: s.erroSalvar ? '✕ NÃO SALVO — RETIDO LOCAL' : '● ' + s.salvo, salvoCor: s.erroSalvar ? '#E5484D' : '#3ECF8E',
+      erroSalvar: s.erroSalvar, tentarSalvar: () => this.setState({ erroSalvar: false, salvo: 'SALVO · AGORA' }),
+      boxesVisiveis: !s.hideBoxes,
+      anBoxes: anBx.map((b, i) => ({
+        t: b.t + '%', l: b.l + '%', w: b.w + '%', h: b.h + '%',
+        cor: ativas[b.cls] ? ativas[b.cls].cor : '#8A8F98',
+        label: (ativas[b.cls] ? ativas[b.cls].nome : '?') + (b.attrs.length ? ' · ' + b.attrs.join('·') : ''),
+        ativa: s.selBox === i, bw2: s.selBox === i ? '2.5px' : '2px',
+        glow: s.selBox === i ? '0 0 0 1px rgba(244,246,248,.35)' : 'none',
+        sel: (e) => { e.stopPropagation(); this.setState({ selBox: i, cls: b.cls }); },
+      })),
+      desenhando: !!s.drawing,
+      dT: s.drawing ? s.drawing.t + '%' : 0, dL: s.drawing ? s.drawing.l + '%' : 0, dW: s.drawing ? s.drawing.w + '%' : 0, dH: s.drawing ? s.drawing.h + '%' : 0,
+      startDraw: (e) => { const p = this._pct(e); this._d0 = p; this.setState({ drawing: { t: p.y, l: p.x, w: 0, h: 0 }, selBox: null }); },
+      moveDraw: (e) => { if (!this._d0) return; const p = this._pct(e); this.setState({ drawing: { t: Math.min(p.y, this._d0.y), l: Math.min(p.x, this._d0.x), w: Math.abs(p.x - this._d0.x), h: Math.abs(p.y - this._d0.y) } }); },
+      endDraw: () => { const d = this.state.drawing; this._d0 = null; if (d && d.w > 2 && d.h > 2) this._mut(bx => bx.push({ t: d.t, l: d.l, w: d.w, h: d.h, cls: this.state.cls, attrs: [] })); this.setState({ drawing: null }); },
+      zoom: s.zoom, nClasses: ativas.length,
+      brilhoOn: s.brilhoOn, brilhoVal: s.brilho, contrasteVal: s.contraste,
+      setBrilho: (e) => this.setState({ brilho: parseInt(e.target.value, 10) }),
+      setContraste: (e) => this.setState({ contraste: parseInt(e.target.value, 10) }),
+      classesAnot: ativas.map((c, i) => ({
+        tecla: String(i + 1), cor: c.cor, nome: c.nome,
+        nFrame: anBx.filter(b => b.cls === i).length + ' aqui',
+        bg: s.cls === i ? 'rgba(0,229,255,.06)' : 'transparent', borda: s.cls === i ? 'rgba(0,229,255,.5)' : '#23242F',
+        go: () => this._setCls(i),
+      })),
+      classeNoAnotador: () => this.setState(p => ({ classes: [...p.classes, { id: 'nova' + p.classes.length, nome: 'Nova classe', cor: '#7CE38B', n: 0, arq: false }] })),
+      temBoxSel: s.selBox != null,
+      atributos: ['ocluído', 'truncado', 'difícil'].map(t => {
+        const on = s.selBox != null && anBx[s.selBox] && anBx[s.selBox].attrs.indexOf(t) >= 0;
+        return { t, bg: on ? 'rgba(0,229,255,.08)' : 'transparent', cor: on ? '#00E5FF' : '#8A8F98', borda: on ? 'rgba(0,229,255,.4)' : '#23242F',
+          go: () => { const i = s.selBox; this._mut(bx => { if (!bx[i]) return; const a = bx[i].attrs; const j = a.indexOf(t); j >= 0 ? a.splice(j, 1) : a.push(t); }); } };
+      }),
+      apagarBox: () => this._apagarBox(),
+      filaThumbs: s.fila.slice(s.filaIdx, s.filaIdx + 5).map((id, i) => {
+        const f = this.FRAMES.find(x => x.id === id);
+        return { fundo: this.GRADS[f.grad], label: i === 0 ? '▶ ATUAL' : '+' + i, cor: i === 0 ? '#00E5FF' : '#8A8F98', borda: i === 0 ? 'rgba(0,229,255,.5)' : '#23242F' };
+      }),
+      anProxima: () => this._avancar(false), anAnterior: () => this._voltar(), anDuvida: () => this._avancar(true),
+      diretrizesOn: s.diretrizes, abrirDiretrizes: () => this.setState(p => ({ diretrizes: !p.diretrizes })),
+      dirBorda: s.diretrizes ? 'rgba(0,229,255,.5)' : '#23242F', dirCor: s.diretrizes ? '#00E5FF' : '#F4F6F8',
+      bordas: [
+        { caso: 'Pessoa cortada na borda', regra: 'marque o que aparece + atributo "truncado"', et: '20%', el: '72%', ew: '28%', eh: '64%', ecor: '#FFD24D', traço: 'solid' },
+        { caso: 'Longe demais para julgar', regra: 'não marque — tecla F, em dúvida', et: '30%', el: '44%', ew: '8%', eh: '16%', ecor: '#8A8F98', traço: 'dashed' },
+        { caso: 'EPI ocluído', regra: 'marque + atributo "ocluído"', et: '24%', el: '30%', ew: '22%', eh: '52%', ecor: '#FF8A5C', traço: 'solid' },
+        { caso: 'Várias pessoas', regra: 'uma caixa por pessoa, sem agrupar', et: '26%', el: '12%', ew: '18%', eh: '56%', ecor: '#FFD24D', traço: 'solid' },
+        { caso: 'Reflexo em vidro/monitor', regra: 'nunca marque reflexo', et: '18%', el: '52%', ew: '20%', eh: '40%', ecor: '#E5484D', traço: 'dashed' },
+      ],
+      ajudaOn: s.ajuda, abrirAjuda: () => this.setState({ ajuda: true }), fecharAjuda: () => this.setState({ ajuda: false }),
+      stop: (e) => e.stopPropagation(),
+      mapa: [
+        ['D / →', 'próxima imagem (salva sozinho)'], ['A / ←', 'anterior'], ['1–' + ativas.length, 'escolher classe'], ['C', 'copiar caixas do frame anterior ★'],
+        ['Del', 'apagar caixa selecionada'], ['Ctrl+Z / +Shift', 'desfazer / refazer'], ['Esc', 'cancelar desenho · fechar'], ['F', 'em dúvida e avançar'],
+        ['H', 'esconder/mostrar caixas'], ['B', 'brilho e contraste'], ['+ / −', 'zoom'], ['G', 'diretrizes de anotação'],
+        ['↵ / ⌫', 'aprovar / rejeitar proposta'], ['Shift+clique', 'selecionar intervalo na galeria'], ['Ctrl/Cmd+clique', 'seleção avulsa'], ['?', 'este mapa'],
+      ].map(([k, a]) => ({ k, a, cor: k === 'C' ? '#00E5FF' : '#F4F6F8' })),
+    };
+  }
+}
+</script>
+</body>
+</html>

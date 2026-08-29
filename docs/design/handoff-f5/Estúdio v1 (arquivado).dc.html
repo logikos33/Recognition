@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:#23242F;border-radius:5px}</style>
+</helmet>
+<div style="width:100%;height:100vh;display:flex;flex-direction:column;background:#0A0A0F" data-screen-label="Estúdio">
+  <dc-import name="EPI Topbar" modulo="Estúdio" crumb2="{{ crumb2 }}" style="flex:none" hint-size="100%,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <sc-if value="{{ comAcesso }}" hint-placeholder-val="{{ true }}">
+      <aside style="width:236px;flex:none;box-sizing:border-box;display:flex;flex-direction:column;background:#14141C;border-right:1px solid #23242F;padding:14px 0">
+        <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.22em;color:#8A8F98;padding:0 20px 4px">ESTÚDIO</span>
+        <span style="font-family:'JetBrains Mono';font-size:9px;letter-spacing:.14em;color:#8A8F98;padding:0 20px 10px;opacity:.7">PERSONA TÉCNICA · GATE</span>
+        <nav style="display:flex;flex-direction:column;gap:2px;padding:0 8px">
+          <sc-for list="{{ itens }}" as="it" hint-placeholder-count="4">
+            <a onClick="{{ it.go }}" style="display:flex;align-items:center;gap:11px;height:38px;padding:0 12px;border-radius:8px;border-left:2px solid {{ it.borda }};color:{{ it.cor }};background:{{ it.bg }};font-size:13.5px;font-weight:{{ it.peso }};cursor:pointer;white-space:nowrap;overflow:hidden" style-hover="background:#0A0A0F">
+              <svg viewBox="0 0 24 24" style="width:18px;height:18px;flex:none" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="square"><path d="{{ it.d }}"></path></svg>
+              <span>{{ it.nome }}</span>
+            </a>
+          </sc-for>
+        </nav>
+        <div style="flex:1"></div>
+        <div style="display:flex;flex-direction:column;gap:2px;padding:10px 8px 0;border-top:1px solid #23242F">
+          <a href="Shell Logikos Vision.dc.html" style="display:flex;align-items:center;gap:11px;height:36px;padding:0 12px;border-radius:8px;color:#8A8F98;font-size:13px" style-hover="background:#0A0A0F;color:#F4F6F8">
+            <svg viewBox="0 0 24 24" style="width:18px;height:18px;flex:none" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="square"><path d="M8 3L4 7l4 4M4 7h16M16 21l4-4-4-4M20 17H4"></path></svg>
+            <span>Trocar módulo</span>
+          </a>
+        </div>
+      </aside>
+    </sc-if>
+    <main style="flex:1;min-width:0;overflow:auto;position:relative">
+      <sc-if value="{{ semAcesso }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:40px;height:40px" fill="none" stroke="#E8A13C" stroke-width="1.5" stroke-linecap="square"><path d="M6 11V8a6 6 0 0 1 12 0v3M4 11h16v10H4zM12 15v3"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:22px">Acesso restrito ao Estúdio</span>
+          <span style="font-size:13.5px;color:#8A8F98;max-width:420px;line-height:1.6">O Estúdio é a área técnica de dados, anotação e treinamento. Requer a permissão <span style="font-family:'JetBrains Mono';font-size:12px;color:#F4F6F8">estudio:acesso</span>, concedida pelo admin do tenant.</span>
+          <button style="height:44px;padding:0 20px;border:none;border-radius:9px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:14px;font-weight:700;cursor:pointer">Solicitar acesso ao admin</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{ carregadoOk }}" hint-placeholder-val="{{ true }}">
+
+        <sc-if value="{{ showDados }}" hint-placeholder-val="{{ true }}">
+          <div style="max-width:1280px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Dados</h1>
+              <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">4.218 IMAGENS · 312 VÍDEOS</span>
+              <div style="flex:1"></div>
+              <select style="height:36px;background:#14141C;border:1px solid #23242F;border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 10px"><option>Todas as câmeras</option><option>CAM-01</option><option>CAM-04</option><option>CAM-07</option></select>
+              <div style="display:flex;background:#14141C;border-radius:8px;padding:3px;gap:2px">
+                <sc-for list="{{ tipoFiltros }}" as="f" hint-placeholder-count="3">
+                  <button onClick="{{ f.go }}" style="height:32px;padding:0 14px;border:none;border-radius:6px;background:{{ f.bg }};color:{{ f.cor }};font-size:13px;font-weight:600;cursor:pointer">{{ f.t }}</button>
+                </sc-for>
+              </div>
+              <button style="height:38px;padding:0 16px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Enviar arquivos</button>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:center;gap:10px;padding:18px;border:1px dashed #3A3D4A;border-radius:10px;color:#8A8F98;font-size:13px">
+              <svg viewBox="0 0 24 24" style="width:18px;height:18px" fill="none" stroke="#8A8F98" stroke-width="1.7" stroke-linecap="square"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"></path></svg>
+              Arraste imagens ou vídeos aqui — eles entram no dataset do tenant, nunca de outros clientes.
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px">
+              <sc-for list="{{ galeria }}" as="g" hint-placeholder-count="12">
+                <div style="position:relative;aspect-ratio:16/11;border-radius:7px;overflow:hidden;border:1px solid #23242F;background:{{ g.fundo }};cursor:pointer" style-hover="border-color:rgba(0,229,255,.5)">
+                  <span style="position:absolute;bottom:5px;left:6px;font-family:'JetBrains Mono';font-size:8.5px;color:#8A8F98">{{ g.label }}</span>
+                  <sc-if value="{{ g.video }}" hint-placeholder-val="{{ false }}">
+                    <span style="position:absolute;top:5px;right:6px;background:rgba(10,10,15,.8);border-radius:4px;padding:2px 6px;font-family:'JetBrains Mono';font-size:8.5px;color:#F4F6F8">▶ {{ g.dur }}</span>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ showAnotacao }}" hint-placeholder-val="{{ false }}">
+          <div style="max-width:1080px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;align-items:center;gap:14px">
+              <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Anotação</h1>
+              <span style="font-family:'JetBrains Mono';font-size:12px;color:#E8A13C;font-weight:700">14 NA FILA</span>
+              <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">· 122 ANOTADAS NA SEMANA</span>
+              <div style="flex:1"></div>
+              <button style="height:38px;padding:0 16px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Abrir anotador</button>
+            </div>
+            <span style="font-size:12.5px;color:#8A8F98">A fila recebe os casos enviados pela <a href="EPI Verificação.dc.html">Verificação do EPI</a> e amostras selecionadas dos Dados. A pré-anotação automática sugere as caixas; o anotador confirma.</span>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <sc-for list="{{ filaAnot }}" as="a" hint-placeholder-count="4">
+                <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;background:#14141C;border:1px solid #23242F;border-radius:10px">
+                  <div style="position:relative;width:72px;height:48px;flex:none;border-radius:6px;overflow:hidden;background:{{ a.fundo }};border:1px solid #23242F">
+                    <div style="position:absolute;top:24%;left:34%;width:30%;height:58%;border:1.5px dashed rgba(0,229,255,.6);border-radius:2px"></div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                    <span style="font-size:13.5px;font-weight:600">{{ a.classe }}</span>
+                    <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">{{ a.origem }}</span>
+                  </div>
+                  <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.08em;color:{{ a.stCor }};border:1px solid {{ a.stBorda }};border-radius:5px;padding:3px 8px;margin-left:auto">{{ a.status }}</span>
+                  <button style="height:34px;padding:0 14px;background:transparent;border:1px solid #23242F;border-radius:7px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer" style-hover="border-color:#00E5FF;color:#00E5FF">Anotar</button>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ showTreinos }}" hint-placeholder-val="{{ false }}">
+          <div style="max-width:1080px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;align-items:center;gap:14px">
+              <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Treinos</h1>
+              <div style="flex:1"></div>
+              <button style="height:38px;padding:0 16px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Novo treino</button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:14px;background:#14141C;border:1px solid rgba(0,229,255,.35);border-radius:14px;padding:20px">
+              <div style="display:flex;align-items:center;gap:12px">
+                <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="spinner" state="waiting" size="20" hint-size="20px,20px"></x-import>
+                <span style="font-family:'Space Grotesk';font-weight:700;font-size:18px">Treino EPI — dataset v12</span>
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.08em;color:#00E5FF;border:1px solid rgba(0,229,255,.4);border-radius:5px;padding:3px 8px">AO VIVO</span>
+                <div style="flex:1"></div>
+                <button style="height:34px;padding:0 14px;background:transparent;border:1px solid #23242F;border-radius:7px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">Pausar</button>
+                <button style="height:34px;padding:0 14px;background:transparent;border:1px solid #23242F;border-radius:7px;color:#8A8F98;font-family:'Inter';font-size:12.5px;cursor:pointer" style-hover="border-color:#E5484D;color:#E5484D">Cancelar</button>
+              </div>
+              <div style="display:flex;align-items:center;gap:14px">
+                <div style="flex:1;height:10px;background:#0A0A0F;border-radius:5px;overflow:hidden"><div style="width:64%;height:100%;background:#00E5FF"></div></div>
+                <span style="font-family:'JetBrains Mono';font-size:12.5px;color:#8A8F98">ÉPOCA <span style="color:#F4F6F8">38/60</span> · ETA <span style="color:#F4F6F8">1H 12M</span></span>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#0A0A0F;border:1px solid #23242F;border-radius:10px">
+                  <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">ERRO DE TREINO (LOSS) ↓</span>
+                  <svg viewBox="0 0 300 90" style="width:100%;height:90px">
+                    <line x1="0" y1="30" x2="300" y2="30" stroke="rgba(138,143,152,.12)" stroke-width="1"></line>
+                    <line x1="0" y1="60" x2="300" y2="60" stroke="rgba(138,143,152,.12)" stroke-width="1"></line>
+                    <polyline points="0,12 40,26 80,38 120,50 160,58 200,66 240,70 280,73 300,74" fill="none" stroke="#E8A13C" stroke-width="2"></polyline>
+                  </svg>
+                  <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">ATUAL 0.084 · MELHOR 0.081</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px;padding:14px;background:#0A0A0F;border:1px solid #23242F;border-radius:10px">
+                  <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">mAP@50 (VALIDAÇÃO) ↑</span>
+                  <svg viewBox="0 0 300 90" style="width:100%;height:90px">
+                    <line x1="0" y1="30" x2="300" y2="30" stroke="rgba(138,143,152,.12)" stroke-width="1"></line>
+                    <line x1="0" y1="60" x2="300" y2="60" stroke="rgba(138,143,152,.12)" stroke-width="1"></line>
+                    <polyline points="0,78 40,66 80,55 120,44 160,36 200,30 240,26 280,23 300,22" fill="none" stroke="#3ECF8E" stroke-width="2"></polyline>
+                  </svg>
+                  <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">ATUAL 0.89 · ALVO ≥ 0.91</span>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">HISTÓRICO</span>
+              <sc-for list="{{ historico }}" as="h" hint-placeholder-count="2">
+                <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;background:#14141C;border:1px solid #23242F;border-radius:9px">
+                  <span style="font-size:13px;font-weight:600">{{ h.nome }}</span>
+                  <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">{{ h.data }}</span>
+                  <div style="flex:1"></div>
+                  <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">mAP@50 <span style="color:#F4F6F8">{{ h.map }}</span></span>
+                  <span style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:{{ h.cor }}">{{ h.icone }} {{ h.st }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ showModelos }}" hint-placeholder-val="{{ false }}">
+          <div style="max-width:1080px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;align-items:center;gap:14px">
+              <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Modelos</h1>
+              <span style="font-size:12.5px;color:#8A8F98">Selecione 2 para comparar</span>
+            </div>
+            <div style="display:grid;grid-template-columns:40px 1.3fr 90px 110px 110px 110px 130px 110px;background:#14141C;border:1px solid #23242F;border-radius:10px;overflow:hidden">
+              <div style="padding:10px 0 10px 14px;border-bottom:1px solid #23242F"></div>
+              <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">MODELO</div>
+              <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">VERSÃO</div>
+              <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F;text-align:right">mAP@50</div>
+              <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F;text-align:right">PRECISÃO</div>
+              <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F;text-align:right">RECALL</div>
+              <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">STATUS</div>
+              <div style="padding:10px 14px;border-bottom:1px solid #23242F"></div>
+              <sc-for list="{{ modelos }}" as="m" hint-placeholder-count="3">
+                <div style="display:contents">
+                  <div style="padding:12px 0 12px 14px;border-bottom:1px solid rgba(138,143,152,.08);display:flex;align-items:center"><button onClick="{{ m.toggle }}" style="width:16px;height:16px;border-radius:4px;border:1px solid {{ m.ckBorda }};background:{{ m.ckBg }};cursor:pointer;padding:0;color:#0A0A0F;font-size:11px;font-weight:700;line-height:1">{{ m.ckMark }}</button></div>
+                  <span style="padding:12px 14px;font-size:13.5px;font-weight:600;border-bottom:1px solid rgba(138,143,152,.08)">{{ m.nome }}</span>
+                  <span style="padding:12px 14px;font-family:'JetBrains Mono';font-size:12.5px;color:#8A8F98;border-bottom:1px solid rgba(138,143,152,.08)">{{ m.versao }}</span>
+                  <span style="padding:12px 14px;font-family:'JetBrains Mono';font-size:13px;text-align:right;border-bottom:1px solid rgba(138,143,152,.08)">{{ m.map }}</span>
+                  <span style="padding:12px 14px;font-family:'JetBrains Mono';font-size:13px;text-align:right;border-bottom:1px solid rgba(138,143,152,.08)">{{ m.prec }}</span>
+                  <span style="padding:12px 14px;font-family:'JetBrains Mono';font-size:13px;text-align:right;border-bottom:1px solid rgba(138,143,152,.08)">{{ m.rec }}</span>
+                  <span style="padding:12px 14px;border-bottom:1px solid rgba(138,143,152,.08)"><span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.08em;color:{{ m.stCor }};border:1px solid {{ m.stBorda }};border-radius:5px;padding:3px 8px">{{ m.status }}</span></span>
+                  <span style="padding:12px 14px;border-bottom:1px solid rgba(138,143,152,.08);display:flex;align-items:center;justify-content:flex-end">
+                    <sc-if value="{{ m.podeAtivar }}" hint-placeholder-val="{{ false }}">
+                      <button onClick="{{ m.ativar }}" style="height:32px;padding:0 13px;background:transparent;border:1px solid #23242F;border-radius:7px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer" style-hover="border-color:#00E5FF;color:#00E5FF">Ativar</button>
+                    </sc-if>
+                  </span>
+                </div>
+              </sc-for>
+            </div>
+            <sc-if value="{{ compareOn }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:12px;background:#14141C;border:1px solid rgba(0,229,255,.35);border-radius:12px;padding:18px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">COMPARAÇÃO</span>
+                <div style="display:grid;grid-template-columns:140px 1fr 1fr;gap:8px 16px;font-size:13px">
+                  <span></span><span style="font-weight:700">{{ cmpA }}</span><span style="font-weight:700">{{ cmpB }}</span>
+                  <span style="color:#8A8F98">mAP@50</span><span style="font-family:'JetBrains Mono';color:{{ cmpMapACor }}">{{ cmpMapA }}</span><span style="font-family:'JetBrains Mono';color:{{ cmpMapBCor }}">{{ cmpMapB }}</span>
+                  <span style="color:#8A8F98">Precisão</span><span style="font-family:'JetBrains Mono'">{{ cmpPrecA }}</span><span style="font-family:'JetBrains Mono'">{{ cmpPrecB }}</span>
+                  <span style="color:#8A8F98">Recall</span><span style="font-family:'JetBrains Mono'">{{ cmpRecA }}</span><span style="font-family:'JetBrains Mono'">{{ cmpRecB }}</span>
+                </div>
+                <span style="font-size:12.5px;color:#8A8F98">Melhor mAP em verde. A ativação troca o modelo servido nas câmeras do tenant após validação em amostra.</span>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+      </sc-if>
+      <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}">
+        <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="fullscreen" state="waiting" label="CARREGANDO ESTÚDIO" size="96" style="position:absolute;inset:0" hint-size="100%,100%"></x-import>
+      </sc-if>
+      <sc-if value="{{ vazio }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#8A8F98" stroke-width="1.5" stroke-linecap="square"><path d="M4 5h16v14H4zM4 15l5-5 4 4 3-3 4 4"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Dataset vazio</span>
+          <span style="font-size:13.5px;color:#8A8F98;max-width:380px;line-height:1.55">Envie as primeiras imagens ou selecione amostras das câmeras para começar.</span>
+          <button style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Enviar arquivos</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{ erro }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#E5484D" stroke-width="1.5" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Não foi possível carregar</span>
+          <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">GET /api/estudio · TIMEOUT 10 S</span>
+          <button style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Tentar novamente</button>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+  <div style="position:fixed;left:16px;bottom:14px;display:flex;align-items:center;gap:6px;background:#14141C;border:1px solid #23242F;border-radius:10px;padding:7px 10px;z-index:130;box-shadow:0 8px 32px rgba(0,0,0,.6)">
+    <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.2em;color:#8A8F98;margin-right:4px">ESTADO</span>
+    <sc-for list="{{ chips }}" as="ch" hint-placeholder-count="5">
+      <button onClick="{{ ch.go }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid {{ ch.borda }};background:{{ ch.bg }};color:{{ ch.cor }};font-family:'JetBrains Mono';font-size:10.5px;cursor:pointer">{{ ch.t }}</button>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:940}}">
+class Component extends DCLogic {
+  ITENS = [
+    { key: 'dados', nome: 'Dados', d: 'M4 5h16v14H4zM4 15l5-5 4 4 3-3 4 4' },
+    { key: 'anotacao', nome: 'Anotação', d: 'M4 20l4-1L20 7l-3-3L5 16zM14 6l3 3' },
+    { key: 'treinos', nome: 'Treinos', d: 'M4 19V5M4 19h16M7 15c3 0 4-7 7-7 2 0 3 3 5 3' },
+    { key: 'modelos', nome: 'Modelos', d: 'M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12L4 7.5M12 12l8-4.5M12 12v9' },
+  ];
+  MODELOS = [
+    { id: 1, nome: 'EPI — capacete/colete/óculos', versao: 'v12-rc1', map: '0.91', prec: '0.94', rec: '0.88', status: 'CANDIDATO' },
+    { id: 2, nome: 'EPI — capacete/colete/óculos', versao: 'v11', map: '0.87', prec: '0.92', rec: '0.85', status: 'ATIVO' },
+    { id: 3, nome: 'EPI — capacete/colete/óculos', versao: 'v10', map: '0.83', prec: '0.90', rec: '0.81', status: 'ARQUIVADO' },
+  ];
+  state = { estado: 'carregado', aba: 'dados', acesso: true, tipo: 'tudo', cmp: [], ativo: 2 };
+  renderVals() {
+    const s = this.state;
+    const chip = (t, k, go, on) => ({ t, go, bg: on ? 'rgba(0,229,255,.09)' : 'transparent', cor: on ? '#00E5FF' : '#8A8F98', borda: on ? 'rgba(0,229,255,.4)' : '#23242F' });
+    const stChip = (t, k) => chip(t, k, () => this.setState({ estado: k }), s.estado === k);
+    const grads = ['linear-gradient(155deg,#1A1B26,#101018)', 'linear-gradient(200deg,#191822,#0F0F16)', 'linear-gradient(175deg,#181926,#0E0E15)', 'linear-gradient(140deg,#181A24,#0E0E14)'];
+    const galeria = [];
+    for (let i = 0; i < 18; i++) {
+      const video = i % 6 === 5;
+      if (s.tipo === 'img' && video) continue;
+      if (s.tipo === 'vid' && !video) continue;
+      galeria.push({ fundo: grads[i % 4], label: 'CAM-0' + ((i % 3) * 3 + 1) + ' · 0' + (3 + (i % 5)) + '/08', video, dur: '0:1' + (i % 9) });
+    }
+    const stCores = { ATIVO: ['#3ECF8E', 'rgba(62,207,142,.4)'], CANDIDATO: ['#00E5FF', 'rgba(0,229,255,.4)'], ARQUIVADO: ['#8A8F98', '#23242F'] };
+    const cmpSel = this.MODELOS.filter(m => s.cmp.includes(m.id));
+    const [a, b] = cmpSel;
+    return {
+      crumb2: this.ITENS.find(i => i.key === s.aba).nome,
+      comAcesso: s.acesso, semAcesso: !s.acesso,
+      carregadoOk: s.acesso && s.estado === 'carregado',
+      loading: s.acesso && s.estado === 'loading', vazio: s.acesso && s.estado === 'vazio', erro: s.acesso && s.estado === 'erro',
+      chips: [stChip('CARREGADO', 'carregado'), stChip('LOADING', 'loading'), stChip('VAZIO', 'vazio'), stChip('ERRO', 'erro'),
+        chip('SEM PERMISSÃO', 'gate', () => this.setState(p => ({ acesso: !p.acesso })), !s.acesso)],
+      itens: this.ITENS.map(it => ({
+        nome: it.nome, d: it.d,
+        cor: s.aba === it.key ? '#00E5FF' : '#8A8F98',
+        bg: s.aba === it.key ? 'rgba(0,229,255,.06)' : 'transparent',
+        borda: s.aba === it.key ? '#00E5FF' : 'transparent',
+        peso: s.aba === it.key ? '600' : '500',
+        go: () => this.setState({ aba: it.key, estado: 'carregado' }),
+      })),
+      showDados: s.aba === 'dados', showAnotacao: s.aba === 'anotacao', showTreinos: s.aba === 'treinos', showModelos: s.aba === 'modelos',
+      tipoFiltros: [['tudo', 'Tudo'], ['img', 'Imagens'], ['vid', 'Vídeos']].map(([k, t]) => ({ t, go: () => this.setState({ tipo: k }), bg: s.tipo === k ? '#0A0A0F' : 'transparent', cor: s.tipo === k ? '#00E5FF' : '#8A8F98' })),
+      galeria,
+      filaAnot: [
+        { classe: 'Sem capacete — enviado da Verificação', origem: 'CAM-04 EXPEDIÇÃO · HOJE 14:32', status: 'PRÉ-ANOTADO', stCor: '#00E5FF', stBorda: 'rgba(0,229,255,.4)', fundo: grads[1] },
+        { classe: 'Sem óculos — enviado da Verificação', origem: 'CAM-07 LINHA 2 · HOJE 11:52', status: 'PRÉ-ANOTADO', stCor: '#00E5FF', stBorda: 'rgba(0,229,255,.4)', fundo: grads[2] },
+        { classe: 'Amostra de dataset — capacete', origem: 'CAM-01 DOCA NORTE · 03/08', status: 'AGUARDANDO', stCor: '#E8A13C', stBorda: 'rgba(232,161,60,.4)', fundo: grads[0] },
+        { classe: 'Amostra de dataset — colete', origem: 'CAM-05 DOCA SUL · 03/08', status: 'AGUARDANDO', stCor: '#E8A13C', stBorda: 'rgba(232,161,60,.4)', fundo: grads[3] },
+      ],
+      historico: [
+        { nome: 'Treino EPI — dataset v11', data: '28/07', map: '0.87', st: 'Concluído', icone: '✓', cor: '#3ECF8E' },
+        { nome: 'Treino EPI — dataset v10', data: '14/07', map: '0.83', st: 'Concluído', icone: '✓', cor: '#3ECF8E' },
+      ],
+      modelos: this.MODELOS.map(m => {
+        const status = s.ativo === m.id ? 'ATIVO' : m.status === 'ATIVO' ? 'CANDIDATO' : m.status;
+        const sel = s.cmp.includes(m.id);
+        return {
+          nome: m.nome, versao: m.versao, map: m.map, prec: m.prec, rec: m.rec, status,
+          stCor: stCores[status][0], stBorda: stCores[status][1],
+          podeAtivar: status === 'CANDIDATO',
+          ativar: () => this.setState({ ativo: m.id }),
+          toggle: () => this.setState(p => ({ cmp: sel ? p.cmp.filter(i => i !== m.id) : [...p.cmp, m.id].slice(-2) })),
+          ckBg: sel ? '#00E5FF' : 'transparent', ckBorda: sel ? '#00E5FF' : '#3A3D4A', ckMark: sel ? '✓' : '',
+        };
+      }),
+      compareOn: cmpSel.length === 2,
+      cmpA: a ? a.versao : '', cmpB: b ? b.versao : '',
+      cmpMapA: a ? a.map : '', cmpMapB: b ? b.map : '',
+      cmpMapACor: a && b ? (parseFloat(a.map) >= parseFloat(b.map) ? '#3ECF8E' : '#F4F6F8') : '#F4F6F8',
+      cmpMapBCor: a && b ? (parseFloat(b.map) > parseFloat(a.map) ? '#3ECF8E' : '#F4F6F8') : '#F4F6F8',
+      cmpPrecA: a ? a.prec : '', cmpPrecB: b ? b.prec : '',
+      cmpRecA: a ? a.rec : '', cmpRecB: b ? b.rec : '',
+    };
+  }
+}
+</script>
+</body>
+</html>

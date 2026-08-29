@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:#23242F;border-radius:5px}</style>
+</helmet>
+<div style="width:100%;height:100vh;display:flex;flex-direction:column;background:#0A0A0F" data-screen-label="EPI Ao Vivo">
+  <dc-import name="EPI Topbar" crumb2="Ao Vivo" style="flex:none" hint-size="100%,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <dc-import name="EPI Sidebar" ativa="Ao Vivo" style="flex:none;align-self:stretch" hint-size="237px,100%"></dc-import>
+    <main style="flex:1;min-width:0;overflow:auto;position:relative;display:flex">
+      <sc-if value="{{ carregado }}" hint-placeholder-val="{{ true }}">
+        <div style="flex:1;min-width:0;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Ao Vivo</h1>
+            <span style="font-family:'JetBrains Mono';font-size:11.5px;color:#8A8F98">6 CÂMERAS · 5 ONLINE</span>
+            <div style="flex:1"></div>
+            <div style="display:flex;background:#14141C;border-radius:8px;padding:3px;gap:2px">
+              <sc-for list="{{ layouts }}" as="g" hint-placeholder-count="4">
+                <button onClick="{{ g.go }}" style="height:32px;padding:0 13px;border:none;border-radius:6px;background:{{ g.bg }};color:{{ g.cor }};font-family:'JetBrains Mono';font-size:12px;font-weight:600;cursor:pointer">{{ g.t }}</button>
+              </sc-for>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;height:38px;padding:0 10px;background:#14141C;border:1px solid {{ customBorda }};border-radius:8px">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.12em;color:#8A8F98">COLUNAS</span>
+              <button onClick="{{ colsMenos }}" style="width:26px;height:26px;border:1px solid #23242F;border-radius:6px;background:transparent;color:#F4F6F8;font-size:14px;cursor:pointer;padding:0">−</button>
+              <span style="font-family:'JetBrains Mono';font-size:13px;font-weight:700;width:14px;text-align:center;color:{{ customCor }}">{{ cols }}</span>
+              <button onClick="{{ colsMais }}" style="width:26px;height:26px;border:1px solid #23242F;border-radius:6px;background:transparent;color:#F4F6F8;font-size:14px;cursor:pointer;padding:0">+</button>
+            </div>
+            <button onClick="{{ toggleOverlay }}" style="height:38px;display:flex;align-items:center;gap:9px;padding:0 14px;background:#14141C;border:1px solid {{ ovBorda }};border-radius:8px;cursor:pointer">
+              <span style="width:30px;height:16px;border-radius:8px;background:{{ ovTrack }};position:relative;flex:none"><span style="position:absolute;top:2px;left:{{ ovKnob }};width:12px;height:12px;border-radius:50%;background:#F4F6F8;transition:left .1s steps(2,end)"></span></span>
+              <span style="font-size:13px;color:#F4F6F8">Overlay de detecção</span>
+            </button>
+          </div>
+
+          <sc-if value="{{ destaqueOn }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;display:flex;gap:10px;min-height:0">
+              <div style="flex:2.4;min-width:0;display:flex;flex-direction:column">
+                <div style="position:relative;flex:1;border-radius:12px;overflow:hidden;border:1px solid rgba(0,229,255,.4);background:{{ focoFundo }}">
+                  <span style="position:absolute;top:10px;left:10px;z-index:3;display:flex;align-items:center;gap:6px;background:rgba(10,10,15,.75);border-radius:5px;padding:4px 10px;font-family:'JetBrains Mono';font-size:11px;letter-spacing:.1em">{{ focoNome }}</span>
+                  <span style="position:absolute;top:10px;right:10px;z-index:3;background:rgba(10,10,15,.75);border-radius:5px;padding:4px 10px;font-family:'JetBrains Mono';font-size:11px;color:{{ focoStCor }}">{{ focoStTxt }}</span>
+                  <sc-if value="{{ focoReconecta }}" hint-placeholder-val="{{ false }}">
+                    <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="tile" state="retry" retries="3" label="RECONECTANDO · CAM-07 · TENTATIVA 3" size="52" style="position:absolute;inset:0" hint-size="100%,100%"></x-import>
+                  </sc-if>
+                  <sc-if value="{{ focoShowBoxes }}" hint-placeholder-val="{{ false }}">
+                    <sc-for list="{{ focoBoxes }}" as="b" hint-placeholder-count="1">
+                      <div style="position:absolute;top:{{ b.t }};left:{{ b.l }};width:{{ b.w }};height:{{ b.h }};border:2.5px solid {{ b.cor }};border-radius:3px;z-index:2">
+                        <span style="position:absolute;top:-22px;left:-2px;background:{{ b.cor }};color:#0A0A0F;font-family:'JetBrains Mono';font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;white-space:nowrap">{{ b.label }}</span>
+                      </div>
+                    </sc-for>
+                  </sc-if>
+                </div>
+              </div>
+              <div style="flex:1;min-width:220px;max-width:300px;display:flex;flex-direction:column;gap:8px;overflow:auto">
+                <sc-for list="{{ railTiles }}" as="t" hint-placeholder-count="5">
+                  <div onClick="{{ t.destacar }}" style="position:relative;aspect-ratio:16/9;flex:none;border-radius:8px;overflow:hidden;border:1px solid #23242F;background:{{ t.fundo }};cursor:pointer" style-hover="border-color:rgba(0,229,255,.5)">
+                    <span style="position:absolute;top:6px;left:6px;z-index:3;background:rgba(10,10,15,.75);border-radius:4px;padding:2px 7px;font-family:'JetBrains Mono';font-size:9px;letter-spacing:.08em">{{ t.nome }}</span>
+                    <span style="position:absolute;bottom:6px;right:6px;z-index:3;font-family:'JetBrains Mono';font-size:9px;color:{{ t.stCor }}">{{ t.stTxt }}</span>
+                    <sc-if value="{{ t.reconecta }}" hint-placeholder-val="{{ false }}">
+                      <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="spinner" state="waiting" size="20" style="position:absolute;top:calc(50% - 10px);left:calc(50% - 10px)" hint-size="20px,20px"></x-import>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ gridOn }}" hint-placeholder-val="{{ true }}">
+            <div style="display:grid;grid-template-columns:{{ gridCols }};gap:10px;align-content:start">
+              <sc-for list="{{ tiles }}" as="t" hint-placeholder-count="4">
+                <div onClick="{{ t.sel }}" style="position:relative;aspect-ratio:16/9;border-radius:10px;overflow:hidden;border:1px solid {{ t.borda }};background:{{ t.fundo }};cursor:pointer;display:flex;align-items:center;justify-content:center">
+                  <sc-if value="{{ t.isCam }}" hint-placeholder-val="{{ true }}">
+                    <span style="position:absolute;top:8px;left:8px;max-width:55%;z-index:3;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:rgba(10,10,15,.75);border-radius:5px;padding:3px 8px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.1em;color:#F4F6F8;box-sizing:border-box">{{ t.nome }}</span>
+                    <span title="{{ t.stTitle }}" style="position:absolute;top:8px;right:8px;z-index:3;display:flex;align-items:center;gap:5px;background:rgba(10,10,15,.75);border-radius:5px;padding:3px 8px;font-family:'JetBrains Mono';font-size:10px;color:{{ t.stCor }};white-space:nowrap">{{ t.stLabel }}</span>
+                    <button onClick="{{ t.destacar }}" title="Destacar esta câmera" style="position:absolute;bottom:8px;right:8px;z-index:4;width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:rgba(10,10,15,.8);border:1px solid #23242F;border-radius:6px;color:#8A8F98;cursor:pointer;padding:0" style-hover="color:#00E5FF;border-color:rgba(0,229,255,.5)">
+                      <svg viewBox="0 0 24 24" style="width:14px;height:14px" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"><path d="M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7"></path></svg>
+                    </button>
+                  </sc-if>
+                  <sc-if value="{{ t.reconecta }}" hint-placeholder-val="{{ false }}">
+                    <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="tile" state="retry" retries="3" label="RECONECTANDO · CAM-07 · TENTATIVA 3" size="44" style="position:absolute;inset:0" hint-size="100%,100%"></x-import>
+                  </sc-if>
+                  <sc-if value="{{ t.showBoxes }}" hint-placeholder-val="{{ false }}">
+                    <sc-for list="{{ t.boxes }}" as="b" hint-placeholder-count="1">
+                      <div style="position:absolute;top:{{ b.t }};left:{{ b.l }};width:{{ b.w }};height:{{ b.h }};border:2px solid {{ b.cor }};border-radius:3px;z-index:2">
+                        <span style="position:absolute;top:-20px;left:-2px;display:{{ b.labelDisp }};background:{{ b.cor }};color:#0A0A0F;font-family:'JetBrains Mono';font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:3px;white-space:nowrap">{{ b.label }}</span>
+                      </div>
+                    </sc-for>
+                  </sc-if>
+                  <sc-if value="{{ t.vago }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;flex-direction:column;align-items:center;gap:8px;color:#8A8F98">
+                      <svg viewBox="0 0 24 24" style="width:22px;height:22px" fill="none" stroke="#3A3D4A" stroke-width="1.7" stroke-linecap="square"><path d="M12 5v14M5 12h14"></path></svg>
+                      <span style="font-size:12px">Adicionar câmera</span>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+        <sc-if value="{{ drawerOn }}" hint-placeholder-val="{{ false }}">
+          <div style="width:360px;flex:none;border-left:1px solid #23242F;background:#14141C;display:flex;flex-direction:column;gap:14px;padding:18px;box-sizing:border-box;overflow:auto">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-family:'Space Grotesk';font-weight:700;font-size:17px">{{ selNome }}</span>
+              <span style="font-family:'JetBrains Mono';font-size:10.5px;color:{{ selStCor }}">{{ selStTxt }}</span>
+              <button onClick="{{ closeDrawer }}" style="margin-left:auto;width:28px;height:28px;background:transparent;border:1px solid #23242F;border-radius:6px;color:#8A8F98;cursor:pointer;font-size:13px">✕</button>
+            </div>
+            <div style="position:relative;aspect-ratio:16/9;border-radius:8px;overflow:hidden;background:{{ selFundo }};border:1px solid #23242F"></div>
+            <div style="display:flex;gap:14px;font-family:'JetBrains Mono';font-size:11px;color:#8A8F98"><span>1080P · 12 FPS</span><span>HLS · EDGE</span><span>{{ selArea }}</span></div>
+            <button onClick="{{ selDestacar }}" style="height:38px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid #23242F;border-radius:8px;background:transparent;color:#F4F6F8;font-family:'Inter';font-size:13px;font-weight:600;cursor:pointer" style-hover="border-color:#00E5FF;color:#00E5FF">
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"><path d="M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7"></path></svg>
+              Destacar no grid
+            </button>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">EVENTOS RECENTES</span>
+              <a href="EPI Evento Detalhe.dc.html" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px;color:#F4F6F8">
+                <span style="width:8px;height:8px;border-radius:50%;background:#E5484D;flex:none"></span>
+                <span style="font-size:12.5px;font-weight:600">Sem capacete</span>
+                <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">14:32</span>
+              </a>
+              <a href="EPI Evento Detalhe.dc.html" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px;color:#F4F6F8">
+                <span style="width:8px;height:8px;border-radius:50%;background:#E8A13C;flex:none"></span>
+                <span style="font-size:12.5px;font-weight:600">Sem colete</span>
+                <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">11:07</span>
+              </a>
+            </div>
+            <a href="EPI Câmeras.dc.html" style="display:flex;align-items:center;justify-content:center;height:40px;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-size:13px;font-weight:600" style-hover="border-color:#00E5FF;color:#00E5FF">Ir para gestão da câmera</a>
+          </div>
+        </sc-if>
+      </sc-if>
+      <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}">
+        <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="fullscreen" state="waiting" label="CONECTANDO ÀS CÂMERAS" size="96" style="position:absolute;inset:0" hint-size="100%,100%"></x-import>
+      </sc-if>
+      <sc-if value="{{ vazio }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#8A8F98" stroke-width="1.5" stroke-linecap="square"><path d="M3 7h12v10H3zM15 10l6-3v10l-6-3"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Nenhuma câmera neste site</span>
+          <span style="font-size:13.5px;color:#8A8F98;max-width:380px;line-height:1.55">Cadastre a primeira câmera para começar o monitoramento ao vivo.</span>
+          <a href="EPI Câmeras.dc.html" style="display:flex;align-items:center;height:40px;padding:0 18px;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-size:13.5px;font-weight:700">Adicionar câmera</a>
+        </div>
+      </sc-if>
+      <sc-if value="{{ erro }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#E5484D" stroke-width="1.5" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Falha ao conectar ao gateway de vídeo</span>
+          <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">WS /ws/live · CONEXÃO RECUSADA</span>
+          <button style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Tentar novamente</button>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+  <div style="position:fixed;left:16px;bottom:14px;display:flex;align-items:center;gap:6px;background:#14141C;border:1px solid #23242F;border-radius:10px;padding:7px 10px;z-index:130;box-shadow:0 8px 32px rgba(0,0,0,.6)">
+    <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.2em;color:#8A8F98;margin-right:4px">ESTADO</span>
+    <sc-for list="{{ chips }}" as="ch" hint-placeholder-count="4">
+      <button onClick="{{ ch.go }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid {{ ch.borda }};background:{{ ch.bg }};color:{{ ch.cor }};font-family:'JetBrains Mono';font-size:10.5px;cursor:pointer">{{ ch.t }}</button>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:940}}">
+class Component extends DCLogic {
+  CAMS = [
+    { key: 'c1', nome: 'CAM-01 DOCA NORTE', stTxt: '● ONLINE', stCor: '#3ECF8E', area: 'DOCA NORTE',
+      fundo: 'linear-gradient(155deg,#1A1B26 0%,#101018 55%,#0C0C13 100%)',
+      boxes: [{ t: '38%', l: '16%', w: '13%', h: '46%', cor: '#3ECF8E', label: 'capacete ✓' }, { t: '30%', l: '58%', w: '12%', h: '50%', cor: '#3ECF8E', label: 'capacete ✓' }] },
+    { key: 'c2', nome: 'CAM-02 PORTARIA', stTxt: '● ONLINE', stCor: '#3ECF8E', area: 'PORTARIA',
+      fundo: 'linear-gradient(140deg,#181A24 0%,#0F0F17 60%,#0B0B11 100%)', boxes: [] },
+    { key: 'c3', nome: 'CAM-03 ALMOXARIFADO', stTxt: '● ONLINE', stCor: '#3ECF8E', area: 'ALMOXARIFADO',
+      fundo: 'linear-gradient(215deg,#171825 0%,#0E0E15 65%,#0A0A10 100%)', boxes: [] },
+    { key: 'c4', nome: 'CAM-04 EXPEDIÇÃO', stTxt: '▲ INSTÁVEL', stCor: '#E8A13C', area: 'EXPEDIÇÃO',
+      fundo: 'linear-gradient(200deg,#191822 0%,#0F0F16 60%,#0B0B12 100%)',
+      boxes: [{ t: '32%', l: '40%', w: '14%', h: '52%', cor: '#E5484D', label: 'sem capacete' }] },
+    { key: 'c5', nome: 'CAM-05 DOCA SUL', stTxt: '● ONLINE', stCor: '#3ECF8E', area: 'DOCA SUL',
+      fundo: 'linear-gradient(170deg,#1B1C27 0%,#101019 55%,#0C0C12 100%)',
+      boxes: [{ t: '36%', l: '30%', w: '12%', h: '48%', cor: '#3ECF8E', label: 'colete ✓' }] },
+    { key: 'c7', nome: 'CAM-07 LINHA 2', stTxt: '✕ OFFLINE', stCor: '#E5484D', area: 'LINHA 2', reconecta: true, fundo: '#0A0A0F', boxes: [] },
+  ];
+  state = { estado: 'carregado', layout: '2x2', cols: 4, overlay: true, sel: null, foco: 'c4' };
+  renderVals() {
+    const s = this.state;
+    const chip = (t, k) => ({ t, go: () => this.setState({ estado: k }), bg: s.estado === k ? 'rgba(0,229,255,.09)' : 'transparent', cor: s.estado === k ? '#00E5FF' : '#8A8F98', borda: s.estado === k ? 'rgba(0,229,255,.4)' : '#23242F' });
+    const isCustom = s.layout === 'custom';
+    const isDestaque = s.layout === 'destaque';
+    const cols = s.layout === '2x2' ? 2 : s.layout === '3x3' ? 3 : s.layout === '4x3' ? 4 : s.cols;
+    const total = isCustom ? Math.max(this.CAMS.length, cols * 2) : s.layout === '2x2' ? 4 : s.layout === '3x3' ? 9 : 12;
+    const sel = this.CAMS.find(c => c.key === s.sel);
+    const foco = this.CAMS.find(c => c.key === s.foco) || this.CAMS[0];
+    const compact = cols >= 5;
+    const mkTile = (cam) => ({
+      isCam: true, vago: false, nome: cam.nome, stCor: cam.stCor,
+      stLabel: compact ? cam.stTxt.slice(0, 1) : cam.stTxt, stTitle: cam.stTxt,
+      fundo: cam.fundo, reconecta: !!cam.reconecta,
+      showBoxes: s.overlay && cam.boxes.length > 0, boxes: cam.boxes.map(b => ({ ...b, labelDisp: compact ? 'none' : 'block' })),
+      borda: s.sel === cam.key ? 'rgba(0,229,255,.5)' : '#23242F',
+      sel: () => this.setState({ sel: cam.key }),
+      destacar: (e) => { e.stopPropagation(); this.setState({ layout: 'destaque', foco: cam.key }); },
+    });
+    const tiles = [];
+    for (let i = 0; i < total; i++) {
+      const cam = this.CAMS[i];
+      if (cam) tiles.push(mkTile(cam));
+      else tiles.push({ isCam: false, vago: true, reconecta: false, showBoxes: false, boxes: [], fundo: 'transparent', borda: '#23242F', sel: () => {}, destacar: () => {} });
+    }
+    return {
+      carregado: s.estado === 'carregado', loading: s.estado === 'loading', vazio: s.estado === 'vazio', erro: s.estado === 'erro',
+      chips: [chip('CARREGADO', 'carregado'), chip('LOADING', 'loading'), chip('VAZIO', 'vazio'), chip('ERRO', 'erro')],
+      layouts: [['2x2', '2×2'], ['3x3', '3×3'], ['4x3', '4×3'], ['destaque', 'DESTAQUE']].map(([k, t]) => ({ t, go: () => this.setState({ layout: k }), bg: s.layout === k ? '#0A0A0F' : 'transparent', cor: s.layout === k ? '#00E5FF' : '#8A8F98' })),
+      cols: String(s.cols),
+      colsMais: () => this.setState(p => ({ layout: 'custom', cols: Math.min(6, p.cols + 1) })),
+      colsMenos: () => this.setState(p => ({ layout: 'custom', cols: Math.max(2, p.cols - 1) })),
+      customBorda: isCustom ? 'rgba(0,229,255,.35)' : '#23242F', customCor: isCustom ? '#00E5FF' : '#F4F6F8',
+      toggleOverlay: () => this.setState(p => ({ overlay: !p.overlay })),
+      ovTrack: s.overlay ? '#0091AD' : '#23242F', ovKnob: s.overlay ? '16px' : '2px', ovBorda: s.overlay ? 'rgba(0,229,255,.35)' : '#23242F',
+      gridOn: !isDestaque, destaqueOn: isDestaque,
+      gridCols: 'repeat(' + cols + ',1fr)',
+      tiles,
+      focoNome: foco.nome, focoStTxt: foco.stTxt, focoStCor: foco.stCor, focoFundo: foco.fundo,
+      focoReconecta: !!foco.reconecta, focoShowBoxes: s.overlay && foco.boxes.length > 0, focoBoxes: foco.boxes,
+      railTiles: this.CAMS.filter(c => c.key !== s.foco).map(c => ({
+        nome: c.nome, stTxt: c.stTxt.slice(2), stCor: c.stCor, fundo: c.fundo, reconecta: !!c.reconecta,
+        destacar: () => this.setState({ foco: c.key }),
+      })),
+      drawerOn: !!sel, closeDrawer: () => this.setState({ sel: null }),
+      selNome: sel ? sel.nome : '', selStTxt: sel ? sel.stTxt : '', selStCor: sel ? sel.stCor : '#8A8F98',
+      selFundo: sel ? sel.fundo : '#0A0A0F', selArea: sel ? sel.area : '',
+      selDestacar: () => this.setState({ layout: 'destaque', foco: s.sel, sel: null }),
+    };
+  }
+}
+</script>
+</body>
+</html>

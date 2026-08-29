@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="./image-slot.js"></script>
+<style>
+body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}
+a{color:#00E5FF}a:hover{color:#0091AD}
+@keyframes lkGlitch{0%{transform:translate(0);clip-path:inset(0 0 85% 0);opacity:0}20%{transform:translate(-7px,3px);clip-path:inset(20% 0 40% 0);opacity:1}40%{transform:translate(6px,-2px);clip-path:inset(58% 0 8% 0)}60%{transform:translate(-4px,1px);clip-path:inset(10% 0 66% 0)}80%{transform:translate(3px,0);clip-path:inset(38% 0 28% 0)}100%{transform:translate(0);clip-path:inset(0)}}
+@keyframes lkSpin{to{transform:rotate(360deg)}}
+</style>
+</helmet>
+<div style="width:100%;height:100vh;min-height:640px;display:flex;flex-direction:column;background:#0A0A0F;overflow:hidden;position:relative" data-screen-label="Kiosk RVB">
+  <!-- ===== StatusHeader (esqueleto §4.16 — igual em todas as K-telas) ===== -->
+  <header style="height:64px;flex:none;display:flex;align-items:center;gap:20px;padding:0 24px;background:#14141C;border-bottom:1px solid rgba(138,143,152,.16)">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="width:32px;height:32px;border-radius:50%;border:2px solid #F4F6F8;display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-weight:700;font-size:17px;line-height:1">Λ</div>
+      <div style="font-family:'Space Grotesk';font-weight:500;font-size:16px;letter-spacing:.04em">{{ estacao }}</div>
+    </div>
+    <sc-if value="{{ hasPiece }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:baseline;gap:16px;padding:6px 16px;background:#0A0A0F;border-radius:6px;border:1px solid rgba(138,143,152,.16)">
+        <span style="font-family:'JetBrains Mono';font-size:16px;font-weight:500">{{ pieceCode }}</span>
+        <span style="font-size:14px;color:#8A8F98">{{ pieceOp }}</span>
+        <span style="font-family:'JetBrains Mono';font-size:14px;color:#8A8F98">passo {{ stepLabel }}</span>
+      </div>
+    </sc-if>
+    <div style="flex:1"></div>
+    <sc-if value="{{ queueVisible }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:8px;font-size:14px;color:#FFB020;font-weight:500"><span style="font-size:12px">●</span>fila local: {{ queueCount }}</div>
+    </sc-if>
+    <div style="display:flex;align-items:center;gap:8px;font-size:14px;color:#8A8F98"><span style="color:{{ camDotColor }};font-size:12px">●</span>câmera</div>
+    <div style="display:flex;align-items:center;gap:8px;font-size:14px;color:#8A8F98"><span style="color:{{ netDotColor }};font-size:12px">●</span>{{ netLabel }}</div>
+    <div style="display:flex;flex-direction:column;gap:3px;padding:5px 7px;background:#0A0A0F;border-radius:5px;border:1px solid rgba(138,143,152,.16)" title="torre da estação">
+      <span style="width:9px;height:9px;border-radius:50%;background:{{ towerRed }}"></span>
+      <span style="width:9px;height:9px;border-radius:50%;background:{{ towerYellow }}"></span>
+      <span style="width:9px;height:9px;border-radius:50%;background:{{ towerGreen }}"></span>
+    </div>
+  </header>
+  <!-- ===== banner fail-open persistente ===== -->
+  <sc-if value="{{ offlineBanner }}" hint-placeholder-val="{{ false }}">
+    <div style="flex:none;display:flex;align-items:center;gap:12px;padding:12px 24px;background:#2A2211;border-bottom:1px solid #FFB020;color:#FFB020;font-size:16px;font-weight:500">
+      <span>▲</span>Validação indisponível — siga o processo normal. As fotos ficam na fila e serão validadas depois.
+    </div>
+  </sc-if>
+
+  <!-- ===================== K1 IDLE ===================== -->
+  <sc-if value="{{ isIdle }}" hint-placeholder-val="{{ true }}">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:repeating-linear-gradient(115deg,transparent 0 46px,rgba(20,20,28,.9) 46px 48px)">
+      <div style="font-family:'Space Grotesk';font-weight:700;font-size:64px;letter-spacing:.02em;animation:lkGlitch .5s steps(5,end) 1 both">{{ estacao }}</div>
+      <div style="font-size:24px;color:#8A8F98">Bipe o cartão da peça para começar</div>
+      <div style="margin-top:24px;width:88px;height:88px;border:2px dashed rgba(138,143,152,.4);border-radius:12px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono';font-size:13px;color:#8A8F98;text-align:center;line-height:1.4">▮▮▮<br>código</div>
+      <div style="position:absolute;bottom:20px;font-size:13px;color:#8A8F98;letter-spacing:.2em;opacity:.5">ΛΟΓΙΚΟΣ · RECOGNITION</div>
+    </div>
+  </sc-if>
+
+  <!-- ===================== K2 PONTO ===================== -->
+  <sc-if value="{{ isPonto }}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;display:flex;min-height:0">
+      <div style="width:420px;flex:none;display:flex;flex-direction:column;gap:14px;padding:20px 20px 16px 24px;border-right:1px solid rgba(138,143,152,.12)">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-family:'JetBrains Mono';font-weight:700;font-size:18px;padding:4px 10px;background:#14141C;border:1px solid rgba(138,143,152,.25);border-radius:6px">{{ pointCode }}</span>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:22px;line-height:1.15">{{ pointNome }}</span>
+        </div>
+        <div style="padding:14px 16px;background:#14141C;border-radius:8px;border-left:3px solid #00E5FF">
+          <div style="font-size:13px;color:#8A8F98;letter-spacing:.08em;margin-bottom:6px">CRITÉRIO</div>
+          <div style="font-size:20px;font-weight:500;line-height:1.35">{{ pointCriterio }}</div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:8px;min-height:0">
+          <div style="font-size:13px;color:#8A8F98;letter-spacing:.08em">ESPECIFICADO — assim é o certo</div>
+          <div style="flex:1;min-height:140px;border-radius:8px;overflow:hidden;border:1px solid rgba(138,143,152,.2)">
+            <image-slot id="esp-{{ pointCode }}" shape="rect" placeholder="Foto Especificado {{ pointCode }}"></image-slot>
+          </div>
+        </div>
+        <sc-if value="{{ isRecapture }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:#14141C;border-radius:8px">
+            <div style="width:72px;height:48px;background:#0A0A0F;border:1px solid rgba(138,143,152,.25);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#8A8F98;font-family:'JetBrains Mono'">última foto</div>
+            <div style="font-size:15px;color:#8A8F98">Recaptura — a foto anterior foi descartada</div>
+          </div>
+        </sc-if>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;padding:20px 24px 16px 20px;gap:12px;min-height:0">
+        <div style="flex:1;position:relative;background:#14141C;border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center;min-height:0">
+          <div style="position:absolute;inset:0;background:repeating-linear-gradient(115deg,transparent 0 60px,rgba(10,10,15,.5) 60px 62px)"></div>
+          <div style="position:absolute;top:14px;left:16px;display:flex;align-items:center;gap:8px;font-family:'JetBrains Mono';font-size:13px;color:#8A8F98"><span style="color:{{ camDotColor }}">●</span>CÂMERA DA ESTAÇÃO · ao vivo</div>
+          <div style="width:62%;height:64%;border:3px dashed #00E5FF;border-radius:14px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:14px;opacity:.9">
+            <span style="font-size:16px;color:#00E5FF;background:rgba(10,10,15,.75);padding:6px 14px;border-radius:6px">Posicione a peça dentro da zona demarcada</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="flex:none;display:flex;align-items:center;gap:20px;padding:14px 24px;background:#14141C;border-top:1px solid rgba(138,143,152,.16)">
+      <div style="font-size:15px;color:#8A8F98;flex:1">{{ captureHint }}</div>
+      <button onClick="{{ onCapturar }}" disabled="{{ captureDisabled }}" style="height:88px;min-width:380px;border:none;border-radius:10px;background:{{ captureBg }};color:#0A0A0F;font-family:'Space Grotesk';font-weight:700;font-size:28px;letter-spacing:.06em;cursor:pointer">CAPTURAR</button>
+    </div>
+  </sc-if>
+
+  <!-- ===================== K3 VALIDANDO ===================== -->
+  <sc-if value="{{ isValidando }}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px">
+      <div style="width:72px;height:72px;border-radius:50%;border:5px solid rgba(138,143,152,.2);border-top-color:#00E5FF;animation:lkSpin 1s steps(8) infinite"></div>
+      <div style="font-family:'Space Grotesk';font-weight:500;font-size:28px">Validando {{ pointCode }}…</div>
+      <div style="font-size:16px;color:#8A8F98">normalmente leva menos de 2 segundos</div>
+      <button onClick="{{ onCancelarValidacao }}" style="margin-top:12px;height:56px;padding:0 32px;background:transparent;border:1px solid rgba(138,143,152,.4);border-radius:8px;color:#8A8F98;font-size:17px;cursor:pointer">Cancelar</button>
+    </div>
+  </sc-if>
+
+  <!-- ===================== K4 VERDE ===================== -->
+  <sc-if value="{{ isVerde }}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:#3ECF8E;color:#0A0A0F">
+      <div style="font-size:110px;line-height:1;font-weight:700">✓</div>
+      <div style="font-family:'Space Grotesk';font-weight:700;font-size:72px;letter-spacing:.05em">CONFORME</div>
+      <div style="font-size:22px;font-weight:500;opacity:.75">{{ pointCode }} · {{ pointNome }}</div>
+      <sc-if value="{{ pointMedida }}" hint-placeholder-val="{{ false }}">
+        <div style="font-family:'JetBrains Mono';font-size:20px;background:rgba(10,10,15,.12);padding:6px 16px;border-radius:6px">{{ pointMedida }}</div>
+      </sc-if>
+      <sc-if value="{{ autoRunning }}" hint-placeholder-val="{{ true }}">
+        <button onClick="{{ onCancelAuto }}" style="margin-top:26px;height:64px;padding:0 36px;background:rgba(10,10,15,.14);border:2px solid rgba(10,10,15,.35);border-radius:10px;color:#0A0A0F;font-size:19px;font-weight:600;cursor:pointer">{{ autoLabel }} em {{ autoLeft }} s — toque para pausar</button>
+      </sc-if>
+      <sc-if value="{{ autoPaused }}" hint-placeholder-val="{{ false }}">
+        <button onClick="{{ onAvancar }}" style="margin-top:26px;height:80px;padding:0 48px;background:#0A0A0F;border:none;border-radius:10px;color:#3ECF8E;font-family:'Space Grotesk';font-weight:700;font-size:24px;letter-spacing:.05em;cursor:pointer">{{ autoLabelUpper }}</button>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <!-- ===================== K5 REFAZER ===================== -->
+  <sc-if value="{{ isRefazer }}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;display:flex;flex-direction:column;background:#240D08;min-height:0">
+      <div style="flex:none;display:flex;align-items:center;gap:18px;padding:20px 28px;background:#FF5C47;color:#0A0A0F">
+        <span style="font-size:44px;line-height:1;font-weight:700">⟳</span>
+        <div>
+          <div style="font-family:'Space Grotesk';font-weight:700;font-size:40px;letter-spacing:.04em;line-height:1.1">REFAZER FOTO</div>
+          <div style="font-size:18px;font-weight:600;margin-top:2px">A peça não foi avaliada — problema na foto, não na peça</div>
+        </div>
+      </div>
+      <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:24px">
+        <div style="max-width:640px;display:flex;flex-direction:column;gap:14px;text-align:center;align-items:center">
+          <div style="font-size:15px;color:#FF9B8D;letter-spacing:.08em">MOTIVO</div>
+          <div style="font-family:'Space Grotesk';font-weight:500;font-size:32px;line-height:1.25">{{ verdictReason }}</div>
+          <div style="font-size:18px;color:#8A8F98">{{ verdictDica }}</div>
+        </div>
+      </div>
+      <div style="flex:none;display:flex;justify-content:center;padding:0 24px 22px">
+        <button onClick="{{ onRepetir }}" style="height:92px;min-width:460px;border:none;border-radius:10px;background:#FF5C47;color:#0A0A0F;font-family:'Space Grotesk';font-weight:700;font-size:28px;letter-spacing:.06em;cursor:pointer">⟳ REPETIR FOTO</button>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ===================== K6 SUSPEITA DE NC ===================== -->
+  <sc-if value="{{ isSuspeita }}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;display:flex;flex-direction:column;background:#240D08;min-height:0">
+      <div style="flex:none;display:flex;align-items:center;gap:18px;padding:14px 28px;background:#FF5C47;color:#0A0A0F">
+        <span style="font-size:36px;line-height:1;font-weight:700">✕</span>
+        <div style="font-family:'Space Grotesk';font-weight:700;font-size:34px;letter-spacing:.04em">SUSPEITA DE NÃO CONFORMIDADE</div>
+        <div style="flex:1"></div>
+        <div style="font-family:'JetBrains Mono';font-size:16px;font-weight:500">{{ pointCode }}</div>
+      </div>
+      <div style="flex:1;display:flex;gap:16px;padding:16px 24px;min-height:0">
+        <div style="flex:1;display:flex;flex-direction:column;gap:8px;min-height:0">
+          <div style="font-size:14px;color:#FF9B8D;letter-spacing:.08em">ENCONTRADO — onde está o problema</div>
+          <div style="flex:1;position:relative;background:#14141C;border:2px solid #FF5C47;border-radius:8px;min-height:0;display:flex;align-items:center;justify-content:center">
+            <span style="font-family:'JetBrains Mono';font-size:13px;color:#8A8F98">foto capturada</span>
+            <div style="position:absolute;left:30%;top:34%;width:34%;height:30%;border:3px solid #FF5C47;border-radius:4px"></div>
+            <div style="position:absolute;left:30%;top:24%;background:#FF5C47;color:#0A0A0F;font-size:14px;font-weight:700;padding:2px 10px;border-radius:4px">{{ verdictClasse }}</div>
+          </div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:8px;min-height:0">
+          <div style="font-size:14px;color:#8A8F98;letter-spacing:.08em">ESPECIFICADO — assim é o certo</div>
+          <div style="flex:1;border-radius:8px;overflow:hidden;border:1px solid rgba(138,143,152,.25);min-height:0">
+            <image-slot id="esp-nc-{{ pointCode }}" shape="rect" placeholder="Foto Especificado {{ pointCode }}"></image-slot>
+          </div>
+        </div>
+      </div>
+      <div style="flex:none;display:flex;align-items:center;gap:14px;padding:12px 24px 20px">
+        <button onClick="{{ onCorrigir }}" style="height:88px;flex:2;border:none;border-radius:10px;background:#FF5C47;color:#0A0A0F;font-family:'Space Grotesk';font-weight:700;font-size:26px;letter-spacing:.05em;cursor:pointer">CORRIGIR A PEÇA</button>
+        <button onClick="{{ onDiscordo }}" style="height:88px;flex:1;background:transparent;border:2px solid rgba(244,246,248,.5);border-radius:10px;color:#F4F6F8;font-size:20px;font-weight:600;cursor:pointer">DISCORDO — está conforme</button>
+        <button onClick="{{ onChamar }}" style="height:56px;flex:none;padding:0 20px;background:transparent;border:1px solid rgba(138,143,152,.4);border-radius:8px;color:#8A8F98;font-size:16px;cursor:pointer;align-self:center">Chamar qualidade</button>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ===================== K6b RETRABALHO ===================== -->
+  <sc-if value="{{ isRetrabalho }}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px">
+      <div style="font-size:15px;color:#8A8F98;letter-spacing:.1em">RETRABALHO EM ANDAMENTO · {{ pointCode }}</div>
+      <div style="font-family:'JetBrains Mono';font-weight:700;font-size:88px;line-height:1">{{ reworkClock }}</div>
+      <div style="max-width:620px;text-align:center;padding:16px 20px;background:#14141C;border-radius:8px;border-left:3px solid #00E5FF">
+        <div style="font-size:13px;color:#8A8F98;letter-spacing:.08em;margin-bottom:6px">CRITÉRIO</div>
+        <div style="font-size:22px;font-weight:500;line-height:1.35">{{ pointCriterio }}</div>
+      </div>
+      <button onClick="{{ onPronto }}" style="margin-top:18px;height:92px;min-width:440px;border:none;border-radius:10px;background:#00E5FF;color:#0A0A0F;font-family:'Space Grotesk';font-weight:700;font-size:28px;letter-spacing:.06em;cursor:pointer">PRONTO — NOVA FOTO</button>
+    </div>
+  </sc-if>
+
+  <!-- ===================== K7 FAIL-OPEN ===================== -->
+  <sc-if value="{{ isFailopen }}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:repeating-linear-gradient(115deg,transparent 0 46px,rgba(20,20,28,.9) 46px 48px)">
+      <div style="font-size:56px;color:#FFB020">▲</div>
+      <div style="font-family:'Space Grotesk';font-weight:700;font-size:40px;text-align:center;line-height:1.2">Validação indisponível</div>
+      <div style="font-size:20px;color:#8A8F98;max-width:560px;text-align:center;line-height:1.45">Siga o processo normal. A foto de {{ pointCode }} ficou guardada aqui na estação e será validada quando o sistema voltar.</div>
+      <div style="font-family:'JetBrains Mono';font-size:16px;color:#FFB020">fila local: {{ queueCount }} foto(s) pendente(s)</div>
+      <button onClick="{{ onContinuarFailopen }}" style="margin-top:16px;height:88px;min-width:440px;border:none;border-radius:10px;background:#F4F6F8;color:#0A0A0F;font-family:'Space Grotesk';font-weight:700;font-size:26px;letter-spacing:.05em;cursor:pointer">CONTINUAR O PROCESSO</button>
+    </div>
+  </sc-if>
+
+  <!-- ===================== K8 ROTA CONCLUÍDA ===================== -->
+  <sc-if value="{{ isConcluida }}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px">
+      <div style="display:flex;align-items:center;gap:14px">
+        <span style="width:52px;height:52px;border-radius:50%;background:#3ECF8E;color:#0A0A0F;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:700">✓</span>
+        <div style="font-family:'Space Grotesk';font-weight:700;font-size:44px">Rota concluída</div>
+      </div>
+      <div style="font-size:18px;color:#8A8F98">{{ pieceCode }} · {{ pieceOp }} · {{ k8Total }} pontos em <span style="font-family:'JetBrains Mono';color:#F4F6F8">{{ k8Tempo }}</span></div>
+      <div style="width:640px;max-width:92%;display:flex;flex-direction:column;gap:6px">
+        <sc-for list="{{ k8Rows }}" as="row" hint-placeholder-count="4">
+          <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;background:#14141C;border-radius:8px">
+            <span style="font-family:'JetBrains Mono';font-weight:500;font-size:16px;width:36px">{{ row.code }}</span>
+            <span style="flex:1;font-size:17px">{{ row.nome }}</span>
+            <span style="font-family:'JetBrains Mono';font-size:14px;color:#8A8F98">{{ row.tempo }}</span>
+            <span style="font-size:15px;font-weight:600;color:{{ row.cor }};display:flex;align-items:center;gap:6px"><span>{{ row.icone }}</span>{{ row.status }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <sc-if value="{{ k8Revisao }}" hint-placeholder-val="{{ false }}">
+        <div style="font-size:16px;color:#8A8F98;background:#14141C;padding:10px 18px;border-radius:8px">{{ k8Revisao }} foto(s) seguem para revisão da qualidade — nenhuma ação sua é necessária.</div>
+      </sc-if>
+      <div style="margin-top:8px;font-size:22px;font-weight:500">Bipe a próxima peça</div>
+    </div>
+  </sc-if>
+
+  <!-- ===================== K9 PEÇA DESCONHECIDA ===================== -->
+  <sc-if value="{{ isDesconhecida }}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px">
+      <div style="font-family:'Space Grotesk';font-weight:700;font-size:56px;color:#8A8F98">?</div>
+      <div style="font-family:'Space Grotesk';font-weight:700;font-size:38px">Peça não encontrada</div>
+      <div style="font-family:'JetBrains Mono';font-size:20px;background:#14141C;padding:8px 18px;border-radius:6px;border:1px solid rgba(138,143,152,.25)">{{ unknownCode }}</div>
+      <div style="font-size:18px;color:#8A8F98;max-width:520px;text-align:center;line-height:1.45">O código bipado não está no sistema. Crie a peça pela ordem de produção — o tipo de produto vem da OP.</div>
+      <div style="display:flex;gap:16px;margin-top:14px">
+        <button onClick="{{ onCriarPeca }}" style="height:88px;padding:0 44px;border:none;border-radius:10px;background:#00E5FF;color:#0A0A0F;font-family:'Space Grotesk';font-weight:700;font-size:23px;letter-spacing:.04em;cursor:pointer">CRIAR PELA {{ unknownOp }}</button>
+        <button onClick="{{ onChamar }}" style="height:88px;padding:0 32px;background:transparent;border:2px solid rgba(138,143,152,.4);border-radius:10px;color:#F4F6F8;font-size:19px;font-weight:600;cursor:pointer">Chamar qualidade</button>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ===== modais ===== -->
+  <sc-if value="{{ showDisagreeConfirm }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;background:rgba(10,10,15,.72);display:flex;align-items:center;justify-content:center;z-index:40">
+      <div style="background:#14141C;border:1px solid rgba(138,143,152,.25);border-radius:12px;padding:28px 32px;display:flex;flex-direction:column;gap:20px;max-width:520px">
+        <div style="font-family:'Space Grotesk';font-weight:700;font-size:26px">Registrar que está conforme?</div>
+        <div style="font-size:17px;color:#8A8F98;line-height:1.45">A peça segue o processo. Sua avaliação ajuda a melhorar o sistema.</div>
+        <div style="display:flex;gap:12px">
+          <button onClick="{{ onDiscordoConfirm }}" style="height:72px;flex:1;border:none;border-radius:8px;background:#F4F6F8;color:#0A0A0F;font-size:19px;font-weight:700;cursor:pointer">SIM, ESTÁ CONFORME</button>
+          <button onClick="{{ onDiscordoCancel }}" style="height:72px;flex:none;padding:0 24px;background:transparent;border:1px solid rgba(138,143,152,.4);border-radius:8px;color:#8A8F98;font-size:17px;cursor:pointer">Voltar</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+  <sc-if value="{{ showGuard }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;background:rgba(10,10,15,.72);display:flex;align-items:center;justify-content:center;z-index:40">
+      <div style="background:#14141C;border:1px solid rgba(138,143,152,.25);border-radius:12px;padding:28px 32px;display:flex;flex-direction:column;gap:20px;max-width:520px">
+        <div style="font-family:'Space Grotesk';font-weight:700;font-size:26px">Nova peça bipada</div>
+        <div style="font-size:17px;color:#8A8F98;line-height:1.45">A peça {{ pieceCode }} ainda tem pontos pendentes. Trocar para a nova peça?</div>
+        <div style="display:flex;gap:12px">
+          <button onClick="{{ onGuardConfirm }}" style="height:72px;flex:1;border:none;border-radius:8px;background:#F4F6F8;color:#0A0A0F;font-size:19px;font-weight:700;cursor:pointer">TROCAR DE PEÇA</button>
+          <button onClick="{{ onGuardCancel }}" style="height:72px;flex:none;padding:0 24px;background:transparent;border:1px solid rgba(138,143,152,.4);border-radius:8px;color:#8A8F98;font-size:17px;cursor:pointer">Continuar nesta</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;bottom:24px;left:50%;transform:translateX(-50%);background:#F4F6F8;color:#0A0A0F;font-size:17px;font-weight:600;padding:14px 26px;border-radius:10px;z-index:45">{{ toast }}</div>
+  </sc-if>
+
+  <!-- ===== painel DEMO (simulação — não faz parte do design do kiosk) ===== -->
+  <sc-if value="{{ demoEnabled }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;left:16px;bottom:16px;z-index:60;display:flex;flex-direction:column;gap:8px;align-items:flex-start">
+      <sc-if value="{{ demoOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="background:rgba(20,20,28,.97);border:1px solid rgba(0,229,255,.35);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px;width:250px">
+          <div style="font-family:'JetBrains Mono';font-size:11px;color:#00E5FF;letter-spacing:.15em">SIMULAÇÃO</div>
+          <button onClick="{{ onBipar }}" style="height:44px;border:none;border-radius:6px;background:#00E5FF;color:#0A0A0F;font-size:14px;font-weight:700;cursor:pointer">Bipar peça AN-24-0785</button>
+          <button onClick="{{ onBiparDesconhecida }}" style="height:40px;background:transparent;border:1px solid rgba(138,143,152,.4);border-radius:6px;color:#F4F6F8;font-size:13px;cursor:pointer">Bipar código desconhecido</button>
+          <div style="font-size:11px;color:#8A8F98;margin-top:2px">Próximo veredito</div>
+          <select onChange="{{ onOverride }}" value="{{ overrideValue }}" style="height:40px;background:#0A0A0F;border:1px solid rgba(138,143,152,.4);border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 8px">
+            <option value="roteiro">Roteiro da demo</option>
+            <option value="conforme">Verde — conforme</option>
+            <option value="duvida">Dúvida (verde p/ operador)</option>
+            <option value="refazer">Refazer foto</option>
+            <option value="suspeita">Suspeita de NC</option>
+            <option value="timeout">Timeout → fail-open</option>
+          </select>
+          <button onClick="{{ onToggleOffline }}" style="height:40px;background:transparent;border:1px solid rgba(138,143,152,.4);border-radius:6px;color:#F4F6F8;font-size:13px;cursor:pointer">{{ offlineToggleLabel }}</button>
+        </div>
+      </sc-if>
+      <button onClick="{{ onToggleDemo }}" style="height:36px;padding:0 14px;background:rgba(20,20,28,.95);border:1px solid rgba(0,229,255,.35);border-radius:18px;color:#00E5FF;font-family:'JetBrains Mono';font-size:12px;letter-spacing:.12em;cursor:pointer">{{ demoToggleLabel }}</button>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:800},&quot;estacao&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Estação 2 — Anéis&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Kiosk&quot;},&quot;demoPainel&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Kiosk&quot;}}">
+class Component extends DCLogic {
+  ROUTE = [
+    { code: 'P1', nome: 'Transpasse da cordoalha', criterio: 'Transpasse da cordoalha ≤ 10 mm', medida: '8,2 mm' },
+    { code: 'P2', nome: 'Detalhe da alma', criterio: 'Alma sem madeira exposta · papel íntegro', medida: null },
+    { code: 'P4', nome: 'Distanciamento entre espiras', criterio: 'Distância 12 ± 1 mm · display do paquímetro legível', medida: '12,1 mm' },
+    { code: 'P8', nome: 'Foto final da peça', criterio: 'Peça inteira no quadro · foco nítido', medida: null },
+  ];
+  state = {
+    view: 'idle', piece: null, idx: 0, attempts: {}, results: [],
+    override: 'roteiro', offline: false, queue: 0, demoOpen: false,
+    autoLeft: 3, autoPaused: false, verdict: null, reworkSec: 0,
+    showDisagree: false, showGuard: false, toast: '', pointStart: 0,
+  };
+  componentWillUnmount() { this.clearTimers(); }
+  clearTimers() {
+    clearTimeout(this._t); clearInterval(this._auto); clearInterval(this._rw); clearTimeout(this._toast);
+  }
+  setToast(msg) {
+    clearTimeout(this._toast);
+    this.setState({ toast: msg });
+    this._toast = setTimeout(() => this.setState({ toast: '' }), 2600);
+  }
+  startPiece() {
+    this.clearTimers();
+    this.setState({
+      view: 'ponto', piece: { code: 'AN-24-0785', op: 'OP 2024-1187', tipo: 'Anel plano equipotencial' },
+      idx: 0, attempts: {}, results: [], verdict: null, showGuard: false, pointStart: Date.now(),
+    });
+  }
+  bipar = () => {
+    const { view, piece } = this.state;
+    if (piece && view !== 'idle' && view !== 'concluida') { this.setState({ showGuard: true }); return; }
+    this.startPiece();
+  };
+  scriptVerdict(idx, attempt) {
+    if (idx === 0) return { faixa: 'duvida' };
+    if (idx === 1) return attempt === 0
+      ? { faixa: 'refazer', reason: 'Foto borrada', dica: 'Segure a peça parada e capture de novo — o foco ajusta sozinho.' }
+      : { faixa: 'conforme' };
+    if (idx === 2) return attempt === 0
+      ? { faixa: 'suspeita', classe: 'Distância acima da tolerância — 13,4 mm', reason: 'Distância acima da tolerância' }
+      : { faixa: 'conforme' };
+    return { faixa: 'conforme' };
+  }
+  capturar = () => {
+    const { offline, override, idx, attempts } = this.state;
+    if (offline) {
+      const results = this.state.results.concat([{ idx, faixa: 'pendente', ms: Date.now() - this.state.pointStart }]);
+      this.setState({ queue: this.state.queue + 1, results });
+      this.setToast('Foto guardada na fila local');
+      this.advanceFrom(results);
+      return;
+    }
+    this.setState({ view: 'validando' });
+    if (override === 'timeout') {
+      this._t = setTimeout(() => {
+        const results = this.state.results.concat([{ idx, faixa: 'pendente', ms: Date.now() - this.state.pointStart }]);
+        this.setState({ view: 'failopen', offline: true, queue: this.state.queue + 1, results, override: 'roteiro' });
+      }, 5000);
+      return;
+    }
+    this._t = setTimeout(() => {
+      const attempt = attempts[idx] || 0;
+      let v;
+      if (override !== 'roteiro') {
+        v = override === 'refazer' ? { faixa: 'refazer', reason: 'Peça fora do quadro', dica: 'Centralize a peça na zona demarcada e capture de novo.' }
+          : override === 'suspeita' ? { faixa: 'suspeita', classe: 'Madeira exposta na alma', reason: 'Madeira exposta' }
+          : { faixa: override };
+      } else v = this.scriptVerdict(idx, attempt);
+      const attempts2 = Object.assign({}, attempts); attempts2[idx] = attempt + 1;
+      if (v.faixa === 'conforme' || v.faixa === 'duvida') {
+        this.setState({ view: 'verde', verdict: v, attempts: attempts2, autoLeft: 3, autoPaused: false, override: 'roteiro' });
+        this._auto = setInterval(() => {
+          const n = this.state.autoLeft - 1;
+          if (n <= 0) { clearInterval(this._auto); this.avancar(); }
+          else this.setState({ autoLeft: n });
+        }, 1000);
+      } else if (v.faixa === 'refazer') {
+        this.setState({ view: 'refazer', verdict: v, attempts: attempts2, override: 'roteiro' });
+      } else {
+        this.setState({ view: 'suspeita', verdict: v, attempts: attempts2, override: 'roteiro' });
+      }
+    }, 1400);
+  };
+  recordAndNext(faixa) {
+    const { idx, pointStart } = this.state;
+    const results = this.state.results.concat([{ idx, faixa, ms: Date.now() - pointStart }]);
+    this.advanceFrom(results);
+  }
+  advanceFrom(results) {
+    const next = this.state.idx + 1;
+    if (next >= this.ROUTE.length) this.setState({ results, view: 'concluida' });
+    else this.setState({ results, idx: next, view: 'ponto', pointStart: Date.now() });
+  }
+  avancar = () => {
+    clearInterval(this._auto);
+    this.recordAndNext(this.state.verdict && this.state.verdict.faixa === 'duvida' ? 'duvida' : 'conforme');
+  };
+  renderVals() {
+    const s = this.state;
+    const demoEnabled = this.props.demoPainel ?? true;
+    const pt = this.ROUTE[s.idx] || this.ROUTE[0];
+    const v = s.verdict || {};
+    const fmt = (ms) => { const t = Math.round(ms / 1000); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); };
+    const k8Rows = this.ROUTE.map((r, i) => {
+      const res = s.results.find(x => x.idx === i);
+      const f = res ? res.faixa : 'conforme';
+      const pend = f === 'pendente';
+      return {
+        code: r.code, nome: r.nome, tempo: res ? fmt(res.ms) : '—',
+        status: pend ? 'Pendente de validação' : 'Conforme',
+        icone: pend ? '●' : '✓', cor: pend ? '#FFB020' : '#3ECF8E',
+      };
+    });
+    const totalMs = s.results.reduce((a, r) => a + r.ms, 0);
+    const revisao = s.results.filter(r => r.faixa === 'duvida' || r.faixa === 'discordo').length;
+    const towerState = s.view === 'verde' || s.view === 'concluida' ? 'g'
+      : (s.view === 'refazer' || s.view === 'suspeita' || s.view === 'retrabalho') ? 'r' : '';
+    const lastIsLast = s.idx >= this.ROUTE.length - 1;
+    return {
+      estacao: this.props.estacao ?? 'Estação 2 — Anéis',
+      hasPiece: !!s.piece && s.view !== 'idle' && s.view !== 'desconhecida',
+      pieceCode: s.piece ? s.piece.code : '', pieceOp: s.piece ? s.piece.op : '',
+      stepLabel: (s.idx + 1) + '/' + this.ROUTE.length,
+      queueVisible: s.queue > 0, queueCount: s.queue,
+      camDotColor: '#3ECF8E',
+      netDotColor: s.offline ? '#FFB020' : '#3ECF8E',
+      netLabel: s.offline ? 'sem conexão' : 'conexão',
+      towerRed: towerState === 'r' ? '#FF5C47' : '#2A2A34',
+      towerYellow: '#2A2A34',
+      towerGreen: towerState === 'g' ? '#3ECF8E' : '#2A2A34',
+      offlineBanner: s.offline && s.view !== 'failopen',
+      isIdle: s.view === 'idle', isPonto: s.view === 'ponto', isValidando: s.view === 'validando',
+      isVerde: s.view === 'verde', isRefazer: s.view === 'refazer', isSuspeita: s.view === 'suspeita',
+      isRetrabalho: s.view === 'retrabalho', isFailopen: s.view === 'failopen',
+      isConcluida: s.view === 'concluida', isDesconhecida: s.view === 'desconhecida',
+      pointCode: pt.code, pointNome: pt.nome, pointCriterio: pt.criterio,
+      pointMedida: (s.view === 'verde' && pt.medida) ? pt.medida : '',
+      isRecapture: (s.attempts[s.idx] || 0) > 0,
+      captureHint: s.offline ? 'Sem validação agora — a foto vai para a fila local' : 'Peça na zona demarcada? Capture.',
+      captureDisabled: false, captureBg: '#00E5FF',
+      verdictReason: v.reason || '', verdictDica: v.dica || '', verdictClasse: v.classe || '',
+      autoRunning: !s.autoPaused, autoPaused: s.autoPaused, autoLeft: s.autoLeft,
+      autoLabel: lastIsLast ? 'Resumo da peça' : 'Próximo ponto',
+      autoLabelUpper: lastIsLast ? 'RESUMO DA PEÇA' : 'PRÓXIMO PONTO',
+      reworkClock: fmt(s.reworkSec * 1000),
+      k8Rows, k8Total: this.ROUTE.length, k8Tempo: fmt(totalMs), k8Revisao: revisao || false,
+      unknownCode: 'AN-??-9314', unknownOp: 'OP 2024-1187',
+      showDisagreeConfirm: s.showDisagree, showGuard: s.showGuard, toast: s.toast,
+      demoEnabled, demoOpen: s.demoOpen,
+      demoToggleLabel: s.demoOpen ? 'FECHAR' : '⚙ DEMO',
+      offlineToggleLabel: s.offline ? 'Reconectar sistema' : 'Simular queda do sistema',
+      overrideValue: s.override,
+      onBipar: this.bipar,
+      onBiparDesconhecida: () => { if (this.state.piece && this.state.view !== 'idle' && this.state.view !== 'concluida') { this.setState({ showGuard: true }); return; } this.clearTimers(); this.setState({ view: 'desconhecida' }); },
+      onCapturar: this.capturar,
+      onCancelarValidacao: () => { this.clearTimers(); this.setState({ view: 'ponto' }); },
+      onCancelAuto: () => { clearInterval(this._auto); this.setState({ autoPaused: true }); },
+      onAvancar: this.avancar,
+      onRepetir: () => this.setState({ view: 'ponto' }),
+      onCorrigir: () => {
+        this.setState({ view: 'retrabalho', reworkSec: 0 });
+        this._rw = setInterval(() => this.setState({ reworkSec: this.state.reworkSec + 1 }), 1000);
+      },
+      onDiscordo: () => this.setState({ showDisagree: true }),
+      onDiscordoConfirm: () => { this.setState({ showDisagree: false }); this.setToast('Registrado — a peça segue o processo'); this.recordAndNext('discordo'); },
+      onDiscordoCancel: () => this.setState({ showDisagree: false }),
+      onChamar: () => this.setToast('Qualidade chamada — alguém vem até a estação'),
+      onPronto: () => { clearInterval(this._rw); this.setState({ view: 'ponto' }); },
+      onContinuarFailopen: () => { this.advanceFrom(this.state.results); },
+      onCriarPeca: () => { this.startPiece(); this.setToast('Peça criada pela OP 2024-1187 — Anel plano'); },
+      onToggleDemo: () => this.setState({ demoOpen: !s.demoOpen }),
+      onToggleOffline: () => {
+        if (s.offline) { this.setState({ offline: false, queue: 0 }); this.setToast('Sistema reconectado — fila local enviada'); }
+        else { this.setState({ offline: true }); }
+      },
+      onOverride: (e) => this.setState({ override: e.target.value }),
+      onGuardConfirm: () => this.startPiece(),
+      onGuardCancel: () => this.setState({ showGuard: false }),
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}</style>
+</helmet>
+<div style="min-height:100vh;background:#0A0A0F;display:flex;flex-direction:column;gap:28px;padding:48px;max-width:1080px;margin:0 auto;box-sizing:border-box" data-screen-label="Handoff LOTE 3">
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <span style="font-family:'JetBrains Mono';font-size:11px;letter-spacing:.2em;color:#8A8F98">LOGIKOS VISION · REDESIGN TO-BE · 04/08/2026</span>
+    <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:32px">Handoff — LOTE 3 · Carga · Estúdio · TV</h1>
+    <span style="font-size:13.5px;color:#8A8F98;max-width:660px;line-height:1.6">Fecha o redesign To-Be. Carga unifica a antiga tela de 3 abas + página solta nas MESMAS estruturas do EPI; Estúdio concentra a persona técnica atrás de gate; /tv roda sem chrome. Tokens e medidas idem <a href="Handoff LOTE 1.dc.html">LOTE 1</a> · telas EPI no <a href="Handoff LOTE 2.dc.html">LOTE 2</a>.</span>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:19px">Entregas</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <sc-for list="{{ telas }}" as="t" hint-placeholder-count="6">
+        <a href="{{ t.href }}" style="display:flex;flex-direction:column;gap:6px;padding:16px 18px;background:#14141C;border:1px solid #23242F;border-radius:10px;color:#F4F6F8" style-hover="border-color:rgba(0,229,255,.4)">
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <span style="font-family:'JetBrains Mono';font-size:11px;color:#00E5FF">{{ t.rota }}</span>
+            <span style="font-size:14px;font-weight:600">{{ t.nome }}</span>
+          </div>
+          <span style="font-size:12.5px;color:#8A8F98;line-height:1.55">{{ t.desc }}</span>
+        </a>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:19px">Componentes</h2>
+    <div style="display:grid;grid-template-columns:210px 120px 1fr;background:#14141C;border:1px solid #23242F;border-radius:10px;overflow:hidden">
+      <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">COMPONENTE</div>
+      <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">STATUS</div>
+      <div style="padding:10px 16px;font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">NOTAS</div>
+      <sc-for list="{{ comps }}" as="c" hint-placeholder-count="10">
+        <div style="display:contents">
+          <span style="padding:11px 16px;font-size:13px;font-weight:600;border-bottom:1px solid rgba(138,143,152,.08)">{{ c.nome }}</span>
+          <span style="padding:11px 16px;border-bottom:1px solid rgba(138,143,152,.08)"><span style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.08em;color:{{ c.cor }};border:1px solid {{ c.borda }};border-radius:5px;padding:3px 8px">{{ c.status }}</span></span>
+          <span style="padding:11px 16px;font-size:12.5px;color:#8A8F98;border-bottom:1px solid rgba(138,143,152,.08);line-height:1.5">{{ c.nota }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:19px">Regras e estados</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <sc-for list="{{ regras }}" as="r" hint-placeholder-count="6">
+        <div style="display:flex;flex-direction:column;gap:5px;padding:14px 16px;background:#14141C;border:1px solid #23242F;border-radius:10px">
+          <span style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.16em;color:#8A8F98">{{ r.tag }}</span>
+          <span style="font-size:13px;line-height:1.55">{{ r.txt }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:19px">Responsivo</h2>
+    <div style="padding:16px 18px;background:#14141C;border:1px solid #23242F;border-radius:10px;font-size:13.5px;line-height:1.8;color:#8A8F98">
+      <span style="color:#F4F6F8">Carga e Estúdio</span> — desktop-first ≥1280px, mesmas regras dos módulos anteriores; validação de contagem funciona em tablet (alvos ≥44px).<br/>
+      <span style="color:#F4F6F8">/tv</span> — fixo 1080p (16:9), tipografia dimensionada para leitura a 10 m (score 360px, linhas 40px); sem interação, sem chrome, rotação a cada 8 s com indicador de painel.
+    </div>
+  </div>
+
+  <span style="font-size:12px;color:#8A8F98;padding-bottom:24px">Redesign To-Be completo: shell + Qualidade (encaixe) + EPI + Carga + Estúdio + TV. Próximo passo: os 3 handoffs viram prompts de Claude Code (fases F1–F5).</span>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1120,&quot;height&quot;:1400}}">
+class Component extends DCLogic {
+  renderVals() {
+    const st = { EXISTENTE: ['#3ECF8E', 'rgba(62,207,142,.4)'], ESTENDIDO: ['#E8A13C', 'rgba(232,161,60,.4)'], NOVO: ['#00E5FF', 'rgba(0,229,255,.4)'] };
+    const row = (nome, status, nota) => ({ nome, status, nota, cor: st[status][0], borda: st[status][1] });
+    return {
+      telas: [
+        { rota: '/carga', nome: 'Módulo Carga', href: 'Carga.dc.html', desc: 'Dashboard (KPIs + sessões/hora + divergência por baia), baias com live e contador, eventos de sessão, validação de contagem: contado vs manual editável, decisão registrada com autor.' },
+        { rota: '/estudio', nome: 'Estúdio', href: 'Estúdio.dc.html', desc: 'Gate de permissão (estudio:acesso); Dados com galeria e upload; Anotação recebendo casos da Verificação EPI; Treinos ao vivo com curvas e ETA; Modelos com mAP/precisão/recall, ativar e comparar.' },
+        { rota: '/tv/:site', nome: 'Modo TV', href: 'TV RVB.dc.html', desc: 'Sem chrome, 1080p, legível a 10 m: score gigante, semáforo de linhas/câmeras, últimos eventos com thumbnail; rotação a cada 8 s; zero interação.' },
+        { rota: '/qualidade', nome: 'Jornada Qualidade (adendo)', href: 'Qualidade.dc.html', desc: 'Sidebar completa do módulo: telas aprovadas encaixadas intocadas + Retrabalho e Câmeras de estação novas.' },
+      ],
+      comps: [
+        row('BaiaCard (live + contador)', 'NOVO', 'Tile de vídeo com linha de contagem e contador grande em Mono; estados sessão ativa / ociosa.'),
+        row('Validação de contagem', 'NOVO', 'Contado vs manual (editável) vs divergência; decisão explícita em 2 botões; registro com autor e hora; fila de pendentes.'),
+        row('DataTable (sessões)', 'EXISTENTE', 'Mesma tabela do EPI com colunas de sessão/baia/placa.'),
+        row('Gate de permissão', 'NOVO', 'Tela de acesso restrito com a permissão nomeada e CTA "Solicitar acesso"; sidebar oculta sem permissão.'),
+        row('Galeria de dados', 'NOVO', 'Grid de amostras com filtro imagem/vídeo e dropzone; dados isolados por tenant.'),
+        row('Fila de anotação', 'NOVO', 'Recebe itens da Verificação EPI (atalho A) e amostras; pré-anotação sugere caixas; abre no anotador existente.'),
+        row('Painel de treino ao vivo', 'ESTENDIDO', 'TrainingMode existente ganha curvas (erro ↓ / mAP ↑), época, ETA em Mono e spinner LogikosLoader.'),
+        row('Tabela de modelos', 'NOVO', 'Métricas em Mono; ATIVO/CANDIDATO/ARQUIVADO; ativar com validação; comparar 2 versões lado a lado.'),
+        row('Painéis de TV', 'NOVO', 'Score / semáforo / eventos; tipografia por distância; rotação em steps; grid grego de fundo.'),
+      ],
+      regras: [
+        { tag: 'MESMAS ESTRUTURAS', txt: 'Carga usa os padrões do EPI: KPIRow, tabela de eventos, estados, chrome. A antiga tela de 3 abas + página solta viram uma jornada só.' },
+        { tag: 'DECISÃO HUMANA', txt: 'Divergência de contagem nunca se resolve sozinha: 2 escolhas explícitas, registro de quem decidiu e quando.' },
+        { tag: 'JARGÃO SÓ NO ESTÚDIO', txt: 'mAP/precisão/recall aparecem apenas na área técnica gateada. Nos módulos de operação, nunca.' },
+        { tag: 'TV É PROVA, NÃO PAINEL', txt: 'Sem interação e sem decisão na TV — ela mostra estado a 10 m; agir é no desktop.' },
+        { tag: '4 ESTADOS', txt: 'Carga e Estúdio têm carregado/loading/vazio/erro (barra ESTADO); Estúdio soma o 5º: SEM PERMISSÃO.' },
+        { tag: 'LOOP DE TREINO', txt: 'Verificação (EPI) → fila de Anotação → Treino → Modelos → ativar: o ciclo de melhoria fecha dentro do produto.' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

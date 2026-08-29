@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:#23242F;border-radius:5px}</style>
+</helmet>
+<div style="width:100%;height:100vh;display:flex;flex-direction:column;background:#0A0A0F" data-screen-label="Módulo Carga">
+  <dc-import name="EPI Topbar" modulo="Carga" crumb2="{{ crumb2 }}" style="flex:none" hint-size="100%,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <aside style="width:236px;flex:none;box-sizing:border-box;display:flex;flex-direction:column;background:#14141C;border-right:1px solid #23242F;padding:14px 0">
+      <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.22em;color:#8A8F98;padding:0 20px 10px">CARGA</span>
+      <nav style="display:flex;flex-direction:column;gap:2px;padding:0 8px">
+        <sc-for list="{{ itens }}" as="it" hint-placeholder-count="4">
+          <a onClick="{{ it.go }}" style="display:flex;align-items:center;gap:11px;height:38px;padding:0 12px;border-radius:8px;border-left:2px solid {{ it.borda }};color:{{ it.cor }};background:{{ it.bg }};font-size:13.5px;font-weight:{{ it.peso }};cursor:pointer;white-space:nowrap;overflow:hidden" style-hover="background:#0A0A0F">
+            <svg viewBox="0 0 24 24" style="width:18px;height:18px;flex:none" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="square"><path d="{{ it.d }}"></path></svg>
+            <span>{{ it.nome }}</span>
+          </a>
+        </sc-for>
+      </nav>
+      <div style="flex:1"></div>
+      <div style="display:flex;flex-direction:column;gap:2px;padding:10px 8px 0;border-top:1px solid #23242F">
+        <a href="Shell Logikos Vision.dc.html" style="display:flex;align-items:center;gap:11px;height:36px;padding:0 12px;border-radius:8px;color:#8A8F98;font-size:13px" style-hover="background:#0A0A0F;color:#F4F6F8">
+          <svg viewBox="0 0 24 24" style="width:18px;height:18px;flex:none" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="square"><path d="M8 3L4 7l4 4M4 7h16M16 21l4-4-4-4M20 17H4"></path></svg>
+          <span>Trocar módulo</span>
+        </a>
+      </div>
+    </aside>
+    <main style="flex:1;min-width:0;overflow:auto;position:relative">
+      <sc-if value="{{ carregado }}" hint-placeholder-val="{{ true }}">
+
+        <sc-if value="{{ showDashboard }}" hint-placeholder-val="{{ true }}">
+          <div style="max-width:1280px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Dashboard</h1>
+              <div style="flex:1"></div>
+              <select style="height:36px;background:#14141C;border:1px solid #23242F;border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 10px"><option>RVB Isolantes — Blumenau</option></select>
+              <select style="height:36px;background:#14141C;border:1px solid #23242F;border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 10px"><option>Hoje</option><option>7 dias</option></select>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+              <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+                <div style="display:flex;flex-direction:column;gap:6px;padding:16px 18px;background:#14141C;border:1px solid #23242F;border-radius:12px;border-top:2px solid {{ k.cor }}">
+                  <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">{{ k.label }}</span>
+                  <span style="font-family:'JetBrains Mono';font-weight:700;font-size:34px;line-height:1;color:{{ k.corValor }}">{{ k.valor }}</span>
+                  <span style="font-size:12px;color:#8A8F98">{{ k.sub }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:12px">
+              <div style="display:flex;flex-direction:column;gap:12px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+                <span style="font-size:14px;font-weight:600">Sessões de carga por hora</span>
+                <div style="display:flex;align-items:flex-end;gap:5px;height:110px">
+                  <sc-for list="{{ horas }}" as="h" hint-placeholder-count="10">
+                    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;height:100%;justify-content:flex-end">
+                      <div style="width:100%;height:{{ h.h }};background:{{ h.cor }};border-radius:3px 3px 0 0"></div>
+                      <span style="font-family:'JetBrains Mono';font-size:9.5px;color:#8A8F98">{{ h.t }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <span style="font-size:12px;color:#8A8F98">Pico entre 9h e 11h — janela de expedição da transportadora.</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:12px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+                <div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:14px;font-weight:600">Divergência por baia</span><a href="#" onClick="{{ irValidacao }}" style="font-size:12px;margin-left:auto">validar →</a></div>
+                <sc-for list="{{ divergencias }}" as="b" hint-placeholder-count="4">
+                  <div style="display:flex;align-items:center;gap:10px">
+                    <span style="font-family:'JetBrains Mono';font-size:13px;width:64px">{{ b.baia }}</span>
+                    <div style="flex:1;height:14px;background:#0A0A0F;border-radius:4px;overflow:hidden"><div style="width:{{ b.w }};height:100%;background:{{ b.cor }}"></div></div>
+                    <span style="font-family:'JetBrains Mono';font-size:13px;width:30px;text-align:right">{{ b.n }}</span>
+                  </div>
+                </sc-for>
+                <span style="font-size:12px;color:#8A8F98">BAIA-02 concentra as divergências — conferir posição da câmera.</span>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ showBaias }}" hint-placeholder-val="{{ false }}">
+          <div style="max-width:1280px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+            <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Baias</h1>
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">
+              <sc-for list="{{ baias }}" as="b" hint-placeholder-count="4">
+                <div style="display:flex;flex-direction:column;background:#14141C;border:1px solid #23242F;border-radius:12px;overflow:hidden">
+                  <div style="position:relative;aspect-ratio:16/8;background:{{ b.fundo }}">
+                    <span style="position:absolute;top:8px;left:8px;background:rgba(10,10,15,.75);border-radius:5px;padding:3px 9px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.1em">{{ b.nome }} · {{ b.cam }}</span>
+                    <sc-if value="{{ b.ativa }}" hint-placeholder-val="{{ true }}">
+                      <span style="position:absolute;top:8px;right:8px;display:flex;align-items:center;gap:6px;background:rgba(10,10,15,.75);border-radius:5px;padding:3px 9px;font-family:'JetBrains Mono';font-size:10px;color:#3ECF8E">● SESSÃO ATIVA</span>
+                      <div style="position:absolute;bottom:10px;left:10px;display:flex;align-items:baseline;gap:8px;background:rgba(10,10,15,.8);border:1px solid #23242F;border-radius:8px;padding:8px 14px">
+                        <span style="font-family:'JetBrains Mono';font-weight:700;font-size:30px;line-height:1">{{ b.contado }}</span>
+                        <span style="font-size:11.5px;color:#8A8F98">itens contados</span>
+                      </div>
+                      <div style="position:absolute;top:34%;left:20%;width:22%;height:40%;border:2px solid #00E5FF;border-radius:3px;opacity:.7"></div>
+                    </sc-if>
+                    <sc-if value="{{ b.ociosa }}" hint-placeholder-val="{{ false }}">
+                      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><span style="font-family:'JetBrains Mono';font-size:11px;letter-spacing:.16em;color:#8A8F98">BAIA OCIOSA</span></div>
+                    </sc-if>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:12px;padding:12px 16px">
+                    <span style="font-size:13px;color:#8A8F98">{{ b.info }}</span>
+                    <div style="flex:1"></div>
+                    <sc-if value="{{ b.ativa }}" hint-placeholder-val="{{ true }}">
+                      <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">PLACA {{ b.placa }}</span>
+                      <button onClick="{{ irValidacao }}" style="height:32px;padding:0 13px;background:transparent;border:1px solid #23242F;border-radius:7px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer" style-hover="border-color:#00E5FF;color:#00E5FF">Encerrar e validar</button>
+                    </sc-if>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ showEventos }}" hint-placeholder-val="{{ false }}">
+          <div style="max-width:1280px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Eventos</h1>
+              <div style="flex:1"></div>
+              <select style="height:36px;background:#14141C;border:1px solid #23242F;border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 10px"><option>Hoje</option><option>7 dias</option></select>
+              <select style="height:36px;background:#14141C;border:1px solid #23242F;border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 10px"><option>Todas as baias</option><option>BAIA-01</option><option>BAIA-02</option></select>
+            </div>
+            <div style="display:grid;grid-template-columns:120px 110px 130px 1.2fr 90px 160px;background:#14141C;border:1px solid #23242F;border-radius:10px;overflow:hidden">
+              <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">SESSÃO</div>
+              <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">BAIA</div>
+              <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">PLACA</div>
+              <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">EVENTO</div>
+              <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">HORA</div>
+              <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">STATUS</div>
+              <sc-for list="{{ eventos }}" as="ev" hint-placeholder-count="5">
+                <div style="display:contents">
+                  <span style="padding:12px 14px;font-family:'JetBrains Mono';font-size:12.5px;border-bottom:1px solid rgba(138,143,152,.08)">{{ ev.sessao }}</span>
+                  <span style="padding:12px 14px;font-family:'JetBrains Mono';font-size:12.5px;border-bottom:1px solid rgba(138,143,152,.08)">{{ ev.baia }}</span>
+                  <span style="padding:12px 14px;font-family:'JetBrains Mono';font-size:12.5px;border-bottom:1px solid rgba(138,143,152,.08)">{{ ev.placa }}</span>
+                  <span style="padding:12px 14px;font-size:13px;border-bottom:1px solid rgba(138,143,152,.08)">{{ ev.evento }}</span>
+                  <span style="padding:12px 14px;font-family:'JetBrains Mono';font-size:12.5px;border-bottom:1px solid rgba(138,143,152,.08)">{{ ev.hora }}</span>
+                  <span style="padding:12px 14px;border-bottom:1px solid rgba(138,143,152,.08)"><span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.08em;color:{{ ev.stCor }};border:1px solid {{ ev.stBorda }};border-radius:5px;padding:3px 8px">{{ ev.status }}</span></span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ showValidacao }}" hint-placeholder-val="{{ false }}">
+          <div style="max-width:1080px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Validação de contagem</h1>
+              <span style="font-family:'JetBrains Mono';font-size:12px;color:#E8A13C;font-weight:700">{{ pendentes }} PENDENTES</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:14px;background:#14141C;border:1px solid {{ valBorda }};border-radius:14px;padding:22px">
+              <div style="display:flex;align-items:center;gap:14px">
+                <span style="font-family:'JetBrains Mono';font-size:11px;letter-spacing:.12em;color:#8A8F98">SESSÃO CG-0412 · BAIA-02 · HOJE 10:12–11:03</span>
+                <div style="flex:1"></div>
+                <span style="font-family:'JetBrains Mono';font-size:13px;font-weight:700;border:1px solid #23242F;border-radius:6px;padding:4px 10px">PLACA ABC-1D23</span>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+                <div style="display:flex;flex-direction:column;gap:6px;padding:18px;background:#0A0A0F;border:1px solid #23242F;border-radius:10px">
+                  <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">CONTADO PELO SISTEMA</span>
+                  <span style="font-family:'JetBrains Mono';font-weight:700;font-size:52px;line-height:1">142</span>
+                  <span style="font-size:12px;color:#8A8F98">linha de contagem · BAIA-02</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;padding:18px;background:#0A0A0F;border:1px solid #23242F;border-radius:10px">
+                  <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">CONTAGEM MANUAL</span>
+                  <div style="display:flex;align-items:center;gap:10px">
+                    <input value="{{ manual }}" onChange="{{ setManual }}" style="width:130px;background:#14141C;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'JetBrains Mono';font-weight:700;font-size:44px;padding:2px 12px;outline:none;box-sizing:border-box" />
+                    <span style="font-size:12px;color:#8A8F98">editável</span>
+                  </div>
+                  <span style="font-size:12px;color:#8A8F98">romaneio da expedição</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px;padding:18px;background:{{ divBg }};border:1px solid {{ divBorda }};border-radius:10px">
+                  <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">DIVERGÊNCIA</span>
+                  <span style="display:flex;align-items:center;gap:9px;font-family:'JetBrains Mono';font-weight:700;font-size:52px;line-height:1;color:{{ divCor }}">{{ divergencia }}</span>
+                  <span style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:{{ divCor }}">{{ divTxt }}</span>
+                </div>
+              </div>
+              <sc-if value="{{ pendente }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;gap:8px">
+                  <button onClick="{{ aceitarSistema }}" style="flex:1;height:48px;border:none;border-radius:9px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:14px;font-weight:700;cursor:pointer">Aceitar contagem do sistema (142)</button>
+                  <button onClick="{{ aceitarManual }}" style="flex:1;height:48px;background:transparent;border:1px solid #23242F;border-radius:9px;color:#F4F6F8;font-family:'Inter';font-size:14px;font-weight:600;cursor:pointer" style-hover="border-color:#00E5FF;color:#00E5FF">Aceitar contagem manual ({{ manual }})</button>
+                </div>
+                <span style="font-size:12px;color:#8A8F98">A decisão fica registrada com autor e horário; a sessão vai para o histórico e alimenta o relatório da expedição.</span>
+              </sc-if>
+              <sc-if value="{{ resolvida }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:rgba(62,207,142,.07);border:1px solid rgba(62,207,142,.4);border-radius:9px">
+                  <svg viewBox="0 0 24 24" style="width:16px;height:16px" fill="none" stroke="#3ECF8E" stroke-width="2.2" stroke-linecap="square"><path d="M5 12l5 5 9-10"></path></svg>
+                  <span style="font-size:13px;font-weight:600;color:#3ECF8E">Sessão validada — {{ decisao }}</span>
+                  <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">ANA RIBEIRO · AGORA</span>
+                </div>
+              </sc-if>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">PRÓXIMAS PENDENTES</span>
+              <sc-for list="{{ filaVal }}" as="f" hint-placeholder-count="2">
+                <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;background:#14141C;border:1px solid #23242F;border-radius:9px">
+                  <span style="font-family:'JetBrains Mono';font-size:12.5px">{{ f.sessao }}</span>
+                  <span style="font-family:'JetBrains Mono';font-size:12.5px;color:#8A8F98">{{ f.baia }}</span>
+                  <span style="font-family:'JetBrains Mono';font-size:12.5px;color:#8A8F98">{{ f.placa }}</span>
+                  <div style="flex:1"></div>
+                  <span style="font-family:'JetBrains Mono';font-size:12.5px">{{ f.contado }} <span style="color:#8A8F98">vs</span> {{ f.manual }}</span>
+                  <span style="font-family:'JetBrains Mono';font-size:11px;font-weight:700;color:{{ f.cor }}">{{ f.div }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+      </sc-if>
+      <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}">
+        <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="fullscreen" state="waiting" label="CARREGANDO CARGA" size="96" style="position:absolute;inset:0" hint-size="100%,100%"></x-import>
+      </sc-if>
+      <sc-if value="{{ vazio }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#8A8F98" stroke-width="1.5" stroke-linecap="square"><path d="M3 21V8l4-4h10l4 4v13M3 12h18M9 21v-5h6v5"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Nenhuma sessão hoje</span>
+          <span style="font-size:13.5px;color:#8A8F98;max-width:380px;line-height:1.55">As sessões aparecem quando um caminhão entra na baia e a contagem começa.</span>
+          <button style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Ver baias</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{ erro }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#E5484D" stroke-width="1.5" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Não foi possível carregar</span>
+          <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">GET /api/carga/sessoes · TIMEOUT 10 S</span>
+          <button style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Tentar novamente</button>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+  <div style="position:fixed;left:16px;bottom:14px;display:flex;align-items:center;gap:6px;background:#14141C;border:1px solid #23242F;border-radius:10px;padding:7px 10px;z-index:130;box-shadow:0 8px 32px rgba(0,0,0,.6)">
+    <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.2em;color:#8A8F98;margin-right:4px">ESTADO</span>
+    <sc-for list="{{ chips }}" as="ch" hint-placeholder-count="4">
+      <button onClick="{{ ch.go }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid {{ ch.borda }};background:{{ ch.bg }};color:{{ ch.cor }};font-family:'JetBrains Mono';font-size:10.5px;cursor:pointer">{{ ch.t }}</button>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:940}}">
+class Component extends DCLogic {
+  ITENS = [
+    { key: 'dashboard', nome: 'Dashboard', d: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z' },
+    { key: 'baias', nome: 'Baias', d: 'M3 21V8l4-4h10l4 4v13M3 12h18M9 21v-5h6v5' },
+    { key: 'eventos', nome: 'Eventos', d: 'M4 6h16M4 12h16M4 18h10' },
+    { key: 'validacao', nome: 'Validação', d: 'M4 4h16v16H4zM8 12l3 3 5-6' },
+  ];
+  state = { estado: 'carregado', aba: 'dashboard', manual: '140', decidido: null };
+  renderVals() {
+    const s = this.state;
+    const chip = (t, k) => ({ t, go: () => this.setState({ estado: k }), bg: s.estado === k ? 'rgba(0,229,255,.09)' : 'transparent', cor: s.estado === k ? '#00E5FF' : '#8A8F98', borda: s.estado === k ? 'rgba(0,229,255,.4)' : '#23242F' });
+    const manualN = parseInt(s.manual, 10) || 0;
+    const div = 142 - manualN;
+    const divCor = div === 0 ? '#3ECF8E' : '#E8A13C';
+    return {
+      crumb2: this.ITENS.find(i => i.key === s.aba).nome,
+      itens: this.ITENS.map(it => ({
+        nome: it.nome, d: it.d,
+        cor: s.aba === it.key ? '#00E5FF' : '#8A8F98',
+        bg: s.aba === it.key ? 'rgba(0,229,255,.06)' : 'transparent',
+        borda: s.aba === it.key ? '#00E5FF' : 'transparent',
+        peso: s.aba === it.key ? '600' : '500',
+        go: () => this.setState({ aba: it.key, estado: 'carregado' }),
+      })),
+      showDashboard: s.aba === 'dashboard', showBaias: s.aba === 'baias', showEventos: s.aba === 'eventos', showValidacao: s.aba === 'validacao',
+      irValidacao: (e) => { if (e && e.preventDefault) e.preventDefault(); this.setState({ aba: 'validacao', estado: 'carregado' }); },
+      carregado: s.estado === 'carregado', loading: s.estado === 'loading', vazio: s.estado === 'vazio', erro: s.estado === 'erro',
+      chips: [chip('CARREGADO', 'carregado'), chip('LOADING', 'loading'), chip('VAZIO', 'vazio'), chip('ERRO', 'erro')],
+      kpis: [
+        { label: 'SESSÕES HOJE', valor: '12', sub: '2 em andamento', cor: 'rgba(138,143,152,.4)', corValor: '#F4F6F8' },
+        { label: 'ITENS CONTADOS', valor: '1.640', sub: 'linha de contagem', cor: 'rgba(138,143,152,.4)', corValor: '#F4F6F8' },
+        { label: 'DIVERGÊNCIAS', valor: '2', sub: 'aguardam validação', cor: '#E8A13C', corValor: '#E8A13C' },
+        { label: 'BAIAS ATIVAS', valor: '3/4', sub: 'BAIA-03 ociosa', cor: '#3ECF8E', corValor: '#F4F6F8' },
+      ],
+      horas: [
+        { t: '07', h: '22%', cor: '#23242F' }, { t: '08', h: '46%', cor: '#23242F' }, { t: '09', h: '88%', cor: '#0091AD' },
+        { t: '10', h: '95%', cor: '#0091AD' }, { t: '11', h: '70%', cor: '#23242F' }, { t: '12', h: '18%', cor: '#23242F' },
+        { t: '13', h: '38%', cor: '#23242F' }, { t: '14', h: '52%', cor: '#23242F' }, { t: '15', h: '30%', cor: '#23242F' }, { t: '16', h: '12%', cor: '#23242F' },
+      ],
+      divergencias: [
+        { baia: 'BAIA-02', w: '84%', n: 2, cor: '#E8A13C' }, { baia: 'BAIA-01', w: '0%', n: 0, cor: '#23242F' },
+        { baia: 'BAIA-04', w: '0%', n: 0, cor: '#23242F' }, { baia: 'BAIA-03', w: '0%', n: 0, cor: '#23242F' },
+      ],
+      baias: [
+        { nome: 'BAIA-01', cam: 'CAM-09', ativa: true, ociosa: false, contado: '86', placa: 'DKE-7F41', info: 'Sessão CG-0415 · início 13:40', fundo: 'linear-gradient(160deg,#1A1B26,#0F0F16)' },
+        { nome: 'BAIA-02', cam: 'CAM-10', ativa: true, ociosa: false, contado: '142', placa: 'ABC-1D23', info: 'Sessão CG-0412 · encerrada, aguarda validação', fundo: 'linear-gradient(200deg,#191822,#0E0E15)' },
+        { nome: 'BAIA-03', cam: 'CAM-11', ativa: false, ociosa: true, contado: '', placa: '', info: 'Sem caminhão na doca', fundo: '#0C0C12' },
+        { nome: 'BAIA-04', cam: 'CAM-12', ativa: true, ociosa: false, contado: '31', placa: 'JHK-2B88', info: 'Sessão CG-0416 · início 14:22', fundo: 'linear-gradient(175deg,#181926,#0E0E15)' },
+      ],
+      eventos: [
+        { sessao: 'CG-0416', baia: 'BAIA-04', placa: 'JHK-2B88', evento: 'Início de sessão — caminhão detectado', hora: '14:22', status: 'EM ANDAMENTO', stCor: '#00E5FF', stBorda: 'rgba(0,229,255,.4)' },
+        { sessao: 'CG-0415', baia: 'BAIA-01', placa: 'DKE-7F41', evento: 'Início de sessão — caminhão detectado', hora: '13:40', status: 'EM ANDAMENTO', stCor: '#00E5FF', stBorda: 'rgba(0,229,255,.4)' },
+        { sessao: 'CG-0412', baia: 'BAIA-02', placa: 'ABC-1D23', evento: 'Fim de sessão — divergência de contagem (+2)', hora: '11:03', status: 'AGUARDA VALIDAÇÃO', stCor: '#E8A13C', stBorda: 'rgba(232,161,60,.4)' },
+        { sessao: 'CG-0411', baia: 'BAIA-01', placa: 'PQR-9C15', evento: 'Fim de sessão — contagem confere (98)', hora: '10:31', status: 'VALIDADA', stCor: '#3ECF8E', stBorda: 'rgba(62,207,142,.4)' },
+        { sessao: 'CG-0410', baia: 'BAIA-04', placa: 'MNO-4E77', evento: 'Fim de sessão — contagem confere (204)', hora: '09:48', status: 'VALIDADA', stCor: '#3ECF8E', stBorda: 'rgba(62,207,142,.4)' },
+      ],
+      pendentes: s.decidido ? 1 : 2, pendente: !s.decidido, resolvida: !!s.decidido,
+      decisao: s.decidido === 'sistema' ? 'contagem do sistema (142) aceita' : 'contagem manual (' + s.manual + ') aceita',
+      manual: s.manual, setManual: (e) => this.setState({ manual: e.target.value.replace(/[^0-9]/g, '').slice(0, 4) }),
+      divergencia: (div > 0 ? '+' : '') + div, divCor, divTxt: div === 0 ? '✓ contagens conferem' : '▲ requer decisão humana',
+      divBg: div === 0 ? 'rgba(62,207,142,.06)' : 'rgba(232,161,60,.06)',
+      divBorda: div === 0 ? 'rgba(62,207,142,.4)' : 'rgba(232,161,60,.4)',
+      valBorda: s.decidido ? 'rgba(62,207,142,.4)' : 'rgba(232,161,60,.45)',
+      aceitarSistema: () => this.setState({ decidido: 'sistema' }),
+      aceitarManual: () => this.setState({ decidido: 'manual' }),
+      filaVal: [
+        { sessao: 'CG-0409', baia: 'BAIA-02', placa: 'XYZ-3A02', contado: '77', manual: '75', div: '+2', cor: '#E8A13C' },
+        { sessao: 'CG-0405', baia: 'BAIA-02', placa: 'TUV-8D60', contado: '118', manual: '118', div: '0', cor: '#3ECF8E' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

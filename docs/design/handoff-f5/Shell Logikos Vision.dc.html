@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:#23242F;border-radius:5px}::-webkit-scrollbar-track{background:transparent}</style>
+</helmet>
+<div style="width:100%;height:100vh;background:#0A0A0F;position:relative;overflow:hidden" data-screen-label="Shell Logikos Vision">
+
+  <sc-if value="{{ isDesktop }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;flex-direction:column;height:100vh">
+      <sc-if value="{{ admin }}" hint-placeholder-val="{{ false }}"><div style="height:2px;flex:none;background:#E8A13C"></div></sc-if>
+      <header style="height:56px;flex:none;display:flex;align-items:center;gap:16px;padding:0 20px;background:#14141C;border-bottom:1px solid #23242F;position:relative;z-index:40">
+        <div style="display:flex;align-items:center;gap:10px;flex:none">
+          <svg viewBox="0 0 100 100" style="width:26px;height:26px"><defs><mask id="khTop"><rect width="100" height="100" fill="white"></rect><g transform="translate(24,22.4) scale(0.52)"><path d="M40 55.3 A20 20 0 1 1 60 55.3 L67 88 L33 88 Z" fill="black"></path></g></mask></defs><circle cx="50" cy="50" r="44" fill="#F4F6F8" mask="url(#khTop)"></circle></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:15px;letter-spacing:.14em">LOGIKOS</span>
+        </div>
+        <div style="width:1px;height:24px;background:#23242F;flex:none"></div>
+        <div style="position:relative;flex:none">
+          <button onClick="{{ toggleSwitcher }}" style="height:34px;display:flex;align-items:center;gap:8px;padding:0 12px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:13px;font-weight:600;cursor:pointer">
+            {{ moduleName }}
+            <svg viewBox="0 0 24 24" style="width:14px;height:14px" fill="none" stroke="#8A8F98" stroke-width="2"><path d="M6 9l6 6 6-6"></path></svg>
+          </button>
+          <sc-if value="{{ switcher }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;top:42px;left:0;width:264px;background:#14141C;border:1px solid #23242F;border-radius:10px;box-shadow:0 8px 40px rgba(0,0,0,.7);padding:6px;display:flex;flex-direction:column;gap:2px;z-index:50">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.2em;color:#8A8F98;padding:8px 10px 4px">MÓDULOS</span>
+              <sc-for list="{{ moduleList }}" as="m" hint-placeholder-count="4">
+                <button onClick="{{ m.go }}" style="display:flex;align-items:center;gap:10px;padding:9px 10px;background:{{ m.bg }};border:none;border-radius:7px;cursor:pointer;text-align:left">
+                  <div style="flex:1;display:flex;flex-direction:column;gap:1px">
+                    <span style="font-family:'Inter';font-size:13px;font-weight:600;color:{{ m.cor }}">{{ m.nome }}</span>
+                    <span style="font-family:'Inter';font-size:11.5px;color:#8A8F98">{{ m.desc }}</span>
+                  </div>
+                  <sc-if value="{{ m.ativo }}" hint-placeholder-val="{{ false }}"><svg viewBox="0 0 24 24" style="width:15px;height:15px" fill="none" stroke="#00E5FF" stroke-width="2.2" stroke-linecap="square"><path d="M5 12l5 5 9-10"></path></svg></sc-if>
+                </button>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+        <nav style="display:flex;align-items:center;font-size:13px;color:#8A8F98;min-width:0;overflow:hidden">
+          <sc-for list="{{ crumbs }}" as="c" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;gap:8px;min-width:{{ c.minW }};overflow:hidden;flex:{{ c.flex }};margin-right:8px">
+              <span style="color:#3A3D4A;display:{{ c.sepDisp }};flex:none">/</span>
+              <span style="display:block;color:{{ c.cor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:220px">{{ c.t }}</span>
+            </div>
+          </sc-for>
+        </nav>
+        <div style="flex:1"></div>
+        <button onClick="{{ openPalette }}" style="width:250px;min-width:110px;height:34px;flex:0 1 auto;display:flex;align-items:center;gap:9px;padding:0 12px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px;cursor:pointer;overflow:hidden">
+          <svg viewBox="0 0 24 24" style="width:15px;height:15px" fill="none" stroke="#8A8F98" stroke-width="1.8" stroke-linecap="square"><path d="M10 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12zM14.5 14.5L20 20"></path></svg>
+          <span style="font-family:'Inter';font-size:13px;color:#8A8F98">Buscar…</span>
+          <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:11px;color:#8A8F98;border:1px solid #23242F;border-radius:5px;padding:2px 6px">⌘K</span>
+        </button>
+        <div style="position:relative;flex:none">
+          <button onClick="{{ toggleNotif }}" style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;background:transparent;border:none;border-radius:8px;cursor:pointer;position:relative">
+            <svg viewBox="0 0 24 24" style="width:19px;height:19px" fill="none" stroke="#8A8F98" stroke-width="1.7" stroke-linecap="square"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 3H4zM10 21h4"></path></svg>
+            <span style="position:absolute;top:2px;right:2px;min-width:15px;height:15px;border-radius:8px;background:#E8A13C;color:#0A0A0F;font-family:'JetBrains Mono';font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px;box-sizing:border-box">3</span>
+          </button>
+          <sc-if value="{{ notif }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;top:44px;right:0;width:340px;background:#14141C;border:1px solid #23242F;border-radius:10px;box-shadow:0 8px 40px rgba(0,0,0,.7);padding:6px;display:flex;flex-direction:column;gap:2px;z-index:50">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.2em;color:#8A8F98;padding:8px 10px 4px">NOTIFICAÇÕES</span>
+              <div style="display:flex;gap:10px;padding:9px 10px;border-radius:7px;cursor:pointer" style-hover="background:#0A0A0F">
+                <span style="width:8px;height:8px;border-radius:50%;background:#E5484D;margin-top:5px;flex:none"></span>
+                <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:12.5px;font-weight:600">Violação: sem capacete · CAM-04 Expedição</span><span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">HOJE 14:32</span></div>
+              </div>
+              <div style="display:flex;gap:10px;padding:9px 10px;border-radius:7px;cursor:pointer" style-hover="background:#0A0A0F">
+                <span style="width:8px;height:8px;border-radius:50%;background:#E8A13C;margin-top:5px;flex:none"></span>
+                <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:12.5px;font-weight:600">Ação "Reforçar DDS na doca" vence 08/08</span><span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">RESP. CARLOS M.</span></div>
+              </div>
+              <div style="display:flex;gap:10px;padding:9px 10px;border-radius:7px;cursor:pointer" style-hover="background:#0A0A0F">
+                <span style="width:8px;height:8px;border-radius:50%;background:#E8A13C;margin-top:5px;flex:none"></span>
+                <div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:12.5px;font-weight:600">CAM-07 Linha 2 instável há 12 min</span><span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">SAÚDE DE CÂMERAS</span></div>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+        <div style="position:relative;flex:none">
+          <button onClick="{{ toggleUser }}" style="height:40px;display:flex;align-items:center;gap:9px;padding:0 6px;background:transparent;border:none;border-radius:8px;cursor:pointer">
+            <span style="width:30px;height:30px;border-radius:50%;background:#0A0A0F;border:1px solid #3A3D4A;display:flex;align-items:center;justify-content:center;font-family:'Inter';font-size:12px;font-weight:600;color:#F4F6F8">AR</span>
+            <div style="display:flex;flex-direction:column;align-items:flex-start;gap:0">
+              <span style="font-family:'Inter';font-size:13px;font-weight:600;color:#F4F6F8;line-height:1.2">Ana Ribeiro</span>
+              <span style="font-family:'Inter';font-size:11px;color:#8A8F98;line-height:1.2">Técnica de segurança</span>
+            </div>
+          </button>
+          <sc-if value="{{ userMenu }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;top:48px;right:0;width:210px;background:#14141C;border:1px solid #23242F;border-radius:10px;box-shadow:0 8px 40px rgba(0,0,0,.7);padding:6px;display:flex;flex-direction:column;gap:2px;z-index:50">
+              <div style="padding:8px 10px;border-bottom:1px solid #23242F;display:flex;flex-direction:column;gap:1px"><span style="font-size:13px;font-weight:600">Ana Ribeiro</span><span style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.08em;color:#8A8F98">SUPERADMIN · RVB ISOLANTES</span></div>
+              <button style="display:flex;align-items:center;gap:9px;padding:9px 10px;background:transparent;border:none;border-radius:7px;color:#F4F6F8;font-family:'Inter';font-size:13px;cursor:pointer;text-align:left" style-hover="background:#0A0A0F">Preferências</button>
+              <button style="display:flex;align-items:center;gap:9px;padding:9px 10px;background:transparent;border:none;border-radius:7px;color:#F4F6F8;font-family:'Inter';font-size:13px;cursor:pointer;text-align:left" style-hover="background:#0A0A0F">Sair</button>
+            </div>
+          </sc-if>
+        </div>
+      </header>
+
+      <sc-if value="{{ admin }}" hint-placeholder-val="{{ false }}">
+        <div style="height:42px;flex:none;display:flex;align-items:center;gap:12px;padding:0 20px;background:rgba(232,161,60,.07);border-bottom:1px solid rgba(232,161,60,.35)">
+          <svg viewBox="0 0 24 24" style="width:16px;height:16px" fill="none" stroke="#E8A13C" stroke-width="1.8" stroke-linecap="square"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"></path></svg>
+          <span style="font-family:'JetBrains Mono';font-size:11px;letter-spacing:.18em;color:#E8A13C">VOCÊ ESTÁ NA PLATAFORMA · PAINEL ADMIN</span>
+          <span style="font-size:12.5px;color:#8A8F98">tenant em foco: RVB Isolantes — Blumenau</span>
+          <div style="flex:1"></div>
+          <button onClick="{{ exitAdmin }}" style="height:28px;padding:0 12px;background:transparent;border:1px solid rgba(232,161,60,.5);border-radius:6px;color:#E8A13C;font-family:'Inter';font-size:12px;font-weight:600;cursor:pointer">Voltar ao módulo</button>
+        </div>
+      </sc-if>
+
+      <div style="flex:1;display:flex;min-height:0">
+        <aside style="width:{{ sbWidth }};flex:none;display:flex;flex-direction:column;background:#14141C;border-right:1px solid #23242F;padding:14px 0;transition:width .15s steps(3,end)">
+          <sc-if value="{{ expanded }}" hint-placeholder-val="{{ true }}">
+            <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.22em;color:#8A8F98;padding:0 20px 10px">{{ sbLabel }}</span>
+          </sc-if>
+          <nav style="display:flex;flex-direction:column;gap:2px;padding:0 8px">
+            <sc-for list="{{ navItems }}" as="it" hint-placeholder-count="7">
+              <a onClick="{{ it.go }}" title="{{ it.nome }}" style="display:flex;align-items:center;gap:11px;height:38px;padding:0 12px;border-radius:8px;border-left:2px solid {{ it.borda }};color:{{ it.cor }};background:{{ it.bg }};font-family:'Inter';font-size:13.5px;font-weight:{{ it.peso }};cursor:pointer;overflow:hidden;white-space:nowrap" style-hover="background:#0A0A0F">
+                <svg viewBox="0 0 24 24" style="width:18px;height:18px;flex:none" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="square"><path d="{{ it.d }}"></path></svg>
+                <sc-if value="{{ expanded }}" hint-placeholder-val="{{ true }}"><span>{{ it.nome }}</span></sc-if>
+              </a>
+            </sc-for>
+          </nav>
+          <div style="flex:1"></div>
+          <div style="display:flex;flex-direction:column;gap:2px;padding:10px 8px 0;border-top:1px solid #23242F">
+            <a onClick="{{ toggleSwitcher }}" title="Trocar módulo" style="display:flex;align-items:center;gap:11px;height:36px;padding:0 12px;border-radius:8px;border-left:2px solid transparent;color:#8A8F98;font-family:'Inter';font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden" style-hover="background:#0A0A0F;color:#F4F6F8">
+              <svg viewBox="0 0 24 24" style="width:18px;height:18px;flex:none" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="square"><path d="M8 3L4 7l4 4M4 7h16M16 21l4-4-4-4M20 17H4"></path></svg>
+              <sc-if value="{{ expanded }}" hint-placeholder-val="{{ true }}"><span>Trocar módulo</span></sc-if>
+            </a>
+            <a onClick="{{ enterAdmin }}" title="Admin" style="display:flex;align-items:center;gap:11px;height:36px;padding:0 12px;border-radius:8px;border-left:2px solid transparent;color:{{ adminCor }};font-family:'Inter';font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden" style-hover="background:#0A0A0F;color:#F4F6F8">
+              <svg viewBox="0 0 24 24" style="width:18px;height:18px;flex:none" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="square"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"></path></svg>
+              <sc-if value="{{ expanded }}" hint-placeholder-val="{{ true }}"><span>Admin</span></sc-if>
+            </a>
+            <a onClick="{{ toggleCollapse }}" title="Recolher" style="display:flex;align-items:center;gap:11px;height:36px;padding:0 12px;border-radius:8px;border-left:2px solid transparent;color:#8A8F98;font-family:'Inter';font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden" style-hover="background:#0A0A0F;color:#F4F6F8">
+              <svg viewBox="0 0 24 24" style="width:18px;height:18px;flex:none;transform:{{ collapseFlip }}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="square"><path d="M15 5l-7 7 7 7M4 5v14"></path></svg>
+              <sc-if value="{{ expanded }}" hint-placeholder-val="{{ true }}"><span>Recolher</span></sc-if>
+            </a>
+          </div>
+        </aside>
+
+        <main style="flex:1;min-width:0;position:relative;background:#0A0A0F;overflow:auto">
+          <sc-if value="{{ showEncaixeQuality }}" hint-placeholder-val="{{ true }}">
+            <a href="Qualidade.dc.html" style="position:absolute;top:12px;right:20px;z-index:35;display:flex;align-items:center;gap:7px;height:32px;padding:0 13px;background:#14141C;border:1px solid rgba(0,229,255,.4);border-radius:8px;font-size:12.5px;font-weight:600">Jornada Qualidade completa →</a>
+            <div style="overflow:hidden;min-width:1080px"><div style="margin-top:-56px"><dc-import name="Gestão Qualidade" hint-size="100%,900px"></dc-import></div></div>
+          </sc-if>
+          <sc-if value="{{ showEpiPlaceholder }}" hint-placeholder-val="{{ false }}">
+            <div style="max-width:1280px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:18px;box-sizing:border-box">
+              <div style="display:flex;align-items:center;gap:16px">
+                <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Dashboard</h1>
+                <div style="flex:1"></div>
+                <select style="height:36px;background:#14141C;border:1px solid #23242F;border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 10px"><option>RVB Isolantes — Blumenau</option></select>
+                <select style="height:36px;background:#14141C;border:1px solid #23242F;border-radius:6px;color:#F4F6F8;font-size:13px;padding:0 10px"><option>1º turno</option><option>2º turno</option></select>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:14px;padding:80px 24px;background:#14141C;border:1px dashed #23242F;border-radius:12px;text-align:center">
+                <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#8A8F98" stroke-width="1.5" stroke-linecap="square"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"></path></svg>
+                <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Jornada EPI — LOTE 2 entregue</span>
+                <span style="font-size:13.5px;color:#8A8F98;max-width:440px;line-height:1.55">As 8 telas da jornada estão navegáveis como demo próprio, dentro deste mesmo shell.</span>
+                <a href="EPI Dashboard.dc.html" style="display:flex;align-items:center;height:40px;padding:0 18px;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-size:13.5px;font-weight:700">Abrir jornada EPI</a>
+                <a href="Handoff LOTE 2.dc.html" style="font-size:13px;font-weight:600">Handoff do LOTE 2 →</a>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ showModulePlaceholder }}" hint-placeholder-val="{{ false }}">
+            <div style="max-width:1280px;margin:0 auto;padding:24px;box-sizing:border-box">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:14px;padding:100px 24px;background:#14141C;border:1px dashed #23242F;border-radius:12px;text-align:center">
+                <span style="font-family:'JetBrains Mono';font-size:11px;letter-spacing:.2em;color:#8A8F98">{{ placeholderTag }}</span>
+                <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">{{ placeholderTitle }}</span>
+                <span style="font-size:13.5px;color:#8A8F98;max-width:440px;line-height:1.55">{{ placeholderText }}</span>
+                <a href="{{ placeholderHref }}" style="display:flex;align-items:center;height:40px;padding:0 18px;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-size:13.5px;font-weight:700">{{ placeholderCta }}</a>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ showAdminContent }}" hint-placeholder-val="{{ false }}">
+            <div style="max-width:1280px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:18px">
+              <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Painel Admin</h1>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:14px;padding:90px 24px;background:#14141C;border:1px dashed rgba(232,161,60,.35);border-radius:12px;text-align:center">
+                <span style="font-family:'JetBrains Mono';font-size:11px;letter-spacing:.2em;color:#E8A13C">PAINEL ADMIN · REDESENHADO (ADENDO)</span>
+                <span style="font-size:13.5px;color:#8A8F98;max-width:480px;line-height:1.55">Visão geral da plataforma, tenants (ver como tenant), usuários com reset de senha temporária, dispositivos de kiosk, central de links compartilhados e auditoria.</span>
+                <a href="Admin Plataforma.dc.html" style="display:flex;align-items:center;height:40px;padding:0 18px;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-size:13.5px;font-weight:700">Abrir Painel Admin</a>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ showLoading }}" hint-placeholder-val="{{ false }}">
+            <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="fullscreen" state="waiting" label="CARREGANDO EVENTOS" size="96" style="position:absolute;inset:0" hint-size="100%,100%"></x-import>
+          </sc-if>
+          <sc-if value="{{ showEmpty }}" hint-placeholder-val="{{ false }}">
+            <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+              <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#8A8F98" stroke-width="1.5" stroke-linecap="square"><path d="M4 13h5l2 3h2l2-3h5M4 13V6h16v7M4 13v5h16v-5"></path></svg>
+              <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Nenhum evento no período</span>
+              <span style="font-size:13.5px;color:#8A8F98;max-width:380px;line-height:1.55">Ajuste os filtros de período e câmera, ou aguarde novas detecções.</span>
+              <button style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Limpar filtros</button>
+            </div>
+          </sc-if>
+          <sc-if value="{{ showError }}" hint-placeholder-val="{{ false }}">
+            <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+              <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#E5484D" stroke-width="1.5" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+              <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Não foi possível carregar</span>
+              <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">GET /api/epi/eventos · TIMEOUT 10 S</span>
+              <div style="display:flex;gap:10px">
+                <button style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Tentar novamente</button>
+                <button style="height:40px;padding:0 18px;background:transparent;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:13.5px;font-weight:600;cursor:pointer">Ver status do sistema</button>
+              </div>
+            </div>
+          </sc-if>
+        </main>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ mobile }}" hint-placeholder-val="{{ false }}">
+    <div style="height:100vh;display:flex;align-items:center;justify-content:center;background:#0A0A0F">
+      <div style="width:390px;height:760px;background:#0A0A0F;border:1px solid #23242F;border-radius:28px;overflow:hidden;position:relative;display:flex;flex-direction:column;box-shadow:0 20px 80px rgba(0,0,0,.6)">
+        <header style="height:52px;flex:none;display:flex;align-items:center;gap:12px;padding:0 14px;background:#14141C;border-bottom:1px solid #23242F">
+          <button onClick="{{ openDrawer }}" style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:transparent;border:none;cursor:pointer;margin-left:-10px">
+            <svg viewBox="0 0 24 24" style="width:20px;height:20px" fill="none" stroke="#F4F6F8" stroke-width="1.8" stroke-linecap="square"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>
+          </button>
+          <svg viewBox="0 0 100 100" style="width:24px;height:24px"><defs><mask id="khMob"><rect width="100" height="100" fill="white"></rect><g transform="translate(24,22.4) scale(0.52)"><path d="M40 55.3 A20 20 0 1 1 60 55.3 L67 88 L33 88 Z" fill="black"></path></g></mask></defs><circle cx="50" cy="50" r="44" fill="#F4F6F8" mask="url(#khMob)"></circle></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:14px;letter-spacing:.14em">LOGIKOS</span>
+          <div style="flex:1"></div>
+          <div style="position:relative;width:44px;height:44px;display:flex;align-items:center;justify-content:center">
+            <svg viewBox="0 0 24 24" style="width:19px;height:19px" fill="none" stroke="#8A8F98" stroke-width="1.7" stroke-linecap="square"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 3H4zM10 21h4"></path></svg>
+            <span style="position:absolute;top:6px;right:6px;min-width:14px;height:14px;border-radius:7px;background:#E8A13C;color:#0A0A0F;font-family:'JetBrains Mono';font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center">3</span>
+          </div>
+        </header>
+        <div style="flex:1;display:flex;flex-direction:column;gap:12px;padding:16px;overflow:auto">
+          <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.2em;color:#8A8F98">{{ sbLabel }}</span>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:56px 18px;background:#14141C;border:1px dashed #23242F;border-radius:12px;text-align:center">
+            <span style="font-family:'Space Grotesk';font-weight:700;font-size:17px">Mobile é leitura</span>
+            <span style="font-size:13px;color:#8A8F98;line-height:1.55">No celular o shell entrega consulta de eventos e ações (telas do LOTE 2). Configuração e triagem pesada ficam no desktop.</span>
+          </div>
+        </div>
+        <sc-if value="{{ drawer }}" hint-placeholder-val="{{ false }}">
+          <div onClick="{{ closeDrawer }}" style="position:absolute;inset:0;background:rgba(10,10,15,.7);z-index:10"></div>
+          <div style="position:absolute;top:0;left:0;bottom:0;width:270px;background:#14141C;border-right:1px solid #23242F;z-index:11;display:flex;flex-direction:column;padding:16px 0">
+            <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.22em;color:#8A8F98;padding:0 20px 12px">{{ sbLabel }}</span>
+            <nav style="display:flex;flex-direction:column;gap:2px;padding:0 8px">
+              <sc-for list="{{ navItems }}" as="it" hint-placeholder-count="7">
+                <a onClick="{{ closeDrawer }}" style="display:flex;align-items:center;gap:11px;height:44px;padding:0 12px;border-radius:8px;border-left:2px solid {{ it.borda }};color:{{ it.cor }};background:{{ it.bg }};font-family:'Inter';font-size:14px;font-weight:{{ it.peso }};cursor:pointer">
+                  <svg viewBox="0 0 24 24" style="width:18px;height:18px;flex:none" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="square"><path d="{{ it.d }}"></path></svg>
+                  <span>{{ it.nome }}</span>
+                </a>
+              </sc-for>
+            </nav>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ palette }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closePalette }}" style="position:fixed;inset:0;background:rgba(10,10,15,.72);z-index:90;display:flex;justify-content:center;align-items:flex-start;padding-top:14vh">
+      <div onClick="{{ stop }}" style="width:600px;max-width:92vw;background:#14141C;border:1px solid #23242F;border-radius:12px;box-shadow:0 24px 80px rgba(0,0,0,.8);overflow:hidden">
+        <div style="display:flex;align-items:center;gap:11px;padding:14px 16px;border-bottom:1px solid #23242F">
+          <svg viewBox="0 0 24 24" style="width:17px;height:17px" fill="none" stroke="#00E5FF" stroke-width="1.8" stroke-linecap="square"><path d="M10 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12zM14.5 14.5L20 20"></path></svg>
+          <input placeholder="Buscar câmeras, eventos, telas, ações…" style="flex:1;background:transparent;border:none;outline:none;color:#F4F6F8;font-family:'Inter';font-size:15px" />
+          <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98;border:1px solid #23242F;border-radius:5px;padding:2px 6px">ESC</span>
+        </div>
+        <div style="display:flex;flex-direction:column;padding:8px;max-height:52vh;overflow:auto">
+          <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.2em;color:#8A8F98;padding:8px 10px 5px">CÂMERAS</span>
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:7px;background:#0A0A0F;cursor:pointer"><svg viewBox="0 0 24 24" style="width:16px;height:16px" fill="none" stroke="#8A8F98" stroke-width="1.7" stroke-linecap="square"><path d="M3 7h12v10H3zM15 10l6-3v10l-6-3"></path></svg><span style="font-size:13.5px">CAM-01 Doca Norte</span><span style="font-size:12px;color:#3ECF8E;margin-left:6px">● online</span><span style="margin-left:auto;font-family:'JetBrains Mono';font-size:11px;color:#8A8F98;border:1px solid #23242F;border-radius:5px;padding:2px 6px">↵</span></div>
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:7px;cursor:pointer" style-hover="background:#0A0A0F"><svg viewBox="0 0 24 24" style="width:16px;height:16px" fill="none" stroke="#8A8F98" stroke-width="1.7" stroke-linecap="square"><path d="M3 7h12v10H3zM15 10l6-3v10l-6-3"></path></svg><span style="font-size:13.5px">CAM-04 Expedição</span><span style="font-size:12px;color:#E8A13C;margin-left:6px">▲ instável</span></div>
+          <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.2em;color:#8A8F98;padding:10px 10px 5px">EVENTOS</span>
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:7px;cursor:pointer" style-hover="background:#0A0A0F"><svg viewBox="0 0 24 24" style="width:16px;height:16px" fill="none" stroke="#8A8F98" stroke-width="1.7" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg><span style="font-size:13.5px">Sem capacete · CAM-04 Expedição</span><span style="margin-left:auto;font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">HOJE 14:32</span></div>
+          <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.2em;color:#8A8F98;padding:10px 10px 5px">TELAS</span>
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:7px;cursor:pointer" style-hover="background:#0A0A0F"><svg viewBox="0 0 24 24" style="width:16px;height:16px" fill="none" stroke="#8A8F98" stroke-width="1.7" stroke-linecap="square"><path d="M4 5h18v12H3zM8 21h8M12 17v4"></path></svg><span style="font-size:13.5px">Ir para: Ao Vivo</span><span style="margin-left:auto;font-family:'JetBrains Mono';font-size:11px;color:#8A8F98;border:1px solid #23242F;border-radius:5px;padding:2px 6px">G V</span></div>
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:7px;cursor:pointer" style-hover="background:#0A0A0F"><svg viewBox="0 0 24 24" style="width:16px;height:16px" fill="none" stroke="#8A8F98" stroke-width="1.7" stroke-linecap="square"><path d="M4 6h16M4 12h16M4 18h10"></path></svg><span style="font-size:13.5px">Ir para: Eventos</span><span style="margin-left:auto;font-family:'JetBrains Mono';font-size:11px;color:#8A8F98;border:1px solid #23242F;border-radius:5px;padding:2px 6px">G E</span></div>
+          <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.2em;color:#8A8F98;padding:10px 10px 5px">AÇÕES</span>
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:7px;cursor:pointer" style-hover="background:#0A0A0F"><svg viewBox="0 0 24 24" style="width:16px;height:16px" fill="none" stroke="#8A8F98" stroke-width="1.7" stroke-linecap="square"><path d="M4 4h16v16H4zM8 12l3 3 5-6"></path></svg><span style="font-size:13.5px">Criar ação corretiva</span><span style="margin-left:auto;font-family:'JetBrains Mono';font-size:11px;color:#8A8F98;border:1px solid #23242F;border-radius:5px;padding:2px 6px">⌘⇧A</span></div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ loaderOn }}" hint-placeholder-val="{{ false }}">
+    <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="fullscreen" state="{{ loaderSt }}" label="{{ loaderLabel }}" size="112" style="position:fixed;inset:0;z-index:120" hint-size="100%,100%"></x-import>
+  </sc-if>
+
+  <sc-if value="{{ session }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;right:20px;bottom:64px;width:330px;background:#14141C;border:1px solid rgba(232,161,60,.5);border-radius:12px;box-shadow:0 12px 48px rgba(0,0,0,.7);padding:16px;display:flex;flex-direction:column;gap:10px;z-index:110">
+      <div style="display:flex;align-items:center;gap:10px">
+        <svg viewBox="0 0 24 24" style="width:17px;height:17px" fill="none" stroke="#E8A13C" stroke-width="1.8" stroke-linecap="square"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l4 2"></path></svg>
+        <span style="font-size:13.5px;font-weight:600">Sua sessão está expirando</span>
+        <span style="margin-left:auto;font-family:'JetBrains Mono';font-weight:700;font-size:15px;color:#E8A13C">{{ countdown }}</span>
+      </div>
+      <span style="font-size:12.5px;color:#8A8F98;line-height:1.5">Por segurança, a sessão encerra após inatividade. Renove para continuar de onde parou.</span>
+      <div style="display:flex;gap:8px">
+        <button onClick="{{ renew }}" style="flex:1;height:38px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13px;font-weight:700;cursor:pointer">Renovar sessão</button>
+        <button style="height:38px;padding:0 14px;background:transparent;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:13px;font-weight:600;cursor:pointer">Sair</button>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="position:fixed;left:16px;bottom:14px;display:flex;align-items:center;gap:6px;background:#14141C;border:1px solid #23242F;border-radius:10px;padding:7px 10px;z-index:130;box-shadow:0 8px 32px rgba(0,0,0,.6)">
+    <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.2em;color:#8A8F98;margin-right:4px">DEMO</span>
+    <sc-for list="{{ demoChips }}" as="ch" hint-placeholder-count="8">
+      <button onClick="{{ ch.go }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid {{ ch.borda }};background:{{ ch.bg }};color:{{ ch.cor }};font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.04em;cursor:pointer">{{ ch.t }}</button>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:940},&quot;moduloInicial&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;quality&quot;,&quot;epi&quot;,&quot;carga&quot;,&quot;estudio&quot;],&quot;default&quot;:&quot;quality&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Shell&quot;},&quot;sidebarColapsada&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Shell&quot;},&quot;sessaoExpirando&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Estados&quot;}}">
+class Component extends DCLogic {
+  MODULES = {
+    epi: { nome: 'EPI · Segurança', desc: 'Conformidade de EPI em zonas', label: 'EPI · SEGURANÇA', crumbs: ['RVB Isolantes — Blumenau', 'Expedição', 'CAM-04 Expedição'], itens: [
+      { nome: 'Dashboard', d: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z' },
+      { nome: 'Ao Vivo', d: 'M3 5h18v12H3zM8 21h8M12 17v4' },
+      { nome: 'Eventos', d: 'M12 4l9 16H3zM12 10v4M12 17v.5' },
+      { nome: 'Ações', d: 'M4 4h16v16H4zM8 12l3 3 5-6' },
+      { nome: 'Verificação', d: 'M2 12s4-6 10-6 10 6 10 6-4 6-10 6-10-6-10-6zM12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z' },
+      { nome: 'Câmeras & Sites', d: 'M3 7h12v10H3zM15 10l6-3v10l-6-3' },
+      { nome: 'Relatórios', d: 'M6 3h9l4 4v14H6zM9 12h6M9 16h6M9 8h3' },
+    ] },
+    quality: { nome: 'Qualidade', desc: 'Inspeção por ponto e revisão', label: 'QUALIDADE', crumbs: ['RVB Isolantes — Blumenau', 'Linha 2', 'Estação 1'], itens: [
+      { nome: 'Dashboard', d: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z' },
+      { nome: 'Inspeções', d: 'M10 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12zM14.5 14.5L20 20' },
+      { nome: 'Peças', d: 'M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12L4 7.5M12 12l8-4.5M12 12v9' },
+      { nome: 'Retrabalho', d: 'M20 12a8 8 0 1 1-2.3-5.7M20 3v4h-4' },
+      { nome: 'Câmeras', d: 'M3 7h12v10H3zM15 10l6-3v10l-6-3' },
+      { nome: 'Relatórios', d: 'M6 3h9l4 4v14H6zM9 12h6M9 16h6M9 8h3' },
+      { nome: 'Config', d: 'M4 7h10M18 7h2M14 4v6M4 17h2M10 17h10M10 14v6' },
+    ] },
+    carga: { nome: 'Carga', desc: 'Contagem e validação de expedição', label: 'CARGA', crumbs: ['RVB Isolantes — Blumenau', 'Expedição'], itens: [
+      { nome: 'Dashboard', d: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z' },
+      { nome: 'Baias', d: 'M3 21V8l4-4h10l4 4v13M3 12h18M9 21v-5h6v5' },
+      { nome: 'Eventos', d: 'M4 6h16M4 12h16M4 18h10' },
+      { nome: 'Validação', d: 'M4 4h16v16H4zM8 12l3 3 5-6' },
+    ] },
+    estudio: { nome: 'Estúdio', desc: 'Dados, anotação, treinos e modelos', label: 'ESTÚDIO', crumbs: ['Plataforma', 'Estúdio'], itens: [
+      { nome: 'Dados', d: 'M4 5h16v14H4zM4 15l5-5 4 4 3-3 4 4' },
+      { nome: 'Anotação', d: 'M4 20l4-1L20 7l-3-3L5 16zM14 6l3 3' },
+      { nome: 'Treinos', d: 'M4 19V5M4 19h16M7 15c3 0 4-7 7-7 2 0 3 3 5 3' },
+      { nome: 'Modelos', d: 'M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12L4 7.5M12 12l8-4.5M12 12v9' },
+    ] },
+  };
+  ADMIN_ITENS = [
+    { nome: 'Visão geral', d: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z' },
+    { nome: 'Tenants', d: 'M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6' },
+    { nome: 'Usuários', d: 'M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4 21c0-4 3.5-6 8-6s8 2 8 6' },
+    { nome: 'Auditoria', d: 'M6 3h9l4 4v14H6zM9 12h6M9 16h6M9 8h3' },
+  ];
+  state = { module: 'quality', active: 0, collapsed: false, mobile: false, drawer: false, admin: false, session: false, secs: 297, palette: false, notif: false, userMenu: false, switcher: false, content: 'encaixe', loaderOn: false, loaderSt: 'entering', loaderTarget: '' };
+  componentDidMount() {
+    const p = this.props;
+    const patch = {};
+    if (p.moduloInicial && this.MODULES[p.moduloInicial]) patch.module = p.moduloInicial;
+    if (p.sidebarColapsada) patch.collapsed = true;
+    if (p.sessaoExpirando) patch.session = true;
+    if (Object.keys(patch).length) this.setState(patch);
+    this._kd = (e) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); this.setState(s => ({ palette: !s.palette, notif: false, userMenu: false, switcher: false })); }
+      else if (e.key === 'Escape') this.setState({ palette: false, notif: false, userMenu: false, switcher: false });
+    };
+    window.addEventListener('keydown', this._kd);
+    this._iv = setInterval(() => { if (this.state.session && this.state.secs > 0) this.setState(s => ({ secs: s.secs - 1 })); }, 1000);
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this._kd); clearInterval(this._iv); clearTimeout(this._t1); clearTimeout(this._t2); }
+  switchModule(key) {
+    if (key === this.state.module) { this.setState({ switcher: false }); return; }
+    const nome = this.MODULES[key].nome.toUpperCase();
+    this.setState({ switcher: false, loaderOn: true, loaderSt: 'entering', loaderLabel: 'ABRINDO ' + nome, loaderTarget: key });
+    clearTimeout(this._t1); clearTimeout(this._t2);
+    this._t1 = setTimeout(() => this.setState({ module: key, active: 0, loaderSt: 'resolving' }), 1100);
+    this._t2 = setTimeout(() => this.setState({ loaderOn: false }), 1650);
+  }
+  renderVals() {
+    const s = this.state;
+    const mod = this.MODULES[s.module];
+    const items = s.admin ? this.ADMIN_ITENS : mod.itens;
+    const crumbs = s.admin ? ['Plataforma', 'Painel Admin'] : mod.crumbs;
+    const mm = Math.floor(s.secs / 60), ss = String(s.secs % 60).padStart(2, '0');
+    const chip = (t, on, go) => ({ t, go, bg: on ? 'rgba(0,229,255,.09)' : 'transparent', cor: on ? '#00E5FF' : '#8A8F98', borda: on ? 'rgba(0,229,255,.4)' : '#23242F' });
+    const contentIs = (k) => !s.admin && s.content === k;
+    return {
+      isDesktop: !s.mobile, mobile: s.mobile, expanded: !s.collapsed,
+      sbWidth: s.collapsed ? '64px' : '236px',
+      collapseFlip: s.collapsed ? 'scaleX(-1)' : 'none',
+      sbLabel: s.admin ? 'PLATAFORMA · ADMIN' : mod.label,
+      moduleName: s.admin ? 'Painel Admin' : mod.nome,
+      admin: s.admin, adminCor: s.admin ? '#E8A13C' : '#8A8F98',
+      enterAdmin: () => this.setState({ admin: true, switcher: false }),
+      exitAdmin: () => this.setState({ admin: false }),
+      switcher: s.switcher, toggleSwitcher: () => this.setState(p => ({ switcher: !p.switcher, notif: false, userMenu: false })),
+      moduleList: Object.keys(this.MODULES).map(k => ({
+        nome: this.MODULES[k].nome, desc: this.MODULES[k].desc,
+        ativo: !s.admin && k === s.module,
+        cor: !s.admin && k === s.module ? '#00E5FF' : '#F4F6F8',
+        bg: !s.admin && k === s.module ? 'rgba(0,229,255,.06)' : 'transparent',
+        go: () => { this.setState({ admin: false }); this.switchModule(k); },
+      })),
+      crumbs: crumbs.map((t, i) => ({ t, cor: i === crumbs.length - 1 ? '#F4F6F8' : '#8A8F98', sepDisp: i === 0 ? 'none' : 'block', flex: '0 1 auto', minW: i === crumbs.length - 1 ? '64px' : '0' })),
+      navItems: items.map((it, i) => ({
+        nome: it.nome, d: it.d,
+        cor: i === s.active ? '#00E5FF' : '#8A8F98',
+        bg: i === s.active ? 'rgba(0,229,255,.06)' : 'transparent',
+        borda: i === s.active ? '#00E5FF' : 'transparent',
+        peso: i === s.active ? '600' : '500',
+        go: () => this.setState({ active: i }),
+      })),
+      toggleCollapse: () => this.setState(p => ({ collapsed: !p.collapsed })),
+      notif: s.notif, toggleNotif: () => this.setState(p => ({ notif: !p.notif, userMenu: false, switcher: false })),
+      userMenu: s.userMenu, toggleUser: () => this.setState(p => ({ userMenu: !p.userMenu, notif: false, switcher: false })),
+      palette: s.palette, openPalette: () => this.setState({ palette: true }), closePalette: () => this.setState({ palette: false }),
+      stop: (e) => e.stopPropagation(),
+      drawer: s.drawer, openDrawer: () => this.setState({ drawer: true }), closeDrawer: () => this.setState({ drawer: false }),
+      session: s.session, countdown: mm + ':' + ss, renew: () => this.setState({ session: false, secs: 297 }),
+      loaderOn: s.loaderOn, loaderSt: s.loaderSt, loaderLabel: s.loaderLabel || '',
+      showEncaixeQuality: contentIs('encaixe') && s.module === 'quality',
+      showEpiPlaceholder: contentIs('encaixe') && s.module === 'epi',
+      showModulePlaceholder: contentIs('encaixe') && (s.module === 'carga' || s.module === 'estudio'),
+      placeholderTag: s.module === 'carga' ? 'MÓDULO CARGA · LOTE 3 ENTREGUE' : 'ESTÚDIO · LOTE 3 ENTREGUE',
+      placeholderTitle: s.module === 'carga' ? 'Jornada Carga navegável' : 'Estúdio navegável',
+      placeholderText: s.module === 'carga' ? 'Dashboard, baias com live, eventos e validação de contagem — mesmas estruturas da jornada EPI.' : 'Dados, anotação, treinos ao vivo e modelos — persona técnica, atrás de gate de permissão.',
+      placeholderHref: s.module === 'carga' ? 'Carga.dc.html' : 'Estúdio.dc.html',
+      placeholderCta: s.module === 'carga' ? 'Abrir módulo Carga' : 'Abrir Estúdio',
+      showAdminContent: s.admin,
+      showLoading: contentIs('loading'), showEmpty: contentIs('vazio'), showError: contentIs('erro'),
+      demoChips: [
+        chip('QUALIDADE', !s.admin && s.module === 'quality', () => { this.setState({ admin: false }); this.switchModule('quality'); }),
+        chip('EPI', !s.admin && s.module === 'epi', () => { this.setState({ admin: false }); this.switchModule('epi'); }),
+        chip('SIDEBAR', s.collapsed, () => this.setState(p => ({ collapsed: !p.collapsed }))),
+        chip('MOBILE', s.mobile, () => this.setState(p => ({ mobile: !p.mobile, drawer: false }))),
+        chip('ADMIN', s.admin, () => this.setState(p => ({ admin: !p.admin }))),
+        chip('SESSÃO', s.session, () => this.setState(p => ({ session: !p.session, secs: 297 }))),
+        chip('LOADING', s.content === 'loading', () => this.setState({ content: 'loading' })),
+        chip('VAZIO', s.content === 'vazio', () => this.setState({ content: 'vazio' })),
+        chip('ERRO', s.content === 'erro', () => this.setState({ content: 'erro' })),
+        chip('CONTEÚDO', s.content === 'encaixe', () => this.setState({ content: 'encaixe' })),
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:#23242F;border-radius:5px}input::placeholder{color:#3A3D4A}</style>
+<script src="contrato-dados.js"></script>
+</helmet>
+<div style="width:100%;min-height:100vh;background:#0A0A0F;display:flex;flex-direction:column" data-screen-label="Contrato de Migração">
+  <header style="position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:16px;padding:14px 28px;background:#14141C;border-bottom:1px solid #23242F">
+    <svg viewBox="0 0 100 100" style="width:26px;height:26px;flex:none"><defs><mask id="khC"><rect width="100" height="100" fill="white"></rect><g transform="translate(24,22.4) scale(0.52)"><path d="M40 55.3 A20 20 0 1 1 60 55.3 L67 88 L33 88 Z" fill="black"></path></g></mask></defs><circle cx="50" cy="50" r="44" fill="#F4F6F8" mask="url(#khC)"></circle></svg>
+    <div style="display:flex;flex-direction:column">
+      <span style="font-family:'Space Grotesk';font-weight:700;font-size:16px;letter-spacing:.02em">Contrato de migração — lado do design</span>
+      <span style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.12em;color:#8A8F98">RECOGNITION · origin/develop @ 98bff30e · 421 OPERAÇÕES · 23/08/2026</span>
+    </div>
+    <div style="flex:1"></div>
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;background:rgba(62,207,142,.07);border:1px solid rgba(62,207,142,.45);border-radius:9px">
+      <svg viewBox="0 0 24 24" style="width:15px;height:15px" fill="none" stroke="#3ECF8E" stroke-width="2.4" stroke-linecap="square"><path d="M5 12l5 5 9-10"></path></svg>
+      <span style="font-family:'JetBrains Mono';font-size:12px;font-weight:700;color:#3ECF8E">COLUNA NOVO FRONT · 421/421 · 100%</span>
+    </div>
+  </header>
+
+  <nav style="position:sticky;top:57px;z-index:29;display:flex;gap:2px;padding:10px 28px;background:#0A0A0F;border-bottom:1px solid #23242F">
+    <sc-for list="{{ abas }}" as="a" hint-placeholder-count="5">
+      <button onClick="{{ a.go }}" style="height:36px;padding:0 16px;border:1px solid {{ a.borda }};border-radius:8px;background:{{ a.bg }};color:{{ a.cor }};font-family:'Inter';font-size:13.5px;font-weight:600;cursor:pointer">{{ a.t }}</button>
+    </sc-for>
+  </nav>
+
+  <main style="flex:1;padding:22px 28px 60px;max-width:1440px;width:100%;margin:0 auto;box-sizing:border-box">
+
+    <sc-if value="{{ vCobertura }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+          <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+            <div style="display:flex;flex-direction:column;gap:5px;padding:16px 18px;background:#14141C;border:1px solid #23242F;border-radius:12px;border-top:2px solid {{ k.cor }}">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">{{ k.label }}</span>
+              <span style="font-family:'JetBrains Mono';font-weight:700;font-size:30px;line-height:1">{{ k.v }}</span>
+              <span style="font-size:12px;color:#8A8F98;line-height:1.45">{{ k.sub }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <input value="{{ busca }}" onChange="{{ setBusca }}" placeholder="buscar rota, tela ou motivo…" style="height:34px;width:260px;background:#14141C;border:1px solid #23242F;border-radius:7px;color:#F4F6F8;font-family:'JetBrains Mono';font-size:12.5px;padding:0 11px;outline:none" style-focus="border-color:#00E5FF" />
+          <select value="{{ fDom }}" onChange="{{ setFDom }}" style="height:34px;background:#14141C;border:1px solid #23242F;border-radius:7px;color:#F4F6F8;font-size:13px;padding:0 9px">
+            <option value="todos">Todos os domínios</option>
+            <sc-for list="{{ domOpts }}" as="d" hint-placeholder-count="11"><option value="{{ d.v }}">{{ d.t }}</option></sc-for>
+          </select>
+          <div style="display:flex;background:#14141C;border-radius:8px;padding:3px;gap:2px">
+            <sc-for list="{{ fLabels }}" as="f" hint-placeholder-count="5">
+              <button onClick="{{ f.go }}" style="height:28px;padding:0 11px;border:none;border-radius:6px;background:{{ f.bg }};color:{{ f.cor }};font-family:'JetBrains Mono';font-size:11px;font-weight:600;cursor:pointer">{{ f.t }}</button>
+            </sc-for>
+          </div>
+          <div style="display:flex;background:#14141C;border-radius:8px;padding:3px;gap:2px">
+            <sc-for list="{{ fDecs }}" as="f" hint-placeholder-count="4">
+              <button onClick="{{ f.go }}" style="height:28px;padding:0 11px;border:none;border-radius:6px;background:{{ f.bg }};color:{{ f.cor }};font-family:'JetBrains Mono';font-size:11px;font-weight:600;cursor:pointer">{{ f.t }}</button>
+            </sc-for>
+          </div>
+          <div style="flex:1"></div>
+          <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">{{ nFiltrado }}</span>
+        </div>
+        <div style="overflow-x:auto;border:1px solid #23242F;border-radius:10px;background:#14141C">
+        <div style="display:grid;grid-template-columns:64px minmax(220px,1.4fr) 120px 96px minmax(170px,1fr) minmax(240px,1.6fr);min-width:910px;background:#14141C">
+          <sc-for list="{{ head }}" as="h" hint-placeholder-count="6">
+            <div style="padding:10px 12px;font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F;background:#14141C">{{ h.t }}</div>
+          </sc-for>
+          <sc-for list="{{ linhas }}" as="r" hint-placeholder-count="20">
+            <div style="display:contents">
+              <span style="padding:9px 12px;font-family:'JetBrains Mono';font-size:10.5px;font-weight:700;color:{{ r.mCor }};border-bottom:1px solid rgba(138,143,152,.07)">{{ r.m }}</span>
+              <span style="padding:9px 12px;font-family:'JetBrains Mono';font-size:11.5px;border-bottom:1px solid rgba(138,143,152,.07);word-break:break-all">{{ r.p }}</span>
+              <span style="padding:9px 12px;border-bottom:1px solid rgba(138,143,152,.07)"><span style="font-family:'JetBrains Mono';font-size:9px;letter-spacing:.06em;color:{{ r.lCor }};border:1px solid {{ r.lBorda }};border-radius:4px;padding:2px 6px;white-space:nowrap">{{ r.l }}</span></span>
+              <span style="padding:9px 12px;border-bottom:1px solid rgba(138,143,152,.07)"><span style="font-family:'JetBrains Mono';font-size:9.5px;font-weight:700;letter-spacing:.06em;color:{{ r.dCor }}">{{ r.d }}</span></span>
+              <span style="padding:9px 12px;font-size:11.5px;color:{{ r.telaCor }};border-bottom:1px solid rgba(138,143,152,.07)">{{ r.tela }}</span>
+              <span style="padding:9px 12px;font-size:11.5px;color:#8A8F98;line-height:1.45;border-bottom:1px solid rgba(138,143,152,.07)">{{ r.nota }}</span>
+            </div>
+          </sc-for>
+        </div>
+        </div>
+        <sc-if value="{{ truncado }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ verTudo }}" style="height:38px;border:1px solid #23242F;border-radius:8px;background:transparent;color:#00E5FF;font-family:'Inter';font-size:13px;font-weight:600;cursor:pointer">{{ verTudoTxt }}</button>
+        </sc-if>
+        <div style="display:flex;gap:14px;padding:14px 16px;background:#14141C;border:1px solid #23242F;border-radius:10px;font-size:12.5px;color:#8A8F98;line-height:1.6">
+          <span style="flex:1"><b style="color:#3ECF8E">cobre</b> = existe tela/fluxo desenhado (coluna "tela"). <b style="color:#E8A13C">não cobre</b> = vira entrega da aba "Telas a criar". <b style="color:#8A8F98">n.a.</b> = descarte consciente com motivo — nunca esquecimento.</span>
+          <span style="flex:1">ÓRFÃO (61) e BACKEND-ONLY (31) são <b style="color:#F4F6F8">n.a.</b> por regra do checklist: ninguém chama / é device-worker-callback. Remoção de órfão é rodada própria do backend.</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ vTelas }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:baseline;gap:12px">
+          <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:19px">Telas a criar — 140 operações "não cobre" em 9 entregas</h2>
+          <span style="font-size:12.5px;color:#8A8F98">ordem = risco de migração × valor para o TST</span>
+        </div>
+        <sc-for list="{{ entregas }}" as="e" hint-placeholder-count="9">
+          <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid {{ e.borda }};border-radius:12px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <span style="font-family:'JetBrains Mono';font-weight:700;font-size:12px;color:#0A0A0F;background:{{ e.pCor }};border-radius:5px;padding:3px 8px">{{ e.prio }}</span>
+              <span style="font-family:'Space Grotesk';font-weight:700;font-size:17px">{{ e.nome }}</span>
+              <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">{{ e.ops }} OPERAÇÕES</span>
+              <div style="flex:1"></div>
+              <span style="font-size:12px;color:#8A8F98">{{ e.perfil }}</span>
+            </div>
+            <span style="font-size:13px;color:#8A8F98;line-height:1.55">{{ e.desc }}</span>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+              <sc-for list="{{ e.partes }}" as="p" hint-placeholder-count="4">
+                <span style="font-family:'JetBrains Mono';font-size:10.5px;color:#F4F6F8;background:#0A0A0F;border:1px solid #23242F;border-radius:14px;padding:4px 10px">{{ p.t }}</span>
+              </sc-for>
+            </div>
+            <sc-if value="{{ e.temBloqueio }}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:12px;color:#E8A13C;line-height:1.5">▲ {{ e.bloqueio }}</span>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ vMatriz }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+          <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:19px">Matriz de acesso — tela × perfil</h2>
+          <span style="font-size:12.5px;color:#8A8F98">a navegação de cada perfil só mostra o que ele pode usar</span>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <sc-for list="{{ perfis }}" as="p" hint-placeholder-count="4">
+            <div style="flex:1;min-width:230px;display:flex;flex-direction:column;gap:5px;padding:14px 16px;background:#14141C;border:1px solid #23242F;border-radius:10px;border-top:2px solid {{ p.cor }}">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:{{ p.cor }}">{{ p.nome }}</span>
+              <span style="font-size:13px;font-weight:600">{{ p.quem }}</span>
+              <span style="font-size:12px;color:#8A8F98;line-height:1.5">{{ p.escopo }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(230px,1.6fr) repeat(4,110px);background:#14141C;border:1px solid #23242F;border-radius:10px;overflow:hidden">
+          <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">TELA</div>
+          <div style="padding:10px 8px;text-align:center;font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.1em;color:#8A8F98;border-bottom:1px solid #23242F">SUPERADMIN</div>
+          <div style="padding:10px 8px;text-align:center;font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.1em;color:#8A8F98;border-bottom:1px solid #23242F">ADMIN</div>
+          <div style="padding:10px 8px;text-align:center;font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.1em;color:#8A8F98;border-bottom:1px solid #23242F">ANALISTA</div>
+          <div style="padding:10px 8px;text-align:center;font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.1em;color:#8A8F98;border-bottom:1px solid #23242F">USUÁRIO</div>
+          <sc-for list="{{ matriz }}" as="m" hint-placeholder-count="30">
+            <div style="display:contents">
+              <span style="padding:9px 14px;font-size:12.5px;font-weight:{{ m.peso }};color:{{ m.txtCor }};background:{{ m.bg }};border-bottom:1px solid rgba(138,143,152,.07)">{{ m.tela }}</span>
+              <sc-for list="{{ m.cels }}" as="c" hint-placeholder-count="4">
+                <span style="padding:9px 8px;text-align:center;font-family:'JetBrains Mono';font-size:10.5px;font-weight:700;color:{{ c.cor }};background:{{ c.bg }};border-bottom:1px solid rgba(138,143,152,.07)">{{ c.t }}</span>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:20px;padding:14px 16px;background:#14141C;border:1px solid #23242F;border-radius:10px;font-size:12.5px;color:#8A8F98;line-height:1.6">
+          <span><b style="color:#3ECF8E;font-family:'JetBrains Mono'">EDITA</b> ação e configuração · <b style="color:#00E5FF;font-family:'JetBrains Mono'">VÊ</b> leitura sem escrita · <b style="font-family:'JetBrains Mono'">—</b> não existe no menu dele</span>
+          <span style="flex:1">▲ O ADMIN <b style="color:#F4F6F8">não</b> tem visão cross-tenant (PR #525): tudo que ele vê é do próprio tenant. Superadmin sem contexto assumido não recebe tempo real (token sem tenant_schema).</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ vGaps }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div style="display:flex;gap:10px">
+          <sc-for list="{{ gapKpis }}" as="k" hint-placeholder-count="3">
+            <div style="flex:1;display:flex;flex-direction:column;gap:4px;padding:14px 16px;background:#14141C;border:1px solid #23242F;border-radius:10px;border-top:2px solid {{ k.cor }}">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">{{ k.label }}</span>
+              <span style="font-family:'JetBrains Mono';font-weight:700;font-size:26px;line-height:1;color:{{ k.cor }}">{{ k.v }}</span>
+              <span style="font-size:12px;color:#8A8F98;line-height:1.45">{{ k.sub }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <span style="font-size:13px;color:#8A8F98;line-height:1.6;max-width:900px">Os 122 GAP-DE-PRODUTO estão decididos um a um na aba Cobertura (filtro GAP). Abaixo, o veredito por família — <b style="color:#F4F6F8">proposta</b>, não decisão: nenhum é obrigatório e a palavra final é sua.</span>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <sc-for list="{{ gapFam }}" as="g" hint-placeholder-count="12">
+            <div style="display:flex;flex-direction:column;gap:6px;padding:14px 16px;background:#14141C;border:1px solid {{ g.borda }};border-radius:10px">
+              <div style="display:flex;align-items:center;gap:9px">
+                <span style="font-family:'JetBrains Mono';font-size:9.5px;font-weight:700;letter-spacing:.08em;color:{{ g.vCor }};border:1px solid {{ g.borda }};border-radius:4px;padding:2px 7px">{{ g.veredito }}</span>
+                <span style="font-size:13.5px;font-weight:600">{{ g.nome }}</span>
+                <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">{{ g.n }}</span>
+              </div>
+              <span style="font-size:12.5px;color:#8A8F98;line-height:1.5">{{ g.porque }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <h2 style="margin:14px 0 0;font-family:'Space Grotesk';font-weight:700;font-size:19px">Pedidos ao backend — o fluxo reverso do contrato</h2>
+        <span style="font-size:13px;color:#8A8F98;line-height:1.6;max-width:900px">Nada aqui foi inventado: são endpoints/ajustes que o design precisa e o mapa registra como inexistentes ou quebrados. Sem eles, a tela correspondente <b style="color:#F4F6F8">promete o que o back nega</b>.</span>
+        <div style="display:flex;flex-direction:column;background:#14141C;border:1px solid #23242F;border-radius:10px;overflow:hidden">
+          <sc-for list="{{ pedidos }}" as="p" hint-placeholder-count="14">
+            <div style="display:flex;gap:14px;padding:13px 16px;border-bottom:1px solid rgba(138,143,152,.07)">
+              <span style="font-family:'JetBrains Mono';font-size:10px;font-weight:700;color:{{ p.sevCor }};border:1px solid {{ p.sevBorda }};border-radius:4px;padding:3px 7px;height:fit-content;flex:none">{{ p.sev }}</span>
+              <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                <span style="font-size:13px;font-weight:600">{{ p.o }}</span>
+                <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98;word-break:break-all">{{ p.rota }}</span>
+                <span style="font-size:12.5px;color:#8A8F98;line-height:1.5">{{ p.porque }}</span>
+              </div>
+              <span style="margin-left:auto;font-size:12px;color:#8A8F98;text-align:right;flex:none;width:190px;line-height:1.45">{{ p.bloqueia }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ vUx }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:baseline;gap:12px">
+          <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:19px">Otimizações propostas</h2>
+          <span style="font-size:12.5px;color:#8A8F98">nenhuma aplicada — cada uma é uma decisão sua</span>
+        </div>
+        <sc-for list="{{ otim }}" as="o" hint-placeholder-count="11">
+          <div style="display:flex;flex-direction:column;gap:10px;padding:16px 18px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-family:'JetBrains Mono';font-weight:700;font-size:12px;color:#00E5FF">{{ o.id }}</span>
+              <span style="font-size:14.5px;font-weight:600">{{ o.nome }}</span>
+              <div style="flex:1"></div>
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.1em;color:{{ o.gCor }};border:1px solid {{ o.gBorda }};border-radius:4px;padding:2px 8px">{{ o.ganho }}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div style="display:flex;flex-direction:column;gap:5px;padding:12px 14px;background:#0A0A0F;border:1px solid #23242F;border-radius:9px">
+                <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.16em;color:#E5484D">HOJE</span>
+                <span style="font-size:12.5px;line-height:1.55;color:#8A8F98">{{ o.antes }}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:5px;padding:12px 14px;background:#0A0A0F;border:1px solid rgba(62,207,142,.3);border-radius:9px">
+                <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.16em;color:#3ECF8E">PROPOSTA</span>
+                <span style="font-size:12.5px;line-height:1.55">{{ o.depois }}</span>
+              </div>
+            </div>
+            <span style="font-size:12.5px;color:#8A8F98;line-height:1.5">{{ o.porque }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ vResumo }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:16px;max-width:960px">
+        <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:22px">Resumo do aceite</h2>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+          <sc-for list="{{ resumoKpis }}" as="k" hint-placeholder-count="6">
+            <div style="display:flex;flex-direction:column;gap:4px;padding:16px 18px;background:#14141C;border:1px solid #23242F;border-radius:12px;border-top:2px solid {{ k.cor }}">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">{{ k.label }}</span>
+              <span style="font-family:'Space Grotesk';font-weight:700;font-size:28px;line-height:1;color:{{ k.vCor }}">{{ k.v }}</span>
+              <span style="font-size:12px;color:#8A8F98;line-height:1.45">{{ k.sub }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+          <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#8A8F98">O QUE FICOU ABERTO E POR QUÊ</span>
+          <sc-for list="{{ abertos }}" as="a" hint-placeholder-count="5">
+            <div style="display:flex;gap:11px;align-items:flex-start">
+              <span style="width:7px;height:7px;border-radius:50%;background:{{ a.cor }};margin-top:6px;flex:none"></span>
+              <span style="font-size:13px;line-height:1.6"><b>{{ a.t }}</b> — <span style="color:#8A8F98">{{ a.d }}</span></span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid rgba(0,229,255,.3);border-radius:12px">
+          <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.18em;color:#00E5FF">PRÓXIMO PASSO</span>
+          <span style="font-size:13.5px;line-height:1.7">Preciso do seu veredito nos GAPs (aba anterior) para as famílias marcadas <b style="color:#E8A13C">DEPOIS</b> e <b style="color:#E5484D">NÃO</b>. Com o "sim" nas demais, desenho as 9 entregas na ordem da aba "Telas a criar" — a P1 (Permissões & Papéis + Usuário/Tenant detalhe) e a P2 (Ficha da câmera) são as que destravam o corte, porque hoje nenhum admin de tenant consegue operar sem superadmin.</span>
+        </div>
+      </div>
+    </sc-if>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:940}}">
+class Component extends DCLogic {
+  state = { aba: 'cobertura', busca: '', fDom: 'todos', fLabel: 'todos', fDec: 'todos', limite: 60, dados: null };
+  componentDidMount() {
+    const t = () => { if (window.LK_CONTRATO) this.setState({ dados: window.LK_CONTRATO }); else this._t = setTimeout(t, 120); };
+    t();
+  }
+  componentWillUnmount() { clearTimeout(this._t); }
+  DOM_NOMES = {
+    'auth-identity': 'Autenticação e identidade', 'admin-core-a': 'Admin A — tenants/planos/flags', 'admin-core-b': 'Admin B — tickets/workers/usuários',
+    'admin-aux': 'Admin auxiliar — branding/integrações', 'cameras-streams': 'Câmeras e live view', 'training': 'Treinamento e anotação',
+    'models-datasets-rules': 'Modelos, datasets e regras', 'quality': 'Módulo Qualidade', 'edge-fleet': 'Edge / frota',
+    'events-alerts-media': 'Eventos, alertas e mídia', 'ops-dashboard-misc': 'Operações, contagem e relatórios',
+  };
+  renderVals() {
+    const s = this.state;
+    const rows = s.dados || [];
+    const tab = (t, k) => ({ t, go: () => this.setState({ aba: k }), bg: s.aba === k ? 'rgba(0,229,255,.08)' : '#14141C', cor: s.aba === k ? '#00E5FF' : '#8A8F98', borda: s.aba === k ? 'rgba(0,229,255,.45)' : '#23242F' });
+    const pill = (t, k, cur, set) => ({ t, go: () => this.setState(set(k)), bg: cur === k ? '#0A0A0F' : 'transparent', cor: cur === k ? '#00E5FF' : '#8A8F98' });
+    const q = s.busca.toLowerCase();
+    const filt = rows.filter(r => {
+      if (s.fDom !== 'todos' && r[0] !== s.fDom) return false;
+      if (s.fLabel !== 'todos' && r[3] !== s.fLabel) return false;
+      if (s.fDec !== 'todos' && r[4] !== s.fDec) return false;
+      if (q && !(r[2] + ' ' + r[5] + ' ' + r[6]).toLowerCase().includes(q)) return false;
+      return true;
+    });
+    const lCor = { 'FRONT-ATUAL': ['#00E5FF', 'rgba(0,229,255,.35)'], 'GAP-DE-PRODUTO': ['#E8A13C', 'rgba(232,161,60,.35)'], 'ÓRFÃO': ['#8A8F98', '#23242F'], 'BACKEND-ONLY': ['#8A8F98', '#23242F'] };
+    const dCor = { cobre: '#3ECF8E', nao: '#E8A13C', na: '#8A8F98' };
+    const dTxt = { cobre: 'COBRE', nao: 'NÃO COBRE', na: 'N.A.' };
+    const mCor = { GET: '#8A8F98', POST: '#3ECF8E', PUT: '#E8A13C', PATCH: '#E8A13C', DELETE: '#E5484D' };
+    const vis = filt.slice(0, s.limite);
+    const cel = (v) => ({ t: v, cor: v === 'EDITA' ? '#3ECF8E' : v === 'VÊ' ? '#00E5FF' : '#3A3D4A', bg: v === '—' ? 'transparent' : v === 'EDITA' ? 'rgba(62,207,142,.05)' : 'rgba(0,229,255,.04)' });
+    const M = (tela, a, b, c, d, grupo) => ({ tela, cels: [a, b, c, d].map(cel), peso: grupo ? '700' : '500', txtCor: grupo ? '#F4F6F8' : '#F4F6F8', bg: grupo ? '#0A0A0F' : 'transparent' });
+    const gv = { SIM: ['#3ECF8E', 'rgba(62,207,142,.4)'], DEPOIS: ['#E8A13C', 'rgba(232,161,60,.4)'], 'NÃO': ['#E5484D', 'rgba(229,72,77,.4)'] };
+    const G = (veredito, nome, n, porque) => ({ veredito, nome, n, porque, vCor: gv[veredito][0], borda: gv[veredito][1] });
+    const sev = { 'BLOQUEIA': ['#E5484D', 'rgba(229,72,77,.5)'], 'QUEBRADO': ['#E8A13C', 'rgba(232,161,60,.5)'], 'FALTA': ['#00E5FF', 'rgba(0,229,255,.5)'] };
+    const P = (s2, o, rota, porque, bloqueia) => ({ sev: s2, o, rota, porque, bloqueia, sevCor: sev[s2][0], sevBorda: sev[s2][1] });
+    const O = (id, nome, ganho, antes, depois, porque) => ({ id, nome, ganho, antes, depois, porque, gCor: ganho === 'ALTO' ? '#3ECF8E' : '#00E5FF', gBorda: ganho === 'ALTO' ? 'rgba(62,207,142,.4)' : 'rgba(0,229,255,.4)' });
+    const E = (prio, nome, ops, perfil, desc, partes, bloqueio) => ({ prio, nome, ops, perfil, desc, partes: partes.map(t => ({ t })), bloqueio, temBloqueio: !!bloqueio, pCor: prio === 'P1' ? '#00E5FF' : prio === 'P2' ? '#3ECF8E' : '#8A8F98', borda: prio === 'P1' ? 'rgba(0,229,255,.35)' : '#23242F' });
+    return {
+      abas: [tab('Cobertura · 421', 'cobertura'), tab('Telas a criar · 9', 'telas'), tab('Matriz de perfis', 'matriz'), tab('GAPs & pedidos', 'gaps'), tab('Otimizações UX', 'ux'), tab('Resumo', 'resumo')],
+      vCobertura: s.aba === 'cobertura', vTelas: s.aba === 'telas', vMatriz: s.aba === 'matriz', vGaps: s.aba === 'gaps', vUx: s.aba === 'ux', vResumo: s.aba === 'resumo',
+      kpis: [
+        { label: 'FRONT-ATUAL · 207', v: '119', sub: 'cobertas pelas telas já desenhadas · 86 viram entrega · 2 descarte consciente', cor: '#3ECF8E' },
+        { label: 'GAP-DE-PRODUTO · 122', v: '95', sub: 'adotados (41 já cobertos + 54 novos) · 27 recusados ou adiados com motivo', cor: '#E8A13C' },
+        { label: 'ÓRFÃO + BACKEND-ONLY', v: '92', sub: 'n.a. por regra: sem consumidor / device-worker-callback', cor: '#8A8F98' },
+        { label: 'CÉLULAS VAZIAS', v: '0', sub: 'nenhuma linha sem decisão — critério do checklist atendido', cor: '#00E5FF' },
+      ],
+      busca: s.busca, setBusca: (e) => this.setState({ busca: e.target.value, limite: 60 }),
+      fDom: s.fDom, setFDom: (e) => this.setState({ fDom: e.target.value, limite: 60 }),
+      domOpts: Object.keys(this.DOM_NOMES).map(k => ({ v: k, t: this.DOM_NOMES[k] })),
+      fLabels: [pill('TODOS', 'todos', s.fLabel, k => ({ fLabel: k, limite: 60 })), pill('FRONT-ATUAL', 'FRONT-ATUAL', s.fLabel, k => ({ fLabel: k, limite: 60 })), pill('GAP', 'GAP-DE-PRODUTO', s.fLabel, k => ({ fLabel: k, limite: 60 })), pill('ÓRFÃO', 'ÓRFÃO', s.fLabel, k => ({ fLabel: k, limite: 60 })), pill('BACK-ONLY', 'BACKEND-ONLY', s.fLabel, k => ({ fLabel: k, limite: 60 }))],
+      fDecs: [pill('TODAS', 'todos', s.fDec, k => ({ fDec: k, limite: 60 })), pill('COBRE', 'cobre', s.fDec, k => ({ fDec: k, limite: 60 })), pill('NÃO COBRE', 'nao', s.fDec, k => ({ fDec: k, limite: 60 })), pill('N.A.', 'na', s.fDec, k => ({ fDec: k, limite: 60 }))],
+      nFiltrado: filt.length + ' de ' + rows.length,
+      head: [{ t: 'MÉT' }, { t: 'ROTA' }, { t: 'RÓTULO' }, { t: 'NOVO FRONT' }, { t: 'TELA / FLUXO' }, { t: 'EVIDÊNCIA OU MOTIVO' }],
+      linhas: vis.map(r => ({
+        m: r[1], p: r[2], l: r[3] === 'GAP-DE-PRODUTO' ? 'GAP' : r[3] === 'BACKEND-ONLY' ? 'BACK-ONLY' : r[3],
+        d: dTxt[r[4]], tela: r[5], nota: r[6],
+        mCor: mCor[r[1]] || '#8A8F98', lCor: lCor[r[3]][0], lBorda: lCor[r[3]][1], dCor: dCor[r[4]],
+        telaCor: r[4] === 'cobre' ? '#F4F6F8' : r[4] === 'nao' ? '#E8A13C' : '#3A3D4A',
+      })),
+      truncado: filt.length > vis.length,
+      verTudoTxt: 'Mostrar as ' + filt.length + ' linhas do filtro',
+      verTudo: () => this.setState({ limite: 999 }),
+      entregas: [
+        E('P1', 'Identidade e acesso do tenant', 16, 'superadmin + admin', 'Sem isso nenhum admin de tenant opera sozinho: papéis, permissões efetivas e o detalhe de usuário com sessões. É o que hoje só o superadmin consegue.', ['Permissões & Papéis (registry pt-BR, roles do tenant, overrides tri-state)', 'Usuário · detalhe (sessões, últimas ações, senha temporária)', 'Tenant · visão geral + plano & status'], 'GET /admin/tenants/<id>/overview responde 400 sempre (whitelist core/tenant.py:65).'),
+        E('P1', 'Ficha da câmera', 17, 'admin', 'Hoje só existem lista e modais, com dois wizards de contratos diferentes. A ficha vira o lugar único: conexão, modelo efetivo, operação, retenção.', ['Ficha (conexão, site, modelo efetivo, último teste)', 'Aba Modelos (escopo, histórico, rollback, módulo ativo)', 'Operações & cenário (ROI/linha sobre o vídeo)', 'Retenção por câmera e do tenant', 'Triagem de canais'], 'PATCH /cameras/<id>/config e a rota de retenção antiga (/api/cameras/tenant/retention) estão com 500.'),
+        E('P2', 'Frota edge — onboarding e operação', 18, 'admin + superadmin', 'Instalar um cliente novo hoje é curl de runbook. Esta entrega põe o onboarding do box na tela.', ['Sites edge (criar, detalhe, saúde derivada)', 'Onboarding do box (token one-time, devices, revogar)', 'Console de comandos ("o box acorda a cada ~60 s")', 'Timeline de eventos do site', 'Observabilidade do box (snapshot, logtail, limiares)'], 'Timeline depende do produtor do box (uploader → /events/ingest) e o tempo real depende do PR #524.'),
+        E('P2', 'Backoffice da plataforma', 27, 'superadmin', 'Fecha o que o admin atual promete e não entrega: suporte inacessível, aprovações sem detalhe, workers sem série, comunicados sem edição.', ['Suporte (tickets, thread, triagem, KPIs)', 'Aprovações de treino', 'Workers + detalhe com série 1h/24h/7d', 'Comunicados + inbox do cliente', 'Planos', 'Feature flags', 'Inventário de câmeras (probe em lote, CSV)'], 'Importação CSV derruba o lote inteiro: a câmera é criada sem user_id (coluna NOT NULL).'),
+        E('P2', 'Configurações do tenant', 11, 'admin', 'Um lugar só para o que hoje está espalhado em três rotas e nenhuma tela: retenção, notificações e a qualidade do modelo.', ['Retenção (tier 1/7/30/90, override × plano × efetiva)', 'Canais de notificação', 'Qualidade do modelo (flywheel de feedback)'], 'POST /v1/feedback está com 500 (UUID não adaptado) e o envio de notificação não existe no backend.'),
+        E('P3', 'Qualidade — anotação e chão de fábrica', 7, 'analista + operador', 'Fecha o ciclo do módulo: do frame NOK ao retreino, e a tela grande do chão.', ['Workspace de anotação (frames NOK, auto-save, criar retreino)', 'Andon + CEP (sem login, rede interna)'], 'Andon sem JWT no backend, mas hoje o front o esconde atrás do login.'),
+        E('P3', 'Estúdio — cobertura e cenário', 3, 'técnico', 'Duas peças que faltam no Estúdio já desenhado.', ['Matriz de cobertura classe × câmera com deep-link', 'Wizard de cenário do modelo (classes reais, não um set fixo)'], ''),
+        E('P3', 'Plataforma — branding, integrações, versões', 21, 'superadmin', 'Ferramentas de operação da plataforma que hoje são curl ou N+1.', ['White-label (editor com preview, lista em lote)', 'Integrações (salvar → testar → status)', 'Versões & changelog (rollback com preview)', 'Observabilidade (abas, polling pausável)', 'Console de teste (rotulado como simulação)', 'Dados de demonstração', 'Catálogo global de classes', 'Saúde do sistema'], ''),
+        E('P3', 'Relatórios e revisões pontuais', 3, 'analista', 'Itens pequenos que se penduram em telas existentes.', ['Relatório de compliance EPI (PDF)', 'Carga · fila de revisão de placas (LPR)'], ''),
+      ],
+      perfis: [
+        { nome: 'SUPERADMIN', quem: 'Plataforma Logikos', escopo: 'Cross-tenant, administração global, consoles. Para ver tempo real de um cliente, precisa assumir contexto.', cor: '#E8A13C' },
+        { nome: 'ADMIN', quem: 'Gestor do tenant', escopo: 'Gestão completa do próprio tenant. Sem visão cross-tenant (PR #525) e sem nada de plataforma no menu.', cor: '#00E5FF' },
+        { nome: 'ANALISTA', quem: 'TST — persona nº 1', escopo: 'Fila, tratativa, evidência e relatório. Configura o que afeta o próprio trabalho, não a infraestrutura.', cor: '#3ECF8E' },
+        { nome: 'USUÁRIO', quem: 'Operacional', escopo: 'Leitura do que lhe couber e as telas de chão (kiosk, TV). Nenhuma gestão.', cor: '#8A8F98' },
+      ],
+      matriz: [
+        M('PLATAFORMA', '', '', '', '', true),
+        M('Admin · Visão geral', 'EDITA', '—', '—', '—'),
+        M('Tenants (+ detalhe, plano, suspensão)', 'EDITA', '—', '—', '—'),
+        M('Usuários globais + detalhe/sessões', 'EDITA', '—', '—', '—'),
+        M('Permissões & Papéis', 'EDITA', 'EDITA', '—', '—'),
+        M('Planos · Feature flags', 'EDITA', '—', '—', '—'),
+        M('Suporte (tickets)', 'EDITA', 'EDITA', '—', '—'),
+        M('Aprovações de treino', 'EDITA', 'VÊ', '—', '—'),
+        M('Workers · Observabilidade · Saúde', 'EDITA', 'VÊ', '—', '—'),
+        M('White-label · Integrações · Versões', 'EDITA', '—', '—', '—'),
+        M('Console de teste · Dados demo', 'EDITA', '—', '—', '—'),
+        M('Catálogo global de classes', 'EDITA', '—', '—', '—'),
+        M('Auditoria', 'EDITA', 'VÊ', '—', '—'),
+        M('Comunicados (publicar)', 'EDITA', '—', '—', '—'),
+        M('OPERAÇÃO DO TENANT', '', '', '', '', true),
+        M('Shell (switcher, busca, sino, inbox)', 'EDITA', 'EDITA', 'EDITA', 'VÊ'),
+        M('EPI · Dashboard', 'EDITA', 'EDITA', 'EDITA', 'VÊ'),
+        M('EPI · Ao Vivo', 'EDITA', 'EDITA', 'VÊ', 'VÊ'),
+        M('EPI · Eventos + detalhe', 'EDITA', 'EDITA', 'EDITA', 'VÊ'),
+        M('EPI · Ações corretivas', 'EDITA', 'EDITA', 'EDITA', 'VÊ'),
+        M('EPI · Verificação', 'EDITA', 'EDITA', 'EDITA', '—'),
+        M('EPI · Relatórios + compliance', 'EDITA', 'EDITA', 'EDITA', 'VÊ'),
+        M('Câmeras · lista', 'EDITA', 'EDITA', 'VÊ', '—'),
+        M('Câmera · ficha, modelos, operações', 'EDITA', 'EDITA', '—', '—'),
+        M('Sites edge · onboarding e comandos', 'EDITA', 'EDITA', '—', '—'),
+        M('Configurações do tenant (retenção, canais)', 'EDITA', 'EDITA', '—', '—'),
+        M('Qualidade · Dashboard e Inspeções', 'EDITA', 'EDITA', 'EDITA', 'VÊ'),
+        M('Qualidade · Peças e Retrabalho', 'EDITA', 'EDITA', 'EDITA', 'VÊ'),
+        M('Qualidade · Anotação e retreino', 'EDITA', 'EDITA', 'EDITA', '—'),
+        M('Qualidade · Config (bancadas, classes)', 'EDITA', 'EDITA', 'VÊ', '—'),
+        M('Carga · dashboard, baias, eventos', 'EDITA', 'EDITA', 'EDITA', 'VÊ'),
+        M('Carga · validação e placas', 'EDITA', 'EDITA', 'EDITA', '—'),
+        M('Estúdio · dados, anotação, treino', 'EDITA', 'VÊ', '—', '—'),
+        M('CHÃO DE FÁBRICA', '', '', '', '', true),
+        M('Kiosk da bancada', 'EDITA', 'EDITA', 'EDITA', 'EDITA'),
+        M('Andon / TV (sem login, rede interna)', 'VÊ', 'VÊ', 'VÊ', 'VÊ'),
+        M('Mobile (leitura de eventos e ações)', 'VÊ', 'VÊ', 'EDITA', 'VÊ'),
+      ],
+      gapKpis: [
+        { label: 'ADOTAR AGORA', v: '95', sub: '41 já cobertos pelo desenho atual + 54 nas 9 entregas', cor: '#3ECF8E' },
+        { label: 'ADIAR', v: '21', sub: 'capacidade real, sem caminho no RVB agora', cor: '#E8A13C' },
+        { label: 'RECUSAR', v: '6', sub: 'descarte consciente com motivo registrado', cor: '#E5484D' },
+      ],
+      gapFam: [
+        G('SIM', 'Boot de sessão (/auth/me, /permissions/mine)', '2 rotas', 'O shell inteiro é hidratado do localStorage hoje. Sem isso, permissão revogada continua valendo até o próximo login.'),
+        G('SIM', 'Datasets e versões COCO', '5 rotas', 'Etapa obrigatória antes do treino real — já desenhada no Estúdio, só faltava ligar.'),
+        G('SIM', 'Registry de modelos: eval, drift, evaluate', '3 rotas', 'Hoje o usuário vê "reprovado" sem conseguir ver por quê. O veredito e a matriz de confusão são o que tornam o gate defensável.'),
+        G('SIM', 'Quality Gate completo (peça, resultado, bancada)', '9 rotas', 'É o produto do RVB. Sem criar/identificar peça e fechar retrabalho, o kiosk é uma vitrine.'),
+        G('SIM', 'Inspeções reais + turno + pareto + CEP', '6 rotas', 'A tela de inspeções é 100% mock hoje. É a tela central do módulo.'),
+        G('SIM', 'Onboarding do box (sites, tokens, devices)', '7 rotas', 'Instalar cliente novo por curl não escala. É o gargalo comercial, não técnico.'),
+        G('SIM', 'Suporte, workers, aprovações, comunicados', '13 rotas', 'O admin atual já navega para telas que não existem. Fechar isso é dívida, não recurso novo.'),
+        G('SIM', 'Upload de vídeo unificado + cota', '8 rotas', 'Substitui o legado por user_id, ganha progresso, retry e indicador de cota.'),
+        G('SIM', 'Feedback do operador (flywheel)', '3 rotas', 'Fecha o ciclo que o backend já persiste — e alimenta o active learning que já desenhamos.'),
+        G('SIM', 'Retenção e canais de notificação', '6 rotas', 'Configuração de tenant que hoje só existe por rota quebrada. Canais entram rotulados como "envio pendente".'),
+        G('DEPOIS', 'Gravadores NVR/DVR', '8 rotas', 'Capacidade real (ADR-0034) e pré-requisito do coletor do edge, mas fora do caminho do RVB agora. Reavaliar quando houver cliente com DVR.'),
+        G('DEPOIS', 'Regras de alerta (CRUD)', '6 rotas', 'Nenhum motor aplica as regras. Desenhar a tela seria prometer o que o back nega — ver PEDIDOS AO BACKEND.'),
+        G('DEPOIS', 'Rede do site (gateway WireGuard)', '3 rotas', 'Perfil de infraestrutura, não de produto. Entra se a instalação passar a ser self-service.'),
+        G('DEPOIS', 'Monofatura (bipagem por etapa)', '3 rotas', 'Contrato outbound com o cliente ainda pendente.'),
+        G('DEPOIS', 'Canais OTA do edge', '2 rotas', 'Publicar ref por canal segue em runbook até haver frota multi-versão.'),
+        G('DEPOIS', 'Agenda semanal de módulo por câmera', '1 rota', 'Entra depois que a troca manual de módulo ativo estiver em uso.'),
+        G('DEPOIS', 'Introspecção de processo (RSS/uptime)', '1 rota', 'Vira um card "Processo" na aba Infra da Observabilidade, não uma tela.'),
+        G('NÃO', 'Exclusão definitiva de câmera', '1 rota', 'Arquivar cobre o caso real. Exclusão em cascata com frames de treino é risco sem contrapartida.'),
+        G('NÃO', 'Detalhe isolado de módulo', '1 rota', 'A lista já devolve os mesmos campos — a própria nota do mapa diz isso.'),
+        G('NÃO', 'Forçar troca de senha', '1 rota', 'A flag não é aplicada no login: o botão mentiria. Volta se o backend aplicar.'),
+      ],
+      pedidos: [
+        P('FALTA', '/auth/me completo (ou /me + /permissions/mine)', 'GET /api/auth/me', 'Hoje não devolve tenant_schema nem modules — o boot não consegue validar a sessão no servidor e o shell continua refém do localStorage.', 'Bloqueia o boot do shell inteiro'),
+        P('QUEBRADO', 'SocketIO com handler por namespace, JWT e rooms por tenant', 'PR #524 / ADR-0063', 'Sem #524 promovido no ambiente-alvo, /monitor, /training e /quality são recusados e o bridge emite em broadcast. Polling continua sendo o contrato real.', 'Todo tempo real (live, treino, qualidade)'),
+        P('FALTA', 'Emissor de "alert" no /monitor', 'socket /monitor', 'O front antigo já escutava um evento que o servidor nunca emite. Sino e fila de triagem ficam em polling.', 'Sino e fila de eventos ao vivo'),
+        P('QUEBRADO', 'Resultado da peça no Quality Gate', 'POST /v1/quality/gate/pieces/<id>/result', '500 por 8 posicionais para 7 params (routes.py:1667 × gate_service.py:240). Falta também definir quem chama: worker ou UI do operador.', 'Kiosk e state machine da peça'),
+        P('FALTA', 'Foto/URL pré-assinada do gate e dos snapshots de referência', 'gate/photos/<path> · quality-snapshots/', 'Quatro chamadas-fantasma do front atual dependem de um endpoint que não existe.', 'Peças, retrabalho, kiosk NOK'),
+        P('FALTA', 'Configuração global do gate e edição de bancada', 'PATCH gate/config (não existe) · gate/stations/<code> é PUT', 'A tela de config tenta PATCH e leva 405; thresholds globais só existem por câmera.', 'Qualidade · Config'),
+        P('FALTA', 'Exportação Wiser (peça e lote)', 'POST gate/pieces/<id>/export-wiser · export-wiser/batch', 'Ambas inexistentes no back; hoje a tela chama e recebe 405.', 'Relatórios do gate'),
+        P('QUEBRADO', 'CSV de peças com JWT na query string', 'QualityReportsPage.tsx:136', 'Download precisa ser blob autenticado. O novo front não copia isso.', 'Exportações em geral'),
+        P('QUEBRADO', 'Feedback e contagem da fila de verificação', 'POST /v1/feedback (500) · GET /verification/queue/count (sempre 0)', 'UUID não adaptado no feedback; o count devolve zero por row["count"].', 'Flywheel e badge de pendências'),
+        P('QUEBRADO', 'Visão geral do tenant', 'GET /v1/admin/tenants/<id>/overview', '400 para qualquer tenant — whitelist de schemas em core/tenant.py:65.', 'Aba Visão geral do tenant'),
+        P('QUEBRADO', 'Importação CSV de câmeras', 'POST /v1/admin/cameras/import', 'A câmera é criada sem user_id (NOT NULL) e o lote inteiro cai; o erro que chega é a mensagem do driver.', 'Inventário de câmeras'),
+        P('FALTA', 'Motor que aplique as regras de alerta', '/api/rules (CRUD existe)', 'Só o cenário lê as regras; nada as aplica. Sem motor, a tela promete um comportamento inexistente.', 'Regras de alerta (adiada por isso)'),
+        P('QUEBRADO', 'Produtor de eventos do box', 'uploader → /edge/events/ingest', 'Corrigido em #529 no uploader, mas o produtor no box segue pendente — a timeline do site nasce vazia.', 'Timeline de eventos do site'),
+        P('QUEBRADO', 'Heartbeat do worker com câmeras reais', 'worker heartbeat', 'O único cliente manda cameras_active=0 fixo, criando falso camera_gap.', 'Detalhe do worker e liveness'),
+        P('FALTA', 'Retenção canônica e depreciação da duplicata', '/v1/tenant/retention (ok) × /api/cameras/tenant/retention (500)', 'Duas rotas para a mesma coisa, uma quebrada. O novo front usa só a canônica.', 'Configurações do tenant'),
+        P('FALTA', 'PDF de turno com camera_id e Authorization', 'GET /v1/quality/reports/shift/pdf', 'O wrapper monta URL sem os dois e leva 400/401.', 'Relatórios de qualidade'),
+      ],
+      otim: [
+        O('O-1', 'Uma ficha de câmera, não dois wizards', 'ALTO', 'Onboarding e edição são dois componentes com contratos diferentes; o detalhe da câmera não existe — tudo vive em modais sobre a lista.', 'Ficha única com abas (Conexão · Modelos · Operações · Retenção · Saúde). O wizard vira o estado "câmera nova" da mesma ficha, com probe antes de salvar.', 'Corta um fluxo inteiro de manutenção e acaba com as duas verdades sobre modelo por câmera.'),
+        O('O-2', 'Um Estúdio, três origens de treino', 'ALTO', 'TrainingPage genérica, QualityTrainingPage (não roteada) e jobs legado escopados por user_id — o mesmo trabalho em três lugares, um deles inalcançável.', 'O Estúdio já desenhado ganha seletor de módulo. Jobs, modelos e datasets do tenant, não do usuário.', 'Elimina a tela órfã e o recorte por user_id, que é a raiz de "o job sumiu quando troquei de usuário".'),
+        O('O-3', 'Alertas, eventos e verificação viram uma fila', 'ALTO', 'Três telas com o mesmo objeto: Histórico de Alertas, Investigação e Verificação. O TST não sabe onde tratar.', 'Uma fila de triagem com abas (Novos · Em dúvida · Tratados) e a mesma linha de evento em todas. Verificação é um filtro, não um destino.', 'Responde as três perguntas do TST em uma tela e mantém DETECTAR→TRIAR→AGIR sem troca de contexto.'),
+        O('O-4', 'Confiança da leitura visível — e em português', 'MÉDIO', 'A confiança está escondida do cliente; quando aparece, aparece como "score 0.87". Nos dois casos o TST não consegue calibrar o próprio julgamento.', 'Percentual claro ao lado de toda detecção e proposta ("confiança 87%"), com faixa alta/média/baixa. Nunca "score", nunca nome de modelo.', 'Você pediu confiança sempre visível; isso convive com o "zero jargão de ML" se o número for rotulado em linguagem de operação.'),
+        O('O-5', 'Dashboard do analista em 10 segundos', 'ALTO', 'KPIs que ninguém alimenta (MRR, tickets, câmeras online) dividem espaço com o que importa; a leitura exige interpretação.', 'Três blocos que respondem: onde está o problema agora · está melhorando · o que eu trato agora. KPI sem fonte real sai da tela.', 'Hick: menos escolhas, decisão mais rápida. Um número falso custa mais confiança do que a ausência dele.'),
+        O('O-6', 'Configurações do tenant num lugar só', 'MÉDIO', 'Retenção mora em três rotas (uma com 500) e em duas telas; canais de notificação não existem; permissões só o superadmin alcança.', 'Uma tela de Configurações do tenant: retenção, canais, papéis e usuários — com o admin como dono, não o superadmin.', 'Tira o superadmin do caminho crítico do cliente e mata a duplicata de retenção.'),
+        O('O-7', 'Console de teste honesto', 'MÉDIO', 'O console mostra métricas de uma simulação em memória como se fossem reais.', 'Ou liga no harness real, ou carrega o rótulo "simulação" no cabeçalho e nos números.', 'A marca é "prova, não promete" — uma tela que finge dados contamina a confiança em todo o resto.'),
+        O('O-8', 'Sino e comunicados no mesmo lugar', 'BAIXO', 'O sino faz polling de alertas; comunicados da plataforma não têm superfície nenhuma no app do cliente.', 'Uma central: alertas pendentes e comunicados com "marcar como lido", separados por seção.', 'Duas notificações, um lugar — e o comunicado deixa de ser publicado no vazio.'),
+        O('O-9', 'Nome de lugar, não número de canal', 'MÉDIO', 'Câmeras aparecem como CAM-01…CAM-08 em filtros, eventos e relatórios.', 'Renomear pela própria tela (já no Estúdio) e usar o nome em toda a interface, com o código como sufixo discreto.', 'O filtro por câmera só é útil quando diz "Portaria", não "canal 3".'),
+        O('O-10', 'Tempo real com queda prevista', 'ALTO', 'As telas se comportam como se o WebSocket funcionasse; ele é recusado no servidor e ninguém percebe — só fica desatualizado.', 'Indicador discreto de "ao vivo × atualizado há N s" em toda tela que depende de socket, com fallback de polling declarado.', 'Enquanto o #524 não estiver promovido, o usuário precisa saber se está vendo o agora ou o de um minuto atrás.'),
+      ],
+      resumoKpis: [
+        { label: 'CONTRATO FECHADO', v: '100%', sub: '421/421 operações com decisão registrada', cor: '#3ECF8E', vCor: '#3ECF8E' },
+        { label: 'COBERTO PELO DESENHO', v: '160', sub: '119 FRONT-ATUAL + 41 GAPs já atendidos pelas telas existentes', cor: '#00E5FF', vCor: '#F4F6F8' },
+        { label: 'A CRIAR', v: '140', sub: 'em 9 entregas priorizadas (86 FRONT-ATUAL + 54 GAPs adotados)', cor: '#E8A13C', vCor: '#F4F6F8' },
+        { label: 'DESCARTE CONSCIENTE', v: '121', sub: '92 órfão/backend-only + 29 recusas e adiamentos com motivo', cor: '#8A8F98', vCor: '#F4F6F8' },
+        { label: 'PEDIDOS AO BACKEND', v: '16', sub: '9 quebrados, 7 faltando — todos com rota e evidência', cor: '#E5484D', vCor: '#F4F6F8' },
+        { label: 'OTIMIZAÇÕES PROPOSTAS', v: '10', sub: 'nenhuma aplicada; cada uma com antes/depois', cor: '#00E5FF', vCor: '#F4F6F8' },
+      ],
+      abertos: [
+        { t: 'Tempo real', d: 'o design assume polling como contrato e trata socket como melhoria. Enquanto o PR #524 não estiver promovido no ambiente-alvo, nenhuma tela pode ser desenhada WebSocket-first.', cor: '#E5484D' },
+        { t: 'As 9 entregas de tela', d: 'estão especificadas e priorizadas, não desenhadas. A P1 e a P2 destravam o corte; começo por elas assim que você confirmar a ordem.', cor: '#E8A13C' },
+        { t: '21 GAPs adiados e 6 recusados', d: 'aguardam seu veredito. Se algum virar "sim", ele entra na entrega correspondente sem redesenhar o resto.', cor: '#E8A13C' },
+        { t: '16 pedidos ao backend', d: 'nove são bugs confirmados no mapa; sete são endpoints que não existem. As telas que dependem deles estão marcadas com o bloqueio.', cor: '#E5484D' },
+        { t: 'Confiança visível', d: 'sua diretriz D conflita com o "zero jargão de ML" dos lotes anteriores. Proposta O-4 resolve com percentual em linguagem de operação — precisa do seu aval.', cor: '#00E5FF' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

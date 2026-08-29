@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}</style>
+</helmet>
+<aside style="width:236px;height:100%;min-height:0;box-sizing:border-box;display:flex;flex-direction:column;background:#14141C;border-right:1px solid #23242F;padding:14px 0">
+  <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.22em;color:#8A8F98;padding:0 20px 10px">EPI · SEGURANÇA</span>
+  <nav style="display:flex;flex-direction:column;gap:2px;padding:0 8px">
+    <sc-for list="{{ itens }}" as="it" hint-placeholder-count="7">
+      <a href="{{ it.href }}" style="display:flex;align-items:center;gap:11px;height:38px;padding:0 12px;border-radius:8px;border-left:2px solid {{ it.borda }};color:{{ it.cor }};background:{{ it.bg }};font-size:13.5px;font-weight:{{ it.peso }};cursor:pointer;white-space:nowrap;overflow:hidden" style-hover="background:#0A0A0F">
+        <svg viewBox="0 0 24 24" style="width:18px;height:18px;flex:none" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="square"><path d="{{ it.d }}"></path></svg>
+        <span>{{ it.nome }}</span>
+      </a>
+    </sc-for>
+  </nav>
+  <div style="flex:1"></div>
+  <div style="display:flex;flex-direction:column;gap:2px;padding:10px 8px 0;border-top:1px solid #23242F">
+    <a href="Shell Logikos Vision.dc.html" style="display:flex;align-items:center;gap:11px;height:36px;padding:0 12px;border-radius:8px;color:#8A8F98;font-size:13px" style-hover="background:#0A0A0F;color:#F4F6F8">
+      <svg viewBox="0 0 24 24" style="width:18px;height:18px;flex:none" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="square"><path d="M8 3L4 7l4 4M4 7h16M16 21l4-4-4-4M20 17H4"></path></svg>
+      <span>Trocar módulo</span>
+    </a>
+    <a href="Shell Logikos Vision.dc.html" style="display:flex;align-items:center;gap:11px;height:36px;padding:0 12px;border-radius:8px;color:#8A8F98;font-size:13px" style-hover="background:#0A0A0F;color:#F4F6F8">
+      <svg viewBox="0 0 24 24" style="width:18px;height:18px;flex:none" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="square"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"></path></svg>
+      <span>Admin</span>
+    </a>
+  </div>
+</aside>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:236,&quot;height&quot;:800},&quot;ativa&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Dashboard&quot;,&quot;Ao Vivo&quot;,&quot;Eventos&quot;,&quot;Ações&quot;,&quot;Verificação&quot;,&quot;Câmeras &amp; Sites&quot;,&quot;Relatórios&quot;],&quot;default&quot;:&quot;Dashboard&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  ITENS = [
+    { nome: 'Dashboard', href: 'EPI Dashboard.dc.html', d: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z' },
+    { nome: 'Ao Vivo', href: 'EPI Ao Vivo.dc.html', d: 'M3 5h18v12H3zM8 21h8M12 17v4' },
+    { nome: 'Eventos', href: 'EPI Eventos.dc.html', d: 'M12 4l9 16H3zM12 10v4M12 17v.5' },
+    { nome: 'Ações', href: 'EPI Ações.dc.html', d: 'M4 4h16v16H4zM8 12l3 3 5-6' },
+    { nome: 'Verificação', href: 'EPI Verificação.dc.html', d: 'M2 12s4-6 10-6 10 6 10 6-4 6-10 6-10-6-10-6zM12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z' },
+    { nome: 'Câmeras & Sites', href: 'EPI Câmeras.dc.html', d: 'M3 7h12v10H3zM15 10l6-3v10l-6-3' },
+    { nome: 'Relatórios', href: 'EPI Relatórios.dc.html', d: 'M6 3h9l4 4v14H6zM9 12h6M9 16h6M9 8h3' },
+  ];
+  renderVals() {
+    const ativa = this.props.ativa || 'Dashboard';
+    return {
+      itens: this.ITENS.map(it => ({
+        ...it,
+        cor: it.nome === ativa ? '#00E5FF' : '#8A8F98',
+        bg: it.nome === ativa ? 'rgba(0,229,255,.06)' : 'transparent',
+        borda: it.nome === ativa ? '#00E5FF' : 'transparent',
+        peso: it.nome === ativa ? '600' : '500',
+      })),
+    };
+  }
+}
+</script>
+</body>
+</html>
