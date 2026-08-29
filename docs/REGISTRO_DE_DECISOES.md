@@ -3863,3 +3863,41 @@ Soma 60. **NENHUM era trabalho novo.**
 ⚠️ **O que mais dói:** o diagnóstico do `CropClassifier` estava certo, os consertos estavam certos, e
 mesmo assim a pessoa continuava bloqueada. **"Consertado e provado" ⛔ não é o mesmo que
 "desbloqueado"** — a pergunta que faltava era *"é NESTA tela que ele trabalha?"*.
+
+### D-187 · O "fantasma do railway up" era o próprio CI — linhagem D-156 encerrada
+
+**Status:** ✅ resolvido na causa · **fecha a linhagem D-156 / #425 / incidente de 29/08**
+
+Desde 18/08 (D-156) o projeto caçava a origem dos deploys por `railway up` que
+apagavam a proveniência do DEV. As hipóteses foram, em ordem: sessão paralela
+(18/08), "alguém subiu do laptop" (29/08 de manhã). **As duas erradas.**
+
+**Quem faz o `railway up` é o próprio CI.** O `.github/workflows/railway-deploy-dev.yml`
+(que vive só em `main`) dispara quando o CI fica verde na `develop`, faz
+`checkout ref: develop` e sobe por **upload** — o código no ar é o da develop,
+mas o SHA não viaja, e o `/livez` responde `unknown`.
+
+**A prova, casando horários de 29/08** (runs do workflow × deploys do Railway):
+
+| run do workflow | deploy Railway |
+|---|---|
+| 13:31 | 13:31 `UPLOAD` |
+| 19:16 | 19:16 `UPLOAD` |
+| 19:45 | 19:45 `UPLOAD` — o que estava servindo quando a causa foi achada |
+
+Ou seja: a D-156 estava certa na regra ("deploy por git ganha do `railway up`")
+e errada no suspeito — não era indisciplina de sessão, era **automação
+institucionalizada** fazendo a coisa errada a cada merge, com carimbo de CI verde.
+
+**Conserto** (PR #563, `Fixes #562`): o workflow passa a gravar `GIT_COMMIT_SHA`
+com o SHA **realmente enviado** (`git rev-parse HEAD` do checkout, nunca fixo)
+antes do `railway up`, com `--skip-deploys`. De quebra, o job do Frontend nunca
+funcionou (`--service "frontend"` em caixa baixa → `Service not found` em toda
+execução) — corrigido no mesmo arquivo.
+
+**Moral da linhagem, para a próxima caçada:** quando um comportamento indesejado
+se repete NOS MESMOS horários que um evento de CI, o suspeito é o CI — conferir
+`gh run list` × `railway deployment list` custa um minuto e teria encerrado isso
+em 18/08.
+
+---
