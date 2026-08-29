@@ -51,6 +51,10 @@ const DadosEstudio = lazy(() => import('./estudio/Dados').then((m) => ({ default
 const CoberturaEstudio = lazy(() => import('./estudio/Cobertura').then((m) => ({ default: m.Cobertura })))
 const ClassificarEstudio = lazy(() => import('./estudio/Classificar').then((m) => ({ default: m.Classificar })))
 const ClassesEstudio = lazy(() => import('./estudio/Classes').then((m) => ({ default: m.Classes })))
+const ModeloEstudio = lazy(() => import('./estudio/Modelo').then((m) => ({ default: m.Modelo })))
+const ModelosPorCameraEstudio = lazy(() =>
+  import('./estudio/ModelosPorCamera').then((m) => ({ default: m.ModelosPorCamera })),
+)
 
 /**
  * Prefixo do front novo enquanto os dois convivem. Sai no tombamento.
@@ -107,6 +111,8 @@ export const ROTAS_NOVAS: ReactElement[] = [
     <Route key="esc" path="cobertura" element={<CoberturaEstudio />} />
     <Route key="escl" path="classificar" element={<ClassificarEstudio />} />
     <Route key="escls" path="classes" element={<ClassesEstudio />} />
+    <Route key="esm" path="modelo" element={<ModeloEstudio />} />
+    <Route key="esmc" path="modelos-por-camera" element={<ModelosPorCameraEstudio />} />
   </Route>,
 ]
 
