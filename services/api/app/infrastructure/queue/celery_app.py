@@ -105,6 +105,24 @@ SAFE_BEAT_SCHEDULE = {
         "schedule": 300,  # a cada 5 minutos
         "options": {"queue": "training"},
     },
+    # Sombra AO VIVO: renova o "tem espectador" das câmeras da sombra e
+    # ressuscita o laço que morreu (tasks/live_shadow.py).
+    #
+    # Agendar aqui NÃO liga nada: sem `SHADOW_AO_VIVO_CAMERAS` a task devolve
+    # "desligado" sem tocar no Redis. O interruptor é a variável, e é assim de
+    # propósito — ligar faz o box TRANSMITIR, e quem paga a banda de subida é
+    # o chão de fábrica do cliente. A rampa (2-4 câmeras do roteiro, medir,
+    # só então escalar) é decisão de operação.
+    #
+    # 30s contra um TTL de espectador de 90s: três batidas de folga antes da
+    # chave vencer. Se o intervalo chegar perto do TTL, uma batida perdida
+    # derruba a transmissão — foi assim que o live view humano caiu antes
+    # (stream_handlers.py, nota do HLS_VIEWER_TTL).
+    "sombra-ao-vivo": {
+        "task": "tasks.live_shadow.manter_sombra_ao_vivo",
+        "schedule": 30,
+        "options": {"queue": "inference"},
+    },
 }
 
 # DELIBERADAMENTE não agendadas — ver o bloco de comentário acima.

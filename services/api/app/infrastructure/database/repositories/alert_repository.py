@@ -136,12 +136,19 @@ class AlertRepository(BaseRepository):
         evidence_key: str,
         tenant_id: Optional[str] = None,
         module_code: Optional[str] = None,
+        origem: Optional[str] = None,
+        latencia_ms: Optional[int] = None,
     ) -> dict[str, Any]:
         """Cria alerta de violação.
 
         tenant_id/module_code são opcionais (retrocompat — ajuste #8): quando
         fornecidos pelo caller (derivados da câmera), o alerta nasce
         tenant-scoped; omitidos, as colunas usam os defaults do schema.
+
+        origem/latencia_ms (migration 129) são a procedência do evento — o
+        badge "AO VIVO" da tela e a latência MEDIDA até ele. Omitidos, ficam
+        NULL: "não declarado" é uma resposta honesta, um default inventado
+        não é.
         """
         columns = ["camera_id", "violations", "confidence", "evidence_key"]
         placeholders = ["%s", "%s::jsonb", "%s", "%s"]
@@ -155,6 +162,14 @@ class AlertRepository(BaseRepository):
             columns.append("module_code")
             placeholders.append("%s")
             values.append(module_code)
+        if origem is not None:
+            columns.append("origem")
+            placeholders.append("%s")
+            values.append(origem)
+        if latencia_ms is not None:
+            columns.append("latencia_ms")
+            placeholders.append("%s")
+            values.append(latencia_ms)
 
         return self._execute_mutation(
             f"INSERT INTO alerts ({', '.join(columns)}) "  # noqa: S608

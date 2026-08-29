@@ -82,6 +82,27 @@ _AUTO_CAPTURE_DEDUP_TTL_SECONDS = int(os.environ.get("AUTO_CAPTURE_DEDUP_TTL_SEC
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+#: Fontes de frame aceitas por `inference_loop` (ver docstring do laço).
+_FONTE_RTSP = "rtsp"
+_FONTE_HLS_EDGE = "hls_edge"
+
+#: Procedência gravada no alerta — é o que vira o badge na tela. Sem default
+#: retroativo: alerta antigo fica NULL ("não declarado") em vez de ser
+#: recarimbado com uma origem que ninguém mediu.
+_ORIGEM_RTSP = "rtsp"
+_ORIGEM_AO_VIVO = "ao_vivo"
+
+#: Espera entre sondagens da fonte HLS. O segmento nasce a cada `hls_time`
+#: (2s hoje); sondar a 0,5s pega o novo rápido sem girar em falso.
+_HLS_POLL_SLEEP_S = 0.5
+
+#: Espelham live_shadow.CHAVE_LACO / TTL_MARCA_LACO_S. Duplicados para não
+#: criar import circular (live_shadow importa inference_loop). Há teste que
+#: trava os dois pares juntos.
+_CHAVE_LACO_SOMBRA = "epi:shadow:{}:loop"
+_TTL_MARCA_LACO_S = 60
+
+
 def _get_redis_client():
     import redis  # noqa: PLC0415
     return redis.from_url(
@@ -551,8 +572,19 @@ def _queue_verification_if_low_confidence(
         )
 
 
-def _save_alert(camera_id: str, detections: list[dict], frame) -> None:
+def _save_alert(
+    camera_id: str,
+    detections: list[dict],
+    frame,
+    origem: str | None = None,
+    latencia_s: float | None = None,
+) -> None:
     """Salva alerta: frame no storage + registro no banco (tenant-scoped).
+
+    `origem`/`latencia_s` carregam a procedência do evento (migration 129).
+    Ambos são opcionais e nascem None: alerta cuja origem ninguém mediu fica
+    NULL, ⛔ nunca recarimbado com um palpite — foi assim que `has_violation`
+    virou "sempre falso" com cara de turno limpo (#544).
 
     ÚNICO ponto do sistema que grava alerta a partir de uma detecção ao vivo
     (#132). Até agosto/2026 o `socket_bridge` também inseria, por SQL cru, na
@@ -604,10 +636,12 @@ def _save_alert(camera_id: str, detections: list[dict], frame) -> None:
             evidence_key=evidence_key,
             tenant_id=tenant_id,
             module_code=module_code,
+            origem=origem,
+            latencia_ms=None if latencia_s is None else int(latencia_s * 1000),
         )
         logger.info(
-            "alert_saved: camera=%s evidence=%s violations=%d",
-            camera_id, evidence_key, len(detections),
+            "alert_saved: camera=%s evidence=%s violations=%d origem=%s latencia_s=%s",
+            camera_id, evidence_key, len(detections), origem, latencia_s,
         )
 
         _queue_verification_if_low_confidence(
@@ -1032,6 +1066,7 @@ def inference_loop(
     camera_id: str,
     rtsp_url: str,
     model_path: str | None = None,
+    fonte: str = _FONTE_RTSP,
 ) -> dict:
     """
     Loop de inferência ONNX por câmera.
@@ -1039,7 +1074,14 @@ def inference_loop(
     1. Resolve o detector efetivo da câmera (WS-A6: deployment ativo →
        cameras.model_{module}_id → ONNX do registry no R2), com fallback
        ao singleton env (DETECTOR_BACKEND/DETECTOR_MODEL_PATH).
-    2. Conecta stream RTSP via OpenCV.
+    2. Lê o frame da fonte pedida:
+       - `rtsp` (default, comportamento histórico): abre a câmera direto.
+         Só funciona onde a nuvem ALCANÇA a câmera — não é o caso da RVB
+         (ADR-0020), e era esse o elo do #519.
+       - `hls_edge`: consome o segmento que o box JÁ empurra
+         (`hls_frame_source.FonteHlsDoEdge`). Não exige alcance de rede nem
+         código novo no edge; a mesma chave `epi:stream:*:active` que governa
+         este laço é a que faz o box transmitir.
     3. A cada N frames: roda inferência (recarrega o detector se houver
        evento no canal Redis camera:model_change:{camera_id}).
     4. Publica detecções no Redis (canal det:{camera_id}).
@@ -1064,23 +1106,55 @@ def inference_loop(
         camera_id, _DETECTOR_BACKEND, _INFERENCE_EVERY_N,
     )
 
-    cap = cv2.VideoCapture(rtsp_url)
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    cap = None
+    fonte_hls = None
+    if fonte == _FONTE_HLS_EDGE:
+        from app.core.segments_redis import get_segments_redis_binary  # noqa: PLC0415
+
+        from .hls_frame_source import FonteHlsDoEdge  # noqa: PLC0415
+        fonte_hls = FonteHlsDoEdge(camera_id, get_segments_redis_binary())
+    else:
+        cap = cv2.VideoCapture(rtsp_url)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
     frame_count = 0
     frames_processed = 0
 
     try:
         while _is_stream_active(camera_id, segments_client):
-            ret, frame = cap.read()
-            if not ret:
-                time.sleep(0.1)
-                continue
+            if fonte_hls is not None:
+                # Renova a marca "há laço vivo nesta câmera". Quem redispara
+                # (live_shadow.manter_sombra_ao_vivo) só age quando ela some,
+                # então a marca precisa vir de QUEM está vivo — senão o beat
+                # ou dispara um segundo laço por cima, ou nunca ressuscita um
+                # laço morto por acreditar numa marca que ninguém renova.
+                try:
+                    segments_client.setex(
+                        _CHAVE_LACO_SOMBRA.format(camera_id), _TTL_MARCA_LACO_S, "1"
+                    )
+                except Exception as exc:
+                    logger.debug(
+                        "sombra_marca_falhou camera=%s err=%s", camera_id, exc
+                    )
+                # A fonte HLS já entrega 1 frame por segmento (~2s), então
+                # NÃO passa pelo estrangulador `_INFERENCE_EVERY_N`: ele existe
+                # para descartar o excesso do RTSP, e aqui descartaria o pouco.
+                frame, idade_s = fonte_hls.proximo_frame()
+                if frame is None:
+                    time.sleep(_HLS_POLL_SLEEP_S)
+                    continue
+            else:
+                idade_s = None
+                ret, frame = cap.read()
+                if not ret:
+                    time.sleep(0.1)
+                    continue
 
-            frame_count += 1
-            if frame_count % _INFERENCE_EVERY_N != 0:
-                continue
+                frame_count += 1
+                if frame_count % _INFERENCE_EVERY_N != 0:
+                    continue
 
+            t_frame = time.time()
             frames_processed += 1
 
             # Recarrega o detector se o modelo da câmera mudou (WS-A6).
@@ -1124,6 +1198,15 @@ def inference_loop(
                 # carregado ou predict falhou). Quem consome tem de mostrar
                 # "sem inferência", nunca o verde de conformidade.
                 "inferencia_ok": inferencia_ok,
+                # Badge da tela. `latencia_s` só existe na fonte ao vivo, e é
+                # MEDIDA (idade do segmento pelo TTL + o que gastamos aqui) —
+                # nunca estimada. None = não medida, e a tela tem de dizer
+                # isso em vez de mostrar um número bonito e falso.
+                "origem": _ORIGEM_AO_VIVO if fonte_hls is not None else _ORIGEM_RTSP,
+                "latencia_s": (
+                    round(idade_s + (time.time() - t_frame), 2)
+                    if idade_s is not None else None
+                ),
             }
             if not inferencia_ok:
                 logger.warning(
@@ -1137,15 +1220,26 @@ def inference_loop(
                 # sustentar. Sem regra cadastrada para a classe isto devolve
                 # True e o comportamento é o de sempre.
                 if _persistencia_satisfeita(camera_id, detections, redis_client):
-                    _save_alert(camera_id, detections, frame)
+                    _save_alert(
+                        camera_id, detections, frame,
+                        origem=payload["origem"],
+                        latencia_s=payload["latencia_s"],
+                    )
 
+        perdidos = fonte_hls.perdidos_por_ttl if fonte_hls is not None else 0
         logger.info(
-            "inference_stopped: camera=%s frames_processed=%d",
-            camera_id, frames_processed,
+            "inference_stopped: camera=%s fonte=%s frames_processed=%d "
+            "segmentos_perdidos_ttl=%d",
+            camera_id, fonte, frames_processed, perdidos,
         )
         return {
             "camera_id": camera_id,
             "frames_processed": frames_processed,
+            "fonte": fonte,
+            # Quantos segmentos o edge anunciou e nós NÃO chegamos a olhar.
+            # Sai no retorno porque é o número que decide se a cadência
+            # aguenta as 14 câmeras ou se o consumidor está atrasado.
+            "segmentos_perdidos_ttl": perdidos,
             "status": "completed",
         }
 
@@ -1154,7 +1248,8 @@ def inference_loop(
         raise self.retry(exc=exc, countdown=30)
 
     finally:
-        cap.release()
+        if cap is not None:
+            cap.release()
         if model_change is not None:
             try:
                 model_change.close()

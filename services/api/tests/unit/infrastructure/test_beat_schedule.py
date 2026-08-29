@@ -35,6 +35,10 @@ if _loaded is not None and getattr(_loaded, "__file__", None) is None:
 from app.infrastructure.queue import celery_app  # noqa: E402
 
 ALL_TEN = {
+    # +sombra-ao-vivo (29/08): agendada e INERTE sem SHADOW_AO_VIVO_CAMERAS.
+    # Entra na lista curada porque a regra desta suíte é que nenhuma entrada
+    # apareça no beat sem alguém declarar a intenção aqui.
+    "sombra-ao-vivo",
     "backup-postgres",
     "compliance-daily-report",
     "quality-cep-baseline",
@@ -48,6 +52,7 @@ ALL_TEN = {
     "auto-retraining-check",
 }
 ACTIVE_EXPECTED = {
+    "sombra-ao-vivo",
     # backup-postgres: pg_dump→R2 2x/dia com drill (tasks/backup.py). Entra no
     # ATIVO porque cumpre a regra deste arquivo — vai para a fila `reports`,
     # que o worker consome. Foi este teste que pegou a versão anterior, em que
@@ -108,6 +113,19 @@ class TestCuratedBeatSchedule:
         assert entry["task"] == "tasks.gpu_reconciler.reconcile_edge_propagation_timeouts"
         assert entry["schedule"] == 300
         assert entry["options"]["queue"] == "training"
+
+    def test_sombra_ao_vivo_bate_na_fila_do_worker_e_com_folga_sobre_o_ttl(self):
+        """A entrada é inerte sem a variável, mas o AGENDAMENTO tem de estar
+        certo desde já: fila que o worker consome, e intervalo bem abaixo do
+        TTL de espectador (90s). Se o intervalo encostar no TTL, UMA batida
+        perdida deixa a chave vencer e o box para de transmitir no meio da
+        demonstração."""
+        from app.infrastructure.queue.tasks import live_shadow
+
+        entry = celery_app.celery.conf.beat_schedule["sombra-ao-vivo"]
+        assert entry["task"] == "tasks.live_shadow.manter_sombra_ao_vivo"
+        assert entry["options"]["queue"] == "inference"
+        assert entry["schedule"] * 3 <= live_shadow.TTL_ESPECTADOR_S
 
     def test_destructive_cleanups_never_active_and_are_deferred(self):
         assert DESTRUCTIVE.isdisjoint(_active())
