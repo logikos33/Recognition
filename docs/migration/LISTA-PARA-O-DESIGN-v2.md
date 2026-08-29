@@ -248,8 +248,8 @@ Registrados aqui porque saíram de **construir a tela**, não de ler o desenho.
 
 | # | o quê | por que trava | fase |
 |---|---|---|---|
-| B1 | **Pausar/Retomar operação** | `PUT /api/operations/<id>` aceita só `name` e `config`; `status` é escrito **só pelo worker** (`update_live_value`). Não existe caminho humano — a ação central do desenho de Operações não tem rota. | bloqueia a tela de Operações |
-| B2 | **Avaliação humana de operação** (OK/NOK + nota + autor) | Não há tabela nem rota. `/operations/<id>/results` é outra coisa: o que a operação MEDIU, não o que a pessoa JULGOU. | bloqueia a tela de Operações |
+| B1 | **Pausar/Retomar operação** — com caminho HUMANO e **auditoria de quem/quando/por quê** | `PUT /api/operations/<id>` aceita só `name` e `config`; `status` é escrito **só pelo worker** (`update_live_value`). Não existe caminho humano — a ação central do desenho de Operações não tem rota. | ✅ **ACEITO** — próxima rodada de backend |
+| B2 | **Avaliação humana de operação** (OK/NOK + nota + autor) | Não há tabela nem rota. `/operations/<id>/results` é outra coisa: o que a operação MEDIU, não o que a pessoa JULGOU. | ✅ **ACEITO** — entra na fila junto com o ciclo **R5** |
 | B3 | **Criação de operação pela tela** | `POST` existe, mas o formulário (módulo, tipo, config, zona) não foi desenhado. | precisa de desenho antes de backend |
 | B4 | **Config de parede do kiosk por site** | DECISÃO v2 item 2. Endpoint novo, pequeno, tenant-escopado, 404 cross-tenant. | autorizado na rodada |
 | B5 | **Taxa de conformidade sobre detecções totais** | DECISÃO v2 item 5 — substitui a heurística atual. | requisito, fila |
@@ -257,6 +257,16 @@ Registrados aqui porque saíram de **construir a tela**, não de ler o desenho.
 | B7 | **Seleção de conteúdo do export** | DECISÃO v2 item 5. | fase seguinte |
 | B8 | **Pendência por módulo** em `/api/modules/` | A tela `/modules` do desenho mostra "3 NOK aguardam revisão" por módulo; só existe `alerts_today`. Hoje mostro só o que existe. | polimento |
 | B9 | **Aviso de clamp no admin** + campo **logo-para-fundo-escuro** | DECISÃO v2 item 3. O clamp já está implementado no front; falta o cliente SABER que a cor dele foi ajustada, e o logo alternativo. | acompanha B4 |
+
+## Aceites do Vitor em 29/08
+
+**B1 e B2 são pedidos-ao-backend reais e aceitos.** B1 exige caminho humano de
+pausa **com auditoria** (quem pausou, quando, por quê) — o operador precisa poder
+pausar uma operação, e essa ação precisa deixar rastro. B2 se conecta ao ciclo
+R5 e entra na fila com ele.
+
+**Até lá, os controles desabilitados-dizendo-por-quê ficam** — confirmado como o
+padrão certo. Não escondê-los é o que mantém a lacuna visível para quem decide.
 
 ## Decisão registrada, sem código
 
