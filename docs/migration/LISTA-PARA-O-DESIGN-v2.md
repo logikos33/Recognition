@@ -5,7 +5,8 @@
 > foi feito no lugar, o que precisamos desenhado, e **qual rota do backend já
 > existe** — para o design não desenhar no vácuo.
 >
-> Gerado em 2026-08-27, ao fim da rodada F1+F3(EPI).
+> Gerado em 2026-08-29. Todas as rotas citadas foram conferidas contra os
+> blueprints reais do backend nesta data.
 
 ---
 
@@ -48,7 +49,8 @@ ninguém vê GPU, memória, fila, latência e temperatura. É o **único lugar d
 produto que grava a resolução dos frames que entram no dataset de treino**, e o
 único freio contra sobrecarregar o mini PC do cliente.
 
-**Backend pronto:** `GET /api/cameras/<id>/health-context` devolve
+**Backend pronto:** `GET /api/cameras/<id>/health-context` (há alias em
+`/api/v1/cameras/<id>/health-context`) devolve
 `gpu_pct`, `gpu_mem_pct`, `cpu_pct`, `queue_depth`, `inference_fps`,
 `inference_latency_ms`, `gpu_temp_c`, `decode_pct` + a demanda de FPS do site.
 Gravação pelo update da câmera (FPS 1/5/10/15/30 · qualidade `low`/`medium`/`high`
@@ -120,7 +122,8 @@ global só aparece **depois** de já haver contexto: mostrava a saída, nunca a
 entrada.
 
 **Como está:** botão âmbar "Escolher cliente" na topbar, só para superadmin e só
-sem contexto assumido; ao escolher, volta na mesma tela.
+sem contexto assumido; ao escolher, volta na mesma tela. **Ainda em PR aberto**
+(#553) — pode mudar antes de entrar, mas o problema que ele resolve não muda.
 
 **Backend pronto:** `GET /api/v1/admin/tenant-context/tenants` ·
 `POST /api/v1/admin/tenant-context/tenants/<id>/assume`.
