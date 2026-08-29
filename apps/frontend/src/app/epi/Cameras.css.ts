@@ -450,6 +450,213 @@ export const nota = style({
   maxWidth: '900px',
 })
 
+// ── aba Desempenho (5ª aba — Main.dc.html) ──────────────────────────────────
+
+export const desempenhoCabecalho = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: lk.espaco.x1,
+  flexWrap: 'wrap',
+})
+
+export const desempenhoGrid = style({
+  display: 'grid',
+  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  gap: lk.espaco.x2,
+})
+
+export const painelDesempenho = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '18px',
+  background: lk.cor.grafite,
+  border: `1px solid ${lk.cor.borda}`,
+  borderRadius: lk.raio.g,
+  padding: '20px',
+  boxSizing: 'border-box',
+})
+
+export const divisor = style({ height: '1px', background: lk.cor.borda })
+
+export const linhaOpcoes = style({ display: 'flex', gap: lk.espaco.x1 })
+
+const opcaoFpsBase = style({
+  flex: 1,
+  height: '44px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderRadius: lk.raio.s,
+  border: `1px solid ${lk.cor.borda}`,
+  background: 'transparent',
+  color: lk.cor.cinzaNevoa,
+  fontFamily: lk.fonte.mono,
+  fontSize: '14px',
+  fontWeight: 700,
+  cursor: 'pointer',
+  ':disabled': { opacity: 0.5, cursor: 'not-allowed' },
+})
+
+/** FPS: número em mono, ativo com borda+texto ciano — mesma regra "ciano só
+ * interativo" das outras abas. */
+export const opcaoFps = styleVariants({
+  inativa: [opcaoFpsBase],
+  ativa: [opcaoFpsBase, { borderColor: lk.cor.cianoVisao, background: lk.cor.preto, color: lk.cor.cianoVisao }],
+})
+
+const opcaoQualidadeBase = style({
+  flex: 1,
+  height: '44px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderRadius: lk.raio.s,
+  border: `1px solid ${lk.cor.borda}`,
+  background: 'transparent',
+  color: lk.cor.cinzaNevoa,
+  fontFamily: lk.fonte.ui,
+  fontSize: '14px',
+  fontWeight: 600,
+  cursor: 'pointer',
+  ':disabled': { opacity: 0.5, cursor: 'not-allowed' },
+})
+
+export const opcaoQualidade = styleVariants({
+  inativa: [opcaoQualidadeBase],
+  ativa: [
+    opcaoQualidadeBase,
+    { borderColor: lk.cor.cianoVisao, background: lk.cor.preto, color: lk.cor.cianoVisao },
+  ],
+})
+
+export const colunaOpcoes = style({ display: 'flex', flexDirection: 'column', gap: lk.espaco.x1 })
+
+const opcaoColetaBase = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: lk.espaco.x1,
+  height: '48px',
+  padding: '0 14px',
+  borderRadius: lk.raio.s,
+  border: `1px solid ${lk.cor.borda}`,
+  background: 'transparent',
+  color: lk.cor.cinzaNevoa,
+  fontFamily: lk.fonte.ui,
+  fontSize: '14px',
+  cursor: 'pointer',
+  textAlign: 'left',
+  ':disabled': { opacity: 0.5, cursor: 'not-allowed' },
+})
+
+export const opcaoColeta = styleVariants({
+  inativa: [opcaoColetaBase],
+  ativa: [opcaoColetaBase, { borderColor: lk.cor.cianoVisao, background: lk.cor.preto, color: lk.cor.brancoSinal }],
+})
+
+const anelBase = style({
+  width: '16px',
+  height: '16px',
+  flex: 'none',
+  borderRadius: '50%',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+})
+
+export const anel = styleVariants({
+  vazio: [anelBase, { border: `2px solid ${lk.cor.borda}` }],
+  marcado: [anelBase, { border: `2px solid ${lk.cor.cianoVisao}` }],
+})
+
+const pontoBase = style({ width: '8px', height: '8px', borderRadius: '50%' })
+
+export const ponto = styleVariants({
+  vazio: [pontoBase, { background: 'transparent' }],
+  marcado: [pontoBase, { background: lk.cor.cianoVisao }],
+})
+
+/** Borda âmbar do PRÓPRIO box (nunca fundo tingido — regra do handoff). A
+ * transparência vem de `color-mix` sobre o token, nunca de `rgba()` escrito à
+ * mão (mesma receita de `EventoDetalhe.css.ts`/`AoVivo.css.ts`): só assim o
+ * white-label do tenant continua alcançando a cor de estado. */
+export const avisoAmbar = style({
+  display: 'flex',
+  gap: lk.espaco.x1,
+  padding: '12px 14px',
+  borderRadius: lk.raio.s,
+  background: lk.cor.preto,
+  border: `1px solid color-mix(in srgb, ${lk.estado.atencao} 40%, transparent)`,
+})
+
+export const avisoIcone = style({ flexShrink: 0 })
+
+export const avisoTexto = style({ fontSize: '13px', color: lk.estado.atencao, lineHeight: 1.5 })
+
+export const saudeTopo = style({ display: 'flex', alignItems: 'center', gap: lk.espaco.x1, flexWrap: 'wrap' })
+
+const metricaCardBase = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '5px',
+  padding: '12px',
+  borderRadius: lk.raio.s,
+  background: lk.cor.preto,
+  border: `1px solid ${lk.cor.borda}`,
+})
+
+export const metricaCard = styleVariants({
+  neutro: [metricaCardBase],
+  alerta: [metricaCardBase, { borderColor: lk.estado.atencao }],
+})
+
+export const metricaRotulo = style({
+  fontFamily: lk.fonte.mono,
+  fontSize: '9.5px',
+  letterSpacing: '0.16em',
+  textTransform: 'uppercase',
+  color: lk.cor.cinzaNevoa,
+})
+
+const metricaValorBase = style({ fontFamily: lk.fonte.titulo, fontWeight: 700, fontSize: '20px' })
+
+export const metricaValorTom = styleVariants({
+  neutro: [metricaValorBase, { color: lk.cor.brancoSinal }],
+  alerta: [metricaValorBase, { color: lk.estado.atencao }],
+})
+
+export const impactoLinha = style({ display: 'flex', alignItems: 'baseline', gap: lk.espaco.x1 })
+
+export const impactoValor = style({
+  fontFamily: lk.fonte.titulo,
+  fontWeight: 700,
+  fontSize: '34px',
+  color: lk.cor.brancoSinal,
+})
+
+/** Borda ciano CHEIA (não `color-mix`) — o desenho usa `#00E5FF` sólido aqui,
+ * diferente da borda âmbar do aviso acima. */
+export const impactoCaixa = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: lk.espaco.x1,
+  padding: '12px 14px',
+  borderRadius: lk.raio.s,
+  background: lk.cor.preto,
+  border: `1px solid ${lk.cor.cianoVisao}`,
+})
+
+export const impactoCaixaTexto = style({ fontSize: '13.5px', color: lk.cor.brancoSinal })
+
+export const impactoCaixaNumero = style({ fontFamily: lk.fonte.mono, color: lk.cor.cianoVisao })
+
+export const barraSalvar = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '14px',
+  paddingTop: '2px',
+  flexWrap: 'wrap',
+})
+
 // ── vazio / erro ─────────────────────────────────────────────────────────────
 
 export const centro = style({
