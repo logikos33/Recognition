@@ -51,5 +51,5 @@ nem começaram.
 
 ## Detalhe
 
- do run  guarda cada conexão com arquivo:linha do
-chamador novo, do antigo, e a rota do backend.
+O `journal.jsonl` do run `wf_0c83a71e-7ed` guarda cada conexão com
+`arquivo:linha` do chamador novo, do antigo, e a rota do backend.
