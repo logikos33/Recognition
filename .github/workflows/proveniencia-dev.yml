@@ -1,13 +1,7 @@
-# ⚠️ AGENDAMENTO DESLIGADO DE PROPÓSITO — ordem de 29/08:
-# o vigia só liga depois que o deploy corrigido (railway-deploy-dev.yml, neste
-# mesmo PR) provar o SHA no /livez. Hoje o /livez responde "unknown" a cada
-# deploy; ligar o cron agora seria um alarme que já nasce gritando — e alarme
-# que grita à toa é alarme que todo mundo aprende a ignorar.
-#
-# PARA LIGAR (depois da prova): descomentar o bloco `schedule:` abaixo.
-# Enquanto isso, `workflow_dispatch` já funciona daqui (main) e aceita ref.
-# Rodar à mão:  python3 scripts/checa_proveniencia.py --url <URL>
-# Ver docs/runbooks/SINAIS_DEGRADACAO.md · D-187 · PRs #557 #563
+# ✅ LIGADO em 29/08, depois da prova que a ordem exigia: o deploy corrigido
+# rodou (run e171f2cc, 18:04 — Frontend passou pela primeira vez) e o /livez
+# MANTEVE o SHA (230f7382) depois do `railway up`; gate exit 0.
+# Ver docs/runbooks/SINAIS_DEGRADACAO.md · D-187 · PRs #557 #563 #564
 #
 # Alguém lê o alarme por ofício.
 #
@@ -23,8 +17,11 @@
 name: Proveniência do DEV
 
 on:
-  # schedule:                     # ← DESCOMENTAR depois que o /livez provar SHA
-  #   - cron: "*/15 * * * *"     #   (carência de 30 min já está no script)
+  schedule:
+    # A cada 15 min. A carência de 30 min está no script: divergência só vira
+    # alerta quando o commit da develop já passou dela — sem gritar durante um
+    # deploy normal.
+    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 permissions:
