@@ -1,0 +1,101 @@
+name: Deploy → Railway Desenvolvimento
+
+# ⚠️ ESTE ARQUIVO SÓ EXECUTA A PARTIR DE `main` (branch padrão).
+# Esta cópia na `develop` existe para ser PROMOVIDA — ela corrige dois defeitos
+# da versão que está em `main` hoje:
+#
+#  1. o nome do serviço estava em caixa baixa e o serviço se chama `Frontend`. O job
+#     falhava com "Service not found" em TODA execução; o Frontend do DEV nunca
+#     foi atualizado por este workflow (só pela integração git do Railway).
+#
+#  2. `railway up` faz deploy por UPLOAD e não carrega proveniência: o serviço
+#     sobe sem `RAILWAY_GIT_COMMIT_SHA`, e o `/livez` passa a responder
+#     `commit: "unknown"`. Foi ISSO que produziu o `unknown` de 29/08 — não um
+#     deploy manual de laptop, como se supôs a princípio. Agora o SHA realmente
+#     enviado é gravado em `GIT_COMMIT_SHA` antes de subir.
+#
+# ⚠️ O SHA é medido no checkout (`git rev-parse HEAD`), nunca fixo: fixar a
+# proveniência é pior que não ter, porque passa a mentir com confiança.
+
+# Dispara somente quando CI verde no develop.
+# Pré-requisito: adicione RAILWAY_TOKEN como GitHub Secret
+# (Railway dashboard → Account Settings → API Tokens → New Token).
+on:
+  workflow_run:
+    workflows: ["CI"]
+    branches: [develop]
+    types: [completed]
+
+env:
+  RAILWAY_PROJECT_ID: 7fd3ecdf-417d-41be-b892-ff8fc1907fdd
+
+jobs:
+  deploy-api:
+    name: API-V3 → Desenvolvimento
+    # Sem isto o default do GitHub é 360 min: uma travada segura o runner por
+    # 6 horas. O gate de higiene do CI cobra, e cobrou.
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli@latest
+
+      # `--skip-deploys` é obrigatório: sem ele, mexer em variável dispara um
+      # rebuild do source linkado e derruba a API (já aconteceu no DEV).
+      - name: Gravar a proveniência do que vai subir
+        run: |
+          SHA="$(git rev-parse HEAD)"
+          echo "subindo $SHA"
+          railway variables \
+            --set "GIT_COMMIT_SHA=$SHA" \
+            --service "API-V3" \
+            --environment "Desenvolvimento" \
+            --skip-deploys
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Deploy API-V3
+        run: |
+          railway up \
+            --service "API-V3" \
+            --environment "Desenvolvimento" \
+            --detach \
+            --ci
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Smoke test /health
+        run: |
+          sleep 30
+          curl -f --retry 5 --retry-delay 10 \
+            https://api-v3-desenvolvimento.up.railway.app/health \
+            || echo "::warning::Smoke test falhou — verifique logs Railway"
+
+  deploy-frontend:
+    name: Frontend → Desenvolvimento
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    needs: deploy-api
+    if: github.event.workflow_run.conclusion == 'success'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli@latest
+
+      - name: Deploy Frontend
+        run: |
+          railway up \
+            --service "Frontend" \
+            --environment "Desenvolvimento" \
+            --detach \
+            --ci
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}

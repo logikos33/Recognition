@@ -29,13 +29,24 @@ from datetime import UTC, datetime
 CARENCIA_MINUTOS = 30
 
 
+#: O serviço respondeu, mas sem o campo `commit`. É DIFERENTE de não responder:
+#: o processo está de pé, só não declara o que está rodando — e a ação de quem
+#: recebe o alerta é outra (conferir o endpoint, não ressuscitar o serviço).
+SEM_CAMPO = "__sem_campo__"
+
+
 def commit_servido(url: str, timeout: int = 25) -> str | None:
-    """SHA que o serviço declara. `None` se ele não respondeu."""
+    """SHA que o serviço declara.
+
+    `None` = não respondeu (fora do ar, rede, timeout).
+    `SEM_CAMPO` = respondeu, mas sem `commit` no corpo.
+    """
     try:
         with urllib.request.urlopen(url, timeout=timeout) as r:  # noqa: S310
-            return str(json.load(r).get("commit", "")).strip() or None
+            corpo = json.load(r)
     except Exception:
         return None
+    return str(corpo.get("commit", "")).strip() or SEM_CAMPO
 
 
 def head_da_branch(branch: str) -> tuple[str, datetime]:
@@ -56,7 +67,14 @@ def avaliar(
     idade = ((agora or datetime.now(UTC)) - nascido_em).total_seconds() / 60
 
     if servido is None:
-        return True, "o serviço não respondeu ao /livez"
+        return True, "o serviço não respondeu — fora do ar, rede ou timeout"
+
+    if servido == SEM_CAMPO:
+        return True, (
+            "o serviço respondeu, mas SEM o campo `commit` — endpoint errado "
+            "ou versão anterior à proveniência. Confira a URL antes de "
+            "ressuscitar nada: o processo está de pé."
+        )
 
     if servido == esperado:
         return False, f"em dia — {esperado[:8]}"

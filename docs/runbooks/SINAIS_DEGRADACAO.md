@@ -28,10 +28,23 @@ isso está acontecendo.
 
 ## Watchdogs: quem vigia o quê
 
-Um sinal só serve se alguém o lê. Em **29/08/2026** a API do DEV rodou horas um
-build de `railway up` — upload do laptop de alguém — enquanto a develop tinha
-outro código. O sinal existia: o `/livez` devolvia `commit: "unknown"`, que a
-**D-156** define como a marca de deploy sem proveniência. Ninguém estava lendo.
+Um sinal só serve se alguém o lê. Em **29/08/2026** o `/livez` do DEV passou
+horas respondendo `commit: "unknown"` — a marca de deploy sem proveniência
+(**D-156**) — e ninguém estava lendo.
+
+> ⚠️ **Correção de diagnóstico.** A primeira leitura foi "alguém subiu do
+> laptop". **Errado, e a diferença importa.** Quem faz o `railway up` é o
+> próprio CI: `.github/workflows/railway-deploy-dev.yml` dispara quando o CI
+> fica verde na `develop`, faz `checkout ref: develop` e sobe por **upload**.
+> O CÓDIGO no ar é o da develop; o que se perde é a **proveniência**, porque
+> `railway up` não carrega o SHA. Confirmado casando os horários dos runs do
+> workflow (13:31 · 19:16 · 19:45) com os deploys `UPLOAD` do Railway nos
+> mesmos minutos.
+>
+> Consequência prática: **enquanto o deploy subir por upload sem gravar o SHA,
+> o vigia de proveniência fica vermelho para sempre** — não porque algo
+> quebrou, mas porque o caminho de deploy é assim. Ligar o vigia antes de
+> consertar o deploy cria justamente o alarme que grita à toa.
 
 Hoje há **dois** vigias, com escopos que não se sobrepõem. **Não duplicar** —
 se um alarme novo couber num dos dois, ele entra ali.
@@ -41,11 +54,30 @@ se um alarme novo couber num dos dois, ele entra ali.
 | **Uptime / restauro** | tarefa agendada do **Cowork** (fora deste repositório) | 5×/dia | *o serviço está de pé?* — `/livez` responde | dispara o playbook de restauro |
 | **Proveniência** | `.github/workflows/proveniencia-dev.yml` (neste repositório) | a cada 15 min | *o serviço está rodando o código da develop?* — `/livez.commit` == HEAD | reprova o job, com o motivo e a referência à D-156 |
 
-> 🔴 **O vigia de proveniência ainda NÃO está ligado.** O GitHub só dispara
+> 🔴 **O vigia de proveniência ainda NÃO está ligado.** O GitHub só **reconhece**
 > `schedule` e `workflow_dispatch` a partir da **branch padrão**, que aqui é
-> `main` — o arquivo está na `develop`. Enquanto ele não chegar em `main`, o
-> agendamento não roda: nem de hora em hora, nem sob demanda. (É por isso que o
-> `security-scan.yml`, que está em `main`, dispara.)
+> `main` — o arquivo está na `develop`.
+>
+> ⚠️ **Não há outro workflow agendado neste repositório para comparar.** Chegou
+> a ser escrito aqui que "o `security-scan.yml` dispara porque está em `main`" —
+> **falso**: ele roda em `push`/`pull_request`, não tem `schedule`. A evidência
+> que sustenta a regra é outra, e é direta: depois do merge na `develop`, o
+> `gh workflow run proveniencia-dev.yml` devolveu **HTTP 404 — "not found on the
+> default branch"**.
+>
+> ⚠️ **Os dois gatilhos não se comportam igual, e a diferença muda o teste
+> manual:** uma vez que o arquivo esteja em `main`, o `workflow_dispatch`
+> **aceita escolher a ref** e roda a versão daquela branch. Só o `schedule`
+> fica preso à versão que está em `main`.
+>
+> 🔴 **E isso é um problema de desenho neste projeto**, não um detalhe: no
+> fluxo `develop → staging → main`, a `main` é a ponta **mais atrasada** (já
+> esteve 40 commits atrás de `staging`). Um `schedule` em `main` executa a
+> versão **velha** do próprio verificador — o mesmo padrão de falha que este
+> runbook documenta, com outro nome: o sinal existe, alguém lê, e ele descreve
+> outra coisa. Por isso a checagem foi feita **autocontida** (só stdlib, zero
+> import de `services/api`, zero dependência de requirements): a versão que
+> envelhecer em `main` continua correta por mais tempo.
 >
 > **Ação, e ela é humana:** levar `.github/workflows/proveniencia-dev.yml` até
 > `main` no próximo `develop → staging → main`. Até lá, a checagem existe e é
