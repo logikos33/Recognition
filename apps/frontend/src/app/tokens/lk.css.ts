@@ -14,8 +14,11 @@
  *
  * WHITE-LABEL — o que o tenant pinta, e o que ele NÃO pinta.
  *
- * Só a COR DE MARCA vem do tenant: `--color-primary`, que o `ThemeProvider`
- * (já montado em `App.tsx`) busca em `/v1/tenant/branding`. Logo, produto e
+ * Só a COR DE MARCA vem do tenant. Ela chega em `--color-primary` (o
+ * `ThemeProvider` busca em `/v1/tenant/branding`) e é republicada em
+ * `--lk-marca` JÁ CLAMPADA para ≥4,5:1 contra as superfícies — DECISÃO v2
+ * item 3, implementada em `contraste.ts` + `MarcaDoTenant.tsx`. Ler
+ * `--color-primary` direto aqui traria a cor crua e devolveria o problema. Logo, produto e
  * cor de marca são do cliente — o resto é a identidade Logikos Vision.
  *
  * As SUPERFÍCIES (fundo, borda, texto) ficam nos valores do desenho, e isto foi
@@ -60,7 +63,7 @@ export const lk = createGlobalTheme(':root', {
     /** secundário, labels overline */
     cinzaNevoa: '#8A8F98',
     /** ⚠️ SÓ interativo, ≤10%, nunca fundo de superfície. Cor de MARCA do tenant. */
-    cianoVisao: 'var(--color-primary, #00E5FF)',
+    cianoVisao: 'var(--lk-marca, var(--color-primary, #00E5FF))',
     /** hover/pressed do acento */
     cianoProfundo: 'var(--color-primary-dark, #0091AD)',
     /** ⚠️ SÓ a franja de glitch do loader — NÃO entra no white-label */
@@ -100,3 +103,17 @@ export const lk = createGlobalTheme(':root', {
 
 /** Overline: mono, caixa alta, tracking .16–.22em. Usado em labels de dado. */
 export const OVERLINE_TRACKING = '0.18em'
+
+/**
+ * Os valores CRUS, para quem precisa calcular e não só pintar.
+ *
+ * `lk.*` são referências a CSS vars — servem para estilo, não para conta. O
+ * cálculo de contraste (`contraste.ts`) precisa do hexadecimal de verdade, e
+ * duplicá-lo lá criaria duas fontes: alguém mudaria a superfície aqui e o piso
+ * de contraste continuaria medindo contra a cor antiga, em silêncio.
+ */
+export const VALORES = {
+  preto: '#0A0A0F',
+  grafite: '#14141C',
+  cianoVisao: '#00E5FF',
+} as const

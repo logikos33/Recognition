@@ -33,6 +33,7 @@ import { PaletaComandos, type GrupoPaleta } from './PaletaComandos'
 import { SeletorTenant } from './SeletorTenant'
 import { SessaoExpirando } from './SessaoExpirando'
 import { PREFIXO_NOVO } from '../RotasNovas'
+import { useMarcaDoTenant } from '../tokens/MarcaDoTenant'
 import { NAV_EPI, navVisivel } from './navPorPerfil'
 import * as s from './Shell.css'
 
@@ -55,6 +56,8 @@ export interface ShellProps {
 
 export function Shell({ carregando }: ShellProps) {
   const { can } = useAuth()
+  // Publica --lk-marca clampada; os tokens leem dela. Ver DECISÃO v2 item 3.
+  useMarcaDoTenant()
   const navegar = useNavigate()
   const [colapsada, setColapsada] = useState(false)
   const [paletaAberta, setPaletaAberta] = useState(false)

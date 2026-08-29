@@ -33,6 +33,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { api } from '../../services/api'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import { PREFIXO_NOVO } from '../RotasNovas'
+import { useMarcaDoTenant } from '../tokens/MarcaDoTenant'
 import { lk } from '../tokens/lk.css'
 import * as s from './Modulos.css'
 
@@ -113,6 +114,8 @@ function quando(em: number): string {
 
 export function Modulos() {
   const { user, isSuperAdmin } = useAuth()
+  // Esta tela fica FORA do Shell, então liga o clamp por conta própria.
+  useMarcaDoTenant()
   const navegar = useNavigate()
   const [modulos, setModulos] = useState<ModuloDaApi[] | null>(null)
   const [erro, setErro] = useState<string | null>(null)

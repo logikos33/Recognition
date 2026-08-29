@@ -27,7 +27,16 @@ import type { User } from './hooks/useAuth'
  * é justamente onde ninguém está conversando com o assistente — está anotando
  * em fluxo, com o teclado.
  */
-const ROTAS_SEM_CHAT = ['/epi/training']
+const ROTAS_SEM_CHAT = [
+  '/epi/training',
+  // DECISÃO v2 (design/DECISOES-DESIGN-2026-08-29.md, item 4): o chat
+  // flutuante SAI do shell novo — fura a lei do ciano ≤10%, e medido ele
+  // sozinho punha 3.136px² de ciano em TODAS as telas novas. Se o suporte
+  // ficar, vira item do menu de ajuda/⌘K, e aí é desenhado.
+  //
+  // Sai só do front NOVO: no antigo ele continua exatamente como estava.
+  PREFIXO_NOVO,
+]
 
 function ChatFABExcetoAnotacao() {
   const { pathname } = useLocation()
