@@ -2,10 +2,11 @@ import { style } from '@vanilla-extract/css'
 
 import { lk } from '../tokens/lk.css'
 
+// Sem minHeight próprio: o `corpo` do Shell já garante 100vh-topbar, e somar
+// os dois criava barra de rolagem permanente (achado do cético).
 export const raiz = style({
   display: 'flex',
   alignItems: 'stretch',
-  minHeight: `calc(100vh - ${lk.medida.topbar})`,
 })
 
 /** Largura da lateral PRÓPRIA do Estúdio — medida do desenho (`Estúdio.dc.html`),
@@ -51,8 +52,10 @@ export const itemAtivo = style({
   background: lk.cor.preto,
 })
 
+// Só o respiro entre o trilho e o conteúdo — o `main` do Shell já dá 24px em
+// volta de tudo; padding aqui dobrava para 48px (achado do cético).
 export const conteudo = style({
   flex: 1,
   minWidth: 0,
-  padding: lk.medida.padding,
+  paddingLeft: lk.medida.padding,
 })

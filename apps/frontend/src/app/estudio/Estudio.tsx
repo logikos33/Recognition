@@ -12,6 +12,7 @@
  * Ferramentas IA, Dataset, Treinos, Modelos) chegam nas próximas PRs da F5.
  * Item apontando para rota inexistente é tela inventada.
  */
+import { Suspense } from 'react'
 import { Images } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
 
@@ -42,7 +43,11 @@ export function Estudio() {
         ))}
       </nav>
       <div className={s.conteudo}>
-        <Outlet />
+        {/* Boundary local: sem ele, layout e sub-rota (ambos lazy) suspendem em
+            sequência no fallback do Shell e a tela pisca duas vezes. */}
+        <Suspense fallback={null}>
+          <Outlet />
+        </Suspense>
       </div>
     </div>
   )

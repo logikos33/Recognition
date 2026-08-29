@@ -41,7 +41,9 @@ const STATUS_DA_URL: Record<StatusFilter, true> = {
   excluida: true,
   proposta_pendente: true,
 }
-const ehStatusFilter = (v: string): v is StatusFilter => v in STATUS_DA_URL
+// `in` enxerga Object.prototype: `'toString' in {}` é true, e o valor herdado
+// estouraria em STATUS_LABELS[...] no render da galeria (achado do cético).
+const ehStatusFilter = (v: string): v is StatusFilter => Object.hasOwn(STATUS_DA_URL, v)
 
 export function Dados() {
   // ── estúdio de anotação (tela cheia, lista congelada) ────────────────────

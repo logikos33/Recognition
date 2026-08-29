@@ -83,6 +83,11 @@ describe('Dados (galeria do Estúdio)', () => {
     expect(vistas.gallery?.statusFilterRequest).toBeNull()
   })
 
+  it('?status= herdado de Object.prototype NÃO vira filtro (toString/valueOf)', () => {
+    monta('/novo/estudio/dados?status=toString')
+    expect(vistas.gallery?.statusFilterRequest).toBeNull()
+  })
+
   it('abrir o estúdio troca a tela; sair recarrega a galeria (reloadKey)', () => {
     monta()
     expect(vistas.gallery?.reloadKey).toBe(0)
