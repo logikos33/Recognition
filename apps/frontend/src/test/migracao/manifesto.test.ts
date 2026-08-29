@@ -11,7 +11,8 @@
  * levou junto tela que ninguém tinha substituído.
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
@@ -25,12 +26,21 @@ describe('manifesto do front antigo', () => {
   })
 
   it('está ATUALIZADO com o repositório', () => {
-    // Regenera e compara: manifesto velho é pior que manifesto nenhum, porque
-    // dá a impressão de que alguém conferiu.
-    const antes = readFileSync(MANIFESTO, 'utf8')
-    execFileSync('node', [join(RAIZ, 'scripts', 'gera-manifesto-front-antigo.mjs')])
-    const depois = readFileSync(MANIFESTO, 'utf8')
-    expect(depois).toBe(antes)
+    // Manifesto velho é pior que manifesto nenhum: dá a impressão de que alguém
+    // conferiu.
+    //
+    // Gera para um arquivo TEMPORÁRIO e compara. Antes ele regenerava por cima
+    // do versionado — então falhava na primeira execução, CONSERTAVA o arquivo,
+    // e passava na segunda. Quem rodasse a suíte duas vezes via verde e
+    // commitava um manifesto velho. Foi assim que um desatualizado chegou ao CI.
+    const temp = join(mkdtempSync(join(tmpdir(), 'manifesto-')), 'gerado.md')
+    execFileSync('node', [join(RAIZ, 'scripts', 'gera-manifesto-front-antigo.mjs')], {
+      env: { ...process.env, MANIFESTO_SAIDA: temp },
+    })
+    expect(
+      readFileSync(temp, 'utf8'),
+      'manifesto desatualizado — rode `npm run manifesto` e commite',
+    ).toBe(readFileSync(MANIFESTO, 'utf8'))
   })
 
   it('declara os quatro estados e diz qual pode ser removido', () => {

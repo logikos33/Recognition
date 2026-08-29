@@ -24,7 +24,17 @@ import { fileURLToPath } from "node:url";
 const AQUI = dirname(fileURLToPath(import.meta.url));
 const RAIZ = join(AQUI, "..");
 const SRC = join(RAIZ, "src");
-const SAIDA = join(RAIZ, "..", "..", "docs", "migration", "MANIFESTO-FRONT-ANTIGO.md");
+/**
+ * Destino. `MANIFESTO_SAIDA` permite gerar para outro lugar — é o que o teste
+ * de frescor usa para COMPARAR sem escrever no arquivo versionado.
+ *
+ * Sem isso o teste se auto-curava: falhava na primeira execução, consertava o
+ * arquivo, e passava na segunda. Quem rodasse duas vezes via verde e commitava
+ * um manifesto velho — foi assim que um manifesto desatualizado chegou ao CI.
+ */
+const SAIDA = process.env.MANIFESTO_SAIDA
+  ? process.env.MANIFESTO_SAIDA
+  : join(RAIZ, "..", "..", "docs", "migration", "MANIFESTO-FRONT-ANTIGO.md");
 
 /** Rotas sem desenho no handoff — Fase 0 §3.2. Ficam vivas até o design desenhar. */
 const SEM_DESENHO = [
