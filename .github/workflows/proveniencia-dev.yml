@@ -1,0 +1,63 @@
+# ⚠️ AGENDAMENTO DESLIGADO DE PROPÓSITO — ordem de 29/08:
+# o vigia só liga depois que o deploy corrigido (railway-deploy-dev.yml, neste
+# mesmo PR) provar o SHA no /livez. Hoje o /livez responde "unknown" a cada
+# deploy; ligar o cron agora seria um alarme que já nasce gritando — e alarme
+# que grita à toa é alarme que todo mundo aprende a ignorar.
+#
+# PARA LIGAR (depois da prova): descomentar o bloco `schedule:` abaixo.
+# Enquanto isso, `workflow_dispatch` já funciona daqui (main) e aceita ref.
+# Rodar à mão:  python3 scripts/checa_proveniencia.py --url <URL>
+# Ver docs/runbooks/SINAIS_DEGRADACAO.md · D-187 · PRs #557 #563
+#
+# Alguém lê o alarme por ofício.
+#
+# ⚠️ `schedule` executa a versão do arquivo que está na BRANCH PADRÃO — e neste
+# projeto (`develop → staging → main`) a `main` é a ponta MAIS ATRASADA. Por
+# isso a checagem é autocontida: `scripts/checa_proveniencia.py` usa só a
+# stdlib, não importa nada de `services/api` e não depende de requirements. A
+# versão que envelhecer em `main` continua correta por mais tempo.
+#
+# Em 29/08 a API do DEV rodou horas um build de `railway up` enquanto a develop
+# tinha outro código. O sinal existia — `/livez` devolvia `commit: "unknown"` —
+# e ninguém estava lendo. Este agendamento lê.
+name: Proveniência do DEV
+
+on:
+  # schedule:                     # ← DESCOMENTAR depois que o /livez provar SHA
+  #   - cron: "*/15 * * * *"     #   (carência de 30 min já está no script)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  conferir:
+    name: O DEV está rodando a develop?
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout da DEVELOP, não da branch do workflow: `schedule` executa a
+      # versão do arquivo que está em `main` — a ponta MAIS ATRASADA deste
+      # fluxo — e o script/testes vivem na develop. `main` guarda só este
+      # invólucro; o conteúdo vem sempre da ref que o DEV de fato serve.
+      # (Também é por isso que rodar isto de `main` não quebra: os arquivos
+      # que ele usa não precisam existir lá.)
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: develop
+          # Histórico completo para ler a DATA do commit — é ela que decide
+          # se a divergência ainda está na carência.
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Testar a própria checagem antes de confiar nela
+        run: python -m pytest tests/test_checa_proveniencia.py -q
+
+      - name: API-V3 do DEV
+        run: |
+          git fetch origin develop --quiet
+          python scripts/checa_proveniencia.py \
+            --url https://api-v3-desenvolvimento.up.railway.app/livez \
+            --branch origin/develop
