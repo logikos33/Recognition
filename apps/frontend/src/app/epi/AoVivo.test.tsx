@@ -72,7 +72,7 @@ vi.mock('../../components/monitoring/CameraPlayer', () => ({
 
 // ── Dados ───────────────────────────────────────────────────────────────────
 
-const camera = (id: string, name: string, is_active = true): Camera => ({
+const camera = (id: string, name: string, is_active = true, site_id: string | null = null): Camera => ({
   id,
   name,
   manufacturer: 'intelbras',
@@ -83,11 +83,28 @@ const camera = (id: string, name: string, is_active = true): Camera => ({
   created_at: '2026-08-01T00:00:00Z',
   location: 'DOCA NORTE',
   fps_target: 12,
+  site_id,
 })
 
 const CAMS = [camera('cam-1', 'CAM-01 DOCA NORTE'), camera('cam-2', 'CAM-02 PORTARIA')]
 
 const tokenizada = (id: string) => `/api/cameras/${id}/stream/s/1799999999.assinatura/stream.m3u8`
+
+/**
+ * Node 25 traz Web Storage nativo e ele colide com o do jsdom neste ambiente
+ * (mesmo achado de `Dashboard.test.tsx`/`tenantContextRenewal.test.ts`) — o
+ * global real perde métodos. Storage in-memory resolve, e de quebra isola os
+ * layouts salvos entre casos.
+ */
+class MemoriaStorage implements Storage {
+  private mapa = new Map<string, string>()
+  get length(): number { return this.mapa.size }
+  clear(): void { this.mapa.clear() }
+  getItem(k: string): string | null { return this.mapa.get(k) ?? null }
+  key(i: number): string | null { return Array.from(this.mapa.keys())[i] ?? null }
+  removeItem(k: string): void { this.mapa.delete(k) }
+  setItem(k: string, v: string): void { this.mapa.set(k, String(v)) }
+}
 
 function respondeCameras(lista: Camera[] = CAMS) {
   vi.mocked(api.get).mockImplementation((path: string) => {
@@ -105,6 +122,7 @@ const playersDe = (id: string) =>
 beforeEach(() => {
   vi.clearAllMocks()
   __resetLiveViewCache()
+  vi.stubGlobal('localStorage', new MemoriaStorage())
   permissoes = ['cameras:read']
   deteccoesWs = {}
   vi.mocked(cameraService.start).mockImplementation((id: string) =>
@@ -317,5 +335,141 @@ describe('gaveta da câmera', () => {
 
     const gaveta = await screen.findByLabelText('Detalhes de CAM-01 DOCA NORTE')
     await within(gaveta).findByText('Nenhum evento nesta câmera')
+  })
+})
+
+// ── Parede POR SITE ─────────────────────────────────────────────────────────
+
+describe('agrupamento por site', () => {
+  it('1 site só: o seletor de site some e a grade mostra tudo', async () => {
+    montar()
+    await screen.findByText('CAM-01 DOCA NORTE')
+    expect(screen.queryByLabelText('Site')).toBeNull()
+    expect(screen.getByText('CAM-02 PORTARIA')).toBeTruthy()
+  })
+
+  it('2+ sites: seletor filtra a grade pelo site_id que já vem da câmera', async () => {
+    respondeCameras([
+      camera('cam-1', 'CAM-01 DOCA NORTE', true, 'site-a'),
+      camera('cam-2', 'CAM-02 PORTARIA', true, 'site-a'),
+      camera('cam-3', 'CAM-03 GALPAO', true, 'site-b'),
+    ])
+    montar()
+    await screen.findByText('CAM-01 DOCA NORTE')
+
+    // Default = primeiro site na ordem em que aparece.
+    expect(screen.getByText('CAM-02 PORTARIA')).toBeTruthy()
+    expect(screen.queryByText('CAM-03 GALPAO')).toBeNull()
+    expect(screen.getByText('2 CÂMERAS · 2 ATIVAS')).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Site'), { target: { value: 'site-b' } })
+    await screen.findByText('CAM-03 GALPAO')
+    expect(screen.queryByText('CAM-01 DOCA NORTE')).toBeNull()
+    expect(screen.getByText('1 CÂMERAS · 1 ATIVAS')).toBeTruthy()
+  })
+})
+
+// ── Lei: preset define colunas, nunca pagina (intacta após o site+layouts) ──
+
+describe('lei preset=colunas', () => {
+  it('preset continua definindo só as colunas — nenhuma câmera some da grade', async () => {
+    montar()
+    await screen.findByText('CAM-01 DOCA NORTE')
+
+    fireEvent.click(screen.getByRole('button', { name: '4×3' }))
+    expect(screen.getByTestId('grade').style.gridTemplateColumns).toBe('repeat(4, 1fr)')
+    expect(screen.getByText('CAM-01 DOCA NORTE')).toBeTruthy()
+    expect(screen.getByText('CAM-02 PORTARIA')).toBeTruthy()
+  })
+})
+
+// ── Layouts nomeados (localStorage por site) ────────────────────────────────
+
+describe('meus layouts', () => {
+  it('salvar cria um chip aplicado e persiste em lk-parede:<site>', async () => {
+    vi.spyOn(window, 'prompt').mockReturnValue('Portaria + Estoque')
+    montar()
+    await screen.findByText('CAM-01 DOCA NORTE')
+
+    expect(screen.getByText('0 de 10 layouts')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /Salvar layout atual/ }))
+
+    expect(await screen.findByText('Portaria + Estoque')).toBeTruthy()
+    expect(screen.getByText('1 de 10 layouts')).toBeTruthy()
+    const salvo = JSON.parse(localStorage.getItem('lk-parede:sem-site') ?? '[]')
+    expect(salvo).toEqual([
+      { nome: 'Portaria + Estoque', colunas: 2, slots: ['cam-1', 'cam-2'] },
+    ])
+  })
+
+  it('remove com o X e some da tela e do localStorage', async () => {
+    vi.spyOn(window, 'prompt').mockReturnValue('Turno da noite')
+    montar()
+    await screen.findByText('CAM-01 DOCA NORTE')
+    fireEvent.click(screen.getByRole('button', { name: /Salvar layout atual/ }))
+    await screen.findByText('Turno da noite')
+
+    fireEvent.click(screen.getByLabelText('Remover layout Turno da noite'))
+    expect(screen.queryByText('Turno da noite')).toBeNull()
+    expect(screen.getByText('0 de 10 layouts')).toBeTruthy()
+    expect(JSON.parse(localStorage.getItem('lk-parede:sem-site') ?? '[]')).toEqual([])
+  })
+
+  it('respeita o limite de 10 layouts — o botão de salvar desliga', async () => {
+    const dez = Array.from({ length: 10 }, (_, i) => ({
+      nome: `Layout ${i}`,
+      colunas: 2,
+      slots: ['cam-1', 'cam-2'],
+    }))
+    localStorage.setItem('lk-parede:sem-site', JSON.stringify(dez))
+
+    montar()
+    await screen.findByText('CAM-01 DOCA NORTE')
+    expect(screen.getByText('10 de 10 layouts')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Salvar layout atual/ })).toHaveProperty(
+      'disabled',
+      true,
+    )
+  })
+
+  it('aplicar um layout troca a grade para os slots salvos (com vazio) e clicar de novo volta pra grade completa', async () => {
+    localStorage.setItem(
+      'lk-parede:sem-site',
+      JSON.stringify([{ nome: 'Só a portaria', colunas: 3, slots: ['cam-2', null] }]),
+    )
+    montar()
+    await screen.findByText('CAM-01 DOCA NORTE')
+
+    fireEvent.click(screen.getByText('Só a portaria'))
+    await waitFor(() => expect(screen.queryByTestId('grade')).toBeNull())
+    expect(screen.getByTestId('grade-montagem').style.gridTemplateColumns).toBe('repeat(3, 1fr)')
+    expect(screen.getByText('CAM-02 PORTARIA')).toBeTruthy()
+    expect(screen.queryByText('CAM-01 DOCA NORTE')).toBeNull()
+
+    fireEvent.click(screen.getByText('Só a portaria'))
+    await waitFor(() => expect(screen.queryByTestId('grade-montagem')).toBeNull())
+    expect(screen.getByText('CAM-01 DOCA NORTE')).toBeTruthy()
+  })
+
+  it('modo Montar: escolher câmera num quadro vazio preenche o slot', async () => {
+    localStorage.setItem(
+      'lk-parede:sem-site',
+      JSON.stringify([{ nome: 'Parcial', colunas: 2, slots: ['cam-1', null] }]),
+    )
+    montar()
+    await screen.findByText('CAM-01 DOCA NORTE')
+    fireEvent.click(screen.getByText('Parcial'))
+    await screen.findByTestId('grade-montagem')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Montar' }))
+    const escolher = screen.getByLabelText('Escolher câmera para o quadro 2')
+    fireEvent.change(escolher, { target: { value: 'cam-2' } })
+
+    await waitFor(() => expect(screen.getAllByText('CAM-02 PORTARIA').length).toBeGreaterThan(0))
+    const salvo = JSON.parse(localStorage.getItem('lk-parede:sem-site') ?? '[]') as Array<{
+      nome: string
+    }>
+    // Ainda não salvou — a edição é só no estado até "Salvar layout atual".
+    expect(salvo[0]?.nome).toBe('Parcial')
   })
 })
