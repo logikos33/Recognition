@@ -40,7 +40,7 @@ const tenantClasse = (extra: Record<string, unknown> = {}) => ({
   class_id: 100007,
   class_name: 'capacete',
   display_name: 'Capacete',
-  color: '#3b82f6',
+  color: '#3ECF8E',
   source: 'tenant' as const,
   archived_at: null,
   display_order: 0,
