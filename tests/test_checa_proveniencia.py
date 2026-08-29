@@ -63,6 +63,21 @@ class TestGritaQuandoPrecisa:
         assert alerta is True
         assert "não respondeu" in motivo
 
+    def test_respondeu_sem_o_campo_e_outro_diagnostico(self):
+        """Achado da calibração: apontar a checagem para `/health` fazia o
+        script dizer "não respondeu" — e o serviço TINHA respondido. As duas
+        situações pedem ação diferente: uma é ressuscitar o serviço, a outra é
+        conferir a URL. Um alerta que erra o diagnóstico manda a pessoa para o
+        lugar errado."""
+        alerta, motivo = checa.avaliar(checa.SEM_CAMPO, SHA, _ha(1), AGORA)
+        assert alerta is True
+        assert "SEM o campo" in motivo
+        assert "não respondeu" not in motivo
+
+    def test_sem_campo_nao_espera_carencia(self):
+        # Não é deploy em andamento: o serviço está de pé e não declara nada.
+        assert checa.avaliar(checa.SEM_CAMPO, SHA, _ha(1), AGORA)[0] is True
+
 
 class TestBordaDaCarencia:
     def test_um_minuto_antes_espera_um_depois_alerta(self):

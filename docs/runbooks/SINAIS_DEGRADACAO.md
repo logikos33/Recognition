@@ -26,6 +26,94 @@ isso está acontecendo.
 
 ---
 
+## Watchdogs: quem vigia o quê
+
+Um sinal só serve se alguém o lê. Em **29/08/2026** o `/livez` do DEV passou
+horas respondendo `commit: "unknown"` — a marca de deploy sem proveniência
+(**D-156**) — e ninguém estava lendo.
+
+> ⚠️ **Correção de diagnóstico.** A primeira leitura foi "alguém subiu do
+> laptop". **Errado, e a diferença importa.** Quem faz o `railway up` é o
+> próprio CI: `.github/workflows/railway-deploy-dev.yml` dispara quando o CI
+> fica verde na `develop`, faz `checkout ref: develop` e sobe por **upload**.
+> O CÓDIGO no ar é o da develop; o que se perde é a **proveniência**, porque
+> `railway up` não carrega o SHA. Confirmado casando os horários dos runs do
+> workflow (13:31 · 19:16 · 19:45) com os deploys `UPLOAD` do Railway nos
+> mesmos minutos.
+>
+> Consequência prática: **enquanto o deploy subir por upload sem gravar o SHA,
+> o vigia de proveniência fica vermelho para sempre** — não porque algo
+> quebrou, mas porque o caminho de deploy é assim. Ligar o vigia antes de
+> consertar o deploy cria justamente o alarme que grita à toa.
+
+Hoje há **dois** vigias, com escopos que não se sobrepõem. **Não duplicar** —
+se um alarme novo couber num dos dois, ele entra ali.
+
+| vigia | onde vive | frequência | o que pergunta | o que faz quando dá ruim |
+|---|---|---|---|---|
+| **Uptime / restauro** | tarefa agendada do **Cowork** (fora deste repositório) | 5×/dia | *o serviço está de pé?* — `/livez` responde | dispara o playbook de restauro |
+| **Proveniência** | `.github/workflows/proveniencia-dev.yml` (neste repositório) | a cada 15 min | *o serviço está rodando o código da develop?* — `/livez.commit` == HEAD | reprova o job, com o motivo e a referência à D-156 |
+
+> 🔴 **O vigia de proveniência ainda NÃO está ligado.** O GitHub só **reconhece**
+> `schedule` e `workflow_dispatch` a partir da **branch padrão**, que aqui é
+> `main` — o arquivo está na `develop`. (É por isso que o `security-scan.yml`,
+> que está em `main`, dispara.)
+>
+> ⚠️ **Os dois gatilhos não se comportam igual, e a diferença muda o teste
+> manual:** uma vez que o arquivo esteja em `main`, o `workflow_dispatch`
+> **aceita escolher a ref** e roda a versão daquela branch. Só o `schedule`
+> fica preso à versão que está em `main`.
+>
+> 🔴 **E isso é um problema de desenho neste projeto**, não um detalhe: no
+> fluxo `develop → staging → main`, a `main` é a ponta **mais atrasada** (já
+> esteve 40 commits atrás de `staging`). Um `schedule` em `main` executa a
+> versão **velha** do próprio verificador — o mesmo padrão de falha que este
+> runbook documenta, com outro nome: o sinal existe, alguém lê, e ele descreve
+> outra coisa. Por isso a checagem foi feita **autocontida** (só stdlib, zero
+> import de `services/api`, zero dependência de requirements): a versão que
+> envelhecer em `main` continua correta por mais tempo.
+>
+> **Ação, e ela é humana:** levar `.github/workflows/proveniencia-dev.yml` até
+> `main` no próximo `develop → staging → main`. Até lá, a checagem existe e é
+> testada, mas ninguém a executa — que é a mesma situação de 29/08 com outro
+> nome. Rodar à mão enquanto isso:
+>
+> ```bash
+> python3 scripts/checa_proveniencia.py \
+>   --url https://api-v3-desenvolvimento.up.railway.app/livez
+> ```
+
+**A divisão é deliberada.** São perguntas diferentes sobre o mesmo endpoint:
+o primeiro pergunta se há alguém em casa; o segundo, se é a pessoa certa. Um
+serviço pode estar 100% no ar (uptime verde) servindo código que ninguém sabe
+de onde veio — foi exatamente o caso de 29/08.
+
+**Por que a proveniência mora no repositório e o uptime não.** A checagem de
+proveniência precisa comparar com o HEAD da develop; ela pertence a quem tem o
+histórico. Já o restauro precisa rodar mesmo quando o repositório e o CI estão
+indisponíveis — por isso vive fora.
+
+### A carência, e por que ela não é frouxidão
+
+O vigia de proveniência só alerta quando a divergência persiste **além de 30
+minutos** contados do commit. Um deploy legítimo leva minutos, e durante ele o
+serviço ainda responde o commit anterior: alertar aí geraria ruído e treinaria
+todo mundo a ignorar — **que é exatamente como o alarme de 29/08 morreu**. A
+lógica é testada (`tests/test_checa_proveniencia.py`), inclusive nos dois lados
+da borda, e o workflow roda esses testes antes de confiar na checagem.
+
+### O que ainda não tem vigia
+
+- **Worker Celery em dia.** O `SKIPPED` do Railway é benigno quando nada mudou
+  nos caminhos observados, mas ninguém confere se o último build bem-sucedido
+  ainda corresponde ao backend da develop. Hoje isso é conferido à mão
+  (`git log <sha-do-último-SUCCESS>..origin/develop -- services/api requirements
+  infra/migrations`).
+- **Frontend.** O mesmo raciocínio de proveniência vale para o serviço
+  `Frontend`, que hoje não é checado por ninguém.
+
+---
+
 ## O que NÃO tem sinal ainda (pendência)
 
 **Railway não monitora continuamente.** O healthcheck (`/health` hoje, `/readyz` depois do
