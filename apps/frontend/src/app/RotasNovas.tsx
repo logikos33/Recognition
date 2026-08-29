@@ -39,6 +39,7 @@ const EventoDetalhe = lazy(() => import('./epi/EventoDetalhe').then((m) => ({ de
 const Eventos = lazy(() => import('./epi/Eventos').then((m) => ({ default: m.Eventos })))
 const Relatorios = lazy(() => import('./epi/Relatorios').then((m) => ({ default: m.Relatorios })))
 const Verificacao = lazy(() => import('./epi/Verificacao').then((m) => ({ default: m.Verificacao })))
+const Operacoes = lazy(() => import('./epi/Operacoes').then((m) => ({ default: m.Operacoes })))
 const Modulos = lazy(() => import('./modulos/Modulos').then((m) => ({ default: m.Modulos })))
 
 /**
@@ -77,6 +78,7 @@ export const ROTAS_NOVAS: ReactElement[] = [
   <Route key="vf" path="epi/verificacao" element={<Verificacao />} />,
   <Route key="a" path="epi/acoes" element={<Acoes />} />,
   <Route key="c" path="epi/cameras" element={<Cameras />} />,
+  <Route key="op" path="epi/cameras/:cameraId/operations" element={<Operacoes />} />,
   <Route key="r" path="epi/relatorios" element={<Relatorios />} />,
 ]
 
