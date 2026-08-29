@@ -41,6 +41,22 @@ se um alarme novo couber num dos dois, ele entra ali.
 | **Uptime / restauro** | tarefa agendada do **Cowork** (fora deste repositório) | 5×/dia | *o serviço está de pé?* — `/livez` responde | dispara o playbook de restauro |
 | **Proveniência** | `.github/workflows/proveniencia-dev.yml` (neste repositório) | a cada 15 min | *o serviço está rodando o código da develop?* — `/livez.commit` == HEAD | reprova o job, com o motivo e a referência à D-156 |
 
+> 🔴 **O vigia de proveniência ainda NÃO está ligado.** O GitHub só dispara
+> `schedule` e `workflow_dispatch` a partir da **branch padrão**, que aqui é
+> `main` — o arquivo está na `develop`. Enquanto ele não chegar em `main`, o
+> agendamento não roda: nem de hora em hora, nem sob demanda. (É por isso que o
+> `security-scan.yml`, que está em `main`, dispara.)
+>
+> **Ação, e ela é humana:** levar `.github/workflows/proveniencia-dev.yml` até
+> `main` no próximo `develop → staging → main`. Até lá, a checagem existe e é
+> testada, mas ninguém a executa — que é a mesma situação de 29/08 com outro
+> nome. Rodar à mão enquanto isso:
+>
+> ```bash
+> python3 scripts/checa_proveniencia.py \
+>   --url https://api-v3-desenvolvimento.up.railway.app/livez
+> ```
+
 **A divisão é deliberada.** São perguntas diferentes sobre o mesmo endpoint:
 o primeiro pergunta se há alguém em casa; o segundo, se é a pessoa certa. Um
 serviço pode estar 100% no ar (uptime verde) servindo código que ninguém sabe
