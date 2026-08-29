@@ -44,6 +44,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   ArrowDown,
   ArrowUp,
+  BarChart3,
   CheckCircle2,
   GripVertical,
   LayoutGrid,
@@ -98,13 +99,23 @@ function janelaDoTurno(turno: IdTurno, agora = new Date()) {
 
 // ── Preferência de widgets (ordem + visibilidade) ───────────────────────────
 
-type IdWidget = 'eventos-hora' | 'violacoes-classe' | 'acoes-recentes'
+type IdWidget = 'eventos-hora' | 'violacoes-classe' | 'acoes-recentes' | 'cameras-eventos'
 
 const WIDGETS: Array<{ id: IdWidget; rotulo: string }> = [
   { id: 'eventos-hora', rotulo: 'Eventos por hora' },
   { id: 'violacoes-classe', rotulo: 'Violações por classe' },
   { id: 'acoes-recentes', rotulo: 'Ações recentes' },
+  { id: 'cameras-eventos', rotulo: 'Câmeras com mais eventos' },
 ]
+
+/**
+ * Janela fixa de 30 dias para o ranking — não segue o seletor de TURNO (o
+ * ranking lê o acumulado do mês, não o recorte do turno escolhido).
+ * `_MAX_SUMMARY_DAYS` em `services/api/app/api/v1/events/routes.py` é 92:
+ * 30 cabe com folga, sem precisar reduzir a janela nem o rótulo.
+ */
+const JANELA_RANKING_DIAS = 30
+const ROTULO_JANELA_RANKING = `ÚLTIMOS ${JANELA_RANKING_DIAS} DIAS`
 
 const PADRAO: IdWidget[] = WIDGETS.map((w) => w.id)
 const CHAVE_PREF = 'lk-epi-dashboard-widgets'
@@ -272,11 +283,26 @@ export function Dashboard() {
     refetchInterval: 60_000,
   })
 
+  const janela30d = useMemo(() => {
+    const agora = new Date()
+    const inicio = new Date(agora)
+    inicio.setDate(inicio.getDate() - JANELA_RANKING_DIAS)
+    return { de: inicio.toISOString(), ate: agora.toISOString() }
+  }, [])
+
+  const rankingCameras = useQuery({
+    queryKey: ['epi', 'summary-cameras', janela30d.de, janela30d.ate],
+    queryFn: () => eventsService.getSummary({ from: janela30d.de, to: janela30d.ate, moduleCode: 'epi' }),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  })
+
   const atualizar = useCallback(() => {
     void estatisticas.refetch()
     void linhaDoTempo.refetch()
     void resumo.refetch()
-  }, [estatisticas, linhaDoTempo, resumo])
+    void rankingCameras.refetch()
+  }, [estatisticas, linhaDoTempo, resumo, rankingCameras])
 
   const alterarPref = useCallback((proxima: Preferencia) => {
     setPref(proxima)
@@ -382,6 +408,17 @@ export function Dashboard() {
   const porClasse = [...(resumo.data?.by_class ?? [])].sort((a, b) => b.count - a.count)
   const maxClasse = porClasse[0]?.count ?? 0
   const totalClasses = porClasse.reduce((soma, c) => soma + c.count, 0)
+
+  // Backend já devolve top-10 ordenado por count DESC (top_cameras_by_alerts).
+  const porCamera = rankingCameras.data?.by_camera ?? []
+  const maxCamera = porCamera[0]?.count ?? 0
+  const totalEventosCameras = porCamera.reduce((soma, c) => soma + c.count, 0)
+  const concentracaoTop3 =
+    totalEventosCameras > 0
+      ? Math.round(
+          (porCamera.slice(0, 3).reduce((soma, c) => soma + c.count, 0) / totalEventosCameras) * 100,
+        )
+      : 0
 
   const faixaTurno = `HOJE · ${String(janela.faixa.inicio).padStart(2, '0')}H–${String(
     janela.faixa.fim,
@@ -505,6 +542,72 @@ export function Dashboard() {
         <span className={s.legenda}>
           Quando o plano de ação existir no sistema, as ações do período aparecem aqui.
         </span>
+      </Painel>
+    ),
+
+    'cameras-eventos': (
+      <Painel
+        key="cameras-eventos"
+        id="cameras-eventos"
+        titulo="Câmeras com mais eventos"
+        nota={ROTULO_JANELA_RANKING}
+      >
+        {rankingCameras.isError ? (
+          <VazioPainel
+            texto="Não foi possível carregar o ranking de câmeras."
+            aoRetentar={() => void rankingCameras.refetch()}
+          />
+        ) : rankingCameras.isPending ? (
+          <VazioPainel texto="Carregando…" />
+        ) : totalEventosCameras === 0 ? (
+          <div className={s.rankingVazio}>
+            <BarChart3 size={30} strokeWidth={1.5} color={lk.cor.cinzaNevoa} aria-hidden="true" />
+            <span className={s.rankingVazioTitulo}>Sem eventos no período</span>
+            <span className={s.rankingVazioTexto}>
+              Nenhuma câmera registrou evento. O ranking aparece assim que houver o primeiro.
+            </span>
+          </div>
+        ) : (
+          <>
+            <div className={s.rankingLista}>
+              {porCamera.map((c, i) => {
+                // Regra do ciano: só as 3 primeiras posições em destaque (barra e nome).
+                const destaque = i < 3 ? 'top' : 'resto'
+                const nome = c.camera_name ?? 'Sem nome'
+                return (
+                  <div key={c.camera_id ?? `${nome}-${i}`} className={s.rankingLinha}>
+                    <span className={s.rankingPos}>{String(i + 1).padStart(2, '0')}</span>
+                    <span className={`${s.rankingNome} ${s.rankingDestaque[destaque]}`} title={nome}>
+                      {nome}
+                    </span>
+                    <div className={s.rankingTrilho}>
+                      <div
+                        className={s.rankingPreenchimento[destaque]}
+                        style={{ width: maxCamera > 0 ? `${Math.round((c.count / maxCamera) * 100)}%` : '0%' }}
+                      />
+                    </div>
+                    <span className={`${s.rankingValor} ${s.rankingDestaque[destaque]}`}>
+                      {numero(c.count)}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+            <div className={s.rankingDivisor} />
+            <div className={s.rankingRodape}>
+              <span className={s.legenda}>
+                As três primeiras concentram{' '}
+                <strong className={s.rankingEnfase}>{concentracaoTop3}%</strong> dos eventos do
+                período.
+              </span>
+              {can('alerts:read') && (
+                <Link to={rotaNova('/epi/eventos')} className={s.atalhoInline}>
+                  ver eventos →
+                </Link>
+              )}
+            </div>
+          </>
+        )}
       </Painel>
     ),
   }

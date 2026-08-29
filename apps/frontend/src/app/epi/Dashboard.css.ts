@@ -354,6 +354,98 @@ export const itemAcaoMeta = style({
   color: lk.cor.cinzaNevoa,
 })
 
+// Câmeras com mais eventos
+export const rankingLista = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '9px',
+})
+
+export const rankingLinha = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '12px',
+})
+
+export const rankingPos = style({
+  width: '18px',
+  flex: 'none',
+  textAlign: 'right',
+  fontFamily: lk.fonte.mono,
+  fontSize: '11px',
+  color: lk.cor.cinzaNevoa,
+})
+
+export const rankingNome = style({
+  width: '190px',
+  flex: 'none',
+  fontSize: '13.5px',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+})
+
+/** Regra do ciano: só as 3 primeiras posições saem em destaque — resto neutro. */
+export const rankingDestaque = styleVariants({
+  top: { color: lk.cor.brancoSinal },
+  resto: { color: lk.cor.cinzaNevoa },
+})
+
+export const rankingTrilho = style({
+  flex: 1,
+  minWidth: 0,
+  height: '22px',
+  borderRadius: '4px',
+  background: lk.cor.preto,
+  overflow: 'hidden',
+})
+
+export const rankingPreenchimento = styleVariants({
+  top: { height: '100%', borderRadius: '4px', background: lk.cor.cianoVisao },
+  resto: { height: '100%', borderRadius: '4px', background: lk.cor.borda },
+})
+
+export const rankingValor = style({
+  width: '44px',
+  flex: 'none',
+  textAlign: 'right',
+  fontFamily: lk.fonte.mono,
+  fontSize: '13px',
+  fontWeight: 700,
+})
+
+export const rankingDivisor = style({ height: '1px', background: lk.cor.borda })
+
+export const rankingRodape = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
+})
+
+export const rankingEnfase = style({ color: lk.cor.brancoSinal, fontWeight: 700 })
+
+export const rankingVazio = style({
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: '10px',
+  padding: '36px 0',
+  textAlign: 'center',
+})
+
+export const rankingVazioTitulo = style({
+  fontFamily: lk.fonte.titulo,
+  fontWeight: 700,
+  fontSize: '15px',
+})
+
+export const rankingVazioTexto = style({
+  fontSize: '13px',
+  color: lk.cor.cinzaNevoa,
+  maxWidth: '280px',
+  lineHeight: 1.5,
+})
+
 // ── Estados de tela inteira ─────────────────────────────────────────────────
 
 export const telaCentral = style({
