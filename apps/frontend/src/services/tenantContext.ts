@@ -80,7 +80,18 @@ export function getTenantContextMeta(): TenantContextMeta | null {
  * recarrega. Lança Error com mensagem traduzida em caso de falha (caller
  * mostra Toast).
  */
-export async function assumeTenantContext(tenantId: string): Promise<void> {
+export async function assumeTenantContext(
+  tenantId: string,
+  /**
+   * Para onde recarregar depois de assumir. Padrão `'/'` — o comportamento
+   * que o front antigo sempre teve, e que continua idêntico.
+   *
+   * O front novo passa a rota corrente: assumir o cliente a partir de
+   * `/novo/epi/eventos` e ser devolvido em `/` significava sair do front novo
+   * no exato momento em que a tela finalmente teria dado para mostrar.
+   */
+  destino: string = '/',
+): Promise<void> {
   const res = await api.post<AssumeContextResponse>(
     `/v1/admin/tenant-context/tenants/${tenantId}/assume`,
     {},
@@ -101,7 +112,7 @@ export async function assumeTenantContext(tenantId: string): Promise<void> {
   )
   setToken(token)
   localStorage.setItem('user', JSON.stringify(user))
-  window.location.href = '/'
+  window.location.href = destino
 }
 
 /**

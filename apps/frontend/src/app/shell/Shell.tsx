@@ -30,6 +30,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { getSessionTokenExpMs } from '../../services/tenantContext'
 import { LogikosLoader } from './LogikosLoader'
 import { PaletaComandos, type GrupoPaleta } from './PaletaComandos'
+import { SeletorTenant } from './SeletorTenant'
 import { SessaoExpirando } from './SessaoExpirando'
 import { PREFIXO_NOVO } from '../RotasNovas'
 import { NAV_EPI, navVisivel } from './navPorPerfil'
@@ -118,6 +119,7 @@ export function Shell({ carregando }: ShellProps) {
         </button>
         <Marca />
         <span className={s.espacador} />
+        <SeletorTenant />
         <button
           className={s.botaoIcone}
           onClick={() => setPaletaAberta(true)}

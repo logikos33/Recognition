@@ -10,12 +10,18 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const auth = vi.hoisted(() => ({ can: vi.fn((_p: string) => true) }))
+const auth = vi.hoisted(() => ({ can: vi.fn((_p: string) => true), isSuperAdmin: false }))
 vi.mock('../../hooks/useAuth', () => ({ useAuth: () => auth }))
 
 const sessao = vi.hoisted(() => ({ exp: vi.fn<() => number | null>(() => null) }))
+// O SeletorTenant, montado na topbar, também consome este módulo. O dublê
+// precisa cobrir a superfície inteira: um export faltando aqui derruba o Shell
+// por completo, e o erro aponta para o teste, não para a causa.
 vi.mock('../../services/tenantContext', () => ({
   getSessionTokenExpMs: sessao.exp,
+  isInTenantContext: () => true, // com contexto o seletor não aparece
+  listAvailableTenants: vi.fn(async () => []),
+  assumeTenantContext: vi.fn(),
 }))
 
 import { Shell } from './Shell'
