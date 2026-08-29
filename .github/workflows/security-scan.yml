@@ -80,9 +80,16 @@ jobs:
     name: SCA (npm audit)
     timeout-minutes: 15
     runs-on: ubuntu-latest
-    # Não-bloqueante: dependências transitivas de dev geram ruído sem
-    # impacto no bundle servido. Serve como sinal, não como gate.
-    continue-on-error: true
+    # ⛔ `continue-on-error` REMOVIDO. Ele fazia o job rodar, imprimir as 5
+    # vulnerabilidades da landing, e o workflow reportar SUCCESS mesmo assim —
+    # `security-scan` verde com astro 4.16.19 vulnerável no lock (#421).
+    # Verde assim não é prova de segurança: é a ausência da pergunta.
+    #
+    # O motivo original de não bloquear continua VÁLIDO e continua atendido: um
+    # advisory que cruza o limiar não pode pintar de vermelho todo PR do repo.
+    # A saída é a exceção ser EXPLÍCITA e ter PRAZO — apps/<app>/.audit-allowlist.json,
+    # conferido por scripts/ci/check_npm_audit.py. Advisory novo reprova;
+    # allowlist vencido reprova sozinho.
     strategy:
       fail-fast: false
       matrix:
@@ -127,8 +134,13 @@ jobs:
       - run: npm ci --legacy-peer-deps
         if: steps.escopo.outputs.auditar == 'true'
         working-directory: apps/${{ matrix.app }}
-      - run: npm audit --audit-level=high
+      # `|| true` no npm: ele sai != 0 quando ACHA algo, e quem decide se isso
+      # reprova é o gate — não o exit code cru do npm.
+      - name: Gate de audit (allowlist datado)
         if: steps.escopo.outputs.auditar == 'true'
+        run: |
+          npm audit --json > audit.json || true
+          python3 ../../scripts/ci/check_npm_audit.py . < audit.json
         working-directory: apps/${{ matrix.app }}
 
   sbom:

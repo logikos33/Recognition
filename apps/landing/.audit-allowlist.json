@@ -1,0 +1,6 @@
+{
+  "expires": "2026-10-15",
+  "motivo": "astro 4.16.19 e a cadeia vite/esbuild/sharp: NENHUMA é exposição de runtime aqui, porque astro.config tem output: 'static' — o site é HTML gerado no build e servido estático. Detalhe por advisory na issue #421. A saída de verdade é astro 5.x (4.16.19 é a ULTIMA 4.x, não existe correção dentro da major), que é upgrade major e NÃO se faz na semana do demo.",
+  "revisar_em": "depois do demo do cliente; a data acima é o limite em que o gate volta a reprovar sozinho",
+  "allowed": ["astro", "sharp", "vite"]
+}
