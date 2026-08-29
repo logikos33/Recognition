@@ -32,6 +32,8 @@ const apiGet = vi.fn()
 const apiPost = vi.fn()
 const listarSites = vi.fn()
 const saudeSites = vi.fn()
+const getHealthContext = vi.fn()
+const patchConfig = vi.fn()
 const permissoes = new Set<string>()
 
 vi.mock('../../services/cameraService', () => ({
@@ -45,6 +47,8 @@ vi.mock('../../services/cameraService', () => ({
     // A prévia usa o snapshot de triagem — nunca acende a câmera.
     getSnapshot: vi.fn().mockResolvedValue({ status: 'none', url: null, captured_at: null, error_reason: null }),
     refreshSnapshot: vi.fn().mockResolvedValue({ status: 'none', queued: false }),
+    getHealthContext: (...a: unknown[]) => getHealthContext(...a),
+    patchConfig: (...a: unknown[]) => patchConfig(...a),
   },
 }))
 
@@ -126,6 +130,32 @@ const SAUDE = {
 
 const MODELO = { id: 'mod-1', name: 'RVB EPI v3', framework: 'yolox', r2_onnx_key: 'k.onnx', is_active: true, module_code: 'epi' }
 
+// ── contexto de saúde (aba Desempenho, WS10) ─────────────────────────────────
+
+const CTX_COM_TELEMETRIA = {
+  has_telemetry: true,
+  site_id: SITE_ID,
+  derived_status: 'healthy' as const,
+  received_at: new Date().toISOString(),
+  metrics: {
+    gpu_pct: 46, gpu_mem_pct: 52, cpu_pct: 31, inference_fps: 4.9,
+    inference_latency_ms: 120, queue_depth: 2, cameras_online: 1,
+    cameras_total: 2, gpu_temp_c: 61, decode_pct: 38,
+  },
+  fps_demand_total: 112,
+  cameras_active_count: 2,
+}
+
+const CTX_SEM_TELEMETRIA = {
+  has_telemetry: false,
+  site_id: SITE_ID,
+  derived_status: null,
+  received_at: null,
+  metrics: null,
+  fps_demand_total: 112,
+  cameras_active_count: 2,
+}
+
 /** `api.get` roteando por URL — é assim que a aba Escopo conversa com a API. */
 function apiDeEscopo() {
   apiGet.mockImplementation((url: string) => {
@@ -163,6 +193,8 @@ beforeEach(() => {
   listarSites.mockResolvedValue([SITE])
   saudeSites.mockResolvedValue([SAUDE])
   apiGet.mockRejectedValue(new Error('não deveria ser chamada'))
+  getHealthContext.mockResolvedValue(CTX_COM_TELEMETRIA)
+  patchConfig.mockResolvedValue({ ...CAM_01, propagation: { queued: true, reason: null } })
 })
 
 // ── dado real / vazio honesto / erro ─────────────────────────────────────────
@@ -415,5 +447,72 @@ describe('aba Escopo por câmera (delta §2 item 8)', () => {
 
     expect(await screen.findByText('Não foi possível carregar o escopo')).toBeTruthy()
     expect(screen.queryByText('Nenhuma câmera ativa no tenant.')).toBeNull()
+  })
+})
+
+// ── aba Desempenho — 5ª aba (handoff-v2 Main.dc.html) ────────────────────────
+
+describe('aba Desempenho (handoff-v2 Main.dc.html)', () => {
+  it('renderiza com as métricas reais do health-context', async () => {
+    montar()
+    await esperarCarregado()
+    fireEvent.click(screen.getByRole('tab', { name: 'Desempenho' }))
+
+    expect(await screen.findByText('GPU')).toBeTruthy()
+    expect(screen.getByText('46%')).toBeTruthy()
+    expect(screen.getByText('FILA')).toBeTruthy()
+    expect(screen.getByText('2')).toBeTruthy()
+    expect(getHealthContext).toHaveBeenCalledWith(CAM_01.id)
+  })
+
+  it('sem telemetria é honesto — não inventa números', async () => {
+    getHealthContext.mockResolvedValue(CTX_SEM_TELEMETRIA)
+    montar()
+    await esperarCarregado()
+    fireEvent.click(screen.getByRole('tab', { name: 'Desempenho' }))
+
+    expect(await screen.findByText('SEM TELEMETRIA')).toBeTruthy()
+    expect(screen.queryByText('GPU')).toBeNull()
+    // fps_demand_total não depende de telemetria — continua honesto mostrá-lo.
+    expect(screen.getByText('112')).toBeTruthy()
+  })
+
+  it('o payload do patchConfig tem exatamente o que mudou', async () => {
+    montar()
+    await esperarCarregado()
+    fireEvent.click(screen.getByRole('tab', { name: 'Desempenho' }))
+    await screen.findByText('GPU')
+
+    fireEvent.click(screen.getByRole('button', { name: '10 fps' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar configuração' }))
+
+    await waitFor(() => {
+      expect(patchConfig).toHaveBeenCalledWith(CAM_01.id, { fps_target: 10, quality_preset: 'medium' })
+    })
+  })
+
+  it('aviso âmbar aparece quando coleta está em alta e a operação não — e some ao mudar a coleta', async () => {
+    montar()
+    await esperarCarregado()
+    fireEvent.click(screen.getByRole('tab', { name: 'Desempenho' }))
+
+    // CAM_01: collection_subtype ausente (default 0=Principal) e
+    // live_view_subtype ausente (default 1=substream) — desalinhado por padrão.
+    expect(await screen.findByText(/Coleta em alta com operação em baixa/)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: /Substream \(704×480\)/ }))
+    expect(screen.queryByText(/Coleta em alta com operação em baixa/)).toBeNull()
+  })
+
+  it('sem cameras:configure os controles ficam travados', async () => {
+    permissoes.delete('cameras:configure')
+    montar()
+    await esperarCarregado()
+    fireEvent.click(screen.getByRole('tab', { name: 'Desempenho' }))
+    await screen.findByText('GPU')
+
+    expect((screen.getByRole('button', { name: '5 fps' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Salvar configuração' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText(/Somente leitura/)).toBeTruthy()
   })
 })

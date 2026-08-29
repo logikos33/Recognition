@@ -18,6 +18,21 @@
  * /cameras/model-config?module=<m>`, uma chamada por MÓDULO e não por câmera —
  * a versão por câmera estourava o pool da API nas 28 câmeras da RVB).
  *
+ * ── ABA "DESEMPENHO" (5ª aba — `docs/design/handoff-v2/Main.dc.html`) ──────
+ * Desenho próprio (screen-label "EPI Câmeras · Desempenho"), diferente do
+ * `EPI Câmeras.dc.html` que desenhou as quatro primeiras abas. Ajusta FPS/
+ * qualidade/coleta da câmera SELECIONADA (reusa o estado de `selecionadaId`
+ * da aba Câmeras) e mostra a saúde do equipamento via `getHealthContext`.
+ * `CameraFpsConfig.tsx` (legado) tem a MESMA função só que embutida no card
+ * de edição do front antigo — a lógica foi portada (limiares de sobrecarga,
+ * condição de desalinhamento coleta×operação), zero import dele aqui.
+ * Duas divergências prancha↔backend, sem invenção de dado:
+ *   1. "Teto medido do equipamento" (fps): `CameraHealthContext` não tem esse
+ *      campo — só `fps_demand_total`/`cameras_active_count`. Frase omitida.
+ *   2. Gate de `cameras:configure`: a tela já tinha o padrão (aba Sites/
+ *      Escopo) de ficar visível com os controles desabilitados + nota, em vez
+ *      de bloquear a aba inteira — foi esse padrão que se seguiu aqui.
+ *
  * ── MULTI-TENANCY ───────────────────────────────────────────────────────────
  * Nada aqui escolhe schema. `cameraService`/`edgeService` chamam as MESMAS
  * rotas que o front atual chama, e é o backend que decide `public.cameras`
@@ -55,10 +70,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
+  ArrowRight,
   CircleAlert,
   CircleCheck,
   CircleSlash,
   Frame,
+  Gauge,
   Pencil,
   Play,
   Plug,
@@ -84,26 +101,29 @@ import {
 import { useAuth } from '../../hooks/useAuth'
 import { useCameraSnapshot } from '../../hooks/useCameraSnapshot'
 import { api } from '../../services/api'
-import { cameraService, type TestResult } from '../../services/cameraService'
+import { cameraService, type CameraConfigPatch, type CameraPropagation, type TestResult } from '../../services/cameraService'
 import { edgeService } from '../../services/edgeService'
 import type { Camera } from '../../types'
 import {
   DEPLOYMENT_MODE_LABELS,
+  type CameraHealthContext,
   type DeploymentMode,
   type EdgeSite,
   type SiteHealth,
   type SiteStatus,
 } from '../../types/edge'
+import { lk } from '../tokens/lk.css'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import * as s from './Cameras.css'
 
-type Aba = 'cameras' | 'sites' | 'saude' | 'escopo'
+type Aba = 'cameras' | 'sites' | 'saude' | 'escopo' | 'desempenho'
 
 const ABAS: Array<{ id: Aba; rotulo: string }> = [
   { id: 'cameras', rotulo: 'Câmeras' },
   { id: 'sites', rotulo: 'Sites' },
   { id: 'saude', rotulo: 'Saúde' },
   { id: 'escopo', rotulo: 'Escopo' },
+  { id: 'desempenho', rotulo: 'Desempenho' },
 ]
 
 /** Estado = cor + ícone + palavra. Nunca só a cor: quem não distingue verde de
@@ -429,6 +449,393 @@ function AbaEscopo({ cameras, podeEditar }: EscopoProps) {
   )
 }
 
+// ── aba Desempenho (5ª aba — Main.dc.html) ──────────────────────────────────
+
+const FPS_OPCOES = [1, 5, 10, 15, 30] as const
+type FpsOpcao = (typeof FPS_OPCOES)[number]
+
+const QUALIDADE_OPCOES: Array<{ valor: 'low' | 'medium' | 'high'; rotulo: string }> = [
+  { valor: 'low', rotulo: 'Baixa' },
+  { valor: 'medium', rotulo: 'Média' },
+  { valor: 'high', rotulo: 'Alta' },
+]
+type QualidadeOpcao = (typeof QUALIDADE_OPCOES)[number]['valor']
+
+// Eixo COLETA (frame de treino, migration 114) — independente do eixo
+// OPERAÇÃO (FPS/qualidade acima). Default 0 (principal/alta): mesmo default
+// do backend, anotar em alta é melhor mesmo que a operação rode em baixa.
+const COLETA_OPCOES: Array<{ valor: 0 | 1; rotulo: string }> = [
+  { valor: 0, rotulo: 'Principal (máxima)' },
+  { valor: 1, rotulo: 'Substream (704×480)' },
+]
+type ColetaOpcao = (typeof COLETA_OPCOES)[number]['valor']
+
+/** Limiares portados de `CameraFpsConfig.severityFromTelemetry` (legado): GPU
+ * ≥85% ou VRAM ≥90% ou status derivado crítico/offline é sobrecarga forte;
+ * GPU ≥60% ou degradado é sobrecarga moderada. O desenho só tem UM tom de
+ * alerta (âmbar) — as duas graduações do legado viram um só booleano aqui. */
+function equipamentoSobrecarregado(ctx: CameraHealthContext): boolean {
+  const gpu = ctx.metrics?.gpu_pct ?? 0
+  const vram = ctx.metrics?.gpu_mem_pct ?? 0
+  if (gpu >= 85 || vram >= 90 || ctx.derived_status === 'critical' || ctx.derived_status === 'offline') {
+    return true
+  }
+  return gpu >= 60 || ctx.derived_status === 'degraded'
+}
+
+function arred1(v: number | null | undefined): number | null | undefined {
+  return v == null ? v : Math.round(v * 10) / 10
+}
+
+/** Texto da propagação cloud→edge — nunca afirma "aplica no edge" quando o
+ * backend disse que não tinha como enfileirar (sem site, ou erro). */
+function notaPropagacao(prop: CameraPropagation | undefined): string {
+  if (!prop || prop.queued) return 'Alterado agora · aplica no edge em até 30 s'
+  if (prop.reason === 'no_site') return 'Alterado agora · câmera sem site edge vinculado — não há propagação'
+  return 'Alterado agora · não foi possível enfileirar a propagação ao edge'
+}
+
+interface DesempenhoProps {
+  cameras: Camera[]
+  selecionada: Camera | null
+  sites: EdgeSite[]
+  podeConfigurar: boolean
+  nomeDoSite: (siteId: string | null | undefined) => string | null
+  aoEscolherCamera: () => void
+  aoSalvar: (atualizada: Camera) => void
+}
+
+function AbaDesempenho({
+  cameras,
+  selecionada,
+  sites,
+  podeConfigurar,
+  nomeDoSite,
+  aoEscolherCamera,
+  aoSalvar,
+}: DesempenhoProps) {
+  const [fps, setFps] = useState<FpsOpcao>(5)
+  const [qualidade, setQualidade] = useState<QualidadeOpcao>('medium')
+  const [coleta, setColeta] = useState<ColetaOpcao>(0)
+  const [ctx, setCtx] = useState<CameraHealthContext | null>(null)
+  const [ctxCarregando, setCtxCarregando] = useState(false)
+  const [ctxErro, setCtxErro] = useState<string | null>(null)
+  const [salvando, setSalvando] = useState(false)
+  const [erroSalvar, setErroSalvar] = useState<string | null>(null)
+  const [propagacao, setPropagacao] = useState<CameraPropagation | undefined>()
+  const [salvoAgora, setSalvoAgora] = useState(false)
+
+  const carregarSaude = useCallback(async (id: string) => {
+    setCtxCarregando(true)
+    setCtxErro(null)
+    try {
+      setCtx(await cameraService.getHealthContext(id))
+    } catch (err) {
+      setCtx(null)
+      setCtxErro(err instanceof Error ? err.message : 'Erro ao carregar a saúde do equipamento')
+    } finally {
+      setCtxCarregando(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!selecionada) { setCtx(null); return }
+    setFps((selecionada.fps_target ?? 5) as FpsOpcao)
+    setQualidade((selecionada.quality_preset ?? 'medium') as QualidadeOpcao)
+    setColeta((selecionada.collection_subtype ?? 0) as ColetaOpcao)
+    setErroSalvar(null)
+    setSalvoAgora(false)
+    void carregarSaude(selecionada.id)
+    // Só reage à TROCA de câmera — um refresh de `cameras` que traga o mesmo
+    // id não pode zerar edição em andamento do usuário.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selecionada?.id])
+
+  if (!selecionada) {
+    return (
+      <div className={s.centro}>
+        <Gauge size={36} strokeWidth={1.7} className={s.rotulo} aria-hidden="true" />
+        <span className={s.centroTitulo}>Nenhuma câmera selecionada</span>
+        <span className={s.centroTexto}>
+          Escolha uma câmera para ajustar o desempenho e ver a saúde do equipamento.
+        </span>
+        <button className={s.botaoPrimario} onClick={aoEscolherCamera}>Escolher câmera</button>
+      </div>
+    )
+  }
+
+  const est = estadoDaCamera(selecionada)
+  const site = sites.find((st) => st.id === selecionada.site_id)
+
+  const fpsBase = (selecionada.fps_target ?? 5) as FpsOpcao
+  const qualidadeBase = (selecionada.quality_preset ?? 'medium') as QualidadeOpcao
+  const coletaBase = (selecionada.collection_subtype ?? 0) as ColetaOpcao
+  const mudou = fps !== fpsBase || qualidade !== qualidadeBase || coleta !== coletaBase
+
+  // Desalinhamento coleta×operação — mesma condição do legado
+  // (`collectionOperationMismatch`): coleta em Principal mas o stream de
+  // operação (live view) não está em Principal. `live_view_subtype` não é
+  // editável nesta aba, só lido — o fallback ?? 1 é o default do backend
+  // (migration 092).
+  const desalinhado = coleta === 0 && (selecionada.live_view_subtype ?? 1) !== 0
+
+  const metrics = ctx?.metrics ?? null
+  const temTelemetria = ctx?.has_telemetry === true && metrics != null
+  const sobrecarga = temTelemetria && ctx != null ? equipamentoSobrecarregado(ctx) : false
+
+  const camerasNoSiteLocal = cameras.filter(
+    (c) => c.site_id === selecionada.site_id && c.is_active !== false,
+  ).length
+  const nCameras = ctx != null && ctx.cameras_active_count > 0 ? ctx.cameras_active_count : camerasNoSiteLocal
+
+  const demandaTotal = ctx?.fps_demand_total ?? null
+  const demandaProjetada = demandaTotal != null ? Math.max(0, demandaTotal - fpsBase + fps) : null
+
+  async function salvar() {
+    if (!selecionada || !podeConfigurar || !mudou) return
+    setSalvando(true)
+    setErroSalvar(null)
+    try {
+      const patch: CameraConfigPatch = { fps_target: fps, quality_preset: qualidade }
+      if (coleta !== coletaBase) patch.collection_subtype = coleta
+      const atualizada = await cameraService.patchConfig(selecionada.id, patch)
+      setPropagacao(atualizada.propagation)
+      setSalvoAgora(true)
+      aoSalvar(atualizada)
+    } catch (err) {
+      setErroSalvar(err instanceof Error ? err.message : 'Erro ao salvar a configuração')
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  function descartar() {
+    setFps(fpsBase)
+    setQualidade(qualidadeBase)
+    setColeta(coletaBase)
+    setErroSalvar(null)
+  }
+
+  const metricasCards: Array<{ rot: string; v: string; alerta: boolean }> = metrics
+    ? [
+        { rot: 'GPU', v: numero(arred1(metrics.gpu_pct), '%'), alerta: sobrecarga },
+        { rot: 'VRAM', v: numero(arred1(metrics.gpu_mem_pct), '%'), alerta: sobrecarga },
+        { rot: 'CPU', v: numero(arred1(metrics.cpu_pct), '%'), alerta: false },
+        { rot: 'FILA', v: numero(metrics.queue_depth), alerta: sobrecarga },
+        { rot: 'FPS MEDIDO', v: numero(arred1(metrics.inference_fps)), alerta: sobrecarga },
+        { rot: 'LATÊNCIA', v: numero(arred1(metrics.inference_latency_ms), ' ms'), alerta: sobrecarga },
+        { rot: 'TÉRMICA', v: numero(arred1(metrics.gpu_temp_c), ' °C'), alerta: false },
+        { rot: 'DECODE', v: numero(arred1(metrics.decode_pct), '%'), alerta: false },
+      ]
+    : []
+
+  return (
+    <div className={s.pagina}>
+      <div className={s.desempenhoCabecalho}>
+        <span className={s.cartaoNome}>{selecionada.name}</span>
+        <span className={`${s.estadoLinha} ${s.tom[est.tom]}`}>
+          <est.Icone size={13} strokeWidth={1.7} aria-hidden="true" />
+          {est.palavra}
+        </span>
+        <span className={s.espacador} />
+        <span className={s.rotulo}>
+          {site ? `${site.name} · ${DEPLOYMENT_MODE_LABELS[site.deployment_mode]}` : 'Sem site vinculado'}
+        </span>
+      </div>
+
+      <div className={s.desempenhoGrid}>
+        {/* OPERAÇÃO */}
+        <div className={s.painelDesempenho}>
+          <span className={s.overline}>Operação</span>
+
+          <div className={s.bloco}>
+            <span className={s.textoAuxiliar}>Quadros por segundo analisados</span>
+            <div className={s.linhaOpcoes}>
+              {FPS_OPCOES.map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  aria-pressed={fps === f}
+                  aria-label={`${f} fps`}
+                  disabled={!podeConfigurar}
+                  className={fps === f ? s.opcaoFps.ativa : s.opcaoFps.inativa}
+                  onClick={() => setFps(f)}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className={s.bloco}>
+            <span className={s.textoAuxiliar}>Qualidade do vídeo analisado</span>
+            <div className={s.linhaOpcoes}>
+              {QUALIDADE_OPCOES.map((q) => (
+                <button
+                  key={q.valor}
+                  type="button"
+                  aria-pressed={qualidade === q.valor}
+                  disabled={!podeConfigurar}
+                  className={qualidade === q.valor ? s.opcaoQualidade.ativa : s.opcaoQualidade.inativa}
+                  onClick={() => setQualidade(q.valor)}
+                >
+                  {q.rotulo}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className={s.divisor} />
+
+          <div className={s.bloco}>
+            <span className={s.overline}>Coleta para treino</span>
+            <span className={s.textoAuxiliar}>
+              Em que resolução os frames entram no conjunto de treino. Eixo separado da
+              operação — dá para operar leve e coletar em alta.
+            </span>
+            <div className={s.colunaOpcoes}>
+              {COLETA_OPCOES.map((c) => (
+                <button
+                  key={c.valor}
+                  type="button"
+                  aria-pressed={coleta === c.valor}
+                  disabled={!podeConfigurar}
+                  className={coleta === c.valor ? s.opcaoColeta.ativa : s.opcaoColeta.inativa}
+                  onClick={() => setColeta(c.valor)}
+                >
+                  <span className={coleta === c.valor ? s.anel.marcado : s.anel.vazio}>
+                    <span className={coleta === c.valor ? s.ponto.marcado : s.ponto.vazio} />
+                  </span>
+                  {c.rotulo}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {desalinhado && (
+            <div className={s.avisoAmbar} role="status">
+              <TriangleAlert
+                size={18}
+                strokeWidth={1.7}
+                className={s.avisoIcone}
+                color={lk.estado.atencao}
+                aria-hidden="true"
+              />
+              <span className={s.avisoTexto}>
+                <strong>Coleta em alta com operação em baixa.</strong> O modelo vai treinar em
+                imagens melhores do que as que ele vê rodando — o que aprende aqui pode não
+                valer lá.
+              </span>
+            </div>
+          )}
+
+          {!podeConfigurar && (
+            <span className={s.textoAuxiliar}>
+              Somente leitura — ajustar o desempenho exige a permissão de configurar câmeras.
+            </span>
+          )}
+        </div>
+
+        {/* SAÚDE DO EQUIPAMENTO */}
+        <div className={s.painelDesempenho}>
+          <div className={s.saudeTopo}>
+            <span className={s.overline}>Saúde do equipamento</span>
+            <span className={s.espacador} />
+            <button
+              type="button"
+              className={s.botaoSecundario}
+              disabled={ctxCarregando}
+              onClick={() => { void carregarSaude(selecionada.id) }}
+            >
+              <RefreshCw size={14} strokeWidth={1.7} /> Atualizar
+            </button>
+          </div>
+          <span className={s.overline}>
+            Mini PC do site · {(nomeDoSite(selecionada.site_id) ?? 'sem site').toUpperCase()} · {nCameras} câmeras
+          </span>
+
+          {ctxCarregando ? (
+            <LogikosLoader variante="tile" estado="waiting" rotulo="CARREGANDO SAÚDE" tamanho={32} />
+          ) : temTelemetria ? (
+            <div className={s.metricas}>
+              {metricasCards.map((m) => (
+                <div key={m.rot} className={m.alerta ? s.metricaCard.alerta : s.metricaCard.neutro}>
+                  <span className={s.metricaRotulo}>{m.rot}</span>
+                  <span className={m.alerta ? s.metricaValorTom.alerta : s.metricaValorTom.neutro}>{m.v}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className={s.bloco}>
+              <span className={`${s.estadoLinha} ${s.tom.neutro}`}>
+                <CircleSlash size={13} strokeWidth={1.7} aria-hidden="true" /> SEM TELEMETRIA
+              </span>
+              <span className={s.textoAuxiliar}>
+                {ctxErro ?? 'Este site ainda não reportou telemetria do equipamento.'}
+              </span>
+            </div>
+          )}
+
+          <div className={s.divisor} />
+
+          <div className={s.bloco}>
+            <span className={s.overline}>Impacto da mudança</span>
+            {demandaTotal != null ? (
+              <>
+                <div className={s.impactoLinha}>
+                  <span className={s.impactoValor}>{demandaTotal}</span>
+                  <span className={s.textoAuxiliar}>fps somados hoje no site</span>
+                </div>
+                {fps !== fpsBase && demandaProjetada != null && (
+                  <div className={s.impactoCaixa}>
+                    <ArrowRight size={18} strokeWidth={1.7} color={lk.cor.cianoVisao} aria-hidden="true" />
+                    <span className={s.impactoCaixaTexto}>
+                      Passará a{' '}
+                      <strong className={s.impactoCaixaNumero}>~{demandaProjetada} fps</strong> com esta
+                      alteração
+                    </span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <span className={s.textoAuxiliar}>
+                {ctxErro ?? 'Sem dado de demanda de FPS para este site.'}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {erroSalvar && (
+        <div className={`${s.resultado} ${s.tom.nc}`} role="alert">{erroSalvar}</div>
+      )}
+
+      <div className={s.barraSalvar}>
+        <button
+          type="button"
+          className={s.botaoPrimario}
+          disabled={!podeConfigurar || !mudou || salvando}
+          onClick={() => { void salvar() }}
+        >
+          {salvando ? 'Salvando…' : 'Salvar configuração'}
+        </button>
+        <button
+          type="button"
+          className={s.botaoSecundario}
+          disabled={!mudou || salvando}
+          onClick={descartar}
+        >
+          Descartar
+        </button>
+        <span className={s.espacador} />
+        {salvoAgora && !mudou && (
+          <span className={s.textoAuxiliar}>{notaPropagacao(propagacao)}</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── tela ─────────────────────────────────────────────────────────────────────
 
 export function Cameras() {
@@ -560,6 +967,13 @@ export function Cameras() {
     } finally {
       setSalvandoModo(false)
     }
+  }
+
+  /** Merge local do PATCH /config — sem `carregar()` completo (que reexibe o
+   * loader de tela cheia): a aba Desempenho fica no lugar, só a nota de
+   * "alterado agora" aparece. */
+  function aplicarConfigSalva(atualizada: Camera) {
+    setCameras((prev) => prev.map((c) => (c.id === atualizada.id ? { ...c, ...atualizada } : c)))
   }
 
   if (carregando) {
@@ -941,6 +1355,18 @@ export function Cameras() {
       )}
 
       {aba === 'escopo' && <AbaEscopo cameras={cameras} podeEditar={podeConfigurar} />}
+
+      {aba === 'desempenho' && (
+        <AbaDesempenho
+          cameras={cameras}
+          selecionada={selecionada}
+          sites={sites}
+          podeConfigurar={podeConfigurar}
+          nomeDoSite={nomeDoSite}
+          aoEscolherCamera={() => setAba('cameras')}
+          aoSalvar={aplicarConfigSalva}
+        />
+      )}
 
       {modais}
     </div>
