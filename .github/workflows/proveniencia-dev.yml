@@ -49,8 +49,13 @@ jobs:
         with:
           python-version: "3.11"
 
+      # O runner vem sem pytest — a primeira execução real (dispatch de 29/08)
+      # falhou com "No module named pytest" antes de checar qualquer coisa.
+      - name: Instalar o pytest
+        run: pip install --quiet pytest
+
       - name: Testar a própria checagem antes de confiar nela
-        run: python -m pytest tests/test_checa_proveniencia.py -q
+        run: python -m pytest tests/test_checa_proveniencia.py -q -p no:cacheprovider
 
       - name: API-V3 do DEV
         run: |
