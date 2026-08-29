@@ -43,6 +43,8 @@ const MENU: Array<{ rotulo: string; permissao: string | null }> = [
   { rotulo: 'Ações', permissao: 'alerts:read' },
   { rotulo: 'Câmeras', permissao: 'cameras:read' },
   { rotulo: 'Relatórios', permissao: 'reports:read' },
+  // F5 PR-A: grupo Estúdio concatenado DEPOIS do EPI no Shell — último no DOM.
+  { rotulo: 'Estúdio', permissao: 'frames:annotate' },
 ]
 
 /** O que o menu DEVE mostrar para um papel, derivado da matriz do backend. */

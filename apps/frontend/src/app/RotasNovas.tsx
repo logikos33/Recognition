@@ -46,6 +46,8 @@ const RevisaoQualidade = lazy(() => import('./qualidade/RevisaoQualidade').then(
 const ConfigQualidade = lazy(() => import('./qualidade/ConfigQualidade').then((m) => ({ default: m.ConfigQualidade })))
 const Carga = lazy(() => import('./carga/Carga').then((m) => ({ default: m.Carga })))
 const Modulos = lazy(() => import('./modulos/Modulos').then((m) => ({ default: m.Modulos })))
+const Estudio = lazy(() => import('./estudio/Estudio').then((m) => ({ default: m.Estudio })))
+const DadosEstudio = lazy(() => import('./estudio/Dados').then((m) => ({ default: m.Dados })))
 
 /**
  * Prefixo do front novo enquanto os dois convivem. Sai no tombamento.
@@ -92,6 +94,14 @@ export const ROTAS_NOVAS: ReactElement[] = [
   <Route key="qr" path="quality/revisao" element={<RevisaoQualidade />} />,
   <Route key="qc" path="quality/configuracao" element={<ConfigQualidade />} />,
   <Route key="ca" path="carga" element={<Carga />} />,
+
+  // F5 — Estúdio (`Estúdio.dc.html`): de-para do delta manda `/estudio/*`.
+  // Layout com gate `frames:annotate` e lateral própria; sub-rota só quando a
+  // tela EXISTE (Classes/IA/Dataset/Treinos/Modelos chegam nas PRs seguintes).
+  <Route key="es" path="estudio" element={<Estudio />}>
+    <Route key="esi" index element={<Navigate to="dados" replace />} />
+    <Route key="esd" path="dados" element={<DadosEstudio />} />
+  </Route>,
 ]
 
 /**

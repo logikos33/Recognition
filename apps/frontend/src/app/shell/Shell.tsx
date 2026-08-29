@@ -34,7 +34,7 @@ import { SeletorTenant } from './SeletorTenant'
 import { SessaoExpirando } from './SessaoExpirando'
 import { PREFIXO_NOVO } from '../RotasNovas'
 import { useMarcaDoTenant } from '../tokens/MarcaDoTenant'
-import { NAV_EPI, navVisivel } from './navPorPerfil'
+import { NAV_EPI, NAV_ESTUDIO, navVisivel } from './navPorPerfil'
 import * as s from './Shell.css'
 
 /** Marca: monograma + wordmark. Geometria canônica — nunca distorcer. */
@@ -62,7 +62,11 @@ export interface ShellProps {
  * dentro da tela. Impor o menu do EPI ali mostra "Eventos" e "Verificação" para
  * quem está inspecionando peça, e some com a navegação que a tela realmente tem.
  */
-const SEM_BARRA_LATERAL = [`${PREFIXO_NOVO}/quality`, `${PREFIXO_NOVO}/carga`]
+const SEM_BARRA_LATERAL = [
+  `${PREFIXO_NOVO}/quality`,
+  `${PREFIXO_NOVO}/carga`,
+  `${PREFIXO_NOVO}/estudio`,
+]
 
 export function Shell({ carregando }: ShellProps) {
   const { can } = useAuth()
@@ -74,7 +78,7 @@ export function Shell({ carregando }: ShellProps) {
   const [colapsada, setColapsada] = useState(false)
   const [paletaAberta, setPaletaAberta] = useState(false)
 
-  const grupos = useMemo(() => navVisivel(NAV_EPI, can), [can])
+  const grupos = useMemo(() => navVisivel([...NAV_EPI, ...NAV_ESTUDIO], can), [can])
 
   /**
    * `navPorPerfil` guarda o endereço FINAL de cada tela (`/epi/eventos`), que é

@@ -14,7 +14,7 @@ import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { NAV_EPI, navVisivel } from './navPorPerfil'
+import { NAV_EPI, NAV_ESTUDIO, navVisivel } from './navPorPerfil'
 
 const REGISTRY = join(
   __dirname, '..', '..', '..', '..', '..',
@@ -31,11 +31,26 @@ describe('nav por perfil', () => {
   it('toda permissão citada EXISTE no registry do backend', () => {
     const reais = permissoesReais()
     expect(reais.size, 'não consegui ler o registry').toBeGreaterThan(20)
-    const inventadas = NAV_EPI.flatMap((g) => g.itens)
+    const inventadas = [...NAV_EPI, ...NAV_ESTUDIO].flatMap((g) => g.itens)
       .map((i) => i.permissao)
       .filter((p): p is string => p !== null)
       .filter((p) => !reais.has(p))
     expect(inventadas, 'permissão que não existe → item some em silêncio').toEqual([])
+  })
+
+  it('Estúdio aparece para quem anota (matriz real) e some para analyst/viewer', () => {
+    const MATRIZ: Record<string, string[]> = JSON.parse(
+      readFileSync(join(__dirname, '..', '..', 'test', 'e2e', 'matriz-papeis.json'), 'utf8'),
+    )
+    const podeDo = (papel: string) => (p: string) =>
+      papel === 'superadmin' || (MATRIZ[papel] ?? []).includes(p)
+    for (const papel of ['superadmin', 'admin', 'operator', 'trainer']) {
+      const itens = navVisivel(NAV_ESTUDIO, podeDo(papel)).flatMap((g) => g.itens)
+      expect(itens.map((i) => i.rotulo), papel).toContain('Estúdio')
+    }
+    for (const papel of ['analyst', 'viewer']) {
+      expect(navVisivel(NAV_ESTUDIO, podeDo(papel)), papel).toEqual([])
+    }
   })
 
   it('quem não pode nada só vê o que não exige permissão', () => {
