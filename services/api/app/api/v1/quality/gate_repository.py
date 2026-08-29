@@ -15,9 +15,41 @@ Padrão obrigatório:
   - UUIDs convertidos para str ao retornar JSON
 """
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def turno_corrente(agora: datetime | None = None) -> str:
+    """Turno atual pela hora UTC — a MESMA regra de `routes._current_shift`.
+
+    Duplicar a regra em dois lugares faria as contagens divergirem na virada do
+    turno sem ninguém notar; esta função existe para ser a única, e o teste
+    compara as duas.
+    """
+    hora = (agora or datetime.now(UTC)).hour
+    if 6 <= hora < 14:
+        return "morning"
+    if 14 <= hora < 22:
+        return "afternoon"
+    return "night"
+
+
+def _somar_turno(camera_ids: object, por_camera: dict[str, dict]) -> dict:
+    """Soma as inspeções do turno das câmeras da bancada.
+
+    Bancada sem câmera devolve zeros de verdade (ela não inspecionou nada), o
+    que é diferente do zero fixo de antes — aquele valia mesmo para bancada
+    cheia de trabalho.
+    """
+    total = {"ok": 0, "nok": 0}
+    for cid in camera_ids if isinstance(camera_ids, list) else []:
+        c = por_camera.get(str(cid))
+        if c:
+            total["ok"] += c["ok"]
+            total["nok"] += c["nok"]
+    return total
 
 
 class GateRepository:
@@ -722,6 +754,16 @@ class GateRepository:
         Returns:
             Lista de dicts com id, station_code, name, camera_ids, online,
             operator, active_piece, shift_stats, status.
+
+        `online` é sempre None: NÃO HÁ FONTE. `quality_stations` só tem
+        `is_active` (cadastro) e `updated_at` — nenhuma coluna de heartbeat ou
+        last_seen. Antes este campo devolvia `True` fixo, o que é pior que não
+        responder: a tela mostrava toda bancada como no ar, inclusive as
+        desligadas. Um campo que afirma mais do que sabe é um instrumento
+        quebrado. Ver o pedido-ao-backend de liveness de bancada.
+
+        `shift_stats` é MEDIDO: conta as inspeções do turno corrente, hoje, das
+        câmeras da bancada. Antes era {"ok": 0, "nok": 0} fixo.
         """
         with self._pool.get_connection() as conn:
             cur = conn.cursor()
@@ -753,6 +795,25 @@ class GateRepository:
             )
             rows = self._rows_to_list(cur.fetchall())
 
+            # Inspeções do turno corrente, HOJE, por câmera. Uma query só para
+            # todas as bancadas: n+1 aqui seria uma consulta por bancada num
+            # endpoint que o painel recarrega sozinho.
+            cur.execute(
+                """
+                SELECT camera_id,
+                       COUNT(*) FILTER (WHERE result = 'ok')  AS ok,
+                       COUNT(*) FILTER (WHERE result = 'nok') AS nok
+                FROM quality_inspections
+                WHERE shift = %s AND DATE(created_at) = CURRENT_DATE
+                GROUP BY camera_id
+                """,
+                (turno_corrente(),),
+            )
+            por_camera = {
+                str(x["camera_id"]): {"ok": int(x["ok"] or 0), "nok": int(x["nok"] or 0)}
+                for x in self._rows_to_list(cur.fetchall())
+            }
+
         result = []
         for r in rows:
             piece_status = r.get("piece_status")
@@ -773,7 +834,9 @@ class GateRepository:
                 "station_code": r.get("station_code"),
                 "name": r.get("station_name"),
                 "camera_ids": r.get("camera_ids") or [],
-                "online": True,
+                # Sem fonte de liveness — ver a docstring. None é a resposta
+                # honesta; True era uma afirmação que o banco não sustenta.
+                "online": None,
                 "operator": (
                     {"id": r.get("operator_id"), "name": r.get("operator_name")}
                     if r.get("operator_id") else None
@@ -789,7 +852,7 @@ class GateRepository:
                     }
                     if r.get("piece_id") else None
                 ),
-                "shift_stats": {"ok": 0, "nok": 0},
+                "shift_stats": _somar_turno(r.get("camera_ids"), por_camera),
                 "status": op_status,
             })
 

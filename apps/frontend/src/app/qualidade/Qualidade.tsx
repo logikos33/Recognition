@@ -65,14 +65,15 @@
  *
  * ── PERMISSÕES ──────────────────────────────────────────────────────────────
  *
- * **Não existe `quality:*` no registry** (`core/permissions.py`) — conferido.
- * As rotas do gate exigem só JWT (algumas, além disso, o módulo `quality` no
- * claim). Então "Concluir retrabalho" não é escondido por chave nenhuma:
- * inventar `quality:write` faria `can()` devolver `false` para sempre e sumiria
- * o botão de todo mundo menos do superadmin — o defeito que
- * `permissoesReais.test.ts` existe para impedir. Fica registrado como pedido ao
- * backend. "Testar conexão" usa `cameras:test`, que é real e é a chave que a
- * tela de Câmeras já usa para o mesmo botão.
+ * `quality:read` e `quality:write` EXISTEM no registry desde 29/08 — foram
+ * criadas justamente porque esta tela apareceu sem gate. Antes disso o botão
+ * ficava sem chave de propósito: inventar uma faria `can()` devolver `false`
+ * para sempre e sumiria o controle de todo mundo MENOS do superadmin, que passa
+ * por cima de tudo e por isso nunca veria o problema.
+ *
+ * "Concluir retrabalho" pede `quality:write` — quem opera a bancada (operator,
+ * admin) tem; analyst e viewer leem e não concluem. "Testar conexão" segue com
+ * `cameras:test`, a mesma chave que a tela de Câmeras usa para o mesmo botão.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
@@ -276,8 +277,9 @@ const ROTA_RETRABALHOS = 'GET /api/v1/quality/gate/reworks'
 const POR_PAGINA = 50
 
 function Retrabalhos() {
-  const { hasModule } = useAuth()
+  const { can, hasModule } = useAuth()
   const temModuloQualidade = hasModule('quality')
+  const podeConcluir = can('quality:write')
 
   const [lista, setLista] = useState<Retrabalho[] | null>(null)
   const [pecas, setPecas] = useState<Record<string, Peca>>({})
@@ -473,8 +475,12 @@ function Retrabalhos() {
                     {aberto && (
                       <button
                         className={s.acao}
-                        disabled={concluindo === r.id}
-                        title="PATCH /gate/reworks/<id>/complete grava a hora de fim e soma a duração na peça. Não re-inspeciona nem aprova: a recaptura acontece na estação."
+                        disabled={concluindo === r.id || !podeConcluir}
+                        title={
+                          podeConcluir
+                            ? 'PATCH /gate/reworks/<id>/complete grava a hora de fim e soma a duração na peça. Não re-inspeciona nem aprova: a recaptura acontece na estação.'
+                            : 'Sem permissão para operar qualidade (quality:write).'
+                        }
                         onClick={() => { void concluir(r.id) }}
                       >
                         {concluindo === r.id ? 'Concluindo…' : 'Concluir retrabalho'}

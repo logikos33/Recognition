@@ -342,3 +342,23 @@ describe('Qualidade · Câmeras das estações', () => {
     expect(await screen.findByText(/GET \/api\/v1\/quality\/cameras · timeout/)).toBeTruthy()
   })
 })
+
+describe('Qualidade · gate de permissão', () => {
+  it('sem quality:write, "Concluir retrabalho" fica travado e diz por quê', async () => {
+    // A chave nasceu em 29/08 justamente porque esta tela apareceu sem gate.
+    auth.can.mockImplementation((p: string) => p !== 'quality:write')
+    responde({ reworks: [retrabalho()] })
+    montar()
+    const b = (await screen.findByRole('button', { name: /concluir retrabalho/i })) as HTMLButtonElement
+    expect(b.disabled).toBe(true)
+    expect(b.title).toMatch(/quality:write/)
+  })
+
+  it('com quality:write o botão funciona', async () => {
+    auth.can.mockReturnValue(true)
+    responde({ reworks: [retrabalho()] })
+    montar()
+    const b = (await screen.findByRole('button', { name: /concluir retrabalho/i })) as HTMLButtonElement
+    expect(b.disabled).toBe(false)
+  })
+})
