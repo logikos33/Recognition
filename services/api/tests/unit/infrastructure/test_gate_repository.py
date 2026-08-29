@@ -483,38 +483,44 @@ class TestGetStationsLive:
 
     def test_no_piece_returns_ok_status(self):
         cur = MagicMock()
-        cur.fetchall.return_value = [_station_row(piece_status=None, has_piece=False)]
+        # Duas leituras: bancadas e, depois, as inspeções do turno por câmera.
+        cur.fetchall.side_effect = [[_station_row(piece_status=None, has_piece=False)], []]
         result = _repo(cur).get_stations_live("tenant_a")
         assert result[0]["status"] == "ok"
         assert result[0]["active_piece"] is None
 
     def test_rework_v1_one_count_is_warning(self):
         cur = MagicMock()
-        cur.fetchall.return_value = [_station_row(piece_status="rework_v1", total_rework=1)]
+        # Duas leituras: bancadas e, depois, as inspeções do turno por câmera.
+        cur.fetchall.side_effect = [[_station_row(piece_status="rework_v1", total_rework=1)], []]
         result = _repo(cur).get_stations_live("tenant_a")
         assert result[0]["status"] == "warning"
 
     def test_rework_v2_two_reworks_is_critical(self):
         cur = MagicMock()
-        cur.fetchall.return_value = [_station_row(piece_status="rework_v2", total_rework=2)]
+        # Duas leituras: bancadas e, depois, as inspeções do turno por câmera.
+        cur.fetchall.side_effect = [[_station_row(piece_status="rework_v2", total_rework=2)], []]
         result = _repo(cur).get_stations_live("tenant_a")
         assert result[0]["status"] == "critical"
 
     def test_validating_state_is_ok(self):
         cur = MagicMock()
-        cur.fetchall.return_value = [_station_row(piece_status="validating_v1")]
+        # Duas leituras: bancadas e, depois, as inspeções do turno por câmera.
+        cur.fetchall.side_effect = [[_station_row(piece_status="validating_v1")], []]
         result = _repo(cur).get_stations_live("tenant_a")
         assert result[0]["status"] == "ok"
 
     def test_operator_included_when_present(self):
         cur = MagicMock()
-        cur.fetchall.return_value = [_station_row(piece_status="identified", with_operator=True)]
+        # Duas leituras: bancadas e, depois, as inspeções do turno por câmera.
+        cur.fetchall.side_effect = [[_station_row(piece_status="identified", with_operator=True)], []]
         result = _repo(cur).get_stations_live("tenant_a")
         assert result[0]["operator"]["name"] == "João"
 
     def test_operator_none_when_absent(self):
         cur = MagicMock()
-        cur.fetchall.return_value = [_station_row(piece_status="identified", with_operator=False)]
+        # Duas leituras: bancadas e, depois, as inspeções do turno por câmera.
+        cur.fetchall.side_effect = [[_station_row(piece_status="identified", with_operator=False)], []]
         result = _repo(cur).get_stations_live("tenant_a")
         assert result[0]["operator"] is None
 
@@ -523,31 +529,36 @@ class TestGetStationsLive:
         cur = MagicMock()
         row = _station_row(piece_status="identified")
         row["piece_step_started_at"] = now
-        cur.fetchall.return_value = [row]
+        # Duas leituras: bancadas e, depois, as inspeções do turno por câmera.
+        cur.fetchall.side_effect = [[row], []]
         result = _repo(cur).get_stations_live("tenant_a")
         assert result[0]["active_piece"]["started_at"] == now.isoformat()
 
     def test_status_label_for_approved(self):
         cur = MagicMock()
-        cur.fetchall.return_value = [_station_row(piece_status="approved")]
+        # Duas leituras: bancadas e, depois, as inspeções do turno por câmera.
+        cur.fetchall.side_effect = [[_station_row(piece_status="approved")], []]
         result = _repo(cur).get_stations_live("tenant_a")
         assert result[0]["active_piece"]["status_label"] == "Aprovada"
 
     def test_status_label_fallback_for_unknown(self):
         cur = MagicMock()
-        cur.fetchall.return_value = [_station_row(piece_status="unknown_state")]
+        # Duas leituras: bancadas e, depois, as inspeções do turno por câmera.
+        cur.fetchall.side_effect = [[_station_row(piece_status="unknown_state")], []]
         result = _repo(cur).get_stations_live("tenant_a")
         assert result[0]["active_piece"]["status_label"] == "unknown_state"
 
     def test_empty_returns_empty_list(self):
         cur = MagicMock()
-        cur.fetchall.return_value = []
+        # Duas leituras: bancadas e, depois, as inspeções do turno por câmera.
+        cur.fetchall.side_effect = [[], []]
         assert _repo(cur).get_stations_live("tenant_a") == []
 
     def test_camera_ids_defaults_to_empty_list(self):
         cur = MagicMock()
         row = _station_row(piece_status=None, has_piece=False)
         row["camera_ids"] = None
-        cur.fetchall.return_value = [row]
+        # Duas leituras: bancadas e, depois, as inspeções do turno por câmera.
+        cur.fetchall.side_effect = [[row], []]
         result = _repo(cur).get_stations_live("tenant_a")
         assert result[0]["camera_ids"] == []

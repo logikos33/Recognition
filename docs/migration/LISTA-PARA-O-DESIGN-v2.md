@@ -258,6 +258,33 @@ Registrados aqui porque saíram de **construir a tela**, não de ler o desenho.
 | B8 | **Pendência por módulo** em `/api/modules/` | A tela `/modules` do desenho mostra "3 NOK aguardam revisão" por módulo; só existe `alerts_today`. Hoje mostro só o que existe. | polimento |
 | B9 | **Aviso de clamp no admin** + campo **logo-para-fundo-escuro** | DECISÃO v2 item 3. O clamp já está implementado no front; falta o cliente SABER que a cor dele foi ajustada, e o logo alternativo. | acompanha B4 |
 
+## Pedido-ao-backend do módulo Qualidade — setembro, pista paralela
+
+**O ciclo NC → retrabalho → recaptura → CONFORME não tem rota que o feche.**
+
+`PATCH /gate/reworks/<id>/complete` grava a hora de fim e soma a duração na
+peça — só isso. Não re-inspeciona, não aprova, não devolve a peça ao fluxo. O
+desenho promete um ciclo que o backend não completa, e por isso a tela mostra o
+botão com o rótulo do que a rota **faz** ("Concluir retrabalho"), nunca
+"recapturada · conforme".
+
+Falta uma rota que re-inspecione a peça e decida o veredito. Nasce na fase de
+desenvolvimento da Qualidade (setembro, pista paralela) — **não agora**.
+
+Junto, o que a mesma tela precisa para ficar como desenhada: JOIN peça↔retrabalho
+na própria rota, `COUNT(*)` real para paginação, filtro de data (o repository já
+suporta, a rota não passa) e filtro por estação (não existe em camada nenhuma).
+
+## Resolvidos em 29/08
+
+- ~~`quality:*` não existe no registry~~ → **`quality:read` e `quality:write`
+  criadas**, no padrão de `counting:*`, com teste de contrato que cruza cada
+  `can()` do front contra o catálogo real. "Concluir retrabalho" ganhou o gate.
+- ~~`online: True` e `shift_stats` fixos em `gate_repository`~~ → **`online`
+  virou `None` honesto** (não há coluna de heartbeat em `quality_stations`) e
+  **`shift_stats` passou a ser medido** das inspeções do turno das câmeras da
+  bancada.
+
 ## Aceites do Vitor em 29/08
 
 **B1 e B2 são pedidos-ao-backend reais e aceitos.** B1 exige caminho humano de

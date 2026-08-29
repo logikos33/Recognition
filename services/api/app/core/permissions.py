@@ -244,6 +244,23 @@ PERMISSION_REGISTRY: dict[str, dict[str, Any]] = {
         "Permite iniciar, pausar e encerrar sessões de contagem.",
         "Contagem", ["superadmin", "admin", "operator"], module="counting",
     ),
+    # ── Qualidade ─────────────────────────────────────────────────────────────
+    # Faltavam: o módulo `quality` existe e é servido, mas nenhuma chave o
+    # cobria. A tela de retrabalho ficou sem gate porque inventar a chave era
+    # pior — `can()` devolve False para chave inexistente, o que sumiria o
+    # botão de todo mundo MENOS do superadmin, que passa por cima de tudo e
+    # por isso nunca veria o problema.
+    "quality:read": _entry(
+        "Ver qualidade",
+        "Permite visualizar inspeções, peças, retrabalhos e estações do módulo Qualidade.",
+        "Qualidade", ["superadmin", "admin", "operator", "analyst", "viewer"],
+        module="quality",
+    ),
+    "quality:write": _entry(
+        "Operar qualidade",
+        "Permite concluir retrabalho e registrar decisão de inspeção na bancada.",
+        "Qualidade", ["superadmin", "admin", "operator"], module="quality",
+    ),
     # ── Verificação ───────────────────────────────────────────────────────────
     "verification:read": _entry(
         "Ver fila de verificação",
