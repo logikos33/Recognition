@@ -3,7 +3,7 @@
  * Max 100 linhas. Rotas em AppRoutes.tsx.
  */
 import { Suspense, lazy } from 'react'
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
 import { Login } from './pages/Login'
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
@@ -13,7 +13,7 @@ import { AppShell } from './components/layout/AppShell/AppShell'
 import { AppLayout } from './components/layout/AppLayout/AppLayout'
 import { ChatFAB } from './components/chat/ChatFAB'
 import { GlobalBanners } from './components/layout/GlobalBanners'
-import { PREFIXO_NOVO, ROTAS_NOVAS, ROTAS_NOVAS_SEM_SHELL, rotaNova } from './app/RotasNovas'
+import { PREFIXO_LEGADO, ROTAS_NOVAS, ROTAS_NOVAS_SEM_SHELL, rotaNova } from './app/RotasNovas'
 import { Shell } from './app/shell/Shell'
 import { ThemeProvider } from './theme/ThemeProvider'
 import type { User } from './hooks/useAuth'
@@ -41,14 +41,28 @@ const ROTAS_SEM_CHAT = [
   // sozinho punha 3.136px² de ciano em TODAS as telas novas. Se o suporte
   // ficar, vira item do menu de ajuda/⌘K, e aí é desenhado.
   //
-  // Sai só do front NOVO: no antigo ele continua exatamente como estava.
-  PREFIXO_NOVO,
+  // Pós-flip o front novo não tem mais prefixo próprio (`PREFIXO_NOVO` é
+  // identidade) — a lista vira as raízes das rotas novas, uma por uma.
+  '/epi',
+  '/quality',
+  '/carga',
+  '/modules',
 ]
 
 function ChatFABExcetoAnotacao() {
   const { pathname } = useLocation()
   if (ROTAS_SEM_CHAT.some(r => pathname.startsWith(r))) return null
   return <ChatFAB />
+}
+
+/**
+ * `/novo/*` era o prefixo do front novo antes do flip (29/08). Endereço
+ * salvo (favorito, link compartilhado) continua funcionando: redireciona
+ * para o mesmo caminho sem o prefixo, preservando query string e hash.
+ */
+function RedirecionaLegado() {
+  const { pathname, search, hash } = useLocation()
+  return <Navigate to={(pathname.slice(PREFIXO_LEGADO.length) || '/') + search + hash} replace />
 }
 
 function AppShellWrapper({ user, onLogout }: { user: User; onLogout: () => void }) {
@@ -58,15 +72,17 @@ function AppShellWrapper({ user, onLogout }: { user: User; onLogout: () => void 
           fora das rotas, visíveis em todas as telas; ocupam espaço real no
           layout via --global-banner-offset (ver GlobalBanners.tsx) */}
       <GlobalBanners />
-      {/* Os dois fronts convivem (decisão do Vitor, 27/08). As rotas migradas
-          montam o Shell novo; TODO o resto cai no `*` e segue no AppLayout
-          antigo, com o mesmo comportamento de antes. O front antigo só sai
-          quando a migração inteira estiver de pé — ver
+      {/* FLIP (decisão do Vitor, 29/08): o front novo é o padrão. As rotas
+          migradas montam o Shell novo, no próprio endereço final; o que
+          ainda não migrou cai no `*` e segue no AppLayout antigo, com o
+          mesmo comportamento de antes. O front antigo só sai quando a
+          migração inteira estiver de pé — ver
           docs/migration/MANIFESTO-FRONT-ANTIGO.md. */}
       <Routes>
         {/* Antes do Shell: estas trazem o próprio cabeçalho. */}
         {ROTAS_NOVAS_SEM_SHELL}
-        <Route path={PREFIXO_NOVO} element={<Shell />}>{ROTAS_NOVAS}</Route>
+        <Route element={<Shell />}>{ROTAS_NOVAS}</Route>
+        <Route path="/novo/*" element={<RedirecionaLegado />} />
         <Route
           path="*"
           element={
@@ -81,6 +97,9 @@ function AppShellWrapper({ user, onLogout }: { user: User; onLogout: () => void 
   )
 }
 
+// TODO(pista acesso): trocar por app/acesso quando existir
+const TelaLogin = Login
+
 export default function App() {
   const { user, isAuthenticated, logout } = useAuth()
 
@@ -94,7 +113,7 @@ export default function App() {
             <Route path={rotaNova('/redefinir-senha')} element={<RedefinirSenha />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
-            <Route path="*" element={<Login />} />
+            <Route path="*" element={<TelaLogin />} />
           </Routes>
         </Suspense>
       </BrowserRouter>

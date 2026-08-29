@@ -118,12 +118,12 @@ describe('Qualidade · abas do módulo', () => {
     }
   })
 
-  it('a aba irmã vai para DENTRO do prefixo — /quality existe no front antigo', async () => {
+  it('a aba irmã vai para a Configuração do front novo', async () => {
     responde()
     montar()
     await screen.findByText('Retrabalho', { selector: 'h1' })
     fireEvent.click(screen.getByRole('button', { name: 'Config' }))
-    expect(navegar).toHaveBeenCalledWith('/novo/quality/configuracao')
+    expect(navegar).toHaveBeenCalledWith('/quality/configuracao')
   })
 })
 
@@ -279,7 +279,7 @@ describe('Qualidade · Câmeras das estações', () => {
     expect(screen.queryByText(/box edge/i)).toBeNull()
   })
 
-  it('"Config de estações" leva à Configuração, dentro do prefixo', async () => {
+  it('"Config de estações" leva à Configuração do front novo', async () => {
     // Ficava desabilitado porque a Configuração de Qualidade não existia no
     // front novo. Existe: o botão navega — e por `rotaNova`, porque `/quality`
     // também é rota do front ANTIGO e um caminho cru levaria para lá calado.
@@ -287,7 +287,7 @@ describe('Qualidade · Câmeras das estações', () => {
     montar()
     fireEvent.click(await screen.findByRole('button', { name: /câmeras/i }))
     fireEvent.click(await screen.findByRole('button', { name: /config de estações/i }))
-    expect(navegar).toHaveBeenCalledWith('/novo/quality/configuracao')
+    expect(navegar).toHaveBeenCalledWith('/quality/configuracao')
   })
 
   it('Testar conexão exibe os 5 checks reais — sem ms e sem FPS inventados', async () => {

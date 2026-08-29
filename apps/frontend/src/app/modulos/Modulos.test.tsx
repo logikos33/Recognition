@@ -79,7 +79,7 @@ describe('escolha de módulo', () => {
     get.mockResolvedValue(resposta([mod('epi')]))
     montar()
     await waitFor(() =>
-      expect(navegar).toHaveBeenCalledWith('/novo/epi/dashboard', { replace: true }),
+      expect(navegar).toHaveBeenCalledWith('/epi/dashboard', { replace: true }),
     )
     expect(screen.queryByText(/onde você vai trabalhar/i)).toBeNull()
   })
@@ -89,7 +89,7 @@ describe('escolha de módulo', () => {
     montar()
     await screen.findByText('EPI · Segurança')
     fireEvent.keyDown(window, { key: '1' })
-    expect(navegar).toHaveBeenCalledWith('/novo/epi/dashboard')
+    expect(navegar).toHaveBeenCalledWith('/epi/dashboard')
   })
 
   it('mostra alerts_today de verdade, e diz quando é zero', async () => {

@@ -44,9 +44,9 @@ const responde = (ops: unknown[]) =>
 
 const montar = () =>
   render(
-    <MemoryRouter initialEntries={['/novo/epi/cameras/cam-1/operations']}>
+    <MemoryRouter initialEntries={['/epi/cameras/cam-1/operations']}>
       <Routes>
-        <Route path="/novo/epi/cameras/:cameraId/operations" element={<Operacoes />} />
+        <Route path="/epi/cameras/:cameraId/operations" element={<Operacoes />} />
       </Routes>
     </MemoryRouter>,
   )
@@ -113,11 +113,11 @@ describe('operações da câmera', () => {
     expect(await screen.findByText('Operação 1')).toBeTruthy()
   })
 
-  it('leva ao cenário DENTRO do front novo', async () => {
+  it('leva ao cenário do front novo', async () => {
     responde([op(1)])
     montar()
     const link = await screen.findByRole('link', { name: /editar zonas/i })
-    expect(link.getAttribute('href')).toBe('/novo/epi/cameras/cam-1/scenario')
+    expect(link.getAttribute('href')).toBe('/epi/cameras/cam-1/scenario')
   })
 
   it('não mostra UUID cru: resolve o módulo pelo código, ou omite', async () => {

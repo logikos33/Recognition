@@ -1,12 +1,12 @@
 /**
- * Trava da COEXISTÊNCIA — a garantia mais importante desta rodada.
+ * Trava da COEXISTÊNCIA/FLIP — a garantia mais importante desta rodada.
  *
- * A regra do Vitor (27/08) é que o front novo entra em rota paralela e o front
- * antigo continua inteiro e funcionando, até a migração terminar. A forma de
- * quebrar isso sem ninguém perceber é sempre a mesma: alguém registra uma tela
- * nova num caminho absoluto (`/epi/dashboard`), ela ganha do `*` do front
- * antigo por ser segmento estático, e a tela velha some da aplicação — sem erro
- * de compilação, sem teste vermelho, sem aviso. O usuário descobre clicando.
+ * Até 29/08 o front novo entrava em rota paralela sob `/novo`; no FLIP virou
+ * o padrão, no próprio endereço final. A forma de quebrar isso sem ninguém
+ * perceber é sempre a mesma: alguém registra uma tela nova num caminho
+ * absoluto por fora de `ROTAS_NOVAS`, ou tira um redirect de endereço antigo
+ * sem ninguém notar — sem erro de compilação, sem teste vermelho, sem aviso.
+ * O usuário descobre clicando, ou num link salvo que vira 404.
  *
  * Estes testes fecham essa porta.
  */
@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { PREFIXO_NOVO, ROTAS_NOVAS } from './RotasNovas'
+import { ROTAS_NOVAS } from './RotasNovas'
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const leia = (rel: string) => fs.readFileSync(path.join(SRC, rel), 'utf-8')
@@ -51,13 +51,21 @@ describe('front novo e front antigo convivem', () => {
     ).toEqual([])
   })
 
-  it('o prefixo não colide com nenhum primeiro segmento do front antigo', () => {
-    // Se o prefixo virasse '/epi', o `<Route path="/epi">` novo passaria a
-    // capturar TODO o /epi/* antigo — inclusive as telas que ainda não foram
-    // migradas, que morreriam em 404 dentro do Shell novo.
-    const antigas = [...leia('AppRoutes.tsx').matchAll(/path="(\/[^"*]*)"/g)]
-      .map((m) => `/${m[1].split('/')[1] ?? ''}`)
-    expect(new Set(antigas)).not.toContain(PREFIXO_NOVO)
+  it('toda rota antiga que mudou de endereço no FLIP redireciona para a nova', () => {
+    // De-para do FLIP (29/08): a URL velha sai de circulação, mas quem tinha
+    // salva (favorito, link enviado) não pode cair em 404 — precisa de
+    // <Redireciona>/<RedirecionaAlerta> te levando para o endereço novo.
+    const appRoutes = leia('AppRoutes.tsx')
+    const redirects = [
+      '<Route path="/epi/alerts" element={<Redireciona para="/epi/eventos" />} />',
+      '<Route path="/epi/alerts/:alertId" element={<RedirecionaAlerta />} />',
+      '<Route path="/epi/reports" element={<Redireciona para="/epi/relatorios" />} />',
+      '<Route path="/epi/verification" element={<Redireciona para="/epi/verificacao" />} />',
+      '<Route path="/epi/monitoring" element={<Redireciona para="/epi/live" />} />',
+    ]
+    for (const linha of redirects) {
+      expect(appRoutes, `esperado em AppRoutes.tsx: ${linha}`).toContain(linha)
+    }
   })
 
   it('o front antigo continua sendo o catch-all', () => {
@@ -69,17 +77,22 @@ describe('front novo e front antigo convivem', () => {
     expect(app).toContain('<AppRoutes />')
   })
 
-  it('o Shell novo só monta sob o prefixo', () => {
-    expect(leia('App.tsx')).toContain('path={PREFIXO_NOVO} element={<Shell />}')
+  it('o Shell novo monta as rotas novas', () => {
+    // Pós-flip a rota é pathless (sem `path`) — o prefixo virou identidade,
+    // então um `path={PREFIXO_NOVO}` literal aqui seria `path=""`, ambíguo.
+    expect(leia('App.tsx')).toContain('<Route element={<Shell />}>{ROTAS_NOVAS}</Route>')
   })
 
-  it('nenhuma tela nova linka para fora do prefixo', () => {
+  it('nenhuma tela nova usa link absoluto literal — tudo via rotaNova()', () => {
     // O pior bug desta rodada, e o mais silencioso: `<Link to="/epi/cameras">`
-    // dentro do front NOVO leva para a tela ANTIGA de mesmo endereço. Não dá
-    // erro, não quebra teste, não avisa nada — o usuário só vê, de repente, o
-    // produto velho. Aconteceu em 10 lugares na primeira leva.
+    // dentro do front NOVO caía na tela ANTIGA de mesmo endereço. Não dava
+    // erro, não quebrava teste, não avisava nada. Aconteceu em 10 lugares na
+    // primeira leva.
     //
-    // Todo link interno passa por `rotaNova()`. Este teste é quem cobra.
+    // Pós-flip `rotaNova()` é identidade, então um `to="/epi/cameras"` literal
+    // aponta pro mesmo lugar HOJE — mas volta a divergir no instante em que um
+    // prefixo reaparecer. A regra fica mais forte, não mais frouxa: nenhum
+    // `to=` absoluto literal em `app/`, mesmo os que hoje "dariam certo".
     const infratores: string[] = []
     const varre = (dir: string) => {
       for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -88,10 +101,10 @@ describe('front novo e front antigo convivem', () => {
         if (!/\.tsx?$/.test(e.name) || /\.test\.tsx?$/.test(e.name)) continue
         if (path.relative(SRC, p) === 'app/RotasNovas.tsx') continue
         fs.readFileSync(p, 'utf-8').split('\n').forEach((linha, i) => {
-          // `to="/..."` ou to={`/...`} com caminho absoluto que não é o prefixo
+          // `to="/..."` ou to={`/...`} com caminho absoluto — proibido, sem exceção
           const m = linha.match(/to=(?:"(\/[^"]*)"|\{`(\/[^`]*)`\})/)
           const alvo = m?.[1] ?? m?.[2]
-          if (alvo && !alvo.startsWith('/novo')) {
+          if (alvo) {
             infratores.push(`${path.relative(SRC, p)}:${i + 1}  to="${alvo}"`)
           }
         })
@@ -100,7 +113,7 @@ describe('front novo e front antigo convivem', () => {
     varre(path.join(SRC, 'app'))
     expect(
       infratores,
-      'link absoluto sai do front novo e cai no antigo — use rotaNova():\n' +
+      'link absoluto literal em app/ — use rotaNova():\n' +
         infratores.join('\n'),
     ).toEqual([])
   })

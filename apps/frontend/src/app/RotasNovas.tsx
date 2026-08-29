@@ -1,29 +1,31 @@
 /**
  * Rotas do front novo — as que montam o `Shell` Logikos Vision.
  *
- * COEXISTÊNCIA (decisão do Vitor, 27/08): estas rotas correm ao lado do front
- * antigo, que segue inteiro e de pé. O App monta assim:
+ * FLIP (decisão do Vitor, 29/08): o front novo é agora o padrão. A
+ * coexistência por prefixo (27/08→29/08) acabou — `PREFIXO_NOVO` virou
+ * identidade e estas rotas respondem nos próprios endereços finais. O App
+ * monta assim:
  *
  *     <Routes>
- *       <Route path={PREFIXO_NOVO} element={<Shell />}>{ROTAS_NOVAS}</Route>
+ *       {ROTAS_NOVAS_SEM_SHELL}
+ *       <Route element={<Shell />}>{ROTAS_NOVAS}</Route>
+ *       <Route path="/novo/*" element={<RedirecionaLegado />} />
  *       <Route path="*" element={<AppLayout><AppRoutes/></AppLayout>} />
  *     </Routes>
  *
- * POR QUE UM PREFIXO, e não os caminhos do desenho direto:
- *
- * Metade das telas novas MUDA de endereço (`/epi/alerts` → `/epi/eventos`) e a
- * outra metade NÃO (`/epi/dashboard` continua `/epi/dashboard`). Sem prefixo, as
- * que não mudam colidiriam de frente com o front antigo, e a mesma URL teria de
- * servir duas telas — o que "coexistir" justamente não é. Com prefixo, cada
- * front tem endereço próprio, o antigo não muda de comportamento em nada, e o
- * tombamento vira uma operação pequena e reversível: tirar o prefixo e trocar
- * as rotas antigas por redirects (de-para em `docs/migration/DELTA-PRE-MIGRACAO.md`).
+ * A metade das telas que MUDOU de endereço (`/epi/alerts` → `/epi/eventos`)
+ * ganhou redirect no bloco legado de `AppRoutes.tsx`. A metade que NÃO mudou
+ * (`/epi/dashboard` continua `/epi/dashboard`) sombreia a entrada antiga — a
+ * rota nova, por ser estática e vir antes do catch-all `*`, sempre vence. As
+ * entradas antigas de mesmo endereço ficam mortas até a demolição do front
+ * antigo (`docs/migration/MANIFESTO-FRONT-ANTIGO.md`).
  *
  * ⛔ Não registre aqui tela que ainda não existe. Rota apontando para
  * placeholder é tela inventada — e tela sem desenho não se inventa.
  */
 import { lazy, type ReactElement } from 'react'
 import { Navigate, Route } from 'react-router-dom'
+import { useAuth } from '../hooks/useAuth'
 
 /**
  * Cada tela em seu próprio pedaço, como o front antigo já faz. Importadas de
@@ -58,24 +60,39 @@ const ModelosPorCameraEstudio = lazy(() =>
 const TreinoEstudio = lazy(() => import('./estudio/Treino').then((m) => ({ default: m.Treino })))
 
 /**
- * Prefixo do front novo enquanto os dois convivem. Sai no tombamento.
+ * Prefixo do front novo. Era `/novo` durante a coexistência; no flip (29/08)
+ * virou identidade — as rotas abaixo, declaradas relativas, resolvem direto
+ * para o endereço final (`epi/dashboard` → `/epi/dashboard`).
  *
- * As rotas abaixo são declaradas RELATIVAS de propósito: caminho relativo só
- * consegue existir DENTRO do prefixo, então nenhuma tela nova tem como cair em
- * cima do front antigo por descuido. Há teste que reprova caminho absoluto.
+ * `PREFIXO_LEGADO` guarda o valor antigo só para redirecionar quem tinha
+ * `/novo/...` salvo (favorito, link enviado) — ver `RedirecionaLegado` em
+ * `App.tsx`.
  */
-export const PREFIXO_NOVO = '/novo'
+export const PREFIXO_NOVO = ''
+
+/** Prefixo do front novo ANTES do flip. Só usado para o redirect de `/novo/*`. */
+export const PREFIXO_LEGADO = '/novo'
 
 /**
  * Endereço de uma tela do front novo. **Todo `<Link>`/`navigate` interno passa
  * por aqui.**
  *
- * Escrever `to="/epi/cameras"` direto não dá erro nenhum: leva o usuário para a
- * tela ANTIGA de mesmo endereço, calada, com a cara do produto velho. Foi o que
- * aconteceu em 10 lugares na primeira leva — e nenhum teste pegou, porque do
- * ponto de vista do React Router estava tudo certo. Há teste agora.
+ * Hoje `rotaNova()` é identidade (`PREFIXO_NOVO === ''`), mas continua
+ * obrigatória: é o único ponto que muda se um prefixo voltar a existir, e o
+ * teste de coexistência reprova `to="/..."` literal em `app/` — só passa por
+ * `rotaNova()`.
  */
 export const rotaNova = (caminho: string) => PREFIXO_NOVO + caminho
+
+/**
+ * Índice de `ROTAS_NOVAS` (`/`) — mesma lógica de `RootRedirect` em
+ * `AppRoutes.tsx`: superadmin cai no admin (front antigo, não migrado),
+ * os demais perfis caem no dashboard do EPI.
+ */
+function RaizRotasNovas() {
+  const { isSuperAdmin } = useAuth()
+  return <Navigate to={isSuperAdmin ? '/admin' : 'epi/dashboard'} replace />
+}
 
 /**
  * As telas entram aqui conforme forem migradas E PROVADAS, uma por uma.
@@ -83,7 +100,7 @@ export const rotaNova = (caminho: string) => PREFIXO_NOVO + caminho
  * tudo. É o estado honesto até a primeira tela ficar de pé.
  */
 export const ROTAS_NOVAS: ReactElement[] = [
-  <Route key="i" index element={<Navigate to="epi/dashboard" replace />} />,
+  <Route key="i" index element={<RaizRotasNovas />} />,
 
   // EPI, na ordem da jornada mestra: DETECTAR → TRIAR → AGIR → PROVAR.
   <Route key="d" path="epi/dashboard" element={<Dashboard />} />,

@@ -26,11 +26,11 @@ vi.mock('../../services/tenantContext', () => ({
 
 import { Shell } from './Shell'
 
-function montar(rota = '/novo/epi/live') {
+function montar(rota = '/epi/live') {
   return render(
     <MemoryRouter initialEntries={[rota]}>
       <Routes>
-        <Route path="/novo" element={<Shell />}>
+        <Route element={<Shell />}>
           <Route path="epi/live" element={<p>conteúdo da tela</p>} />
         </Route>
       </Routes>
@@ -69,12 +69,12 @@ describe('Shell', () => {
     expect(nomes).toEqual(['Dashboard'])
   })
 
-  it('o menu do front novo aponta para DENTRO do prefixo', () => {
-    // `/epi/dashboard` é rota válida nos DOIS fronts. Sem o prefixo, o menu do
-    // front novo levaria calado para a tela antiga.
+  it('o menu do front novo aponta para as rotas novas', () => {
+    // Pós-flip (29/08) o menu não passa mais por prefixo: aponta direto para
+    // o endereço final (`/epi/...`), que a rota nova sombreia da antiga.
     montar()
     for (const link of screen.getAllByRole('link')) {
-      expect(link.getAttribute('href')).toMatch(/^\/novo\//)
+      expect(link.getAttribute('href')).toMatch(/^\/epi\//)
     }
   })
 
