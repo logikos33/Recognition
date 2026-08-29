@@ -1,235 +1,238 @@
-# Para o design — o que falta desenhar
+# Pacote para o design — o que falta desenhar
 
-> **Como usar:** este documento é para ser colado inteiro numa conversa com o
-> designer. Ele não pressupõe conhecimento do código. Cada item diz **o que
-> aconteceu**, **o que foi feito no lugar** e **o que precisamos que você
-> desenhe** — nessa ordem, porque a pergunta sem o contexto gera resposta que
-> não cabe no produto.
+> **Este documento é para ser colado inteiro numa sessão do Claude Design.**
+> Ele não pressupõe conhecimento do código. Cada item diz o que aconteceu, o que
+> foi feito no lugar, o que precisamos desenhado, e **qual rota do backend já
+> existe** — para o design não desenhar no vácuo.
 >
-> Gerado ao fim da migração do shell + módulo EPI (27/08/2026). O handoff
-> anterior cobriu 21 telas; isto é o que a implementação encontrou **fora** dele.
+> Gerado em 2026-08-27, ao fim da rodada F1+F3(EPI).
 
 ---
 
-## 0. Como isto foi decidido
+## Contexto em 5 linhas
 
-Regra que seguimos: **tela sem desenho não se inventa.** Onde faltou desenho,
-implementamos o mínimo seguindo o Manual Logikos e os tokens `--lk-*`, e o item
-entrou nesta lista. Implementar seguindo a identidade **não** dispensa o
-desenho oficial — só evita que a operação fique sem a tela enquanto ele não vem.
-
-E: **zero dado inventado em tela de produto.** Onde o backend não serve o dado
-que o desenho previa, a tela **não** o exibe. Ela não finge, e também não fica
-explicando ao operador o que falta — isso é assunto desta lista, não da tela.
-
----
-
-## 1. Telas vivas que o handoff não desenhou (10)
-
-Estas rotas existem, têm gente usando e ficaram fora do handoff. Enquanto não
-houver desenho, elas seguem no shell antigo — o que significa que o produto tem
-**duas caras** para quem navega entre elas. É o item mais urgente da lista.
-
-| Rota | O que faz hoje |
-|---|---|
-| `/modules` | Seleção de módulo — a primeira tela depois do login para quem tem mais de um |
-| `/epi/cameras/triagem` | Triagem de câmeras |
-| `/epi/cameras/:id/operations` | Operações da câmera (o motor de operações está em produção) |
-| `/epi/cameras/:id/scenario` | Editor de cenário — desenho de região sobre o vídeo |
-| `/epi/health` | Saúde de streams |
-| `/epi/sites-health` | Saúde por site |
-| `/epi/sites` | Sites do tenant |
-| `/epi/edge-observability` | Observabilidade do edge (o Jetson no cliente) |
-| `/epi/investigation` | Investigação |
-| `/monitoring` | Monitoramento do edge |
-
-**O que precisamos:** priorização sua entre as 10 — quais valem desenho próprio
-e quais podem virar variações de telas que você já desenhou.
+1. O shell Logikos Vision e as 8 telas do módulo EPI estão **no ar no DEV**, sob
+   o prefixo `/novo`, convivendo com o front atual — que segue inteiro e não
+   mudou de comportamento.
+2. Desde o handoff de 23/08 o produto ganhou coisas que o desenho não previa:
+   badge de procedência, motivo do veredito, polaridade de 3 estados, aba de
+   escopo por câmera e fila por incerteza. Todas foram preservadas na migração.
+3. A comparação função-a-função entre cada tela antiga e sua substituta achou
+   **42 perdas alegadas, 22 confirmadas** por um revisor independente.
+4. Por isso **o front antigo não pode ser apagado**: 6 telas estão marcadas
+   `SUBSTITUIDA` (têm substituta, mas ela não faz tudo) e só 1 é removível.
+5. Faltam ainda as fases F2 (Kiosk), F4 (Qualidade/Carga), F5 (Estúdio/TV/Admin/
+   Acesso) e F6 (Mobile) — **154 arquivos** do front atual ainda sem migrar.
 
 ---
 
-## 2. White-label do shell escuro — o buraco mais concreto
+## Como isto foi decidido
 
-**O que aconteceu.** Ligamos as superfícies do shell novo (fundo, borda, texto)
-ao tema do tenant, como o front antigo faz. Ao abrir com o tenant RVB no
-ambiente de desenvolvimento, o shell escuro virou **fundo branco com texto azul**
-(`#0080ff`) e borda azul (`#136ec9`). Não era erro de implementação: são os
-valores de white-label reais daquele cliente, escolhidos para o shell **claro**
-antigo.
+**Tela sem desenho não se inventa.** Onde faltou desenho, implementamos o mínimo
+seguindo o Manual Logikos e os tokens `--lk-*`, e o item entrou nesta lista.
+Implementar seguindo a identidade **não** dispensa o desenho oficial.
 
-**O que foi feito.** Só a **cor de marca** (`--color-primary`) vem do tenant. As
-superfícies ficaram nos valores do desenho. Estado (verde/âmbar/vermelho) e o
-magenta do loader ficaram fora do white-label de propósito — o primeiro é
-semântica de segurança, o segundo é assinatura da Logikos.
-
-**O que precisamos que você desenhe:**
-1. **Quais tokens o cliente pode trocar** no shell escuro, e quais são intocáveis.
-2. **Piso de contraste** para cada token aberto — hoje um cliente pode escolher
-   uma cor de marca que some no fundo escuro e nada impede.
-3. **O que acontece com um logo claro** sobre fundo escuro (e vice-versa).
-4. Se superfície **puder** ser trocada: qual é o conjunto mínimo coerente
-   (não adianta abrir o fundo e travar a borda).
+**Zero dado inventado em tela de produto.** Onde o backend não serve o dado que o
+desenho previa, a tela não o exibe — e também não fica explicando ao operador o
+que falta. Isso é assunto desta lista.
 
 ---
 
-## 3. Banner de contexto assumido
+# 🔴 BLOQUEIA FASE — sem desenho, o front antigo não sai
 
-**O que aconteceu.** O handoff especifica 42px com faixa âmbar de 2px. O banner
-que existe hoje é mais antigo, tem lógica cara em volta (TTL de 30 min,
-renovação proativa, expiração, "Reassumir") e é montado globalmente — restilizá-lo
-agora mudaria também o front antigo, que precisa seguir de pé.
+## 1. Ajustar a câmera + saúde do equipamento
 
-**O que foi feito.** O banner atual foi mantido; o shell novo apenas desce o
-espaço que ele ocupa.
+**O que se perde sem isto:** ninguém consegue dizer "esta câmera roda a 5 quadros
+por segundo em qualidade média e coleta frames de treino no stream principal", e
+ninguém vê GPU, memória, fila, latência e temperatura. É o **único lugar do
+produto que grava a resolução dos frames que entram no dataset de treino**, e o
+único freio contra sobrecarregar o mini PC do cliente.
 
-**O que precisamos:** o desenho dos **estados** do banner, não só do banner
-parado — contexto ativo, contexto expirado com "Reassumir", e o momento da
-renovação. Hoje o primeiro é vermelho e o segundo é âmbar, por decisão de
-implementação, não de desenho.
+**Backend pronto:** `GET /api/cameras/<id>/health-context` devolve
+`gpu_pct`, `gpu_mem_pct`, `cpu_pct`, `queue_depth`, `inference_fps`,
+`inference_latency_ms`, `gpu_temp_c`, `decode_pct` + a demanda de FPS do site.
+Gravação pelo update da câmera (FPS 1/5/10/15/30 · qualidade `low`/`medium`/`high`
+· coleta `Principal (máxima)` / `Substream (704×480)`).
+
+**Já rascunhado** — artboard `Main.dc.html` em `docs/design/handoff-v2/`.
+
+## 2. Corrigir a caixa da detecção
+
+**O que se perde:** quando a IA marca a caixa no lugar errado, o operador não tem
+como redesenhá-la — nem arrastando, nem digitando —, e some a linha "caixa
+corrigida por Fulano". É o gesto que transforma erro da IA em dado bom, e o
+caminho digitado é o acessível para quem não usa mouse com precisão.
+
+**Backend pronto:** `PATCH /api/alerts/<id>/violations` com
+`{correcoes: [{index, bbox}]}`; `bbox` é `[x, y, largura, altura]` em **pixels do
+frame original**, canto superior esquerdo. Devolve `violations` e
+`correcao_ultima` (com `.por` — a autoria).
+
+**Já rascunhado** — artboard `CorrigirCaixa.dc.html`.
+
+## 3. Montar a parede de câmeras
+
+**O que se perde:** escolher qual câmera fica em qual quadrinho ("Portaria sempre
+no canto superior esquerdo"), arrastar para trocar, e salvar com nome. Com 28
+câmeras o operador **decora posição, não nome** — sem posição fixa ele varre a
+tela inteira a cada alerta.
+
+**Backend:** `GET /api/cameras` lista as câmeras. **O layout NÃO tem endpoint** —
+hoje vive no navegador de quem salvou (máximo 10). É a pergunta aberta do item.
+
+**Já rascunhado** — artboard `ParedeCameras.dc.html`.
+
+## 4. As 10 telas vivas que o handoff nunca desenhou
+
+Estas rotas existem, têm gente usando, e ficaram fora do handoff. Enquanto não
+houver desenho elas seguem no shell antigo — o que significa que **o produto tem
+duas caras** para quem navega entre elas.
+
+| Rota | O que faz | Backend |
+|---|---|---|
+| `/modules` | seleção de módulo — a primeira tela após o login de quem tem mais de um | `GET /api/modules` |
+| `/epi/cameras/triagem` | triagem de câmeras | `GET /api/cameras` |
+| `/epi/cameras/:id/operations` | operações da câmera (motor em produção) | `GET`/`POST /api/cameras/<id>/operations` |
+| `/epi/cameras/:id/scenario` | editor de cenário — região sobre o vídeo | `/api/v1/scenarios` |
+| `/epi/health` | saúde de streams | `/api/streams` |
+| `/epi/sites-health` | saúde por site | `/api/v1/edge` |
+| `/epi/sites` | sites do tenant | `/api/v1/edge` |
+| `/epi/edge-observability` | observabilidade do edge (o Jetson no cliente) | `/api/v1/edge` |
+| `/epi/investigation` | investigação | `/api/v1/events` |
+| `/monitoring` | monitoramento do edge | `/api/v1/edge` |
+
+**O que precisamos:** sua priorização entre as 10 — quais valem desenho próprio e
+quais podem ser variação de telas que você já desenhou.
 
 ---
 
-## 4. Chat flutuante
+# 🟡 NASCEU SEGUINDO SÓ A IDENTIDADE — merece desenho oficial
 
-Existe um botão de chat flutuante no canto inferior direito, vindo do produto
-atual. Ele aparece por cima das telas novas e não está em nenhum desenho do
-handoff.
+Estas telas/controles não existiam e foram construídos seguindo o Manual e os
+tokens, porque a operação precisava deles. Funcionam, mas ninguém os desenhou.
 
-**O que precisamos:** ele fica? Se fica, onde e com que aparência no shell novo?
-Se sai, sai do produto ou só das telas novas?
+## 5. Seletor de cliente na topbar (superadmin)
 
----
+**Por que nasceu:** um superadmin nasce no tenant dele — que no DEV está vazio —
+enquanto os dados estão no RVB. A tela abria vazia e parecia quebrada. O
+auto-assume existente desiste quando há mais de um cliente (e há três), e o banner
+global só aparece **depois** de já haver contexto: mostrava a saída, nunca a
+entrada.
 
-## 5. Relatórios — o que o backend não serve
+**Como está:** botão âmbar "Escolher cliente" na topbar, só para superadmin e só
+sem contexto assumido; ao escolher, volta na mesma tela.
 
-O desenho de Relatórios prevê quatro coisas que **não existem na API hoje**:
+**Backend pronto:** `GET /api/v1/admin/tenant-context/tenants` ·
+`POST /api/v1/admin/tenant-context/tenants/<id>/assume`.
 
-- digest diário por e-mail (destinatários, horário de envio);
-- seleção de conteúdo do export (checkboxes);
-- ações corretivas vencidas;
-- taxa de conformidade medida sobre detecções totais — o que a API devolve é uma
-  heurística, não a mesma coisa.
+**O que precisamos:** o desenho oficial deste momento — é a primeira coisa que um
+superadmin vê e hoje é um botão que eu desenhei.
 
-Nenhuma delas foi para a tela. **O que precisamos:** confirmar se são requisitos
-de produto (e então viram trabalho de backend) ou se saem do desenho.
+## 6. White-label do shell escuro
 
----
+**O que aconteceu, medido:** ligamos as superfícies do shell novo ao tema do
+tenant. Aberto com o RVB, o shell escuro virou **fundo branco com texto azul**
+(`#0080ff`) e borda azul. Não era bug — são os valores de white-label reais
+daquele cliente, escolhidos para o shell **claro** antigo.
 
-## 6. Perfis: o desenho supõe 4, o produto tem 6
+**Como está:** só a **cor de marca** (`--color-primary`) vem do tenant. As
+superfícies ficam nos valores do desenho. Estado (verde/âmbar/vermelho) e o
+magenta do loader ficam fora de propósito — o primeiro é semântica de segurança,
+o segundo é assinatura da Logikos.
 
-O handoff organiza a navegação por quatro perfis. O backend tem **seis**:
-`superadmin`, `admin`, `operator`, `analyst`, `trainer`, `viewer`.
+**Backend pronto:** `GET /api/v1/tenant/branding`.
 
-**O que foi feito.** A navegação é derivada de **permissão**, não de nome de
-perfil — assim `analyst` e `trainer` não caem num vão. Cada item do menu declara
-a permissão que exige, e há teste que confere cada uma contra o registro real do
-backend.
+**O que precisamos:** (a) quais tokens o cliente pode trocar no shell escuro e
+quais são intocáveis; (b) **piso de contraste** por token aberto — hoje um cliente
+pode escolher uma cor de marca que some no fundo escuro e nada impede; (c) o que
+acontece com um logo claro sobre fundo escuro.
 
-**O que precisamos:** sua leitura de como `analyst` e `trainer` devem ver o
-produto. Hoje eles veem o que suas permissões permitem, o que é correto mas não
-foi desenhado.
+## 7. Estados do banner de contexto assumido
 
----
+O handoff especifica 42px com faixa âmbar de 2px. O banner que existe é mais
+antigo, tem lógica cara em volta (TTL de 30 min, renovação, expiração,
+"Reassumir") e é global — restilizá-lo agora mudaria o front antigo junto.
 
-## 7. Texto dos estados vazios
+**O que precisamos:** o desenho dos **estados**, não só do banner parado —
+contexto ativo, contexto expirado com "Reassumir", e o momento da renovação. Hoje
+o primeiro é vermelho e o segundo âmbar por decisão de implementação.
 
-Cada tela precisa dizer alguma coisa quando não há dado, e o handoff não traz
-esses textos. Foram escritos na implementação, seguindo o tom do produto:
+## 8. Ranking das câmeras com mais eventos
+
+**O que se perde:** a lista das 10 câmeras que mais dispararam. A tela nova de
+Relatórios mostra só a campeã. É por esse ranking que o gestor decide onde treinar
+equipe e onde a câmera está mal posicionada.
+
+**Backend pronto:** `by_camera` em `GET /api/v1/events/summary`.
+
+**Já rascunhado** — artboard `RankingCameras.dc.html`.
+
+## 9. Texto dos estados vazios
+
+Cada tela precisa dizer algo quando não há dado, e o handoff não traz esses
+textos. Foram escritos na implementação:
 
 | Tela | Texto atual |
 |---|---|
-| Dashboard | "Sem dados para este módulo — nenhuma câmera está atribuída ao EPI ainda. O score aparece após as primeiras detecções." |
-| Eventos | "Nenhum evento no período — nenhuma detecção com os filtros atuais. Bom sinal — ou filtro demais." |
-| Verificação | "Fila zerada — nenhuma detecção aguarda verificação. As decisões de hoje já alimentam o próximo treino." |
-| Ações | "Nenhuma ação aberta — ações nascem de eventos. Nos últimos 30 dias não houve evento de violação para reconhecer nesta operação." |
-| Relatórios | "Sem dados no período selecionado — o período selecionado não tem eventos registrados. Amplie o intervalo." |
+| Dashboard | "Sem dados para este módulo — nenhuma câmera está atribuída ao EPI ainda." |
+| Eventos | "Nenhum evento no período — bom sinal, ou filtro demais." |
+| Verificação | "Fila zerada — as decisões de hoje já alimentam o próximo treino." |
+| Ações | "Nenhuma ação aberta — ações nascem de eventos." |
+| Relatórios | "Sem dados no período selecionado — amplie o intervalo." |
 | Câmeras | "Nenhuma câmera cadastrada" |
 
-**O que precisamos:** sua revisão do tom. Um estado vazio é a tela que o
-operador mais vê quando tudo está bem — vale ele estar escrito por quem escreve
-o resto do produto. Note que "Nenhum evento" pode significar *nada aconteceu* ou
-*o filtro está apertado demais*, e a diferença importa para quem opera.
+**O que precisamos:** sua revisão do tom. O estado vazio é a tela que o operador
+mais vê quando tudo está bem. E note: "nenhum evento" pode significar *nada
+aconteceu* ou *o filtro está apertado demais* — a diferença importa para quem
+opera.
 
 ---
 
-## 8. O que foi verificado, e o que não foi
+# ⚪ POLIMENTO — não bloqueia fase nenhuma
 
-Honestidade sobre os limites desta rodada. Duas das três lacunas que estavam
-aqui foram fechadas depois — ficaram registradas para você saber o que existe de
-evidência por trás de cada afirmação.
+## 10. Chat flutuante
 
-**Ciano ≤10% — MEDIDO.** Foi medido com navegador de verdade, contra dado real
-do RVB, com um guard que reprova a medição se a tela estiver em erro ou
-carregando (a primeira tentativa mediu sete telas de erro, porque a API do DEV
-só libera CORS para a porta 3000):
+Existe um botão de chat flutuante vindo do produto atual. Aparece por cima das
+telas novas, não está em nenhum desenho — e, medido, ele sozinho põe 3.136px² de
+ciano em **todas** as telas novas.
 
-| tela | área ciana | maior elemento ciano |
-|---|---:|---|
-| Dashboard | 0,34% | — |
-| Ações | 0,40% | — |
-| Eventos | 0,89% | botão "Limpar filtros" |
-| Verificação | 1,08% | "Voltar ao dashboard" |
-| Ao Vivo | 1,34% | — |
-| Câmeras | 1,69% | botão "Adicionar câmera" |
-| Relatórios | 2,27% | botão "Exportar" |
+**O que precisamos:** ele fica? Onde, e com que aparência no shell novo?
 
-A medida conta **área de fundo** ciano sobre a área da tela; borda e texto
-cianos não entram, então ela é conservadora por baixo. Todas passam com folga.
+## 11. Relatórios — o que o backend não serve
 
-Um achado de lambuja: o **chat flutuante** (§4) aparece na conta de TODAS as
-telas — são 3.136px² de ciano vindos do produto antigo, em cada tela nova.
+O desenho prevê quatro coisas que **não existem na API**: digest diário por
+e-mail, seleção de conteúdo do export, ações corretivas vencidas, e taxa de
+conformidade medida sobre detecções totais (o que a API devolve é heurística).
+Nenhuma foi para a tela.
 
-**Cada papel na tela — VERIFICADO.** Os seis papéis reais foram abertos num
-navegador de verdade, e o menu de cada um foi conferido contra a matriz de
-permissões gerada do backend. Confirmações que interessam ao desenho:
+**O que precisamos:** confirmar se são requisito (viram trabalho de backend) ou se
+saem do desenho.
 
-- **`trainer` vê 3 itens** (Dashboard, Ao Vivo, Câmeras) — não vê Eventos,
-  Verificação, Ações nem Relatórios, porque só tem `cameras:read`.
-- **`viewer` vê 6** — tudo menos Verificação.
-- `operator` e `analyst` veem os 7, como `admin`.
+## 12. Perfis: o desenho supõe 4, o produto tem 6
 
-O caso do `trainer` merece sua atenção: um perfil que não enxerga evento nem
-relatório tem pouco o que fazer no módulo EPI. Pode estar certo (o trabalho dele
-é no Estúdio), mas é uma decisão de produto que ninguém tomou de propósito — ela
-caiu da matriz de permissões.
+O backend tem `superadmin`, `admin`, `operator`, `analyst`, `trainer`, `viewer`.
+A navegação é derivada de **permissão**, não de nome de perfil, e há teste que
+confere cada chave contra o registro real.
 
-**Paridade funcional — APURADA, e o resultado importa para você.** Sete agentes
-compararam função por função cada tela antiga com sua substituta; cada alegação
-passou por um cético independente encarregado de refutá-la. Das **42 alegadas,
-22 se confirmaram** (as outras 20 eram função que já existia, com outro nome ou
-em outro lugar).
+Verificado em navegador: **`trainer` vê 3 itens** (Dashboard, Ao Vivo, Câmeras) —
+não vê Eventos, Verificação, Ações nem Relatórios, porque só tem `cameras:read`.
+**`viewer` vê 6**, tudo menos Verificação.
 
-Quatro delas são decisão de desenho, não de código — o handoff **não desenhou**
-o equivalente:
-
-1. **Ajustar a câmera** (FPS de inferência, qualidade do vídeo, resolução da
-   coleta de treino) e ver a saúde do equipamento. É o único lugar do produto
-   que grava em que resolução os frames entram no dataset, e o único freio
-   contra sobrecarregar o mini PC do cliente.
-2. **Corrigir a caixa da detecção** no frame — por arrasto e por teclado. É o
-   gesto que transforma erro da IA em dado bom; o caminho digitado é o acessível
-   para quem não usa mouse com precisão.
-3. **Montar a parede de câmeras**: qual câmera em qual quadrinho, arrastar para
-   trocar, e salvar com nome ("Portaria + Estoque"). Com 28 câmeras o operador
-   decora posição, não nome.
-4. **Ranking das 10 câmeras com mais alertas.** A tela nova de Relatórios mostra
-   só a campeã.
-
-A lista completa e verificada está em `PARIDADE-ANTIGO-VS-NOVO.md`.
-
-**O que precisamos:** desenho para as quatro. Enquanto não houver, as telas
-antigas ficam de pé — o manifesto de remoção já as marca como `SUBSTITUIDA`
-(tem substituta, mas NÃO pode ser apagada).
+**O que precisamos:** sua leitura do `trainer`. Um perfil que não enxerga evento
+nem relatório tem pouco o que fazer no módulo EPI. Pode estar certo (o trabalho
+dele é no Estúdio), mas **ninguém tomou essa decisão de propósito** — ela caiu da
+matriz de permissões.
 
 ---
 
-## 9. Perguntas curtas, para responder por mensagem
+## Perguntas curtas, de responder por mensagem
 
-1. Das 10 telas sem desenho (§1), quais 3 você desenha primeiro?
-2. No white-label do shell escuro (§2): o cliente troca só a cor de marca, ou
+1. Das 10 telas sem desenho (§4), quais 3 você desenha primeiro?
+2. O layout salvo da parede (§3) é por **usuário** ou por **site**? Isso decide se
+   precisa de endpoint novo.
+3. No white-label do shell escuro (§6): o cliente troca só a cor de marca, ou
    superfície também? Se também, qual o piso de contraste?
-3. O chat flutuante (§4) fica?
-4. Os quatro itens de Relatórios que o backend não serve (§5) são requisito ou
-   saem do desenho?
-5. `analyst` e `trainer` (§6): mesma navegação dos outros, filtrada por
-   permissão — ou merecem um recorte próprio?
+4. O chat flutuante (§10) fica?
+5. Os quatro itens de Relatórios (§11) são requisito ou saem do desenho?
+6. `trainer` (§12): navegação filtrada por permissão como está, ou merece recorte
+   próprio?
