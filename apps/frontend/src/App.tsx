@@ -12,7 +12,7 @@ import { AppShell } from './components/layout/AppShell/AppShell'
 import { AppLayout } from './components/layout/AppLayout/AppLayout'
 import { ChatFAB } from './components/chat/ChatFAB'
 import { GlobalBanners } from './components/layout/GlobalBanners'
-import { PREFIXO_NOVO, ROTAS_NOVAS } from './app/RotasNovas'
+import { PREFIXO_NOVO, ROTAS_NOVAS, ROTAS_NOVAS_SEM_SHELL } from './app/RotasNovas'
 import { Shell } from './app/shell/Shell'
 import { ThemeProvider } from './theme/ThemeProvider'
 import type { User } from './hooks/useAuth'
@@ -48,6 +48,8 @@ function AppShellWrapper({ user, onLogout }: { user: User; onLogout: () => void 
           quando a migração inteira estiver de pé — ver
           docs/migration/MANIFESTO-FRONT-ANTIGO.md. */}
       <Routes>
+        {/* Antes do Shell: estas trazem o próprio cabeçalho. */}
+        {ROTAS_NOVAS_SEM_SHELL}
         <Route path={PREFIXO_NOVO} element={<Shell />}>{ROTAS_NOVAS}</Route>
         <Route
           path="*"

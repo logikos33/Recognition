@@ -48,6 +48,13 @@ export const lk = createGlobalTheme(':root', {
     grafite: '#14141C',
     /** bordas 1px e divisores */
     borda: '#23242F',
+    /**
+     * Borda mais presente: contorno de avatar, hover de controle secundário.
+     * Estava faltando no contrato — o handoff usa este valor 18 vezes e eu
+     * vinha escrevendo o hex à mão, que é exatamente o que os tokens existem
+     * para impedir.
+     */
+    bordaForte: '#3A3D4A',
     /** texto principal e wordmark */
     brancoSinal: '#F4F6F8',
     /** secundário, labels overline */
