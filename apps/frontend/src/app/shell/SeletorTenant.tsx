@@ -51,7 +51,10 @@ export function SeletorTenant() {
     if (!mostrar) return
     let vivo = true
     listAvailableTenants()
-      .then((lista) => vivo && setTenants(lista))
+      // Cinto e suspensório: o serviço já garante o array, mas este componente
+      // vive na TOPBAR — se ele estourar, o usuário perde a aplicação inteira,
+      // não só o seletor.
+      .then((lista) => vivo && setTenants(Array.isArray(lista) ? lista : []))
       // Falhar aqui não pode derrubar a topbar: sem lista, o controle não
       // aparece e o caminho antigo (tela de admin) continua de pé.
       .catch(() => vivo && setTenants([]))

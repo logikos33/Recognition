@@ -58,7 +58,11 @@ interface AssumeContextResponse {
 /** Tenants disponíveis para assumir contexto (ativos, com schema válido). */
 export async function listAvailableTenants(): Promise<AvailableTenant[]> {
   const res = await api.get<ListTenantsResponse>('/v1/admin/tenant-context/tenants')
-  return res.data.tenants
+  // O tipo promete um array; o envelope pode não trazer `tenants` (resposta
+  // malformada, rota stubada, versão antiga da API). Devolver `undefined` sob
+  // uma assinatura de array quebra o chamador longe daqui — e foi assim que o
+  // shell inteiro caiu no CI: quem consumia fez `lista.length` e estourou.
+  return res.data?.tenants ?? []
 }
 
 /** Há um contexto de tenant assumido ativo neste navegador? */

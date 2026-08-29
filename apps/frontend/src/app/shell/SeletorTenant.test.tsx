@@ -68,6 +68,15 @@ describe('escolher o cliente', () => {
     await waitFor(() => expect(container.textContent).toBe(''))
   })
 
+  it('resposta sem a lista não derruba a topbar', async () => {
+    // O caso que quebrou o CI: envelope válido, `data.tenants` ausente. O
+    // componente mora na topbar — estourar aqui tira a aplicação inteira do ar,
+    // não só o seletor.
+    ctx.listar.mockResolvedValue(undefined as never)
+    const { container } = render(<SeletorTenant />)
+    await waitFor(() => expect(container.textContent).toBe(''))
+  })
+
   it('falha ao listar não derruba a topbar', async () => {
     ctx.listar.mockRejectedValue(new Error('rede'))
     const { container } = render(<SeletorTenant />)
