@@ -1,0 +1,42 @@
+# Alguém lê o alarme por ofício.
+#
+# Em 29/08 a API do DEV rodou horas um build de `railway up` enquanto a develop
+# tinha outro código. O sinal existia — `/livez` devolvia `commit: "unknown"` —
+# e ninguém estava lendo. Este agendamento lê.
+name: Proveniência do DEV
+
+on:
+  schedule:
+    # A cada 15 min. A carência de 30 min está no script: divergência só vira
+    # alerta quando o commit da develop já passou dela, para não gritar durante
+    # um deploy normal — alarme que grita à toa é alarme que todo mundo ignora.
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  conferir:
+    name: O DEV está rodando a develop?
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          # Precisa do histórico para ler a DATA do commit — é ela que decide
+          # se a divergência ainda está na carência.
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Testar a própria checagem antes de confiar nela
+        run: python -m pytest tests/test_checa_proveniencia.py -q
+
+      - name: API-V3 do DEV
+        run: |
+          git fetch origin develop --quiet
+          python scripts/checa_proveniencia.py \
+            --url https://api-v3-desenvolvimento.up.railway.app/livez \
+            --branch origin/develop
