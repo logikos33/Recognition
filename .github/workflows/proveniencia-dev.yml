@@ -8,6 +8,12 @@
 #
 # Alguém lê o alarme por ofício.
 #
+# ⚠️ `schedule` executa a versão do arquivo que está na BRANCH PADRÃO — e neste
+# projeto (`develop → staging → main`) a `main` é a ponta MAIS ATRASADA. Por
+# isso a checagem é autocontida: `scripts/checa_proveniencia.py` usa só a
+# stdlib, não importa nada de `services/api` e não depende de requirements. A
+# versão que envelhecer em `main` continua correta por mais tempo.
+#
 # Em 29/08 a API do DEV rodou horas um build de `railway up` enquanto a develop
 # tinha outro código. O sinal existia — `/livez` devolvia `commit: "unknown"` —
 # e ninguém estava lendo. Este agendamento lê.

@@ -56,8 +56,14 @@ se um alarme novo couber num dos dois, ele entra ali.
 
 > 🔴 **O vigia de proveniência ainda NÃO está ligado.** O GitHub só **reconhece**
 > `schedule` e `workflow_dispatch` a partir da **branch padrão**, que aqui é
-> `main` — o arquivo está na `develop`. (É por isso que o `security-scan.yml`,
-> que está em `main`, dispara.)
+> `main` — o arquivo está na `develop`.
+>
+> ⚠️ **Não há outro workflow agendado neste repositório para comparar.** Chegou
+> a ser escrito aqui que "o `security-scan.yml` dispara porque está em `main`" —
+> **falso**: ele roda em `push`/`pull_request`, não tem `schedule`. A evidência
+> que sustenta a regra é outra, e é direta: depois do merge na `develop`, o
+> `gh workflow run proveniencia-dev.yml` devolveu **HTTP 404 — "not found on the
+> default branch"**.
 >
 > ⚠️ **Os dois gatilhos não se comportam igual, e a diferença muda o teste
 > manual:** uma vez que o arquivo esteja em `main`, o `workflow_dispatch`
