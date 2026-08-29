@@ -192,6 +192,75 @@ export const caixaRotulo = style({
   whiteSpace: 'nowrap',
 })
 
+// ── correção de caixa (CorrigirCaixa.dc.html) ──────────────────────────────
+
+/** "ONDE A IA MARCOU" — tracejada, cinza. Só a leitura do que o modelo gravou. */
+export const caixaIA = style({
+  position: 'absolute',
+  pointerEvents: 'none',
+  borderStyle: 'dashed',
+  borderColor: lk.cor.cinzaNevoa,
+  borderRadius: '2px',
+})
+
+export const rotuloCaixaIA = style({
+  position: 'absolute',
+  bottom: '100%',
+  left: 0,
+  marginBottom: '4px',
+  transformOrigin: '0 100%',
+  fontFamily: lk.fonte.mono,
+  fontSize: '10px',
+  color: lk.cor.cinzaNevoa,
+  whiteSpace: 'nowrap',
+})
+
+/**
+ * "SUA CORREÇÃO" — sólida, ciano. Única caixa desta tela que É alvo de
+ * clique: é o próprio editor (arrastar move, alças redimensionam). A
+ * vinheta escurece tudo FORA dela — mesmo truque do handoff
+ * (`box-shadow: 0 0 0 9999px`), recortado pelo `overflow:hidden` do palco.
+ */
+export const caixaCorrecao = style({
+  position: 'absolute',
+  cursor: 'move',
+  borderStyle: 'solid',
+  borderColor: lk.cor.cianoVisao,
+  borderRadius: '2px',
+  boxShadow: `0 0 0 9999px color-mix(in srgb, ${lk.cor.preto} 45%, transparent)`,
+})
+
+export const rotuloCaixaCorrecao = style({
+  position: 'absolute',
+  bottom: '100%',
+  left: 0,
+  marginBottom: '4px',
+  pointerEvents: 'none',
+  fontFamily: lk.fonte.mono,
+  fontSize: '10px',
+  fontWeight: 700,
+  color: lk.cor.cianoVisao,
+  whiteSpace: 'nowrap',
+})
+
+/** Alça de resize — tamanho e posição vêm inline (contra-escala do zoom + 8 cantos). */
+export const alca = style({
+  position: 'absolute',
+  background: lk.cor.cianoVisao,
+  borderRadius: '2px',
+})
+
+export const dicaCorrecao = style({
+  margin: 0,
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
+  fontFamily: lk.fonte.mono,
+  fontSize: '10.5px',
+  letterSpacing: '0.14em',
+  color: lk.cor.cinzaNevoa,
+})
+
 const seloBase = style({
   position: 'absolute',
   top: '10px',
@@ -309,9 +378,37 @@ export const listaDeteccoes = style({
   fontSize: '12.5px',
 })
 
-export const deteccao = style({ display: 'flex', justifyContent: 'space-between', gap: lk.espaco.x1 })
+export const deteccao = style({ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: lk.espaco.x1 })
+
+/** Marca a violação em edição — mesmo acento de borda-esquerda do nav ativo. */
+export const deteccaoSelecionada = style({
+  borderLeft: `2px solid ${lk.cor.cianoVisao}`,
+  paddingLeft: '8px',
+})
+
+/** Agrupa classe + confiança num único item flex, para o botão "Corrigir
+ *  caixa" ser o segundo (e só o segundo) filho de `deteccao`. */
+export const deteccaoInfo = style({ display: 'flex', alignItems: 'center', gap: lk.espaco.x1 })
 
 export const confianca = style({ fontFamily: lk.fonte.mono, color: lk.cor.cinzaNevoa })
+
+export const botaoCorrigir = style({
+  height: '26px',
+  padding: '0 10px',
+  flex: 'none',
+  display: 'inline-flex',
+  alignItems: 'center',
+  background: 'transparent',
+  border: `1px solid ${lk.cor.borda}`,
+  borderRadius: lk.raio.s,
+  color: lk.cor.cinzaNevoa,
+  fontFamily: lk.fonte.mono,
+  fontSize: '10.5px',
+  letterSpacing: '0.06em',
+  textTransform: 'uppercase',
+  cursor: 'pointer',
+  ':hover': { borderColor: lk.cor.cianoVisao, color: lk.cor.cianoVisao },
+})
 
 /** Badge de procedência — afirmação NEGATIVA ("coleta retroativa"), só ela. */
 export const procedencia = style({
@@ -394,6 +491,85 @@ export const iconeVeredito = style({ width: '16px', height: '16px', flex: 'none'
 export const aviso = style({ margin: 0, fontSize: '12px', lineHeight: 1.5, color: lk.estado.atencao })
 
 export const erro = style({ margin: 0, fontSize: '12.5px', color: lk.estado.nc })
+
+export const linkTentarNovamente = style({
+  marginLeft: '6px',
+  padding: 0,
+  background: 'none',
+  border: 'none',
+  color: lk.cor.cianoVisao,
+  fontFamily: lk.fonte.ui,
+  fontSize: '12.5px',
+  fontWeight: 600,
+  textDecoration: 'underline',
+  cursor: 'pointer',
+})
+
+// ── correção de caixa: coordenadas + ações ─────────────────────────────────
+
+export const gradeCoordenadas = style({
+  display: 'grid',
+  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  gap: lk.espaco.x1,
+})
+
+export const campoCoordenada = style({ display: 'flex', flexDirection: 'column', gap: '5px' })
+
+export const rotuloCoordenada = style({
+  fontFamily: lk.fonte.mono,
+  fontSize: '10px',
+  letterSpacing: OVERLINE_TRACKING,
+  color: lk.cor.cinzaNevoa,
+})
+
+export const inputCoordenada = style({
+  height: '44px',
+  width: '100%',
+  boxSizing: 'border-box',
+  padding: '0 12px',
+  borderRadius: lk.raio.s,
+  border: `1px solid ${lk.cor.borda}`,
+  background: lk.cor.preto,
+  color: lk.cor.brancoSinal,
+  fontFamily: lk.fonte.mono,
+  fontSize: '15px',
+  outline: 'none',
+  ':focus': { borderColor: lk.cor.cianoVisao },
+  ':disabled': { color: lk.cor.cinzaNevoa },
+})
+
+/** Mesma forma de `botaoVeredito` (48px, regra do handoff p/ quem opera de
+ *  luva) — cor muda: "Salvar caixa" é ação, não confirmação/descarte. */
+export const botaoCorrecao = styleVariants({
+  salvar: [vereditoBase, {
+    border: 'none',
+    background: lk.cor.cianoVisao,
+    color: lk.cor.preto,
+    fontWeight: 700,
+  }],
+  cancelar: [vereditoBase, {
+    background: 'transparent',
+    border: `1px solid ${lk.cor.borda}`,
+    color: lk.cor.brancoSinal,
+    fontWeight: 600,
+  }],
+})
+
+export const badgeAutoria = style({
+  display: 'flex',
+  gap: lk.espaco.x1,
+  padding: '12px',
+  borderRadius: lk.raio.s,
+  background: lk.cor.preto,
+  border: `1px solid ${lk.cor.borda}`,
+})
+
+export const badgeAutoriaTexto = style({
+  margin: 0,
+  fontSize: '12.5px',
+  lineHeight: 1.5,
+  color: lk.cor.cinzaNevoa,
+})
 
 // ── estados de tela inteira (vazio / erro) ──────────────────────────────────
 

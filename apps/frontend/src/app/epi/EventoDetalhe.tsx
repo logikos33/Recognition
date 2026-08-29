@@ -53,6 +53,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, ArrowLeft, Check, Clock, Maximize2, Minus, Plus, SearchX, X } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 
+import { HANDLES, boxFromDrag, clamp, moveBox, resizeBox, type HandleId } from '../../components/annotation/boxGeometry'
+import type { Box } from '../../components/annotation/studioTypes'
 import { classificarLatencia } from '../../components/shared/ProcedenciaBadge'
 import { useAuth } from '../../hooks/useAuth'
 import {
@@ -79,6 +81,10 @@ interface Violacao {
   bbox_unidade?: string
 }
 
+/** Última correção de caixa registrada no ledger append-only do alerta
+ *  (`violations_historico` no backend, ver `_ultima_correcao`). */
+interface Correcao { por: string | null; em: string | null }
+
 /** Projeção de `GET /api/alerts/:id` — só o que a rota realmente devolve. */
 export interface Evento {
   id: string
@@ -91,10 +97,18 @@ export interface Evento {
   evidence_url: string | null
   verification_verdict?: string | null
   verified_at?: string | null
+  correcao_ultima?: Correcao | null
 }
 
 type Fase = 'carregando' | 'carregado' | 'vazio' | 'erro'
 type Veredito = 'approve' | 'reject'
+
+/** Modo do arrasto em curso sobre a caixa de correção — desenhar do zero,
+ *  mover a caixa inteira, ou redimensionar por uma das 8 alças. */
+type InteracaoCaixa =
+  | { modo: 'desenhar'; x0: number; y0: number }
+  | { modo: 'mover'; offX: number; offY: number }
+  | { modo: 'redimensionar'; alca: HandleId; inicio: Box }
 
 /**
  * bbox = [x, y, w, h] em PIXELS do frame ORIGINAL (canto superior-esquerdo,
@@ -109,6 +123,30 @@ export function caixaEmPorcento([x, y, w, h]: Bbox, natW: number, natH: number) 
   // toFixed(4) só apara o ruído binário; 4 casas em % é sub-pixel em qualquer frame.
   const pct = (n: number, total: number) => `${+((n / total) * 100).toFixed(4)}%`
   return { left: pct(x, natW), top: pct(y, natH), width: pct(w, natW), height: pct(h, natH) }
+}
+
+/**
+ * bbox px (frame original) → caixa normalizada de `boxGeometry.ts` (mesma
+ * matemática — centro + dimensões, 0–1 — do Estúdio de Anotação). Mover e
+ * redimensionar por alça não são reescritos aqui, só convertidos na
+ * fronteira do arrasto.
+ */
+function bboxParaBox([x, y, w, h]: Bbox, natW: number, natH: number): Box {
+  return {
+    id: 'correcao', classId: 0,
+    xCenter: (x + w / 2) / natW, yCenter: (y + h / 2) / natH,
+    width: w / natW, height: h / natH,
+  }
+}
+
+/** Caminho de volta: caixa normalizada → bbox px (frame original), arredondado. */
+function boxParaBbox(b: Box, natW: number, natH: number): Bbox {
+  return [
+    Math.round((b.xCenter - b.width / 2) * natW),
+    Math.round((b.yCenter - b.height / 2) * natH),
+    Math.round(b.width * natW),
+    Math.round(b.height * natH),
+  ]
 }
 
 /** Estado do veredito REGISTRADO. Cor + ícone + palavra — nunca só cor. */
@@ -127,6 +165,19 @@ function chipDoVeredito(verdict?: string | null) {
 const dataHora = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
+/** Posição de cada alça — offset −6px, 11px de lado, conforme o handoff
+ *  (`CorrigirCaixa.dc.html`). Tamanho real vem inline (contra-escala do zoom). */
+const ALCA_POS: Record<HandleId, React.CSSProperties> = {
+  nw: { left: '-6px', top: '-6px', cursor: 'nwse-resize' },
+  n: { left: 'calc(50% - 5.5px)', top: '-6px', cursor: 'ns-resize' },
+  ne: { right: '-6px', top: '-6px', cursor: 'nesw-resize' },
+  e: { right: '-6px', top: 'calc(50% - 5.5px)', cursor: 'ew-resize' },
+  se: { right: '-6px', bottom: '-6px', cursor: 'nwse-resize' },
+  s: { left: 'calc(50% - 5.5px)', bottom: '-6px', cursor: 'ns-resize' },
+  sw: { left: '-6px', bottom: '-6px', cursor: 'nesw-resize' },
+  w: { left: '-6px', top: 'calc(50% - 5.5px)', cursor: 'ew-resize' },
+}
+
 export function EventoDetalhe() {
   const { id } = useParams<{ id: string }>()
   const { can } = useAuth()
@@ -141,6 +192,18 @@ export function EventoDetalhe() {
   const [motivo, setMotivo] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [erroAcao, setErroAcao] = useState<string | null>(null)
+
+  // ── correção de caixa ────────────────────────────────────────────────────
+  // Migrada de `pages/epi/AlertDetailPage.tsx` (PATCH /alerts/:id/violations)
+  // — ver "PARA O DESIGN" no fim do arquivo.
+  // `selecionada` é o índice da violação em edição; `null` = fora do modo.
+  const imgRef = useRef<HTMLImageElement>(null)
+  const [selecionada, setSelecionada] = useState<number | null>(null)
+  const [rascunho, setRascunho] = useState<Bbox | null>(null)
+  const [salvandoCaixa, setSalvandoCaixa] = useState(false)
+  const [erroCaixa, setErroCaixa] = useState<string | null>(null)
+  /** Arrasto EM CURSO — não precisa de re-render, só de leitura no próximo pointermove. */
+  const interacaoCaixa = useRef<InteracaoCaixa | null>(null)
 
   useEffect(() => {
     let vivo = true
@@ -180,8 +243,14 @@ export function EventoDetalhe() {
   const ponteiros = useRef(new Map<number, { x: number; y: number }>())
   const distPinca = useRef(0)
 
-  // Evento novo = enquadramento novo.
-  useEffect(() => { setLupa(LUPA_INICIAL) }, [id])
+  // Evento novo = enquadramento novo — e a correção de um evento não deve
+  // sobreviver para o próximo.
+  useEffect(() => {
+    setLupa(LUPA_INICIAL)
+    setSelecionada(null)
+    setRascunho(null)
+    setErroCaixa(null)
+  }, [id])
 
   const medir = useCallback((): { rect: DOMRect; palco: Palco } | null => {
     const el = palcoRef.current
@@ -219,13 +288,55 @@ export function EventoDetalhe() {
     return () => el.removeEventListener('wheel', onWheel)
   }, [despachar, medir, evidencia])
 
+  /**
+   * Ponto do cursor → coordenadas NORMALIZADAS (0–1) do frame, para a
+   * matemática de `boxGeometry.ts`. O rect vem da <img>, não do palco: a
+   * imagem está dentro da camada com `transform` da lupa — só o rect medido
+   * reflete escala e pan (mesma razão de `pontoNoFrame` no front antigo).
+   */
+  const pontoNormalizado = (clientX: number, clientY: number) => {
+    const img = imgRef.current
+    if (!img) return null
+    const r = img.getBoundingClientRect()
+    if (!r.width || !r.height) return null
+    return { x: clamp((clientX - r.left) / r.width, 0, 1), y: clamp((clientY - r.top) / r.height, 0, 1) }
+  }
+
   const aoDescerPonteiro = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (selecionada !== null) {
+      // Alças e a caixa de correção têm o próprio onPointerDown (com
+      // stopPropagation) — só chega aqui quem começou fora delas, e isso
+      // sempre é DESENHAR uma caixa nova.
+      const pos = pontoNormalizado(e.clientX, e.clientY)
+      if (pos) interacaoCaixa.current = { modo: 'desenhar', x0: pos.x, y0: pos.y }
+      return
+    }
     ponteiros.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
     if (ponteiros.current.size === 2) distPinca.current = distanciaEntre([...ponteiros.current.values()])
     e.currentTarget.setPointerCapture(e.pointerId)
   }
 
   const aoMoverPonteiro = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (selecionada !== null) {
+      const interacao = interacaoCaixa.current
+      if (!interacao || !natural) return
+      const pos = pontoNormalizado(e.clientX, e.clientY)
+      if (!pos) return
+      if (interacao.modo === 'desenhar') {
+        const caixa = boxFromDrag(interacao.x0, interacao.y0, pos.x, pos.y, 0, 'correcao')
+        // Arrasto pequeno demais (clique acidental) não sobrescreve o rascunho.
+        if (caixa) setRascunho(boxParaBbox(caixa, natural.w, natural.h))
+      } else if (interacao.modo === 'mover') {
+        setRascunho((atual) => {
+          if (!atual) return atual
+          const caixa = moveBox(bboxParaBox(atual, natural.w, natural.h), pos.x - interacao.offX, pos.y - interacao.offY)
+          return boxParaBbox(caixa, natural.w, natural.h)
+        })
+      } else {
+        setRascunho(boxParaBbox(resizeBox(interacao.inicio, interacao.alca, pos.x, pos.y), natural.w, natural.h))
+      }
+      return
+    }
     const anterior = ponteiros.current.get(e.pointerId)
     if (!anterior) return
     ponteiros.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
@@ -247,6 +358,7 @@ export function EventoDetalhe() {
   }
 
   const aoSoltarPonteiro = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (selecionada !== null) { interacaoCaixa.current = null; return }
     ponteiros.current.delete(e.pointerId)
     distPinca.current = 0
   }
@@ -261,6 +373,7 @@ export function EventoDetalhe() {
   /** Teclado: zoom só na roda é inutilizável sem mouse. Não é enfeite. */
   const PASSO_TECLA = 40
   const aoTeclar = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (selecionada !== null && e.key === 'Escape') { cancelarCorrecao(); e.preventDefault(); return }
     const m = medir()
     if (!m) return
     const noCentro = { ancoraX: 0, ancoraY: 0 }
@@ -304,6 +417,71 @@ export function EventoDetalhe() {
       setErroAcao('Não foi possível registrar o veredito.')
     } finally {
       setSalvando(false)
+    }
+  }
+
+  // ── correção de caixa ────────────────────────────────────────────────────
+
+  /** bbox GRAVADO da violação `i` — ponto de partida do rascunho, e valor ao
+   *  qual um arrasto degenerado (clique sem mover) simplesmente volta, por
+   *  nunca ter sido sobrescrito (ver `aoMoverPonteiro`, modo 'desenhar'). */
+  const bboxDe = (i: number | null): Bbox | null =>
+    i === null ? null : evento?.violations[i]?.bbox ?? null
+
+  const iniciarCorrecao = (i: number) => {
+    setSelecionada(i)
+    setRascunho(bboxDe(i))
+    setErroCaixa(null)
+  }
+
+  const cancelarCorrecao = () => {
+    setSelecionada(null)
+    setRascunho(null)
+    setErroCaixa(null)
+  }
+
+  /** Alça (redimensionar). `stopPropagation`: sem ele o pointerdown também
+   *  cairia no palco e reiniciaria um DESENHO por cima. */
+  const aoDescerAlca = (e: React.PointerEvent<HTMLSpanElement>, alca: HandleId) => {
+    e.stopPropagation()
+    if (!rascunho || !natural) return
+    interacaoCaixa.current = { modo: 'redimensionar', alca, inicio: bboxParaBox(rascunho, natural.w, natural.h) }
+  }
+
+  /** Corpo da caixa de correção: arrastar MOVE, não redesenha. */
+  const aoDescerCaixa = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.stopPropagation()
+    if (!rascunho || !natural) return
+    const pos = pontoNormalizado(e.clientX, e.clientY)
+    if (!pos) return
+    const caixa = bboxParaBox(rascunho, natural.w, natural.h)
+    interacaoCaixa.current = { modo: 'mover', offX: pos.x - caixa.xCenter, offY: pos.y - caixa.yCenter }
+  }
+
+  /**
+   * `PATCH /alerts/:id/violations` — mesmo contrato de
+   * `pages/epi/AlertDetailPage.tsx:198-201`. O servidor carimba a unidade
+   * (BBOX_PIXELS) e guarda o array anterior INTEIRO em `violations_historico`
+   * — nada se perde, só se acrescenta.
+   */
+  const salvarCaixa = async () => {
+    if (selecionada === null || !rascunho) return
+    setSalvandoCaixa(true)
+    setErroCaixa(null)
+    try {
+      const res = await api.patch<{ data?: { violations: Violacao[]; correcao_ultima: Correcao | null } }>(
+        `/alerts/${id}/violations`,
+        { correcoes: [{ index: selecionada, bbox: rascunho }] },
+      )
+      const d = res.data
+      if (d) {
+        setEvento((ev) => (ev ? { ...ev, violations: d.violations, correcao_ultima: d.correcao_ultima } : ev))
+      }
+      cancelarCorrecao()
+    } catch {
+      setErroCaixa('Não foi possível salvar a caixa.')
+    } finally {
+      setSalvandoCaixa(false)
     }
   }
 
@@ -353,6 +531,7 @@ export function EventoDetalhe() {
   const unidadeDesconhecida = classes.filter((v) => v.bbox && v.bbox_unidade !== BBOX_PIXELS)
   const retroativa = classificarLatencia(evento.captured_at, evento.created_at) === 'retroativa'
   const podeJulgar = can('verification:write')
+  const podeCorrigir = can('alerts:feedback')
 
   return (
     <div className={s.pagina}>
@@ -399,6 +578,7 @@ export function EventoDetalhe() {
               >
                 <div className={s.quadro}>
                   <img
+                    ref={imgRef}
                     className={s.imagem}
                     src={evidencia}
                     alt="Frame da evidência"
@@ -410,7 +590,7 @@ export function EventoDetalhe() {
                       }
                     }}
                   />
-                  {natural && desenhaveis.map((v, i) => (
+                  {natural && selecionada === null && desenhaveis.map((v, i) => (
                     <div
                       key={i}
                       data-testid="caixa-violacao"
@@ -430,6 +610,58 @@ export function EventoDetalhe() {
                       </span>
                     </div>
                   ))}
+
+                  {natural && selecionada !== null && (() => {
+                    const original = classes[selecionada]
+                    // Mesma regra do resto da tela: unidade ausente/estranha
+                    // = origem desconhecida, sem caixa tracejada — nunca uma
+                    // "onde a IA marcou" mentirosa.
+                    const iaBbox = original?.bbox && original.bbox_unidade === BBOX_PIXELS ? original.bbox : null
+                    return (
+                      <>
+                        {iaBbox && (
+                          <div
+                            className={s.caixaIA}
+                            style={{
+                              ...caixaEmPorcento(iaBbox, natural.w, natural.h),
+                              borderWidth: `${2 / lupa.escala}px`,
+                            }}
+                          >
+                            <span className={s.rotuloCaixaIA} style={{ transform: `scale(${1 / lupa.escala})` }}>
+                              ONDE A IA MARCOU
+                            </span>
+                          </div>
+                        )}
+                        {rascunho && (
+                          <div
+                            data-testid="caixa-correcao"
+                            className={s.caixaCorrecao}
+                            style={{
+                              ...caixaEmPorcento(rascunho, natural.w, natural.h),
+                              borderWidth: `${2 / lupa.escala}px`,
+                            }}
+                            onPointerDown={aoDescerCaixa}
+                          >
+                            <span className={s.rotuloCaixaCorrecao} style={{ transform: `scale(${1 / lupa.escala})` }}>
+                              SUA CORREÇÃO
+                            </span>
+                            {HANDLES.map((alca) => (
+                              <span
+                                key={alca}
+                                className={s.alca}
+                                style={{
+                                  ...ALCA_POS[alca],
+                                  width: `${11 / lupa.escala}px`,
+                                  height: `${11 / lupa.escala}px`,
+                                }}
+                                onPointerDown={(e) => aoDescerAlca(e, alca)}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )
+                  })()}
                 </div>
               </div>
             ) : (
@@ -439,6 +671,10 @@ export function EventoDetalhe() {
               </div>
             )}
           </div>
+
+          {selecionada !== null && (
+            <p className={s.dicaCorrecao}>ARRASTE PARA DESENHAR · ALÇAS REDIMENSIONAM · ESC CANCELA</p>
+          )}
 
           <div className={s.barraLupa}>
             <button type="button" className={s.botaoLupa} aria-label="Ampliar"
@@ -511,59 +747,136 @@ export function EventoDetalhe() {
             ) : (
               <ul className={s.listaDeteccoes}>
                 {classes.map((v, i) => (
-                  <li key={i} className={s.deteccao}>
-                    <span>{labelForClass(v.class)}</span>
-                    <span className={s.confianca}>{(v.confidence * 100).toFixed(0)}%</span>
+                  <li
+                    key={i}
+                    className={selecionada === i ? `${s.deteccao} ${s.deteccaoSelecionada}` : s.deteccao}
+                  >
+                    <span className={s.deteccaoInfo}>
+                      <span>{labelForClass(v.class)}</span>
+                      <span className={s.confianca}>{(v.confidence * 100).toFixed(0)}%</span>
+                    </span>
+                    {evidencia && podeCorrigir && selecionada === null && (
+                      <button type="button" className={s.botaoCorrigir} onClick={() => iniciarCorrecao(i)}>
+                        Corrigir caixa
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>
             )}
           </div>
 
-          <div className={s.vereditoBloco}>
-            <span className={s.overline}>Veredito</span>
-            <p className={s.ajuda}>
-              O veredito é sobre a DETECÇÃO: ela é procedente ou o modelo errou.
-              Não confundir com <strong>Reconhecer</strong>, que só registra que
-              alguém viu o evento.
-            </p>
-
-            {podeJulgar ? (
-              <>
-                <input
-                  type="text"
-                  className={s.campoMotivo}
-                  value={motivo}
-                  onChange={(e) => setMotivo(e.target.value)}
-                  placeholder="Por quê? (opcional — ex.: a caixa pegou a luva do outro)"
-                  aria-label="Motivo do veredito"
-                  maxLength={280}
-                />
-                <p className={s.ajuda}>
-                  O motivo é o que separa “a pessoa estava de máscara” de “a caixa
-                  pegou a pessoa errada”. As duas coisas pedem correções opostas.
-                </p>
-                <div className={s.botoesVeredito}>
-                  <button type="button" className={s.botaoVeredito.confirmar}
-                          onClick={() => darVeredito('approve')} disabled={salvando}
-                          title="A detecção está correta (procedente)">
-                    <Check className={s.iconeVeredito} aria-hidden /> Confirmar
-                  </button>
-                  <button type="button" className={s.botaoVeredito.descartar}
-                          onClick={() => darVeredito('reject')} disabled={salvando}
-                          title="A detecção está errada (falso positivo)">
-                    <X className={s.iconeVeredito} aria-hidden /> Descartar
-                  </button>
-                </div>
-              </>
-            ) : (
-              <p className={s.aviso}>
-                Você não tem permissão para julgar detecções (verification:write).
+          {evento.correcao_ultima && (
+            <div className={s.badgeAutoria}>
+              <Clock className={s.procedenciaIcone} aria-hidden />
+              <p className={s.badgeAutoriaTexto} data-testid="badge-autoria">
+                Caixa corrigida por <strong>{evento.correcao_ultima.por ?? '—'}</strong>
+                {evento.correcao_ultima.em && <><br />{dataHora(evento.correcao_ultima.em)}</>}
               </p>
-            )}
+            </div>
+          )}
 
-            {erroAcao && <p role="alert" className={s.erro}>{erroAcao}</p>}
-          </div>
+          {selecionada === null ? (
+            <div className={s.vereditoBloco}>
+              <span className={s.overline}>Veredito</span>
+              <p className={s.ajuda}>
+                O veredito é sobre a DETECÇÃO: ela é procedente ou o modelo errou.
+                Não confundir com <strong>Reconhecer</strong>, que só registra que
+                alguém viu o evento.
+              </p>
+
+              {podeJulgar ? (
+                <>
+                  <input
+                    type="text"
+                    className={s.campoMotivo}
+                    value={motivo}
+                    onChange={(e) => setMotivo(e.target.value)}
+                    placeholder="Por quê? (opcional — ex.: a caixa pegou a luva do outro)"
+                    aria-label="Motivo do veredito"
+                    maxLength={280}
+                  />
+                  <p className={s.ajuda}>
+                    O motivo é o que separa “a pessoa estava de máscara” de “a caixa
+                    pegou a pessoa errada”. As duas coisas pedem correções opostas.
+                  </p>
+                  <div className={s.botoesVeredito}>
+                    <button type="button" className={s.botaoVeredito.confirmar}
+                            onClick={() => darVeredito('approve')} disabled={salvando}
+                            title="A detecção está correta (procedente)">
+                      <Check className={s.iconeVeredito} aria-hidden /> Confirmar
+                    </button>
+                    <button type="button" className={s.botaoVeredito.descartar}
+                            onClick={() => darVeredito('reject')} disabled={salvando}
+                            title="A detecção está errada (falso positivo)">
+                      <X className={s.iconeVeredito} aria-hidden /> Descartar
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p className={s.aviso}>
+                  Você não tem permissão para julgar detecções (verification:write).
+                </p>
+              )}
+
+              {erroAcao && <p role="alert" className={s.erro}>{erroAcao}</p>}
+            </div>
+          ) : (
+            <div className={s.vereditoBloco}>
+              <span className={s.overline}>Coordenadas</span>
+              <p className={s.ajuda}>
+                Pixels do frame original, a partir do canto superior esquerdo.
+                Este é o caminho para quem não usa o mouse com precisão — e ele
+                faz tudo o que o arrasto faz.
+              </p>
+              <div className={s.gradeCoordenadas}>
+                {(['X', 'Y', 'LARGURA', 'ALTURA'] as const).map((rotulo, eixo) => (
+                  <label key={rotulo} className={s.campoCoordenada}>
+                    <span className={s.rotuloCoordenada}>{rotulo}</span>
+                    <input
+                      type="number"
+                      min={0}
+                      className={s.inputCoordenada}
+                      value={rascunho ? rascunho[eixo] : ''}
+                      disabled={salvandoCaixa}
+                      onChange={(e) => {
+                        const n = Math.round(Number(e.target.value))
+                        if (!Number.isFinite(n)) return
+                        const base: Bbox = rascunho ?? [0, 0, 0, 0]
+                        const nova: Bbox = [base[0], base[1], base[2], base[3]]
+                        nova[eixo] = Math.max(0, n)
+                        setRascunho(nova)
+                      }}
+                    />
+                  </label>
+                ))}
+              </div>
+              {natural && <span className={s.rotulo}>Frame: {natural.w} × {natural.h} px</span>}
+
+              <div className={s.botoesVeredito}>
+                <button
+                  type="button"
+                  className={s.botaoCorrecao.salvar}
+                  onClick={salvarCaixa}
+                  disabled={salvandoCaixa || !rascunho || rascunho[2] <= 0 || rascunho[3] <= 0}
+                >
+                  <Check className={s.iconeVeredito} aria-hidden /> Salvar caixa
+                </button>
+                <button type="button" className={s.botaoCorrecao.cancelar} onClick={cancelarCorrecao} disabled={salvandoCaixa}>
+                  Cancelar
+                </button>
+              </div>
+
+              {erroCaixa && (
+                <p role="alert" className={s.erro}>
+                  {erroCaixa}
+                  <button type="button" className={s.linkTentarNovamente} onClick={salvarCaixa}>
+                    Tentar novamente
+                  </button>
+                </p>
+              )}
+            </div>
+          )}
         </aside>
       </div>
     </div>
@@ -606,8 +919,10 @@ export default EventoDetalhe
  *    `verified_by='claude-haiku'`. Com ele, esta tela reusa
  *    `vereditoHumano()` e passa a dizer quem julgou.
  *
- * Migrado do front antigo e NÃO trazido (segue de pé em `/epi/alerts/:alertId`):
- * correção de caixa (`PATCH /alerts/:id/violations` + entrada por teclado das
- * coordenadas + "Caixa corrigida por…"). Não há desenho para ela nesta tela —
- * pedido de tela ao design, não invenção aqui.
+ * Migrada do front antigo (item que faltava nesta lista): correção de caixa
+ * (`PATCH /alerts/:id/violations`, entrada por arrasto + 8 alças + teclado
+ * das coordenadas, "Caixa corrigida por…"). Implementada a partir do desenho
+ * `CorrigirCaixa.dc.html` — gate `alerts:feedback`, mover/redimensionar
+ * reaproveitam a matemática de `components/annotation/boxGeometry.ts` (mesma
+ * do Estúdio de Anotação), só convertida na fronteira px↔normalizado.
  * ─────────────────────────────────────────────────────────────────────────── */
