@@ -9,9 +9,9 @@
 | marco | estado |
 |---|---|
 | **S0** · reconhecimento do terreno | ✅ 29/08 — box de pé, mecanismo do ao-vivo entendido, rotas mapeadas |
-| **S1** · Caminho B — ausência AO VIVO no DEV | ⏳ desenho fechado, não implementado |
+| **S1** · Caminho B — ausência AO VIVO no DEV | ✅ código em `545efeee` · ⏳ falta a PROVA ao vivo (depende da janela do box) |
 | **S2** · calibração pelos vereditos do Vitor | ⏳ bloqueado — depende das 121 revisadas |
-| **S3** · prontidão 02/09 (bench, escopo, roteiro, backup) | ⏳ |
+| **S3** · prontidão 02/09 (bench, escopo, roteiro, backup) | 🔄 escopo por câmera provado por código; bench/roteiro/backup pendentes |
 | **S4** · cenário / zonas visuais | ⏳ só se o reexport chegar |
 
 ## 🔴 Custo acumulado: **US$ 0,00** (teto RunPod desta missão US$ 2 — nenhum pod disparado)
@@ -104,7 +104,7 @@ pipeline inteiro que a missão descreve, e já roda na nuvem:
 E de quebra fecha o elo do #519 pelo lado certo: a nuvem deixa de precisar de RTSP.
 
 ### ⚠️ Riscos deste desenho (declarados, não resolvidos)
-- Segmento tem **TTL ~20s** — consumidor lento perde frame. Cadência de 1 frame/2-3s cabe, mas sem folga grande.
+- Segmento tem **TTL de 30s** (`_HLS_SEGMENT_TTL`, medido depois — eu havia anotado ~20s pela docstring). Cadência de 1 frame/2-3s cabe com folga maior do que eu supunha.
 - 14 câmeras × ~0,4 fps = ~5-6 inferências/s de RF-DETR em CPU. **Projeção ainda NÃO medida** — é o gate do "CPU aguenta vs pod RunPod (teto US$ 2)".
 - `_HLS_SEGMENT_TTL` e o custo de decodificar `.ts` por segmento ainda não medidos.
 
@@ -127,11 +127,6 @@ Falta a prova AO VIVO (a matriz do Paulo salva na tela e o alerta muda na hora) 
 estar de pé, então é a mesma evidência.
 
 ---
-
-## ⏭️ PRÓXIMO PASSO
-1. Medir a projeção de CPU (decodificação `.ts` + RF-DETR) → decide nuvem vs pod.
-2. Implementar a troca de fonte de frame + keepalive + badge/latência.
-3. Bench de usuários e roteiro do dia D com URL exata por passo → contrato do congelamento.
 
 ## 📓 Nota de método
 Três agentes de inventário (pipeline · prontidão · calibração) rodaram ~7 min e ~570k tokens
