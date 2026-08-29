@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}</style>
+</helmet>
+
+<div style="padding:24px;background:#0A0A0F;box-sizing:border-box" data-screen-label="Widget · Câmeras com mais eventos">
+  <div style="display:flex;flex-direction:column;gap:16px;background:#14141C;border:1px solid #23242F;border-radius:12px;padding:20px;box-sizing:border-box">
+
+    <div style="display:flex;align-items:center;gap:10px">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8A8F98" stroke-width="1.8"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg>
+      <span style="font-family:'Space Grotesk';font-weight:700;font-size:16px">Câmeras com mais eventos</span>
+      <div style="flex:1"></div>
+      <span style="font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.16em;color:#8A8F98">{{ janela }}</span>
+    </div>
+
+    <sc-if value="{{ temDado }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:9px">
+        <sc-for list="{{ linhas }}" as="l" hint-placeholder-count="10">
+          <div style="display:flex;align-items:center;gap:12px">
+            <span style="width:18px;flex:none;text-align:right;font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">{{ l.pos }}</span>
+            <span style="width:190px;flex:none;font-size:13.5px;color:{{ l.corNome }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ l.nome }}</span>
+            <div style="flex:1;min-width:0;height:22px;border-radius:4px;background:#0A0A0F;overflow:hidden">
+              <div style="height:100%;width:{{ l.larg }};background:{{ l.cor }};border-radius:4px"></div>
+            </div>
+            <span style="width:44px;flex:none;text-align:right;font-family:'JetBrains Mono';font-size:13px;font-weight:700;color:{{ l.corNome }}">{{ l.n }}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="height:1px;background:#23242F"></div>
+
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:12.5px;color:#8A8F98;line-height:1.5">As três primeiras concentram <strong style="color:#F4F6F8">58%</strong> dos eventos do período.</span>
+        <div style="flex:1"></div>
+        <span style="font-size:13px;color:#00E5FF">ver eventos →</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ vazio }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:36px 0">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#8A8F98" stroke-width="1.5"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg>
+        <span style="font-family:'Space Grotesk';font-weight:700;font-size:15px">Sem eventos no período</span>
+        <span style="font-size:13px;color:#8A8F98;text-align:center;max-width:280px;line-height:1.5">Nenhuma câmera registrou evento. O ranking aparece assim que houver o primeiro.</span>
+      </div>
+    </sc-if>
+
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"vazio":{"editor":"boolean","default":false,"section":"Estado"},"$preview":{"width":620,"height":520}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dados = [
+      ['Entrada Expedição', 108],
+      ['Galpão Alugado Entrada', 74],
+      ['Guarita', 63],
+      ['Porta Pallets', 41],
+      ['Qualidade 01 EPI', 34],
+      ['Manutenção', 28],
+      ['Entrada 03', 22],
+      ['Sala de Colagem', 17],
+      ['Estacionamento 01', 12],
+      ['Pátios Fundos', 9],
+    ]
+    const teto = dados[0][1]
+    const vazio = this.props.vazio ?? false
+    return {
+      janela: 'ÚLTIMOS 30 DIAS',
+      vazio,
+      temDado: !vazio,
+      linhas: dados.map(([nome, n], i) => ({
+        pos: String(i + 1).padStart(2, '0'),
+        nome,
+        n: String(n),
+        larg: Math.round((n / teto) * 100) + '%',
+        // As três primeiras em ciano: é onde o gestor age. O resto é contexto,
+        // e pintar tudo de acento gastaria o acento (regra do ≤10%).
+        cor: i < 3 ? '#00E5FF' : '#23242F',
+        corNome: i < 3 ? '#F4F6F8' : '#8A8F98',
+      })),
+    }
+  }
+}
+</script>
+</body>
+</html>

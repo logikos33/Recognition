@@ -39,6 +39,8 @@ const EventoDetalhe = lazy(() => import('./epi/EventoDetalhe').then((m) => ({ de
 const Eventos = lazy(() => import('./epi/Eventos').then((m) => ({ default: m.Eventos })))
 const Relatorios = lazy(() => import('./epi/Relatorios').then((m) => ({ default: m.Relatorios })))
 const Verificacao = lazy(() => import('./epi/Verificacao').then((m) => ({ default: m.Verificacao })))
+const Operacoes = lazy(() => import('./epi/Operacoes').then((m) => ({ default: m.Operacoes })))
+const Modulos = lazy(() => import('./modulos/Modulos').then((m) => ({ default: m.Modulos })))
 
 /**
  * Prefixo do front novo enquanto os dois convivem. Sai no tombamento.
@@ -76,5 +78,17 @@ export const ROTAS_NOVAS: ReactElement[] = [
   <Route key="vf" path="epi/verificacao" element={<Verificacao />} />,
   <Route key="a" path="epi/acoes" element={<Acoes />} />,
   <Route key="c" path="epi/cameras" element={<Cameras />} />,
+  <Route key="op" path="epi/cameras/:cameraId/operations" element={<Operacoes />} />,
   <Route key="r" path="epi/relatorios" element={<Relatorios />} />,
+]
+
+/**
+ * Rotas do front novo que NÃO usam o Shell.
+ *
+ * A escolha de módulo tem cabeçalho próprio e nenhuma navegação lateral — ela é
+ * anterior a escolher onde navegar. Montá-la dentro do Shell mostraria o menu do
+ * EPI para quem ainda não disse que vai trabalhar no EPI.
+ */
+export const ROTAS_NOVAS_SEM_SHELL: ReactElement[] = [
+  <Route key="mod" path={`${PREFIXO_NOVO}/modules`} element={<Modulos />} />,
 ]

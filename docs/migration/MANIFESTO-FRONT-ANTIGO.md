@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 394 arquivos, 67.105 linhas
+## Situação — 394 arquivos, 67.131 linhas
 
 | status | arquivos |
 |---|---:|
@@ -40,7 +40,7 @@ apagado não são a mesma coisa.
 
 | arquivo | status | migrado para | linhas |
 |---|---|---|---:|
-| `src/App.tsx` | `INFRA` | — | 89 |
+| `src/App.tsx` | `INFRA` | — | 100 |
 | `src/AppRoutes.tsx` | `INFRA` | — | 182 |
 | `src/components/annotation/AnnotationStudio.css.ts` | `INFRA` | — | 514 |
 | `src/components/annotation/AnnotationStudio.tsx` | `INFRA` | — | 1458 |
@@ -235,7 +235,7 @@ apagado não são a mesma coisa.
 | `src/services/propagationService.ts` | `INFRA` | — | 157 |
 | `src/services/reportService.ts` | `INFRA` | — | 34 |
 | `src/services/searchService.ts` | `INFRA` | — | 158 |
-| `src/services/tenantContext.ts` | `INFRA` | — | 250 |
+| `src/services/tenantContext.ts` | `INFRA` | — | 265 |
 | `src/services/trainingService.ts` | `INFRA` | — | 58 |
 | `src/stores/appStore.ts` | `INFRA` | — | 49 |
 | `src/stores/cameraGridStore.ts` | `INFRA` | — | 132 |

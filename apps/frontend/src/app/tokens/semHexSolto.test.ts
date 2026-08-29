@@ -44,9 +44,28 @@ describe('front novo: cor só por token', () => {
     for (const arquivo of arquivos(APP)) {
       const rel = path.relative(APP, arquivo)
       if (rel === FONTE_DOS_VALORES) continue
-      fs.readFileSync(arquivo, 'utf-8').split('\n').forEach((linha, i) => {
-        // `#` de comentário, de âncora e de JSDoc não é cor.
-        if (HEX.test(linha)) infratores.push(`${rel}:${i + 1}  ${linha.trim()}`)
+      // Comentários fora antes de varrer: CITAR uma cor ao explicar por que ela
+      // é o piso de contraste não é pintar com ela. A regra é sobre valor
+      // usado, não sobre a prosa que o justifica — e sem este corte o teste
+      // empurra as pessoas a apagarem a explicação para ficar verde.
+      const semComentario = fs
+        .readFileSync(arquivo, 'utf-8')
+        .split('\n')
+        .map((linha) => linha.replace(/\/\/.*$/, ''))
+      let dentroDeBloco = false
+      semComentario.forEach((linha, i) => {
+        const abre = linha.includes('/*')
+        const fecha = linha.includes('*/')
+        const codigo = dentroDeBloco
+          ? fecha
+            ? linha.slice(linha.indexOf('*/') + 2)
+            : ''
+          : abre
+            ? linha.slice(0, linha.indexOf('/*')) + (fecha ? linha.slice(linha.indexOf('*/') + 2) : '')
+            : linha
+        if (abre && !fecha) dentroDeBloco = true
+        if (fecha) dentroDeBloco = false
+        if (HEX.test(codigo)) infratores.push(`${rel}:${i + 1}  ${codigo.trim()}`)
       })
     }
     expect(infratores, `hex solto — use um token de lk.css.ts:\n${infratores.join('\n')}`)

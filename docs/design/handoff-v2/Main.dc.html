@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}</style>
+</helmet>
+
+<div style="width:100%;height:100vh;display:flex;flex-direction:column;background:#0A0A0F" data-screen-label="EPI Câmeras · Desempenho">
+
+  <div style="height:56px;flex:none;display:flex;align-items:center;gap:16px;padding:0 24px;background:#14141C;border-bottom:1px solid #23242F">
+    <span style="font-family:'Space Grotesk';font-weight:700;letter-spacing:.04em;font-size:15px">LOGIKOS</span>
+    <div style="flex:1"></div>
+    <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98;border:1px solid #23242F;border-radius:8px;padding:3px 8px">⌘K</span>
+  </div>
+
+  <div style="flex:1;display:flex;min-height:0">
+    <div style="width:236px;flex:none;background:#14141C;border-right:1px solid #23242F;padding:16px 0;display:flex;flex-direction:column">
+      <span style="padding:8px 24px;font-family:'JetBrains Mono';font-size:11px;letter-spacing:.18em;color:#8A8F98">EPI</span>
+      <sc-for list="{{ nav }}" as="n" hint-placeholder-count="7">
+        <span style="height:38px;display:flex;align-items:center;padding:0 24px;font-size:14px;color:{{ n.cor }};border-left:2px solid {{ n.marca }};background:{{ n.fundo }}">{{ n.t }}</span>
+      </sc-for>
+    </div>
+
+    <main style="flex:1;min-width:0;overflow:auto">
+      <div style="max-width:1280px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+
+        <div style="display:flex;align-items:center;gap:16px">
+          <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:26px">Câmeras &amp; Sites</h1>
+          <div style="display:flex;background:#14141C;border-radius:8px;padding:3px;gap:2px">
+            <sc-for list="{{ abas }}" as="a" hint-placeholder-count="5">
+              <span style="height:36px;display:flex;align-items:center;padding:0 18px;border-radius:6px;background:{{ a.bg }};color:{{ a.cor }};font-size:14px;font-weight:600">{{ a.t }}</span>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Entrada Expedição</span>
+          <span style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono';font-size:10.5px;color:#3ECF8E">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#3ECF8E" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>
+            ATIVA
+          </span>
+          <div style="flex:1"></div>
+          <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">RVB Blumenau · edge + cloud</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:16px">
+
+          <div style="display:flex;flex-direction:column;gap:18px;background:#14141C;border:1px solid #23242F;border-radius:12px;padding:20px;box-sizing:border-box">
+            <span style="font-family:'JetBrains Mono';font-size:11px;letter-spacing:.18em;color:#8A8F98">OPERAÇÃO</span>
+
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <span style="font-size:13px;color:#8A8F98">Quadros por segundo analisados</span>
+              <div style="display:flex;gap:8px">
+                <sc-for list="{{ fps }}" as="f" hint-placeholder-count="5">
+                  <span style="flex:1;height:44px;display:flex;align-items:center;justify-content:center;border-radius:8px;border:1px solid {{ f.borda }};background:{{ f.fundo }};color:{{ f.cor }};font-family:'JetBrains Mono';font-size:14px;font-weight:700">{{ f.t }}</span>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <span style="font-size:13px;color:#8A8F98">Qualidade do vídeo analisado</span>
+              <div style="display:flex;gap:8px">
+                <sc-for list="{{ qual }}" as="q" hint-placeholder-count="3">
+                  <span style="flex:1;height:44px;display:flex;align-items:center;justify-content:center;border-radius:8px;border:1px solid {{ q.borda }};background:{{ q.fundo }};color:{{ q.cor }};font-size:14px;font-weight:600">{{ q.t }}</span>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="height:1px;background:#23242F"></div>
+
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <span style="font-family:'JetBrains Mono';font-size:11px;letter-spacing:.18em;color:#8A8F98">COLETA PARA TREINO</span>
+              <span style="font-size:13px;color:#8A8F98;line-height:1.5">Em que resolução os frames entram no conjunto de treino. Eixo separado da operação — dá para operar leve e coletar em alta.</span>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <sc-for list="{{ coleta }}" as="c" hint-placeholder-count="2">
+                  <span style="display:flex;align-items:center;gap:12px;height:48px;padding:0 14px;border-radius:8px;border:1px solid {{ c.borda }};background:{{ c.fundo }}">
+                    <span style="width:16px;height:16px;border-radius:50%;border:2px solid {{ c.anel }};display:flex;align-items:center;justify-content:center;flex:none">
+                      <span style="width:8px;height:8px;border-radius:50%;background:{{ c.ponto }}"></span>
+                    </span>
+                    <span style="font-size:14px;color:{{ c.cor }}">{{ c.t }}</span>
+                  </span>
+                </sc-for>
+              </div>
+            </div>
+
+            <sc-if value="{{ desalinhado }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;gap:10px;padding:12px 14px;border-radius:8px;background:#0A0A0F;border:1px solid rgba(232,161,60,.4)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E8A13C" stroke-width="1.7" style="flex:none"><path d="M12 3l9 16H3z"/><path d="M12 9v5"/><path d="M12 17.2v.1"/></svg>
+                <span style="font-size:13px;color:#E8A13C;line-height:1.5"><strong>Coleta em alta com operação em baixa.</strong> O modelo vai treinar em imagens melhores do que as que ele vê rodando — o que aprende aqui pode não valer lá.</span>
+              </div>
+            </sc-if>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:18px;background:#14141C;border:1px solid #23242F;border-radius:12px;padding:20px;box-sizing:border-box">
+            <div style="display:flex;align-items:center;gap:12px">
+              <span style="font-family:'JetBrains Mono';font-size:11px;letter-spacing:.18em;color:#8A8F98">SAÚDE DO EQUIPAMENTO</span>
+              <div style="flex:1"></div>
+              <span style="display:flex;align-items:center;gap:7px;height:32px;padding:0 12px;border-radius:8px;border:1px solid #23242F;color:#8A8F98;font-size:12.5px">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8A8F98" stroke-width="1.8"><path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 5v6h-6"/></svg>
+                Atualizar
+              </span>
+            </div>
+            <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">MINI PC DO SITE · RVB BLUMENAU · 28 CÂMERAS</span>
+
+            <div style="display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:10px">
+              <sc-for list="{{ metricas }}" as="m" hint-placeholder-count="8">
+                <div style="display:flex;flex-direction:column;gap:5px;padding:12px;border-radius:8px;background:#0A0A0F;border:1px solid {{ m.borda }}">
+                  <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.16em;color:#8A8F98">{{ m.rot }}</span>
+                  <span style="font-family:'Space Grotesk';font-weight:700;font-size:20px;color:{{ m.cor }}">{{ m.v }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="height:1px;background:#23242F"></div>
+
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <span style="font-family:'JetBrains Mono';font-size:11px;letter-spacing:.18em;color:#8A8F98">IMPACTO DA MUDANÇA</span>
+              <div style="display:flex;align-items:baseline;gap:10px">
+                <span style="font-family:'Space Grotesk';font-weight:700;font-size:34px;color:#F4F6F8">112</span>
+                <span style="font-size:13px;color:#8A8F98">fps somados hoje no site</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:8px;background:#0A0A0F;border:1px solid #00E5FF">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="1.7" style="flex:none"><path d="M5 12h13"/><path d="M13 6l6 6-6 6"/></svg>
+                <span style="font-size:13.5px;color:#F4F6F8">Passará a <strong style="font-family:'JetBrains Mono';color:#00E5FF">~127 fps</strong> com esta alteração</span>
+              </div>
+              <span style="font-size:12.5px;color:#8A8F98;line-height:1.5">Teto medido do equipamento neste site: 160 fps. Acima disso a fila cresce e o atraso aparece no ao vivo.</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:14px;padding-top:2px">
+          <span style="height:44px;display:flex;align-items:center;padding:0 20px;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-size:14px;font-weight:700">Salvar configuração</span>
+          <span style="height:44px;display:flex;align-items:center;padding:0 20px;border-radius:8px;border:1px solid #23242F;color:#8A8F98;font-size:14px">Descartar</span>
+          <div style="flex:1"></div>
+          <span style="font-size:12.5px;color:#8A8F98">Alterado agora · aplica no edge em até 30 s</span>
+        </div>
+
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"desalinhado":{"editor":"boolean","default":true,"section":"Estado"},"sobrecarga":{"editor":"boolean","default":false,"section":"Estado"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const nav = ['Dashboard','Ao Vivo','Eventos','Verificação','Ações','Câmeras','Relatórios']
+      .map((t) => ({
+        t,
+        cor: t === 'Câmeras' ? '#F4F6F8' : '#8A8F98',
+        marca: t === 'Câmeras' ? '#00E5FF' : 'transparent',
+        fundo: t === 'Câmeras' ? '#0A0A0F' : 'transparent',
+      }))
+    const aba = (t, on) => ({ t, bg: on ? '#00E5FF' : 'transparent', cor: on ? '#0A0A0F' : '#8A8F98' })
+    const pick = (t, on) => ({
+      t,
+      borda: on ? '#00E5FF' : '#23242F',
+      fundo: on ? '#0A0A0F' : 'transparent',
+      cor: on ? '#00E5FF' : '#8A8F98',
+    })
+    const radio = (t, on) => ({
+      t,
+      borda: on ? '#00E5FF' : '#23242F',
+      fundo: on ? '#0A0A0F' : 'transparent',
+      anel: on ? '#00E5FF' : '#23242F',
+      ponto: on ? '#00E5FF' : 'transparent',
+      cor: on ? '#F4F6F8' : '#8A8F98',
+    })
+    const carga = this.props.sobrecarga ?? false
+    const met = (rot, v, alto) => ({
+      rot, v,
+      cor: alto ? '#E8A13C' : '#F4F6F8',
+      borda: alto ? '#E8A13C' : '#23242F',
+    })
+    return {
+      nav,
+      abas: [aba('Câmeras', false), aba('Sites', false), aba('Saúde', false), aba('Escopo', false), aba('Desempenho', true)],
+      fps: [1, 5, 10, 15, 30].map((n) => pick(String(n), n === 5)),
+      qual: [pick('Baixa', false), pick('Média', true), pick('Alta', false)],
+      coleta: [radio('Principal (máxima)', true), radio('Substream (704×480)', false)],
+      desalinhado: this.props.desalinhado ?? true,
+      metricas: [
+        met('GPU', carga ? '91%' : '46%', carga),
+        met('VRAM', carga ? '88%' : '52%', carga),
+        met('CPU', '31%', false),
+        met('FILA', carga ? '14' : '2', carga),
+        met('FPS MEDIDO', carga ? '3,1' : '4,9', carga),
+        met('LATÊNCIA', carga ? '410 ms' : '120 ms', carga),
+        met('TÉRMICA', '61 °C', false),
+        met('DECODE', '38%', false),
+      ],
+    }
+  }
+}
+</script>
+</body>
+</html>

@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "manifesto": "node scripts/gera-manifesto-front-antigo.mjs"
+    "manifesto": "node scripts/gera-manifesto-front-antigo.mjs",
+    "verificar": "tsc --noEmit && npm run test && EVIDENCE_DIR=\"$(mktemp -d)\" npm run test:e2e"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
