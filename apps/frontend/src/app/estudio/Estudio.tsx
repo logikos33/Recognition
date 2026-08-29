@@ -13,14 +13,18 @@
  * Item apontando para rota inexistente é tela inventada.
  */
 import { Suspense } from 'react'
-import { Images } from 'lucide-react'
+import { Grid3x3, Images, SquareMousePointer } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
 
 import { useAuth } from '../../hooks/useAuth'
 import { SemPermissao } from '../shell/SemPermissao'
 import * as s from './Estudio.css'
 
-const ITENS = [{ rota: 'dados', rotulo: 'Dados', Icone: Images }]
+const ITENS = [
+  { rota: 'dados', rotulo: 'Dados', Icone: Images },
+  { rota: 'cobertura', rotulo: 'Cobertura', Icone: Grid3x3 },
+  { rota: 'classificar', rotulo: 'Classificar', Icone: SquareMousePointer },
+]
 
 export function Estudio() {
   const { can } = useAuth()
