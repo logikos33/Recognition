@@ -247,6 +247,51 @@ describe('EPI Dashboard — painéis', () => {
     expect(within(painel).getByText(/concentra 52% das violações/)).toBeTruthy()
   })
 
+  it('ranking de câmeras: só as 3 primeiras saem em destaque, resto neutro', async () => {
+    getSummary.mockResolvedValue({
+      total: 0,
+      by_class: [],
+      by_camera: [
+        { camera_id: 'c1', camera_name: 'Entrada Expedição', count: 108 },
+        { camera_id: 'c2', camera_name: 'Guarita', count: 63 },
+        { camera_id: 'c3', camera_name: 'Porta Pallets', count: 41 },
+        { camera_id: 'c4', camera_name: 'Manutenção', count: 28 },
+      ],
+    })
+    montar()
+    const painel = await screen.findByLabelText('Câmeras com mais eventos')
+    // Posições são sempre zero-padded ("01".."04") — só elas batem este padrão,
+    // nunca as contagens (108/63/41/28), que não começam com zero.
+    const posicoes = within(painel).getAllByText(/^0[1-9]$/)
+    expect(posicoes).toHaveLength(4)
+
+    const nomeTop = within(painel).getByText('Entrada Expedição')
+    const nomeResto = within(painel).getByText('Manutenção')
+    expect(nomeTop.className).not.toBe(nomeResto.className)
+
+    // Backend já devolve top-10 ordenado por count DESC (top_cameras_by_alerts).
+    // 108 + 63 + 41 = 212 de 240 no total = 88%.
+    expect(within(painel).getByText('88%')).toBeTruthy()
+  })
+
+  it('ranking de câmeras vazio diz que não há eventos, não desenha barra nenhuma', async () => {
+    getSummary.mockResolvedValue({ total: 0, by_class: [], by_camera: [] })
+    montar()
+    const painel = await screen.findByLabelText('Câmeras com mais eventos')
+    expect(within(painel).getByText('Sem eventos no período')).toBeTruthy()
+  })
+
+  it('câmera sem nome não vaza UUID cru na tela', async () => {
+    getSummary.mockResolvedValue({
+      total: 0,
+      by_class: [],
+      by_camera: [{ camera_id: 'c1', camera_name: null, count: 5 }],
+    })
+    montar()
+    const painel = await screen.findByLabelText('Câmeras com mais eventos')
+    expect(within(painel).getByText('Sem nome')).toBeTruthy()
+  })
+
   it('esconder um widget o tira da tela e a preferência sobrevive à remontagem', async () => {
     // `region` = o <section> do painel. O checkbox do popover carrega o mesmo
     // rótulo, e por nome só a busca pegaria os dois.
