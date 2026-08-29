@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:#23242F;border-radius:5px}</style>
+</helmet>
+<div style="width:100%;height:100vh;display:flex;flex-direction:column;background:#0A0A0F" data-screen-label="Câmera · Operações">
+  <dc-import name="EPI Topbar" crumb2="Câmeras & Sites" crumb3="CAM-04 Expedição · Operações" style="flex:none" hint-size="100%,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <dc-import name="EPI Sidebar" ativa="Câmeras & Sites" style="flex:none;align-self:stretch" hint-size="237px,100%"></dc-import>
+    <main style="flex:1;min-width:0;overflow:auto;position:relative">
+      <sc-if value="{{ carregado }}" hint-placeholder-val="{{ true }}">
+        <div style="max-width:1180px;margin:0 auto;padding:24px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <a href="EPI Câmeras.dc.html" style="font-size:13px;font-weight:600">← Câmeras</a>
+            <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:24px">CAM-04 Expedição</h1>
+            <span style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono';font-size:10.5px;color:#E8A13C">▲ INSTÁVEL</span>
+            <div style="flex:1"></div>
+            <a href="Câmera Cenário.dc.html" style="height:38px;display:flex;align-items:center;gap:8px;padding:0 16px;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-size:13px;font-weight:600" style-hover="border-color:#00E5FF;color:#00E5FF">
+              <svg viewBox="0 0 24 24" style="width:15px;height:15px" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"><path d="M4 4h7v7H4zM13 13h7v7h-7zM13 4h7M13 8h4M4 15h5M4 19h5"></path></svg>
+              Editar zonas (cenário)
+            </a>
+            <button style="height:38px;padding:0 16px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13px;font-weight:700;cursor:pointer">Nova operação</button>
+          </div>
+          <span style="font-size:12.5px;color:#8A8F98;margin-top:-6px">Operação = o que esta câmera vigia e com qual modelo. As zonas que ela usa moram no <a href="Câmera Cenário.dc.html">cenário</a>; mudanças propagam ao edge em ~60 s.</span>
+          <sc-for list="{{ ops }}" as="op" hint-placeholder-count="3">
+            <div style="display:flex;flex-direction:column;background:#14141C;border:1px solid {{ op.borda }};border-radius:12px;overflow:hidden">
+              <div style="display:flex;align-items:center;gap:14px;padding:16px 18px">
+                <span style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;color:{{ op.stCor }}"><span style="width:9px;height:9px;border-radius:50%;background:{{ op.stCor }}"></span>{{ op.stIco }} {{ op.st }}</span>
+                <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+                  <span style="font-size:14.5px;font-weight:600">{{ op.nome }}</span>
+                  <span style="font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98">{{ op.meta }}</span>
+                </div>
+                <div style="flex:1"></div>
+                <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98;text-align:right">{{ op.ultima }}</span>
+                <button onClick="{{ op.togglePausa }}" style="height:34px;padding:0 14px;background:transparent;border:1px solid #23242F;border-radius:7px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer" style-hover="border-color:#00E5FF;color:#00E5FF">{{ op.acao }}</button>
+                <button onClick="{{ op.toggleHist }}" style="height:34px;padding:0 14px;background:transparent;border:1px solid {{ op.histBorda }};border-radius:7px;color:{{ op.histCor }};font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">Avaliações · {{ op.nAval }}</button>
+              </div>
+              <sc-if value="{{ op.erroOn }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:center;gap:10px;padding:11px 18px;background:rgba(229,72,77,.06);border-top:1px solid rgba(229,72,77,.35)">
+                  <svg viewBox="0 0 24 24" style="width:14px;height:14px;flex:none" fill="none" stroke="#E5484D" stroke-width="2" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+                  <span style="font-size:12.5px;color:#E5484D;font-weight:600">O modelo não carregou no edge (falta de VRAM).</span>
+                  <span style="font-size:12px;color:#8A8F98">Pause outra operação ou reduza o FPS na configuração.</span>
+                  <button style="margin-left:auto;height:30px;padding:0 12px;border:none;border-radius:6px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:12px;font-weight:700;cursor:pointer">Tentar de novo</button>
+                </div>
+              </sc-if>
+              <sc-if value="{{ op.histOn }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-direction:column;padding:6px 18px 14px;border-top:1px solid #23242F">
+                  <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.16em;color:#8A8F98;padding:10px 0 8px">HISTÓRICO DE AVALIAÇÕES DA OPERAÇÃO</span>
+                  <sc-for list="{{ op.avals }}" as="av" hint-placeholder-count="2">
+                    <div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid rgba(138,143,152,.08)">
+                      <span style="font-family:'JetBrains Mono';font-size:11.5px;color:#8A8F98;width:52px">{{ av.data }}</span>
+                      <span style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono';font-size:10px;font-weight:700;color:{{ av.cor }};border:1px solid {{ av.borda }};border-radius:4px;padding:2px 8px">{{ av.v }}</span>
+                      <span style="font-size:12.5px;color:#F4F6F8">{{ av.nota }}</span>
+                      <span style="margin-left:auto;font-size:11.5px;color:#8A8F98">{{ av.quem }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+          <div style="display:flex;gap:14px;padding:14px 16px;background:#14141C;border:1px solid #23242F;border-radius:10px;font-size:12.5px;color:#8A8F98;line-height:1.6">
+            <span style="flex:1">Pausar não apaga nada: a operação some do edge no próximo heartbeat e volta do mesmo jeito. Excluir é pelo nome, na ficha — nunca aqui no fluxo do dia.</span>
+            <span style="flex:1">Avaliação é o registro humano de "esta operação está detectando bem?" — alimenta o ajuste de zona e o retreino. NOK com nota vira caso na fila do Estúdio.</span>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}">
+        <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="fullscreen" state="waiting" label="CARREGANDO OPERAÇÕES" size="96" style="position:absolute;inset:0" hint-size="100%,100%"></x-import>
+      </sc-if>
+      <sc-if value="{{ vazio }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#8A8F98" stroke-width="1.5" stroke-linecap="square"><path d="M4 4h7v7H4zM13 13h7v7h-7zM13 4h7M4 15h5"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Esta câmera ainda não vigia nada</span>
+          <span style="font-size:13.5px;color:#8A8F98;max-width:400px;line-height:1.55">Crie a primeira operação: escolha o módulo, o modelo e desenhe a zona no cenário.</span>
+          <button style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Nova operação</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{ erro }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#E5484D" stroke-width="1.5" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Não foi possível carregar</span>
+          <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">GET /api/cameras/cam-04/operations · TIMEOUT 10 S</span>
+          <button style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Tentar novamente</button>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+  <div style="position:fixed;left:16px;bottom:14px;display:flex;align-items:center;gap:6px;background:#14141C;border:1px solid #23242F;border-radius:10px;padding:7px 10px;z-index:130;box-shadow:0 8px 32px rgba(0,0,0,.6)">
+    <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.2em;color:#8A8F98;margin-right:4px">ESTADO</span>
+    <sc-for list="{{ chips }}" as="ch" hint-placeholder-count="4">
+      <button onClick="{{ ch.go }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid {{ ch.borda }};background:{{ ch.bg }};color:{{ ch.cor }};font-family:'JetBrains Mono';font-size:10.5px;cursor:pointer">{{ ch.t }}</button>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:940}}">
+class Component extends DCLogic {
+  OPS = [
+    { id: 1, nome: 'EPI — zona de capacete e colete', meta: 'MÓDULO EPI · MODELO EPI v12 · 2 ZONAS · 12 FPS', st: 'rodando', ultima: 'ÚLTIMA DETECÇÃO 14:32', avals: [
+      { data: '08/08', v: 'OK', nota: 'Zona da doca cobrindo bem; sem falso na empilhadeira.', quem: 'Ana Ribeiro' },
+      { data: '05/08', v: 'NOK', nota: 'Zona pegava reflexo do vidro — reduzida no cenário.', quem: 'Carlos M.' },
+    ] },
+    { id: 2, nome: 'Contagem — linha da expedição', meta: 'MÓDULO CARGA · MODELO CONTAGEM v4 · 1 LINHA · 10 FPS', st: 'pausada', ultima: 'PAUSADA HÁ 2 DIAS', avals: [
+      { data: '01/08', v: 'OK', nota: 'Sessão CG-0405 bateu com o romaneio (118/118).', quem: 'Ana Ribeiro' },
+    ] },
+    { id: 3, nome: 'EPI — óculos na serra', meta: 'MÓDULO EPI · MODELO EPI v12 · 1 ZONA · 12 FPS', st: 'erro', ultima: 'SEM DETECÇÃO HÁ 26 MIN', avals: [] },
+  ];
+  state = { estado: 'carregado', pausadas: [2], hist: [], erroIds: [3] };
+  renderVals() {
+    const s = this.state;
+    const chip = (t, k) => ({ t, go: () => this.setState({ estado: k }), bg: s.estado === k ? 'rgba(0,229,255,.09)' : 'transparent', cor: s.estado === k ? '#00E5FF' : '#8A8F98', borda: s.estado === k ? 'rgba(0,229,255,.4)' : '#23242F' });
+    const stDef = {
+      rodando: ['RODANDO', '#3ECF8E', '●'], pausada: ['PAUSADA', '#8A8F98', '⏸'], erro: ['ERRO', '#E5484D', '✕'],
+    };
+    return {
+      carregado: s.estado === 'carregado', loading: s.estado === 'loading', vazio: s.estado === 'vazio', erro: s.estado === 'erro',
+      chips: [chip('CARREGADO', 'carregado'), chip('LOADING', 'loading'), chip('VAZIO', 'vazio'), chip('ERRO', 'erro')],
+      ops: this.OPS.map(op => {
+        const st = s.erroIds.includes(op.id) ? 'erro' : s.pausadas.includes(op.id) ? 'pausada' : 'rodando';
+        const [stTxt, stCor, stIco] = stDef[st];
+        const histOn = s.hist.includes(op.id);
+        return {
+          nome: op.nome, meta: op.meta, ultima: op.ultima, st: stTxt, stCor, stIco,
+          borda: st === 'erro' ? 'rgba(229,72,77,.4)' : '#23242F',
+          erroOn: st === 'erro',
+          acao: st === 'pausada' ? 'Retomar' : 'Pausar',
+          togglePausa: () => this.setState(p => ({ pausadas: p.pausadas.includes(op.id) ? p.pausadas.filter(i => i !== op.id) : [...p.pausadas, op.id], erroIds: p.erroIds.filter(i => i !== op.id) })),
+          nAval: op.avals.length,
+          histOn, avals: op.avals.map(a => ({ ...a, cor: a.v === 'OK' ? '#3ECF8E' : '#E5484D', borda: a.v === 'OK' ? 'rgba(62,207,142,.4)' : 'rgba(229,72,77,.4)' })),
+          toggleHist: () => this.setState(p => ({ hist: p.hist.includes(op.id) ? p.hist.filter(i => i !== op.id) : [...p.hist, op.id] })),
+          histBorda: histOn ? 'rgba(0,229,255,.45)' : '#23242F', histCor: histOn ? '#00E5FF' : '#F4F6F8',
+        };
+      }),
+    };
+  }
+}
+</script>
+</body>
+</html>
