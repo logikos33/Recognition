@@ -26,13 +26,13 @@ const SENHA = process.env.E2E_ANNOT_PASSWORD
 const API = 'https://api-v3-desenvolvimento.up.railway.app'
 
 const TELAS = [
-  ['dashboard', '/novo/epi/dashboard'],
-  ['ao-vivo', '/novo/epi/live'],
-  ['eventos', '/novo/epi/eventos'],
-  ['verificacao', '/novo/epi/verificacao'],
-  ['acoes', '/novo/epi/acoes'],
-  ['cameras', '/novo/epi/cameras'],
-  ['relatorios', '/novo/epi/relatorios'],
+  ['dashboard', '/epi/dashboard'],
+  ['ao-vivo', '/epi/live'],
+  ['eventos', '/epi/eventos'],
+  ['verificacao', '/epi/verificacao'],
+  ['acoes', '/epi/acoes'],
+  ['cameras', '/epi/cameras'],
+  ['relatorios', '/epi/relatorios'],
 ] as const
 
 test.describe('proporção de ciano', () => {

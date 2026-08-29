@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { ROTAS_NOVAS } from './RotasNovas'
+import { ROTAS_NOVAS, ROTAS_NOVAS_SEM_SHELL } from './RotasNovas'
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const leia = (rel: string) => fs.readFileSync(path.join(SRC, rel), 'utf-8')
@@ -42,13 +42,48 @@ function todosOsCaminhos(rotas: ReactElement[]): string[] {
 }
 
 describe('front novo e front antigo convivem', () => {
-  it('nenhuma rota nova é absoluta — nem no topo, nem aninhada — só existe dentro do prefixo', () => {
+  it('as rotas do array são declaradas relativas, nem no topo nem aninhada — convenção que sobrevive ao flip', () => {
+    // Hoje (PREFIXO_NOVO === '') path absoluto e relativo dão o MESMO
+    // resultado — não há mais prefixo pra "escapar". A convenção continua de
+    // propósito: se um prefixo voltar a existir (rollback), um path absoluto
+    // aqui ignoraria o `<Route element={<Shell/>}>` que envolve `ROTAS_NOVAS`
+    // e voltaria a colidir direto com o endereço antigo — o bug de 27/08.
+    // Declarar relativo é o que mantém essa proteção viva, pronta se o
+    // prefixo voltar. `todosOsCaminhos` desce em `children` porque o Estúdio
+    // (PR-B) tem rota aninhada (`estudio/cobertura`, `estudio/classificar`) —
+    // um `.map` raso deixaria um absoluto filho passar batido.
     const absolutas = todosOsCaminhos(ROTAS_NOVAS).filter((p) => p.startsWith('/'))
     expect(
       absolutas,
-      'rota com caminho absoluto escapa do prefixo e engole a tela antiga de ' +
-        'mesmo endereço. Declare relativa (ex.: "epi/live", não "/epi/live").',
+      'declare relativa (ex.: "epi/live", não "/epi/live") — path absoluto ' +
+        'aqui quebra a convenção que protege contra colisão se um prefixo voltar.',
     ).toEqual([])
+  })
+
+  it('só as rotas antigas explicitamente sombreadas dividem endereço com a nova', () => {
+    // A régua "prefixo não colide" morreu com o prefixo (29/08): sem prefixo,
+    // uma rota nova pode ter o MESMO endereço de uma antiga de propósito — a
+    // nova (estática) sempre vence e a antiga fica morta até a demolição
+    // (MANIFESTO-FRONT-ANTIGO.md). O que ainda precisa de trava é o
+    // INVENTÁRIO: só estas quatro colisões são intencionais. Qualquer outra
+    // rota antiga que passe a dividir endereço com uma rota nova é a
+    // regressão de 27/08 de novo — tela antiga apagada sem aviso.
+    const SOMBREADAS_DE_PROPOSITO = new Set([
+      '/epi/dashboard',
+      '/epi/cameras',
+      '/epi/cameras/:cameraId/operations',
+      '/modules',
+    ])
+
+    const novas = new Set(
+      [...todosOsCaminhos(ROTAS_NOVAS), ...todosOsCaminhos(ROTAS_NOVAS_SEM_SHELL)].map((p) =>
+        p.startsWith('/') ? p : `/${p}`,
+      ),
+    )
+    const antigas = [...leia('AppRoutes.tsx').matchAll(/<Route\s+path="(\/[^"*]*)"/g)].map((m) => m[1])
+    const sombreadas = new Set(antigas.filter((p) => novas.has(p)))
+
+    expect(sombreadas, `sombreadas: ${[...sombreadas].join(', ')}`).toEqual(SOMBREADAS_DE_PROPOSITO)
   })
 
   it('toda rota antiga que mudou de endereço no FLIP redireciona para a nova', () => {

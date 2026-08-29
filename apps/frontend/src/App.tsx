@@ -3,7 +3,7 @@
  * Max 100 linhas. Rotas em AppRoutes.tsx.
  */
 import { Suspense, lazy } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, matchPath, useLocation } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
 import { Login } from './pages/Login'
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
@@ -34,24 +34,33 @@ const RedefinirSenha = lazy(() => import('./app/acesso/RedefinirSenha').then((m)
  * é justamente onde ninguém está conversando com o assistente — está anotando
  * em fluxo, com o teclado.
  */
+/**
+ * Endereços REAIS das telas do shell novo — de `ROTAS_NOVAS` mesmo, não uma
+ * raiz aproximada. `/modules` (`ROTAS_NOVAS_SEM_SHELL`) fica de fora de
+ * propósito: a regra do ciano abaixo é do SHELL novo, e o Modulos nunca usou
+ * Shell nem foi medido — incluí-lo ali era regra sem base.
+ */
+const ROTAS_SHELL_NOVO = ROTAS_NOVAS
+  .map((r) => r.props?.path)
+  .filter((p): p is string => typeof p === 'string')
+  .map((p) => `/${p}`)
+
 const ROTAS_SEM_CHAT = [
   '/epi/training',
   // DECISÃO v2 (design/DECISOES-DESIGN-2026-08-29.md, item 4): o chat
   // flutuante SAI do shell novo — fura a lei do ciano ≤10%, e medido ele
   // sozinho punha 3.136px² de ciano em TODAS as telas novas. Se o suporte
   // ficar, vira item do menu de ajuda/⌘K, e aí é desenhado.
-  //
-  // Pós-flip o front novo não tem mais prefixo próprio (`PREFIXO_NOVO` é
-  // identidade) — a lista vira as raízes das rotas novas, uma por uma.
-  '/epi',
-  '/quality',
-  '/carga',
-  '/modules',
 ]
 
 function ChatFABExcetoAnotacao() {
   const { pathname } = useLocation()
   if (ROTAS_SEM_CHAT.some(r => pathname.startsWith(r))) return null
+  // Sombreada ou não, é a tela do SHELL NOVO que decide — não uma raiz
+  // aproximada. Isso devolve o chat às telas antigas de /epi/* que o shell
+  // novo não sombreia (ex.: /epi/counting, /epi/sites), que a raiz "/epi"
+  // escondia sem necessidade.
+  if (ROTAS_SHELL_NOVO.some((p) => matchPath({ path: p, end: true }, pathname))) return null
   return <ChatFAB />
 }
 

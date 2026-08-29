@@ -85,13 +85,18 @@ export const PREFIXO_LEGADO = '/novo'
 export const rotaNova = (caminho: string) => PREFIXO_NOVO + caminho
 
 /**
- * Índice de `ROTAS_NOVAS` (`/`) — mesma lógica de `RootRedirect` em
- * `AppRoutes.tsx`: superadmin cai no admin (front antigo, não migrado),
- * os demais perfis caem no dashboard do EPI.
+ * Índice de `ROTAS_NOVAS` (`/`) — replica EXATAMENTE `RootRedirect` de
+ * `AppRoutes.tsx:33-36`: superadmin cai no admin (front antigo, não
+ * migrado), os demais perfis caem em `/modules` (a escolha de módulo, que a
+ * tela nova de `ROTAS_NOVAS_SEM_SHELL` sombreia no mesmo endereço).
+ *
+ * Não é `/epi/dashboard`: dashboard é o que se abre DEPOIS de escolher o
+ * módulo, não a raiz. `/` e uma rota `/novo` inexistente convergem aqui, no
+ * mesmo destino do `RootRedirect` antigo — decisão do Vitor.
  */
 function RaizRotasNovas() {
   const { isSuperAdmin } = useAuth()
-  return <Navigate to={isSuperAdmin ? '/admin' : 'epi/dashboard'} replace />
+  return <Navigate to={isSuperAdmin ? '/admin' : '/modules'} replace />
 }
 
 /**

@@ -106,7 +106,7 @@ test.describe('front novo, por papel', () => {
   for (const papel of PAPEIS) {
     test(`${papel}: o menu mostra exatamente o que a permissão permite`, async ({ page }) => {
       await entrarComo(page, papel)
-      await page.goto('/novo/epi/dashboard')
+      await page.goto('/epi/dashboard')
 
       const nav = page.getByRole('navigation', { name: 'Navegação principal' })
       await expect(nav).toBeVisible()
@@ -115,18 +115,19 @@ test.describe('front novo, por papel', () => {
       expect(visiveis).toEqual(menuEsperado(papel))
     })
 
-    test(`${papel}: nenhum link do menu escapa do front novo`, async ({ page }) => {
+    test(`${papel}: nenhum link do menu escapa para fora de /epi`, async ({ page }) => {
       // Regressão de 27/08: 10 links absolutos levavam, calados, para a tela
-      // ANTIGA de mesmo endereço. Aqui é o produto montado que responde.
+      // ANTIGA de mesmo endereço. Pós-flip (29/08) o front novo não tem mais
+      // prefixo — o menu do EPI aponta direto para `/epi/...`.
       await entrarComo(page, papel)
-      await page.goto('/novo/epi/dashboard')
+      await page.goto('/epi/dashboard')
 
       const hrefs = await page
         .getByRole('navigation', { name: 'Navegação principal' })
         .getByRole('link')
         .evaluateAll((as) => as.map((a) => a.getAttribute('href') ?? ''))
 
-      for (const href of hrefs) expect(href).toMatch(/^\/novo\//)
+      for (const href of hrefs) expect(href).toMatch(/^\/epi\//)
     })
   }
 
@@ -138,7 +139,7 @@ test.describe('front novo, por papel', () => {
     expect(MATRIZ.viewer).not.toContain('verification:read')
 
     await entrarComo(page, 'viewer')
-    await page.goto('/novo/epi/dashboard')
+    await page.goto('/epi/dashboard')
 
     const nav = page.getByRole('navigation', { name: 'Navegação principal' })
     await expect(nav.getByRole('link', { name: 'Verificação' })).toHaveCount(0)

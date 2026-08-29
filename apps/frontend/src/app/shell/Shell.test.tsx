@@ -24,7 +24,9 @@ vi.mock('../../services/tenantContext', () => ({
   assumeTenantContext: vi.fn(),
 }))
 
+import { rotaNova } from '../RotasNovas'
 import { Shell } from './Shell'
+import { NAV_EPI } from './navPorPerfil'
 
 function montar(rota = '/epi/live') {
   return render(
@@ -69,13 +71,18 @@ describe('Shell', () => {
     expect(nomes).toEqual(['Dashboard'])
   })
 
-  it('o menu do front novo aponta para as rotas novas', () => {
-    // Pós-flip (29/08) o menu não passa mais por prefixo: aponta direto para
-    // o endereço final (`/epi/...`), que a rota nova sombreia da antiga.
+  it('o menu do front novo aponta para o que rotaNova() calcula, não pra literal cru', () => {
+    // Com PREFIXO_NOVO === '' um `to="/epi/cameras"` cru e um `to={PREFIXO_NOVO
+    // + i.rota}` correto rendem o MESMO href — nenhum teste de output consegue
+    // mais distinguir os dois (quem pega o literal cru hoje é a régua estática
+    // de `coexistencia.test.tsx`, que varre o SOURCE de Shell.tsx). O que este
+    // teste ainda prova: os hrefs são exatamente `NAV_EPI` passado por
+    // `rotaNova()` — fonte independente do DOM renderizado. Se um prefixo
+    // voltar a existir, este teste acompanha sem precisar ser editado; um
+    // `/^\/epi\//` fixo, não.
     montar()
-    for (const link of screen.getAllByRole('link')) {
-      expect(link.getAttribute('href')).toMatch(/^\/epi\//)
-    }
+    const hrefs = screen.getAllByRole('link').map((a) => a.getAttribute('href'))
+    expect(hrefs).toEqual(NAV_EPI.flatMap((g) => g.itens.map((i) => rotaNova(i.rota))))
   })
 
   it('ao recolher, o rótulo continua legível para leitor de tela', async () => {
