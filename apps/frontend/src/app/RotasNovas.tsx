@@ -40,6 +40,11 @@ const Eventos = lazy(() => import('./epi/Eventos').then((m) => ({ default: m.Eve
 const Relatorios = lazy(() => import('./epi/Relatorios').then((m) => ({ default: m.Relatorios })))
 const Verificacao = lazy(() => import('./epi/Verificacao').then((m) => ({ default: m.Verificacao })))
 const Operacoes = lazy(() => import('./epi/Operacoes').then((m) => ({ default: m.Operacoes })))
+const Qualidade = lazy(() => import('./qualidade/Qualidade').then((m) => ({ default: m.Qualidade })))
+const GestaoQualidade = lazy(() => import('./qualidade/GestaoQualidade').then((m) => ({ default: m.GestaoQualidade })))
+const RevisaoQualidade = lazy(() => import('./qualidade/RevisaoQualidade').then((m) => ({ default: m.RevisaoQualidade })))
+const ConfigQualidade = lazy(() => import('./qualidade/ConfigQualidade').then((m) => ({ default: m.ConfigQualidade })))
+const Carga = lazy(() => import('./carga/Carga').then((m) => ({ default: m.Carga })))
 const Modulos = lazy(() => import('./modulos/Modulos').then((m) => ({ default: m.Modulos })))
 
 /**
@@ -80,6 +85,13 @@ export const ROTAS_NOVAS: ReactElement[] = [
   <Route key="c" path="epi/cameras" element={<Cameras />} />,
   <Route key="op" path="epi/cameras/:cameraId/operations" element={<Operacoes />} />,
   <Route key="r" path="epi/relatorios" element={<Relatorios />} />,
+
+  // F4 — Qualidade e Carga. O de-para do delta manda `/quality/*` e `/carga/*`.
+  <Route key="q" path="quality" element={<Qualidade />} />,
+  <Route key="qg" path="quality/gestao" element={<GestaoQualidade />} />,
+  <Route key="qr" path="quality/revisao" element={<RevisaoQualidade />} />,
+  <Route key="qc" path="quality/configuracao" element={<ConfigQualidade />} />,
+  <Route key="ca" path="carga" element={<Carga />} />,
 ]
 
 /**
