@@ -279,6 +279,76 @@ class TestTrainedModelInsertPropagation:
         assert params.count(model_path) == 1
 
 
+class TestBuildModelName:
+    """_build_model_name: unidade pura — nome honesto por framework (fix
+    "nome interno honesto"; era f-string 'YOLO26 {model_size}' hardcoded,
+    resto da era Ultralytics Hub, batizando artefatos rfdetr de YOLO26)."""
+
+    def test_rfdetr_never_mentions_yolo26(self) -> None:
+        name = training_mod._build_model_name("rfdetr", "yolo26n", _JOB_ID)
+        assert name.startswith("RF-DETR"), name
+        assert "YOLO26" not in name, name
+        # model_size ('yolo26n') é lixo herdado do TrainingService pra
+        # frameworks != yolo26 — nunca deve aparecer no nome.
+        assert "yolo26n" not in name, name
+
+    def test_yolox_never_mentions_yolo26(self) -> None:
+        name = training_mod._build_model_name("yolox", "yolo26n", _JOB_ID)
+        assert name.startswith("YOLOX"), name
+        assert "YOLO26" not in name, name
+
+    def test_yolo26_keeps_model_size_no_regression(self) -> None:
+        name = training_mod._build_model_name("yolo26", "yolo26s", _JOB_ID)
+        assert name == f"YOLO26 yolo26s - Job {_JOB_ID[:8]}", name
+
+    def test_unknown_framework_falls_back_to_upper(self) -> None:
+        name = training_mod._build_model_name("outro", "yolo26n", _JOB_ID)
+        assert name.startswith("OUTRO"), name
+
+
+class TestTrainedModelInsertNameReflectsRealFramework:
+    """Fail-antes/passa-depois (task "nome interno honesto"): o INSERT em
+    trained_models grava `name` batendo com o `framework` REAL do job
+    (training_jobs.framework via SELECT dedicado), nunca 'YOLO26' fixo.
+    """
+
+    def _run_with_framework(self, monkeypatch, framework: str, model_size="yolo26n"):
+        def _execute_one_side_effect(sql, params=()):
+            if "trained_models" in sql:
+                return None  # guarda anti-duplicação: nenhum modelo existente
+            if "SELECT framework FROM training_jobs" in sql:
+                return {"framework": framework}
+            return {"tenant_id": _REAL_TENANT}  # _get_job_tenant_id
+
+        with patch.object(training_mod, "DatabasePool"), \
+             patch.object(training_mod, "AnnotationRepository") as mock_repo_cls, \
+             patch.object(training_mod, "_publish_progress"), \
+             patch.object(
+                 training_mod, "get_training_compute",
+                 return_value=MagicMock(dispatch=MagicMock(return_value=_DEFAULT_RESULT)),
+             ), \
+             patch.object(training_mod, "verify_model_artifact", return_value=True):
+            mock_repo_cls.return_value._execute_one.side_effect = _execute_one_side_effect
+            training_mod.dispatch_training(
+                _JOB_ID, _DSV_ID, model_size=model_size, epochs=5,
+            )
+            repo = mock_repo_cls.return_value
+
+        _, params = _find_insert_call(repo)
+        return params
+
+    def test_rfdetr_job_gets_rfdetr_name_never_yolo26(self, monkeypatch) -> None:
+        params = self._run_with_framework(monkeypatch, "rfdetr")
+        [name] = [p for p in params if isinstance(p, str) and p.startswith(("RF-DETR", "YOLO"))]
+        assert name.startswith("RF-DETR"), name
+        assert "YOLO26" not in name, name
+
+    def test_yolo26_job_still_gets_yolo26_name(self, monkeypatch) -> None:
+        params = self._run_with_framework(monkeypatch, "yolo26", model_size="yolo26m")
+        [name] = [p for p in params if isinstance(p, str) and p.startswith(("RF-DETR", "YOLO"))]
+        assert name == f"YOLO26 yolo26m - Job {_JOB_ID[:8]}", name
+
+
 class TestChallengerEvalAlwaysTriggeredOnSuccess:
     """Toda conclusão bem-sucedida dispara avaliação campeão×desafiante — não
     há mais origin='simulated' a pular (_simulate_training foi deletado,
