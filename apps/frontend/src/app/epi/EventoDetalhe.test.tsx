@@ -19,9 +19,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // `vi.hoisted`: o `vi.mock` é ICADO acima das constantes do módulo, então um
 // `const` normal ainda não existe quando a fábrica roda.
-const { get, post, pode } = vi.hoisted(() => ({
+const { get, post, patch, pode } = vi.hoisted(() => ({
   get: vi.fn(),
   post: vi.fn(),
+  patch: vi.fn(),
   pode: vi.fn(),
 }))
 
@@ -29,8 +30,22 @@ vi.mock('../../services/api', async () => {
   // `ApiError` fica REAL: a tela distingue 404 (vazio) de qualquer outro
   // status (erro) por `instanceof`, e um dublê quebraria essa distinção.
   const real = await vi.importActual<Record<string, unknown>>('../../services/api')
-  return { ...real, api: { get, post, put: vi.fn(), patch: vi.fn(), delete: vi.fn() } }
+  return { ...real, api: { get, post, put: vi.fn(), patch, delete: vi.fn() } }
 })
+
+// jsdom não implementa PointerEvent: sem isto o fireEvent cai num Event cru e
+// clientX/clientY chegam undefined — a conversão daria NaN e o teste passaria
+// a medir nada. Herdar de MouseEvent é o mínimo que preserva as coordenadas.
+if (!('PointerEvent' in window)) {
+  class PointerEventStub extends MouseEvent {
+    pointerId: number
+    constructor(tipo: string, init: PointerEventInit = {}) {
+      super(tipo, init)
+      this.pointerId = init.pointerId ?? 1
+    }
+  }
+  Object.defineProperty(window, 'PointerEvent', { value: PointerEventStub, configurable: true })
+}
 vi.mock('../../hooks/useAuth', () => ({ useAuth: () => ({ can: pode }) }))
 vi.mock('react-router-dom', async () => {
   const real = await vi.importActual<Record<string, unknown>>('react-router-dom')
@@ -54,6 +69,7 @@ const EVENTO = {
   evidence_url: 'https://r2.example/frame.jpg',
   verification_verdict: null as string | null,
   verified_at: null as string | null,
+  correcao_ultima: null as { por: string | null; em: string | null } | null,
 }
 
 const montar = () => render(<MemoryRouter><EventoDetalhe /></MemoryRouter>)
@@ -61,9 +77,32 @@ const montar = () => render(<MemoryRouter><EventoDetalhe /></MemoryRouter>)
 /** A tela devolve o alerta e, no refetch pós-veredito, o mesmo alerta mudado. */
 const responde = (alert: unknown) => get.mockResolvedValue({ data: { alert } })
 
+/**
+ * jsdom não baixa a imagem nem faz layout: forjamos naturalWidth/Height (frame
+ * ORIGINAL) e o rect EXIBIDO. Fator 2 exato de propósito — é o que pega quem
+ * confundir `getBoundingClientRect()` com `naturalWidth` na conversão.
+ */
+async function montarFrame(nat: [number, number], rect: [number, number]) {
+  const img = (await screen.findByAltText('Frame da evidência')) as HTMLImageElement
+  Object.defineProperty(img, 'naturalWidth', { value: nat[0], configurable: true })
+  Object.defineProperty(img, 'naturalHeight', { value: nat[1], configurable: true })
+  img.getBoundingClientRect = () => ({
+    left: 0, top: 0, right: rect[0], bottom: rect[1],
+    width: rect[0], height: rect[1], x: 0, y: 0, toJSON: () => ({}),
+  }) as DOMRect
+  fireEvent.load(img)
+  return img
+}
+
 beforeEach(() => {
   get.mockReset()
   post.mockReset().mockResolvedValue({ data: {} })
+  patch.mockReset().mockResolvedValue({
+    data: {
+      violations: [{ class: 'no_helmet', confidence: 0.87, bbox: [200, 100, 400, 200], bbox_unidade: 'pixels_xywh_frame_original' }],
+      correcao_ultima: { por: 'u-1', em: '2026-08-24T10:00:00Z' },
+    },
+  })
   pode.mockReset().mockReturnValue(true)
   responde(EVENTO)
 })
@@ -236,5 +275,93 @@ describe('estados', () => {
     get.mockResolvedValue({ data: {} })
     montar()
     expect(await screen.findByText('Evento não encontrado')).toBeTruthy()
+  })
+})
+
+// ── correção de caixa (migrada de AlertDetailRevisao.test.tsx — a tela ──────
+// antiga vai ser demolida, esta cobertura não pode se perder junto).
+
+describe('correção de caixa', () => {
+  it('sem alerts:feedback não mostra o botão de correção', async () => {
+    pode.mockImplementation((permissao: string) => permissao !== 'alerts:feedback')
+    montar()
+    await screen.findByText('CAM-04 Expedição')
+    expect(screen.queryByText('Corrigir caixa')).toBeNull()
+    expect(pode).toHaveBeenCalledWith('alerts:feedback')
+  })
+
+  it('arrasto grava bbox em PIXELS do frame ORIGINAL, não do frame exibido', async () => {
+    montar()
+    await montarFrame([1920, 1080], [960, 540])
+    fireEvent.click(screen.getByText('Corrigir caixa'))
+
+    const palco = screen.getByRole('group')
+    fireEvent.pointerDown(palco, { clientX: 100, clientY: 50, pointerId: 1 })
+    fireEvent.pointerMove(palco, { clientX: 300, clientY: 150, pointerId: 1 })
+    fireEvent.pointerUp(palco, { clientX: 300, clientY: 150, pointerId: 1 })
+
+    fireEvent.click(screen.getByText('Salvar caixa'))
+    await waitFor(() => expect(patch).toHaveBeenCalled())
+    // 100→200, 50→100, 300→300 vira largura 400, 150→150 vira altura 200:
+    // fator 2 do rect exibido (960×540) para o natural (1920×1080). Gravar o
+    // rect cru daria a caixa deslocada e pequena demais.
+    expect(patch).toHaveBeenCalledWith('/alerts/e1/violations', {
+      correcoes: [{ index: 0, bbox: [200, 100, 400, 200] }],
+    })
+  })
+
+  it('mostra a caixa de correção (sólida, ciano) assim que o modo abre', async () => {
+    montar()
+    await montarFrame([1920, 1080], [960, 540])
+    expect(screen.queryByTestId('caixa-correcao')).toBeNull()
+    fireEvent.click(screen.getByText('Corrigir caixa'))
+    expect(await screen.findByTestId('caixa-correcao')).toBeTruthy()
+  })
+
+  it('arrasto pequeno demais (clique acidental) NÃO degenera a caixa: rascunho volta à gravada', async () => {
+    montar()
+    await montarFrame([1920, 1080], [960, 540])
+    fireEvent.click(screen.getByText('Corrigir caixa'))
+    const palco = screen.getByRole('group')
+    fireEvent.pointerDown(palco, { clientX: 100, clientY: 50, pointerId: 1 })
+    fireEvent.pointerMove(palco, { clientX: 101, clientY: 50, pointerId: 1 })
+    fireEvent.pointerUp(palco, { clientX: 101, clientY: 50, pointerId: 1 })
+    fireEvent.click(screen.getByText('Salvar caixa'))
+    await waitFor(() => expect(patch).toHaveBeenCalled())
+    expect(patch).toHaveBeenCalledWith('/alerts/e1/violations', {
+      correcoes: [{ index: 0, bbox: [100, 50, 200, 400] }],
+    })
+  })
+
+  it('caminho de teclado: digitar coordenada em px grava o mesmo bbox', async () => {
+    montar()
+    await montarFrame([1920, 1080], [960, 540])
+    fireEvent.click(screen.getByText('Corrigir caixa'))
+    fireEvent.change(screen.getByLabelText('X'), { target: { value: '77' } })
+    fireEvent.click(screen.getByText('Salvar caixa'))
+    await waitFor(() => expect(patch).toHaveBeenCalled())
+    expect(patch).toHaveBeenCalledWith('/alerts/e1/violations', {
+      correcoes: [{ index: 0, bbox: [77, 50, 200, 400] }],
+    })
+  })
+
+  it('ESC cancela a correção', async () => {
+    montar()
+    await montarFrame([1920, 1080], [960, 540])
+    fireEvent.click(screen.getByText('Corrigir caixa'))
+    expect(screen.getByText('Salvar caixa')).toBeTruthy()
+    fireEvent.keyDown(screen.getByRole('group'), { key: 'Escape' })
+    expect(screen.queryByText('Salvar caixa')).toBeNull()
+    expect(screen.getByText('Corrigir caixa')).toBeTruthy()
+  })
+
+  it('mostra quem corrigiu a caixa e quando', async () => {
+    responde({ ...EVENTO, correcao_ultima: { por: 'u-9', em: '2026-08-24T10:00:00Z' } })
+    montar()
+    // "u-9" mora num <strong> aninhado — getByText não concatena texto
+    // através de elemento filho, daí ler o textContent inteiro do bloco.
+    const badge = await screen.findByTestId('badge-autoria')
+    expect(badge.textContent).toContain('Caixa corrigida por')
+    expect(badge.textContent).toContain('u-9')
   })
 })
