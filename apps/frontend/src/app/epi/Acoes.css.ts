@@ -19,7 +19,12 @@ export const pagina = style({
   flexDirection: 'column',
   gap: lk.espaco.x2,
   // 24px de cada lado é o dobro do que sobra pra ler numa coluna de telefone.
-  '@media': { [TELA_ESTREITA]: { padding: lk.espaco.x2 } },
+  // `overflowWrap: anywhere`: no runner do CI a JetBrains Mono não existe e o
+  // fallback (Courier) é mais largo — token comprido que aqui coube passa a
+  // vazar lá. Quebrar em qualquer ponto é honesto; esconder overflow não é.
+  '@media': {
+    [TELA_ESTREITA]: { padding: lk.espaco.x2, overflowWrap: 'anywhere' },
+  },
 })
 
 export const cabecalho = style({
