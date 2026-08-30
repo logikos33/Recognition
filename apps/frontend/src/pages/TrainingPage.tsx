@@ -1,4 +1,36 @@
 /**
+ * ⚠️ SUPERADA — esta tela tem substituta no front novo.
+ *
+ * @migrado-para src/app/estudio/* — 6 sub-rotas (Dados, Cobertura,
+ * Classificar, Modelo, ModelosPorCamera, Treino)
+ * rotas novas: /novo/estudio/{dados,cobertura,classificar,modelo,modelos-por-camera,treino}
+ *
+ * Paridade fechada em 30/08/2026 (PRs #572/#574/#577/#580/#583/#586, F5 SR1):
+ * as 6 abas desta tela (`value="imagens|cobertura|classificar|modelo|modelos|treino"`
+ * acima) renasceram como sub-rotas próprias do Estúdio — mesmos endpoints,
+ * mesma orquestração (AnnotationStudio/CropClassifier/CoverageMatrix/
+ * CameraModelScope são a mesma peça INFRA, só embrulhada), porte de
+ * comportamento, não de markup. 3 bloqueadores achados pelo cético fecharam no
+ * PR #586: selo de simulação, proveniência (`origin`) e dono do modelo — hoje
+ * em `Modelo.tsx`/`Treino.tsx` via `estudio/selos.tsx`.
+ *
+ * Fila por incerteza (`?ordenar=incerteza` da galeria) segue SEM CHAMADOR em
+ * nenhum dos dois fronts — backend pronto
+ * (`services/api/app/api/v1/training/image_handlers.py`), decisão de produto
+ * pendente sobre ligá-la; não é dívida de paridade (ver
+ * `docs/migration/PEDIDOS-AO-BACKEND-F5.md`, item 6). Ver seção "Estúdio" em
+ * docs/migration/PARIDADE-ANTIGO-VS-NOVO.md.
+ *
+ * Continua VIVA e servindo a rota antiga: os dois fronts convivem até a
+ * migração terminar (decisão do Vitor, 27/08). Não apague nesta rodada.
+ *
+ * Na rodada de remoção, ANTES de apagar: a substituta foi provada renderizando
+ * com dado real no DEV, mas paridade de FUNCIONALIDADE não foi conferida item a
+ * item. Compare as duas telas primeiro — e confira quem mais importa deste
+ * arquivo (componentes e estilos só dele saem junto; os compartilhados, não).
+ * A lista está em docs/migration/MANIFESTO-FRONT-ANTIGO.md.
+ */
+/**
  * TrainingPage — ambiente de treino completo (deliverable f).
  *
  * Tab 1 "Imagens"     — galeria paginada de imagens de treino, upload, filtros
