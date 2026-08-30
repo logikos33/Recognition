@@ -101,6 +101,7 @@ import {
 import { useAuth } from '../../hooks/useAuth'
 import { useCameraSnapshot } from '../../hooks/useCameraSnapshot'
 import { api } from '../../services/api'
+import { nomeInternoOuCliente } from '../../services/modelDisplay'
 import { cameraService, type CameraConfigPatch, type CameraPropagation, type TestResult } from '../../services/cameraService'
 import { edgeService } from '../../services/edgeService'
 import type { Camera } from '../../types'
@@ -239,6 +240,7 @@ interface EscopoProps {
 }
 
 function AbaEscopo({ cameras, podeEditar }: EscopoProps) {
+  const { isSuperAdmin } = useAuth()
   const ativas = useMemo(() => cameras.filter((c) => c.is_active !== false), [cameras])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
@@ -386,7 +388,7 @@ function AbaEscopo({ cameras, podeEditar }: EscopoProps) {
                   >
                     <option value="" disabled={!!dep}>— sem modelo (detector padrão)</option>
                     {doModulo.map((m) => (
-                      <option key={m.id} value={m.id}>{m.name || `Modelo ${m.id.slice(0, 8)}`}</option>
+                      <option key={m.id} value={m.id}>{nomeInternoOuCliente(m, isSuperAdmin)}</option>
                     ))}
                   </select>
                 </td>
