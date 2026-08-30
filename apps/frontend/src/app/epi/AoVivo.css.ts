@@ -699,3 +699,27 @@ export const rodapeMontagem = style({
   fontSize: '12.5px',
   color: lk.cor.cinzaNevoa,
 })
+
+// ── Local e módulo no quadrinho (§13) — segunda linha, discreta, sob o nome ──
+
+export const tarjaLocalModulo = style([tarja, {
+  top: '30px',
+  left: '8px',
+  maxWidth: '70%',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  color: lk.cor.cinzaNevoa,
+}])
+
+// ── Aviso de sinal caído (§11) ───────────────────────────────────────────────
+// Cor sozinha nunca é o estado (regra do manual): borda âmbar no ladrilho +
+// selo com a palavra, espelhando a tarja de nome/local no canto oposto.
+
+export const ladrilhoSemSinal = style({ borderColor: lk.estado.atencao })
+
+export const avisoSemSinal = style([tarja, {
+  top: '30px',
+  right: '8px',
+  color: lk.estado.atencao,
+  border: `1px solid ${lk.estado.atencao}`,
+}])

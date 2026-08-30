@@ -70,6 +70,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { useLiveView } from '../../hooks/useLiveView'
 import { useMonitoringSocket, type Detection } from '../../hooks/useMonitoringSocket'
 import { CameraPlayer } from '../../components/monitoring/CameraPlayer'
+import { labelForModule } from '../../utils/labels'
 import type { Camera } from '../../types'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import * as s from './AoVivo.css'
@@ -249,6 +250,8 @@ interface LadrilhoProps {
   selecionado: boolean
   /** Gaveta desta MESMA câmera aberta — não manter dois players (ponto 3). */
   suprimido: boolean
+  /** WebSocket de detecções caiu (§11) — dado pode estar velho, não confiável. */
+  semSinal: boolean
   grande?: boolean
   onSelecionar: () => void
   onDestacar?: () => void
@@ -260,6 +263,7 @@ function Ladrilho({
   compacto,
   selecionado,
   suprimido,
+  semSinal,
   grande = false,
   onSelecionar,
   onDestacar,
@@ -281,7 +285,7 @@ function Ladrilho({
   return (
     <div
       ref={ref}
-      className={grande ? s.foco : s.ladrilho[selecionado ? 'selecionado' : 'normal']}
+      className={`${grande ? s.foco : s.ladrilho[selecionado ? 'selecionado' : 'normal']}${semSinal ? ` ${s.ladrilhoSemSinal}` : ''}`}
       role="button"
       tabIndex={0}
       aria-label={`Abrir ${camera.name}`}
@@ -315,9 +319,25 @@ function Ladrilho({
       )}
 
       <span className={s.tarjaNome}>{camera.name}</span>
+      {/* §13 — local e módulo já vêm em GET /cameras; só não eram desenhados.
+          Some no quadrinho compacto (mesmo critério do rótulo de bbox). */}
+      {!compacto && (
+        <span className={s.tarjaLocalModulo}>
+          {camera.location ?? 'SEM LOCAL'}
+          {camera.module_code != null && ` · ${labelForModule(camera.module_code)}`}
+        </span>
+      )}
       <span className={s.tarjaEstado[estado]} title={descricao}>
         {compacto ? tarja.icone : descricao}
       </span>
+      {semSinal && (
+        <span
+          className={s.avisoSemSinal}
+          title="Conexão de detecções caída — pode haver violação não sinalizada"
+        >
+          SEM SINAL
+        </span>
+      )}
 
       {deteccoes.length > 0 && <CamadaCaixas deteccoes={deteccoes} comRotulo={!compacto} />}
 
@@ -456,6 +476,7 @@ interface CelulaSlotProps {
   compacto: boolean
   selecionado: boolean
   suprimido: boolean
+  semSinal: boolean
   deteccoes: Detection[]
   arrastando: string | null
   onEscolher: (cameraId: string) => void
@@ -472,6 +493,7 @@ function CelulaSlot({
   compacto,
   selecionado,
   suprimido,
+  semSinal,
   deteccoes,
   arrastando,
   onEscolher,
@@ -538,6 +560,7 @@ function CelulaSlot({
         compacto={compacto}
         selecionado={selecionado}
         suprimido={suprimido}
+        semSinal={semSinal}
         onSelecionar={onSelecionar}
         onDestacar={onDestacar}
       />
@@ -630,6 +653,9 @@ export function AoVivo() {
     token: token ?? '',
     enabled: !!token && podeVer,
   })
+  // §11 — o único sinal honesto de "detecção parou de chegar" que a tela tem
+  // hoje é o próprio socket. Sem ele, os ladrilhos seguem ONLINE sem avisar.
+  const semSinal = !connected
 
   useEffect(() => {
     if (!connected || cameras == null) return
@@ -994,6 +1020,7 @@ export function AoVivo() {
                       compacto={compacto}
                       selecionado={camera != null && selecionada === camera.id}
                       suprimido={camera != null && selecionada === camera.id}
+                      semSinal={semSinal}
                       deteccoes={camera != null ? deteccoesDe(camera.id) : []}
                       arrastando={arrastando}
                       onEscolher={(novoId) =>
@@ -1019,6 +1046,7 @@ export function AoVivo() {
                   compacto={false}
                   selecionado={false}
                   suprimido={selecionada === cameraFocada.id}
+                  semSinal={semSinal}
                   grande
                   onSelecionar={() => setSelecionada(cameraFocada.id)}
                 />
@@ -1034,6 +1062,7 @@ export function AoVivo() {
                       compacto
                       selecionado={selecionada === c.id}
                       suprimido={selecionada === c.id}
+                      semSinal={semSinal}
                       onSelecionar={() => setFocada(c.id)}
                     />
                   ))}
@@ -1053,6 +1082,7 @@ export function AoVivo() {
                   compacto={compacto}
                   selecionado={selecionada === c.id}
                   suprimido={selecionada === c.id}
+                  semSinal={semSinal}
                   onSelecionar={() => setSelecionada(c.id)}
                   onDestacar={() => destacar(c.id)}
                 />
