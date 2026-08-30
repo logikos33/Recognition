@@ -10,6 +10,12 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+const navigateMock = vi.hoisted(() => vi.fn())
+vi.mock('react-router-dom', async () => {
+  const real = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
+  return { ...real, useNavigate: () => navigateMock }
+})
+
 interface PropsVistas {
   initialCameraId?: string | null
   initialClassId?: number | null
@@ -26,14 +32,20 @@ vi.mock('../../components/annotation/CropClassifier', () => ({
   },
 }))
 
-const estudio = vi.hoisted(() => ({ props: null as { onExit: () => void } | null }))
+interface PropsEstudio {
+  onExit: () => void
+  onExitToProposals?: () => void
+}
+
+const estudio = vi.hoisted(() => ({ props: null as PropsEstudio | null }))
 vi.mock('../../components/annotation/AnnotationStudio', () => ({
-  AnnotationStudio: (props: { onExit: () => void }) => {
+  AnnotationStudio: (props: PropsEstudio) => {
     estudio.props = props
     return (
       <div>
         estudio-aberto
         <button onClick={props.onExit}>sair-do-estudio</button>
+        <button onClick={props.onExitToProposals}>sair-para-propostas</button>
       </div>
     )
   },
@@ -53,6 +65,7 @@ describe('Classificar (recorte a recorte do Estúdio)', () => {
   beforeEach(() => {
     vistas.classificador = null
     estudio.props = null
+    navigateMock.mockReset()
   })
 
   it('sem query string: foco vazio (nenhum deep-link herdado por engano)', () => {
@@ -84,5 +97,12 @@ describe('Classificar (recorte a recorte do Estúdio)', () => {
     fireEvent.click(screen.getByText('sair-do-estudio'))
     expect(screen.queryByText('estudio-aberto')).toBeNull()
     expect(screen.getByText('ajustar')).toBeTruthy()
+  })
+
+  it('"Ajustar" → sair para propostas navega para /novo/estudio/dados?status=proposta_pendente', () => {
+    monta()
+    fireEvent.click(screen.getByText('ajustar'))
+    fireEvent.click(screen.getByText('sair-para-propostas'))
+    expect(navigateMock).toHaveBeenCalledWith('/novo/estudio/dados?status=proposta_pendente')
   })
 })

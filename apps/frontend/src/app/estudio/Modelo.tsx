@@ -38,12 +38,21 @@ import { AlertTriangle, CheckCircle2, Settings } from 'lucide-react'
 import { api } from '../../services/api'
 import { useToast } from '../../components/ui/Toast/useToast'
 import { EmptyState } from '../../components/ui/EmptyState/EmptyState'
+import { Tooltip } from '../../components/ui/Tooltip/Tooltip'
 import { ModelScenarioWizard } from '../../components/scenario/ModelScenarioWizard'
 import type { ApiResponse, TrainedModel, YoloClass } from '../../types'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import { rotaNova } from '../RotasNovas'
 import { lk } from '../tokens/lk.css'
+import { isSimulatedArtifact, originLabel, OwnerInfo, SeloSimulacao } from './selos'
 import * as s from './Modelo.css'
+
+/** Tooltips pt-BR das métricas de modelo (mAP@50 / Precisão / Cobertura). */
+const METRIC_HELP: Record<string, string> = {
+  'mAP@50': 'mAP@50: acerto médio das detecções com sobreposição ≥ 50% — quanto maior, melhor',
+  Precisão: 'Precisão: das detecções feitas, quantas estavam certas',
+  Cobertura: 'Cobertura: dos objetos presentes, quantos o modelo encontrou',
+}
 
 /** `yolo26n/s/m` → `LGKV26n/s/m` — mesmo apelido do antigo (displayModelName). */
 function nomeExibicao(nome: string): string {
@@ -64,12 +73,15 @@ function dataFormatada(iso: string): string {
 const PORCENTAGEM = (v: number) => `${(v * 100).toFixed(1)}%`
 
 function Metrica({ rotulo, valor }: { rotulo: string; valor: string }) {
-  return (
+  const pilula = (
     <div className={s.metrica}>
       <span className={s.metricaRotulo}>{rotulo}</span>
       <span className={s.metricaValor}>{valor}</span>
     </div>
   )
+  const ajuda = METRIC_HELP[rotulo]
+  if (!ajuda) return pilula
+  return <Tooltip label={ajuda}>{pilula}</Tooltip>
 }
 
 function Metricas({ modelo }: { modelo: TrainedModel }) {
@@ -162,7 +174,12 @@ export function Modelo() {
           <>
             <div className={s.nomeAtivo}>{nomeExibicao(ativo.name)}</div>
             <Metricas modelo={ativo} />
-            <div className={s.rodapeAtivo}>Criado em {dataFormatada(ativo.created_at)}</div>
+            <div className={s.rodapeAtivo}>
+              <span>Origem: {originLabel(ativo.origin)}</span>
+              {isSimulatedArtifact(ativo.origin, ativo.metrics) && <SeloSimulacao />}
+              <OwnerInfo model={ativo} />
+            </div>
+            <span className={s.dataAtivo}>Criado em {dataFormatada(ativo.created_at)}</span>
           </>
         ) : (
           <p className={s.semAtivo}>Nenhum modelo ativo. Ative um modelo abaixo.</p>
@@ -207,6 +224,11 @@ export function Modelo() {
                 </span>
               </div>
               <Metricas modelo={modelo} />
+              <div className={s.rodapeAtivo}>
+                <span>Origem: {originLabel(modelo.origin)}</span>
+                {isSimulatedArtifact(modelo.origin, modelo.metrics) && <SeloSimulacao />}
+                <OwnerInfo model={modelo} />
+              </div>
               <div className={s.acoes}>
                 <button className={s.botaoAcao} onClick={() => setModeloCenario(modelo)}>
                   <Settings size={12} strokeWidth={2} aria-hidden="true" /> Configurar cenário
