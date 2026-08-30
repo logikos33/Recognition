@@ -46,6 +46,7 @@ const RevisaoQualidade = lazy(() => import('./qualidade/RevisaoQualidade').then(
 const ConfigQualidade = lazy(() => import('./qualidade/ConfigQualidade').then((m) => ({ default: m.ConfigQualidade })))
 const Carga = lazy(() => import('./carga/Carga').then((m) => ({ default: m.Carga })))
 const Modulos = lazy(() => import('./modulos/Modulos').then((m) => ({ default: m.Modulos })))
+const Kiosk = lazy(() => import('./kiosk/Kiosk').then((m) => ({ default: m.Kiosk })))
 const Estudio = lazy(() => import('./estudio/Estudio').then((m) => ({ default: m.Estudio })))
 const DadosEstudio = lazy(() => import('./estudio/Dados').then((m) => ({ default: m.Dados })))
 const CoberturaEstudio = lazy(() => import('./estudio/Cobertura').then((m) => ({ default: m.Cobertura })))
@@ -147,4 +148,9 @@ export const ROTAS_NOVAS: ReactElement[] = [
  */
 export const ROTAS_NOVAS_SEM_SHELL: ReactElement[] = [
   <Route key="mod" path={`${PREFIXO_NOVO}/modules`} element={<Modulos />} />,
+
+  // F5 SR3 — Kiosk do Quality Gate (`Kiosk RVB.dc.html`): tablet de bancada,
+  // re-vestido na identidade Logikos. A rota antiga `/tablet/:station`
+  // (AppRoutes.tsx) segue intocada e é quem atende produção da RVB.
+  <Route key="kio" path={`${PREFIXO_NOVO}/tablet/:station`} element={<Kiosk />} />,
 ]
