@@ -2,15 +2,18 @@
  * Task-063 — evidência visual do painel "Desempenho por câmera" (CamerasPage)
  * e da tela de Operação (TrainingModeLayout).
  *
- * PR-B (30/08, pré-flip): `EpiCameras.tsx` foi demolida; `/epi/cameras` agora
- * REDIRECIONA (client-side, `<Redireciona>` em AppRoutes.tsx) para
- * `/novo/epi/cameras` — a substituta `app/epi/Cameras.tsx` tem o mesmo painel
- * de FPS na 5ª aba "Desempenho" (texto "Quadros por segundo analisados" no
- * lugar do antigo "Desempenho por câmera"). `page.goto('/epi/cameras')`
- * segue o redirect sozinho — só as asserções pós-clique mudaram.
- * `/epi/cameras/:id/operations` NÃO foi tocada nesta leva — continua servindo
- * `EpiOperationsPage.tsx` (tela viva); os testes de Operação abaixo ficam
- * exatamente como eram. Recuperação: `git show
+ * PR-B (30/08) demoliu `EpiCameras.tsx`/`EpiOperationsPage.tsx`; o FLIP (29/08,
+ * mergeado depois) tirou o prefixo `/novo`. Juntos: `/epi/cameras` e
+ * `/epi/cameras/:id/operations` são hoje SOMBREADAS pelo front novo — mesmo
+ * endereço, o front novo (estático) sempre vence o antigo (ver teste "só as
+ * rotas antigas explicitamente sombreadas..." em `app/coexistencia.test.tsx`).
+ * `CamerasPage` e `TrainingModeLayout` ficam inalcançáveis nessas URLs até a
+ * demolição completa (`docs/migration/MANIFESTO-FRONT-ANTIGO.md`). Este
+ * harness passou a provar a MESMA FUNÇÃO nas telas substitutas: o painel de
+ * FPS/qualidade + saúde do equipamento virou a 5ª aba "Desempenho" de
+ * `app/epi/Cameras.tsx` (handoff-v2 Main, PR #576); a lista de
+ * ferramentas/operações registradas virou `app/epi/Operacoes.tsx` (spec
+ * `Câmera Operações.dc.html`). Recuperação das telas antigas: `git show
  * archive/front-antigo-epi-lote1-2026-08-30:apps/frontend/src/pages/epi/EpiCameras.tsx`.
  *
  * Não faz asserções funcionais: captura screenshots antes/depois da correção
@@ -45,6 +48,7 @@ const CAMERA = {
   quality_preset: 'medium',
 }
 
+// Campos consumidos por `app/epi/Operacoes.tsx` (operation_repository.py:24-26).
 const OPERATIONS = [
   {
     id: 101,
@@ -52,10 +56,9 @@ const OPERATIONS = [
     module_id: 'ppe',
     type_id: 'position',
     name: 'Zona Portão Leste',
-    config: { roi_points: [[0.1, 0.2], [0.5, 0.2], [0.5, 0.7], [0.1, 0.7]] },
     status: 'active',
     version: 1,
-    created_at: new Date().toISOString(),
+    last_evaluated_at: new Date().toISOString(),
   },
   {
     id: 102,
@@ -63,33 +66,16 @@ const OPERATIONS = [
     module_id: 'ppe',
     type_id: 'count_static',
     name: 'Contagem Doca 2',
-    config: { roi_points: [[0.6, 0.3], [0.9, 0.3], [0.9, 0.8], [0.6, 0.8]] },
     status: 'error',
     version: 1,
-    created_at: new Date().toISOString(),
+    last_evaluated_at: null,
   },
 ]
 
-const OP_TYPES = [
-  {
-    type_id: 'position',
-    type_label: 'Posição / Presença',
-    description: 'Detecta presença em zona ROI',
-    available_modules: ['ppe'],
-    config_schema: { roi_points: {} },
-    metric_options: ['state'],
-    output_formats: ['conditional'],
-  },
-  {
-    type_id: 'count_static',
-    type_label: 'Contagem Estática',
-    description: 'Conta objetos dentro da zona',
-    available_modules: ['ppe'],
-    config_schema: { roi_points: {}, count_threshold: {} },
-    metric_options: ['count'],
-    output_formats: ['physical'],
-  },
-]
+// Operacoes.tsx resolve `module_id` → `module_code` via GET /modules/ — a
+// tela antiga usava operation-types (form de criação, que Operacoes.tsx não
+// tem: "Nova operação" fica desabilitado, sem endpoint desenhado).
+const MODULES = [{ id: 'ppe', module_code: 'ppe' }]
 
 async function setupRoutes(page: Page, theme: 'recognition-dark' | 'professional') {
   // Catch-all PRIMEIRO — Playwright avalia rotas na ordem inversa de registro,
@@ -127,11 +113,21 @@ async function setupRoutes(page: Page, theme: 'recognition-dark' | 'professional
     })
   )
 
-  await page.route('**/api/modules/**/operation-types**', route =>
+  // Operacoes.tsx busca a câmera SEM o sufixo /operations, à parte — a rota
+  // antiga não precisava porque o nome já vinha embutido no payload da lista.
+  await page.route('**/api/cameras/1', route =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ status: 'success', data: { module: 'ppe', types: OP_TYPES } }),
+      body: JSON.stringify({ status: 'success', data: CAMERA }),
+    })
+  )
+
+  await page.route('**/api/modules/**', route =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ status: 'success', data: { modules: MODULES } }),
     })
   )
 
@@ -145,8 +141,6 @@ async function setupRoutes(page: Page, theme: 'recognition-dark' | 'professional
       }),
     })
   )
-
-  await page.route('**/stream.m3u8**', route => route.fulfill({ status: 404, body: '' }))
 
   await page.addInitScript(
     ([mode]) => {
@@ -254,10 +248,10 @@ for (const theme of THEMES) {
       await shoot(page, `cameras-fps-${theme}`)
     })
 
-    test(`Tela de Operação — TrainingModeLayout (${theme})`, async ({ page }) => {
+    test(`Operações da câmera — app/epi/Operacoes (${theme})`, async ({ page }) => {
       await setupRoutes(page, theme)
       await page.goto('/epi/cameras/1/operations')
-      await page.getByText('Ferramentas cadastradas').first().waitFor({ state: 'visible' })
+      await page.getByText('Zona Portão Leste').first().waitFor({ state: 'visible' })
       await page.waitForTimeout(800)
       await shoot(page, `operations-${theme}`)
     })
@@ -276,10 +270,10 @@ test.describe('task-063 — white-label com superfícies claras (repro do bug)',
     await shoot(page, 'lightsurface-cameras-fps')
   })
 
-  test('Tela de Operação sob superfícies claras', async ({ page }) => {
+  test('Operações sob superfícies claras', async ({ page }) => {
     await setupRoutes(page, 'recognition-dark')
     await page.goto('/epi/cameras/1/operations')
-    await page.getByText('Ferramentas cadastradas').first().waitFor({ state: 'visible' })
+    await page.getByText('Zona Portão Leste').first().waitFor({ state: 'visible' })
     await page.waitForTimeout(500)
     await applyLightSurfaces(page)
     await shoot(page, 'lightsurface-operations')
@@ -301,10 +295,9 @@ test.describe('task-063 — estados de hover (fix)', () => {
     await shoot(page, 'hover-fps-btn')
   })
 
-  test('hover em card da RegisteredToolsPanel (Operação)', async ({ page }) => {
+  test('hover em cartão de operação', async ({ page }) => {
     await setupRoutes(page, 'recognition-dark')
     await page.goto('/epi/cameras/1/operations')
-    await page.getByText('Ferramentas cadastradas').first().waitFor({ state: 'visible' })
     await page.getByText('Zona Portão Leste').first().hover()
     await page.waitForTimeout(400)
     await shoot(page, 'hover-tools-card')

@@ -115,10 +115,12 @@ test.describe('front novo, por papel', () => {
       expect(visiveis).toEqual(menuEsperado(papel))
     })
 
-    test(`${papel}: nenhum link do menu escapa para fora de /epi`, async ({ page }) => {
+    test(`${papel}: nenhum link do menu escapa para fora do front novo`, async ({ page }) => {
       // Regressão de 27/08: 10 links absolutos levavam, calados, para a tela
       // ANTIGA de mesmo endereço. Pós-flip (29/08) o front novo não tem mais
-      // prefixo — o menu do EPI aponta direto para `/epi/...`.
+      // prefixo — o menu aponta direto para o endereço final de cada grupo:
+      // `/epi/...` (NAV_EPI) ou `/estudio` (NAV_ESTUDIO, F5 PR-A — rota única,
+      // sem barra final).
       await entrarComo(page, papel)
       await page.goto('/epi/dashboard')
 
@@ -127,7 +129,7 @@ test.describe('front novo, por papel', () => {
         .getByRole('link')
         .evaluateAll((as) => as.map((a) => a.getAttribute('href') ?? ''))
 
-      for (const href of hrefs) expect(href).toMatch(/^\/epi\//)
+      for (const href of hrefs) expect(href === '/estudio' || href.startsWith('/epi/')).toBe(true)
     })
   }
 

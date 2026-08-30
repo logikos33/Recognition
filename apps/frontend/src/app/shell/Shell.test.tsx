@@ -26,7 +26,7 @@ vi.mock('../../services/tenantContext', () => ({
 
 import { rotaNova } from '../RotasNovas'
 import { Shell } from './Shell'
-import { NAV_EPI } from './navPorPerfil'
+import { NAV_EPI, NAV_ESTUDIO } from './navPorPerfil'
 
 function montar(rota = '/epi/live') {
   return render(
@@ -76,13 +76,18 @@ describe('Shell', () => {
     // + i.rota}` correto rendem o MESMO href — nenhum teste de output consegue
     // mais distinguir os dois (quem pega o literal cru hoje é a régua estática
     // de `coexistencia.test.tsx`, que varre o SOURCE de Shell.tsx). O que este
-    // teste ainda prova: os hrefs são exatamente `NAV_EPI` passado por
-    // `rotaNova()` — fonte independente do DOM renderizado. Se um prefixo
+    // teste ainda prova: os hrefs são exatamente `NAV_EPI`+`NAV_ESTUDIO`
+    // passados por `rotaNova()` — fonte independente do DOM renderizado. Se um prefixo
     // voltar a existir, este teste acompanha sem precisar ser editado; um
     // `/^\/epi\//` fixo, não.
+    //
+    // Shell.tsx monta `[...NAV_EPI, ...NAV_ESTUDIO]` (F5 PR-A) — o esperado
+    // segue os DOIS grupos, na mesma ordem.
     montar()
     const hrefs = screen.getAllByRole('link').map((a) => a.getAttribute('href'))
-    expect(hrefs).toEqual(NAV_EPI.flatMap((g) => g.itens.map((i) => rotaNova(i.rota))))
+    expect(hrefs).toEqual(
+      [...NAV_EPI, ...NAV_ESTUDIO].flatMap((g) => g.itens.map((i) => rotaNova(i.rota))),
+    )
   })
 
   it('ao recolher, o rótulo continua legível para leitor de tela', async () => {

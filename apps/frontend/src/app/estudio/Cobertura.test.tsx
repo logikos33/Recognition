@@ -51,18 +51,18 @@ describe('Cobertura (matriz classe×câmera do Estúdio)', () => {
   it('célula "anotar" navega para Dados focado na câmera', () => {
     monta()
     vistas.matriz?.onAnnotateCamera('cam-9')
-    expect(navigateMock).toHaveBeenCalledWith('/novo/estudio/dados?camera=cam-9')
+    expect(navigateMock).toHaveBeenCalledWith('/estudio/dados?camera=cam-9')
   })
 
   it('célula "classificar" com classe navega para Classificar com câmera e classe', () => {
     monta()
     vistas.matriz?.onClassifyCell('cam-9', 3)
-    expect(navigateMock).toHaveBeenCalledWith('/novo/estudio/classificar?camera=cam-9&classe=3')
+    expect(navigateMock).toHaveBeenCalledWith('/estudio/classificar?camera=cam-9&classe=3')
   })
 
   it('célula "classificar" sem classe (opcional) navega só com a câmera', () => {
     monta()
     vistas.matriz?.onClassifyCell('cam-9')
-    expect(navigateMock).toHaveBeenCalledWith('/novo/estudio/classificar?camera=cam-9')
+    expect(navigateMock).toHaveBeenCalledWith('/estudio/classificar?camera=cam-9')
   })
 })
