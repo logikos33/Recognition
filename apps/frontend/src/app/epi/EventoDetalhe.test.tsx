@@ -69,7 +69,7 @@ const EVENTO = {
   evidence_url: 'https://r2.example/frame.jpg',
   verification_verdict: null as string | null,
   verified_at: null as string | null,
-  correcao_ultima: null as { por: string | null; em: string | null } | null,
+  correcao_ultima: null as { por: string | null; por_nome?: string | null; em: string | null } | null,
 }
 
 const montar = () => render(<MemoryRouter><EventoDetalhe /></MemoryRouter>)
@@ -355,13 +355,22 @@ describe('correção de caixa', () => {
     expect(screen.getByText('Corrigir caixa')).toBeTruthy()
   })
 
-  it('mostra quem corrigiu a caixa e quando', async () => {
-    responde({ ...EVENTO, correcao_ultima: { por: 'u-9', em: '2026-08-24T10:00:00Z' } })
+  it('mostra o NOME de quem corrigiu a caixa, nunca o UUID cru', async () => {
+    responde({ ...EVENTO, correcao_ultima: { por: 'u-9', por_nome: 'Ana Souza', em: '2026-08-24T10:00:00Z' } })
     montar()
-    // "u-9" mora num <strong> aninhado — getByText não concatena texto
+    // "Ana Souza" mora num <strong> aninhado — getByText não concatena texto
     // através de elemento filho, daí ler o textContent inteiro do bloco.
     const badge = await screen.findByTestId('badge-autoria')
     expect(badge.textContent).toContain('Caixa corrigida por')
-    expect(badge.textContent).toContain('u-9')
+    expect(badge.textContent).toContain('Ana Souza')
+    expect(badge.textContent).not.toContain('u-9')
+  })
+
+  it('entrada antiga do ledger (sem por_nome) mostra travessão, nunca o UUID de por', async () => {
+    responde({ ...EVENTO, correcao_ultima: { por: 'u-9', em: '2026-08-24T10:00:00Z' } })
+    montar()
+    const badge = await screen.findByTestId('badge-autoria')
+    expect(badge.textContent).toContain('—')
+    expect(badge.textContent).not.toContain('u-9')
   })
 })

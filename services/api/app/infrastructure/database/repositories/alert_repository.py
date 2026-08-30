@@ -263,6 +263,7 @@ class AlertRepository(BaseRepository):
         tenant_id: str,
         correcoes: list[dict[str, Any]],
         por: str,
+        por_nome: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
         """Reposiciona caixa(s) de um alerta preservando o valor anterior.
 
@@ -298,13 +299,17 @@ class AlertRepository(BaseRepository):
                 # avalia todos os SET contra a linha pré-update) — o histórico
                 # sai de graça, sem segundo roundtrip e sem janela entre ler e
                 # gravar. Append-only: `||` empurra no fim, nada é removido.
+                # `por` continua sendo o id (auditoria); `por_nome` é só para
+                # a tela não mostrar UUID cru — None em entradas de usuário
+                # não encontrado, e SEMPRE None em entradas gravadas antes
+                # desta coluna existir (ledger append-only, nunca reescrito).
                 "UPDATE alerts SET violations = %s::jsonb, "
                 "violations_historico = violations_historico || jsonb_build_object("
-                "'em', to_jsonb(NOW()), 'por', %s::text, 'tipo', 'bbox', "
-                "'violations_anteriores', violations) "
+                "'em', to_jsonb(NOW()), 'por', %s::text, 'por_nome', %s::text, "
+                "'tipo', 'bbox', 'violations_anteriores', violations) "
                 "WHERE id = %s AND tenant_id = %s "
                 "RETURNING violations, violations_historico",
-                (json.dumps(atuais), por, str(alert_id), str(tenant_id)),
+                (json.dumps(atuais), por, por_nome, str(alert_id), str(tenant_id)),
             )
             return dict(cur.fetchone())
 
