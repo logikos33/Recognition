@@ -22,7 +22,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Cpu } from 'lucide-react'
 import { countingService } from '../../services/countingService'
 import { trainingService } from '../../services/trainingService'
-import { nomeParaCliente } from '../../services/modelDisplay'
+import { nomeInternoOuCliente } from '../../services/modelDisplay'
 import { useToast } from '../ui/Toast/useToast'
 import { useAuth } from '../../hooks/useAuth'
 import { Badge } from '../ui/Badge/Badge'
@@ -55,10 +55,8 @@ const FRAMEWORK_LABELS: Record<string, string> = {
   rfdetr: 'RF-DETR',
 }
 
-/** Nome interno (`name`) + framework: SÓ para superadmin (política F5-LEVE
- * — cliente NUNCA vê stack interno). Tenant vê `nomeParaCliente`. */
 function modelLabel(m: ModelOption, isSuperAdmin: boolean): string {
-  const name = isSuperAdmin ? (m.name || `Modelo ${m.id.slice(0, 8)}`) : nomeParaCliente(m)
+  const name = nomeInternoOuCliente(m, isSuperAdmin)
   return m.map50 != null ? `${name} (mAP50 ${(m.map50 * 100).toFixed(0)}%)` : name
 }
 

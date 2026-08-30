@@ -35,6 +35,7 @@ const saudeSites = vi.fn()
 const getHealthContext = vi.fn()
 const patchConfig = vi.fn()
 const permissoes = new Set<string>()
+let isSuperAdmin = false
 
 vi.mock('../../services/cameraService', () => ({
   cameraService: {
@@ -68,7 +69,7 @@ vi.mock('../../services/api', () => ({
 }))
 
 vi.mock('../../hooks/useAuth', () => ({
-  useAuth: () => ({ can: (p: string) => permissoes.has(p) }),
+  useAuth: () => ({ can: (p: string) => permissoes.has(p), isSuperAdmin }),
 }))
 
 // ── dados no formato real do backend (RVB Isolantes — Blumenau) ──────────────
@@ -187,6 +188,7 @@ const esperarCarregado = () => screen.findAllByText('CAM-01 Doca Norte')
 beforeEach(() => {
   vi.clearAllMocks()
   permissoes.clear()
+  isSuperAdmin = false
   ;['cameras:read', 'cameras:write', 'cameras:test', 'cameras:control', 'cameras:configure']
     .forEach((p) => permissoes.add(p))
   listar.mockResolvedValue([CAM_01, CAM_04])
@@ -456,6 +458,52 @@ describe('aba Escopo por câmera (delta §2 item 8)', () => {
 
     expect(await screen.findByText('Não foi possível carregar o escopo')).toBeTruthy()
     expect(screen.queryByText('Nenhuma câmera ativa no tenant.')).toBeNull()
+  })
+
+  // Repro do achado na prova DEV: /novo/epi/cameras aba Escopo tem sua PRÓPRIA
+  // cópia da UI de dropdown (AbaEscopo), separada de CameraModelScope — o
+  // rebranding (política F5-LEVE, cliente NUNCA vê stack interno) cobriu o
+  // componente antigo mas não este. Nome interno cru ("YOLO26 ...") aparecia
+  // no <option> para papel NÃO-superadmin.
+  it('VAZAMENTO: dropdown de modelo não mostra name/framework internos para não-superadmin', async () => {
+    isSuperAdmin = false
+    const modeloYolo = { id: 'mod-yolo', name: 'YOLO26 yolo26n - Job 0307e2b1', framework: 'yolox', r2_onnx_key: 'k1.onnx', is_active: true, module_code: 'epi' }
+    const modeloRfdetr = { id: 'mod-rfdetr', name: 'YOLO26 rfdetr - Job 9f8e7d6c', framework: 'rfdetr', r2_onnx_key: 'k2.onnx', is_active: true, module_code: 'epi' }
+    apiGet.mockImplementation((url: string) => {
+      if (url === '/v1/models') return Promise.resolve({ success: true, data: { models: [modeloYolo, modeloRfdetr] } })
+      if (url.startsWith('/v1/models/')) {
+        return Promise.resolve({ success: true, data: { model: modeloYolo, lineage: { dataset_version: { class_distribution: {} } } } })
+      }
+      if (url.startsWith('/cameras/model-config')) return Promise.resolve({ success: true, data: { deployments: {} } })
+      return Promise.reject(new Error(`URL inesperada: ${url}`))
+    })
+    montar()
+    await esperarCarregado()
+    fireEvent.click(screen.getByRole('tab', { name: 'Escopo' }))
+
+    const seletor = await screen.findByLabelText('Modelo da câmera CAM-01 Doca Norte') as HTMLSelectElement
+    const textos = Array.from(seletor.options).map((o) => o.textContent).join(' | ')
+    expect(textos).not.toMatch(/yolo|rf-?detr|onnx/i)
+  })
+
+  it('superadmin: dropdown continua mostrando o nome interno do modelo — não regressão da engenharia', async () => {
+    isSuperAdmin = true
+    const modeloYolo = { id: 'mod-yolo', name: 'YOLO26 yolo26n - Job 0307e2b1', framework: 'yolox', r2_onnx_key: 'k1.onnx', is_active: true, module_code: 'epi' }
+    apiGet.mockImplementation((url: string) => {
+      if (url === '/v1/models') return Promise.resolve({ success: true, data: { models: [modeloYolo] } })
+      if (url.startsWith('/v1/models/')) {
+        return Promise.resolve({ success: true, data: { model: modeloYolo, lineage: { dataset_version: { class_distribution: {} } } } })
+      }
+      if (url.startsWith('/cameras/model-config')) return Promise.resolve({ success: true, data: { deployments: {} } })
+      return Promise.reject(new Error(`URL inesperada: ${url}`))
+    })
+    montar()
+    await esperarCarregado()
+    fireEvent.click(screen.getByRole('tab', { name: 'Escopo' }))
+
+    const seletor = await screen.findByLabelText('Modelo da câmera CAM-01 Doca Norte') as HTMLSelectElement
+    const opt = Array.from(seletor.options).find((o) => o.value === 'mod-yolo')!
+    expect(opt.textContent).toBe(modeloYolo.name)
   })
 })
 

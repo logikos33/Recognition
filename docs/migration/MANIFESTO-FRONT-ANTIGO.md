@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 387 arquivos, 65.134 linhas
+## Situação — 387 arquivos, 65.142 linhas
 
 | status | arquivos |
 |---|---:|
@@ -74,7 +74,7 @@ apagado não são a mesma coisa.
 | `src/components/cameras/CameraCard.tsx` | `INFRA` | — | 191 |
 | `src/components/cameras/CameraFpsConfig.css.ts` | `INFRA` | — | 119 |
 | `src/components/cameras/CameraFpsConfig.tsx` | `INFRA` | — | 453 |
-| `src/components/cameras/CameraModelAssignment.tsx` | `INFRA` | — | 176 |
+| `src/components/cameras/CameraModelAssignment.tsx` | `INFRA` | — | 174 |
 | `src/components/cameras/CameraOnboardingWizard.tsx` | `INFRA` | — | 375 |
 | `src/components/cameras/CameraWizard.css.ts` | `INFRA` | — | 284 |
 | `src/components/cameras/CameraWizard.tsx` | `INFRA` | — | 161 |
@@ -137,7 +137,7 @@ apagado não são a mesma coisa.
 | `src/components/TenantContextBanner.tsx` | `INFRA` | — | 172 |
 | `src/components/training/CameraFilterSelector.css.ts` | `INFRA` | — | 148 |
 | `src/components/training/CameraFilterSelector.tsx` | `INFRA` | — | 131 |
-| `src/components/training/CameraModelScope.tsx` | `INFRA` | — | 400 |
+| `src/components/training/CameraModelScope.tsx` | `INFRA` | — | 393 |
 | `src/components/training/canvas/LiveVideoWithOperations.tsx` | `INFRA` | — | 189 |
 | `src/components/training/canvas/RoiDrawer.tsx` | `INFRA` | — | 241 |
 | `src/components/training/CoverageMatrix.css.ts` | `INFRA` | — | 160 |
@@ -230,7 +230,7 @@ apagado não são a mesma coisa.
 | `src/services/edgeService.ts` | `INFRA` | — | 197 |
 | `src/services/eventsService.ts` | `INFRA` | — | 85 |
 | `src/services/impersonation.ts` | `INFRA` | — | 93 |
-| `src/services/modelDisplay.ts` | `INFRA` | — | 16 |
+| `src/services/modelDisplay.ts` | `INFRA` | — | 33 |
 | `src/services/moduleService.ts` | `INFRA` | — | 54 |
 | `src/services/monitoringService.ts` | `INFRA` | — | 108 |
 | `src/services/propagationService.ts` | `INFRA` | — | 157 |
