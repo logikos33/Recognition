@@ -4,10 +4,12 @@
  * @migrado-para src/app/epi/Cameras.tsx
  * rota nova: /novo/epi/cameras
  *
- * @paridade-pendente FPS/qualidade por câmera; qualidade da coleta de treino; modelo por módulo; telemetria
- *
- * ⛔ NÃO APAGUE: a substituta existe, mas NÃO faz tudo o que esta faz. A lista
- * completa e verificada está em docs/migration/PARIDADE-ANTIGO-VS-NOVO.md.
+ * Paridade fechada em 30/08/2026: FPS/qualidade/coleta de treino/telemetria →
+ * PR #576 (5ª aba "Desempenho"); fabricante no detalhe → #581. §7 (modelo por
+ * câmera: reverter ao padrão + precisão no seletor) ADIADO por decisão de
+ * 30/08 — repor na semana de 07/09 (a atribuição em si já existe na aba
+ * Escopo). Ver "Atualização 30/08" em
+ * docs/migration/PARIDADE-ANTIGO-VS-NOVO.md.
  *
  * Continua VIVA e servindo a rota antiga: os dois fronts convivem até a
  * migração terminar (decisão do Vitor, 27/08). Não apague nesta rodada.

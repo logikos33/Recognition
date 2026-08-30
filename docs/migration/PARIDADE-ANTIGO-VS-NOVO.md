@@ -155,3 +155,31 @@ _Nenhuma perda sobreviveu à refutação._
 _Nenhuma perda sobreviveu à refutação._
 ### EPI — Alertas/Eventos (antiga: src/pages/epi/EpiAlerts.tsx → wrapper de src/pages/AlertsHistoryPage.tsx · nova: src/app/epi/Eventos.tsx)
 _Nenhuma perda sobreviveu à refutação._
+
+---
+
+## Atualização 30/08/2026 — sessão F5-LEVE (carimbo das 6 telas)
+
+Resolvido e mergeado na develop:
+
+| item | onde | PR |
+|---|---|---|
+| §1 ajustar câmera + saúde | 5ª aba "Desempenho" em `app/epi/Cameras.tsx` | #576 |
+| §2 corrigir a caixa | `app/epi/EventoDetalhe.tsx` (arrasto + 4 campos px + autoria) | #578 |
+| §3 fila honesta | `app/epi/Verificacao.tsx` (substitui, preserva o que EU julguei) | #579 |
+| §4 parede do operador | `app/epi/AoVivo.tsx` (por site, montar, layouts nomeados máx 10) | #575 |
+| §5 ranking | widget no `app/epi/Dashboard.tsx` | #573 |
+| §9 confiança · §15 fabricante | Eventos / Câmeras | #581 |
+| §11 sem-sinal · §13 local/módulo | AoVivo | #582 |
+| §14 assumir contexto | JÁ COBERTO — SeletorTenant global no Shell (Shell.tsx:143) | — |
+
+**Adiados por decisão de 30/08** (regra deste doc: "dá para tombar sem elas e
+repor na semana seguinte, desde que alguém avise o cliente"): **§6** taxa de uso
+por área · **§7** modelo por câmera (reverter/precisão) · **§10** logs ao vivo ·
+**§12** busca na parede + esconder rótulos. Dono: pista F5-LEVE; prazo: semana
+de 07/09; aviso ao cliente: RELATORIO-SEGUNDA + onboarding de 02/09.
+
+Nota de consistência: as linhas "_Nenhuma perda sobreviveu à refutação_" no
+"Detalhe por tela" contradiziam a lista numerada (Eventos e Ao Vivo tinham
+perdas confirmadas na síntese). **A lista numerada é a autoridade** — os
+carimbos das 6 telas citam este bloco.

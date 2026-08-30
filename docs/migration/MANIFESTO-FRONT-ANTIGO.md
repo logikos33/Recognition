@@ -14,15 +14,14 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 394 arquivos, 67.131 linhas
+## Situação — 394 arquivos, 67.138 linhas
 
 | status | arquivos |
 |---|---:|
 | `INFRA` | 226 |
 | `PENDENTE` | 154 |
 | `SEM-DESENHO` | 7 |
-| `SUBSTITUIDA` | 6 |
-| `MIGRADO` | 1 |
+| `MIGRADO` | 7 |
 
 ## Como marcar um arquivo como migrado
 
@@ -266,7 +265,13 @@ apagado não são a mesma coisa.
 | `src/utils/labels.ts` | `INFRA` | — | 195 |
 | `src/utils/statusColors.ts` | `INFRA` | — | 18 |
 | `src/utils/timeBuckets.ts` | `INFRA` | — | 106 |
+| `src/pages/epi/AlertDetailPage.tsx` | `MIGRADO` | src/app/epi/EventoDetalhe.tsx | 648 |
+| `src/pages/epi/EpiAlerts.tsx` | `MIGRADO` | src/app/epi/Eventos.tsx | 32 |
+| `src/pages/epi/EpiCameras.tsx` | `MIGRADO` | src/app/epi/Cameras.tsx | 33 |
+| `src/pages/epi/EpiDashboard.tsx` | `MIGRADO` | src/app/epi/Dashboard.tsx | 156 |
+| `src/pages/MonitoringPage.tsx` | `MIGRADO` | src/app/epi/AoVivo.tsx | 685 |
 | `src/pages/ReportsPage.tsx` | `MIGRADO` | src/app/epi/Relatorios.tsx | 31 |
+| `src/pages/VerificationQueuePage.tsx` | `MIGRADO` | src/app/epi/Verificacao.tsx | 291 |
 | `src/modules/admin/AdminLayout.css.ts` | `PENDENTE` | — | 249 |
 | `src/modules/admin/AdminLayout.tsx` | `PENDENTE` | — | 278 |
 | `src/modules/admin/components/admin.css.ts` | `PENDENTE` | — | 275 |
@@ -428,9 +433,3 @@ apagado não são a mesma coisa.
 | `src/pages/epi/EpiSitesPage.tsx` | `SEM-DESENHO` | — | 160 |
 | `src/pages/epi/InvestigationPage.tsx` | `SEM-DESENHO` | — | 746 |
 | `src/pages/ModuleSelectionPage.tsx` | `SEM-DESENHO` | — | 165 |
-| `src/pages/epi/AlertDetailPage.tsx` | `SUBSTITUIDA` | src/app/epi/EventoDetalhe.tsx | 649 |
-| `src/pages/epi/EpiAlerts.tsx` | `SUBSTITUIDA` | src/app/epi/Eventos.tsx | 31 |
-| `src/pages/epi/EpiCameras.tsx` | `SUBSTITUIDA` | src/app/epi/Cameras.tsx | 31 |
-| `src/pages/epi/EpiDashboard.tsx` | `SUBSTITUIDA` | src/app/epi/Dashboard.tsx | 156 |
-| `src/pages/MonitoringPage.tsx` | `SUBSTITUIDA` | src/app/epi/AoVivo.tsx | 682 |
-| `src/pages/VerificationQueuePage.tsx` | `SUBSTITUIDA` | src/app/epi/Verificacao.tsx | 289 |
