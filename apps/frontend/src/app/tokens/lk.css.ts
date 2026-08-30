@@ -105,6 +105,14 @@ export const lk = createGlobalTheme(':root', {
 export const OVERLINE_TRACKING = '0.18em'
 
 /**
+ * Breakpoint mobile do SR3 (handoff `Mobile EPI.dc.html` / `Mobile Sistema.dc.html`).
+ * Não é cor nem medida de layout — é a condição de media query central, para
+ * as telas de leitura pararem de espalhar `768`/`900`/`720` soltos por CSS.
+ * Uso: `'@media': { [TELA_ESTREITA]: { ... } }`.
+ */
+export const TELA_ESTREITA = '(max-width: 768px)'
+
+/**
  * Os valores CRUS, para quem precisa calcular e não só pintar.
  *
  * `lk.*` são referências a CSS vars — servem para estilo, não para conta. O

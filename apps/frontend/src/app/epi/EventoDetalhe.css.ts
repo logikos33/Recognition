@@ -15,7 +15,7 @@
  */
 import { style, styleVariants } from '@vanilla-extract/css'
 
-import { OVERLINE_TRACKING, lk } from '../tokens/lk.css'
+import { OVERLINE_TRACKING, TELA_ESTREITA, lk } from '../tokens/lk.css'
 
 export const pagina = style({
   // O desenho desta tela pede 1360; o shell fixa 1280 no token. Fica o token —
@@ -103,6 +103,8 @@ export const corpo = style({
   gap: '14px',
   alignItems: 'flex-start',
   flexWrap: 'wrap',
+  // SR3: coluna única — frame primeiro, painel de veredito embaixo.
+  '@media': { [TELA_ESTREITA]: { flexDirection: 'column' } },
 })
 
 export const colunaEvidencia = style({
@@ -111,6 +113,10 @@ export const colunaEvidencia = style({
   display: 'flex',
   flexDirection: 'column',
   gap: '10px',
+  // `minWidth: 320px` some em telas mais estreitas que isso (regra do
+  // handoff: "nada quebra até 320px") — senão vira o próprio causador de
+  // scroll horizontal.
+  '@media': { [TELA_ESTREITA]: { minWidth: '0' } },
 })
 
 /**
@@ -304,6 +310,7 @@ export const botaoLupa = style({
   cursor: 'pointer',
   ':disabled': { color: lk.cor.cinzaNevoa, cursor: 'default' },
   ':hover': { borderColor: lk.cor.cianoVisao },
+  '@media': { [TELA_ESTREITA]: { height: '44px' } },
 })
 
 export const dicaLupa = style({
@@ -327,7 +334,10 @@ export const painel = style({
   borderRadius: lk.raio.g,
   padding: '18px',
   boxSizing: 'border-box',
-  '@media': { 'screen and (max-width: 900px)': { width: '100%' } },
+  '@media': {
+    'screen and (max-width: 900px)': { width: '100%' },
+    [TELA_ESTREITA]: { padding: '14px' },
+  },
 })
 
 /** Classe detectada: cor + ícone + palavra, os três. */
@@ -352,6 +362,9 @@ export const grade = style({
   gap: `6px 14px`,
   fontSize: '12.5px',
   alignItems: 'baseline',
+  // SR3: "meta empilha" — rótulo em cima, valor embaixo, em vez de espremer
+  // as duas colunas na largura do celular.
+  '@media': { [TELA_ESTREITA]: { gridTemplateColumns: '1fr', gap: '2px' } },
 })
 
 export const rotulo = style({ color: lk.cor.cinzaNevoa })
@@ -627,4 +640,5 @@ export const botaoPrimario = style({
   textDecoration: 'none',
   cursor: 'pointer',
   ':hover': { background: lk.cor.cianoProfundo },
+  '@media': { [TELA_ESTREITA]: { height: '44px' } },
 })
