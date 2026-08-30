@@ -136,9 +136,9 @@ class TrainingService:
                 model[key] = str(model[key])
         return model
 
-    def list_models(self, user_id: UUID) -> list[dict]:
-        """Lista modelos treinados do usuário (inclui origin/owner_name/owner_email)."""
-        models = self._training_repo.get_models_by_user(user_id)
+    def list_models(self, tenant_id: str) -> list[dict]:
+        """Lista modelos treinados do TENANT (C-01 — inclui origin/owner_name/owner_email)."""
+        models = self._training_repo.get_models_by_tenant(tenant_id)
         for m in models:
             self._stringify_model_uuids(m)
         return models

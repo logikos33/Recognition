@@ -51,6 +51,19 @@ def _build_dataset_url(user_id: str, job_id: str) -> str:
     return f"{endpoint}/{bucket}/datasets/{user_id}/{job_id}/dataset.zip"
 
 
+def _omit_callback_token(job: dict | None) -> dict | None:
+    """Remove callback_token (segredo interno da GPU/worker) antes de
+    devolver um job ao cliente. training_jobs é lido com `SELECT *` em
+    vários pontos (get_job_by_id, get_jobs_by_user, get_current_running_job,
+    stop_job) — nenhuma dessas queries deve vazar o token; o único choke
+    point comum é aqui, na saída HTTP. Achado de segurança do mutirão:
+    list_jobs_handler e get_current_job_status_handler vazavam o token
+    (get_job_status_handler e stop_job_handler já filtravam)."""
+    if job:
+        job.pop("callback_token", None)
+    return job
+
+
 def _issue_callback_token(job_id: str) -> str | None:
     """Gera e persiste callback_token por-job (WS-A4) para o progress-callback.
 
@@ -255,10 +268,16 @@ def create_job_handler():
 
 
 def list_jobs_handler():
-    """Lista jobs de treinamento do usuário."""
+    """Lista jobs de treinamento do usuário.
+
+    Nunca expor o callback_token da GPU (mesmo ao dono) — achado de
+    segurança do mutirão: esta rota vazava o token (SELECT * sem filtro).
+    """
     try:
         user_id = get_current_user_id()
         jobs = get_training_service().list_jobs(user_id)
+        for j in jobs:
+            _omit_callback_token(j)
         return success(jobs)
     except EpiMonitorError:
         raise
@@ -273,8 +292,7 @@ def get_job_status_handler(job_id: str):
         from uuid import UUID
 
         job = get_training_service().get_job(UUID(job_id), get_tenant_id())
-        # Nunca expor o token de callback da GPU (mesmo ao dono)
-        job.pop("callback_token", None)
+        _omit_callback_token(job)
         return success(job)
     except EpiMonitorError:
         raise
@@ -312,10 +330,10 @@ def get_job_progress_handler(job_id: str):
 
 
 def list_models_handler():
-    """Lista modelos treinados do usuário."""
+    """Lista modelos treinados do TENANT (C-01 — escopo corrigido, ver
+    training_repository.get_models_by_tenant)."""
     try:
-        user_id = get_current_user_id()
-        models = get_training_service().list_models(user_id)
+        models = get_training_service().list_models(get_tenant_id())
         return success(models)
     except EpiMonitorError:
         raise
@@ -336,6 +354,7 @@ def get_current_job_status_handler():
 
         user_id = get_current_user_id()
         job = get_training_service().get_current_running_job(UUID(str(user_id)))
+        _omit_callback_token(job)
 
         # RUNPOD_API_KEY é a var usada pelo dispatch (tasks/training.py) —
         # substitui VAST_API_KEY/VAST_AI_API_KEY (decisão do dono: Vast.ai
@@ -386,8 +405,7 @@ def stop_job_handler(job_id: str):
         if not stopped:
             return error("Job não encontrado ou já finalizado", 404)
         _teardown_runpod_job(stopped)
-        # Nunca expor o token (mesmo revogado) na resposta
-        stopped.pop("callback_token", None)
+        _omit_callback_token(stopped)
         return success(stopped)
     except EpiMonitorError:
         raise
