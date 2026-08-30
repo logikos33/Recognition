@@ -53,3 +53,21 @@
    pelo cético durante a auditoria do Estúdio; **registrado aqui, não
    corrigido nesta rodada** — é código de `services/api`, fora do escopo desta
    pista (docs + carimbos).
+
+9. **Listagem e revogação de dispositivos reivindicados** (Admin →
+   Dispositivos, F5 SR2 PR-3). O desenho mostra uma tabela
+   dispositivo/vínculo/tipo/status com botão "Revogar" por linha.
+   `services/api/app/api/v1/devices/routes.py` só tem `POST /claim-codes`
+   (gera código) e `POST /claim` (público, o dispositivo resgata); o
+   `DeviceClaimRepository` (`infrastructure/database/repositories/
+   device_claim_repository.py`) só expõe `create`, `redeem` e `get_status`
+   (este último documentado como "nunca expor na API"). Sem `GET` de
+   listagem nem endpoint de revogação, a tabela fica fora da tela — só a
+   geração de código ficou de pé.
+
+10. **`exportAuditLog` sem `date_from`/`date_to`** (Admin → Auditoria, F5 SR2
+    PR-3). `GET /v1/admin/audit-log/export` (`routes.py:2264`) aceita período,
+    mas `adminService.exportAuditLog` só encaminha `tenant_id`/`action` — o
+    CSV exportado nunca respeita o filtro de período escolhido na tela
+    (sempre as últimas 10 mil linhas). Extensão de duas linhas no wrapper;
+    fora do escopo desta pista (`modules/**` intocável nesta PR).
