@@ -18,6 +18,7 @@ from app.core.exceptions import EpiMonitorError
 from app.core.responses import success, error
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.alert_repository import AlertRepository
+from app.infrastructure.database.repositories.user_repository import UserRepository
 
 logger = logging.getLogger(__name__)
 
@@ -68,15 +69,31 @@ def _iso_utc(value):  # type: ignore[no-untyped-def]
 
 
 def _ultima_correcao(hist):  # type: ignore[no-untyped-def]
-    """Última entrada do ledger, só `por`/`em`.
+    """Última entrada do ledger, só `por`/`por_nome`/`em`.
 
     O array de violações anterior não precisa trafegar para a tela dizer
-    "caixa corrigida por X em Y".
+    "caixa corrigida por X em Y". `por_nome` é None em entradas gravadas
+    antes dele existir — o front mostra travessão nesse caso, nunca o UUID
+    de `por`.
     """
     if not hist:
         return None
     ultima = hist[-1]
-    return {"por": ultima.get("por"), "em": ultima.get("em")}
+    return {"por": ultima.get("por"), "por_nome": ultima.get("por_nome"), "em": ultima.get("em")}
+
+
+def _nome_usuario_atual() -> str | None:
+    """Nome do usuário autenticado, para carimbar `por_nome` no ledger.
+
+    None se o pool não estiver pronto ou o usuário não existir — a rota
+    segue gravando a correção mesmo assim (id em `por` já é auditoria
+    suficiente; nome é só para a tela).
+    """
+    pool = DatabasePool.get_instance()
+    if pool is None:
+        return None
+    user = UserRepository(pool).get_by_id(get_current_user_id())
+    return user.get("name") if user else None
 
 
 def _serialize_dates(row: dict) -> dict:
@@ -332,6 +349,7 @@ def corrigir_violations(alert_id: str):  # type: ignore[no-untyped-def]
             tenant_id=str(get_tenant_id()),
             correcoes=correcoes,
             por=str(get_current_user_id()),
+            por_nome=_nome_usuario_atual(),
         )
     except IndexError:
         return error("index fora do intervalo de violações do alerta", 400)

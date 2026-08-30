@@ -7,6 +7,7 @@ escopa a escrita, e cross-tenant/id malformado devolvem o MESMO 404 (C-01).
 Cobre também os dois campos novos da projeção do detalhe SEM reintroduzir o
 vazamento de `verified_by`.
 """
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -16,10 +17,28 @@ import pytest
 TENANT_ID = str(uuid4())
 USER_ID = str(uuid4())
 ALERT_ID = str(uuid4())
+USER_NAME = "Ana Souza"
 _GET_REPO = "app.api.v1.alerts.routes._get_repo"
 _GET_STORAGE = "app.infrastructure.storage.local_storage.get_storage"
+_USER_REPOSITORY = "app.api.v1.alerts.routes.UserRepository"
+_POOL_INSTANCE = "app.api.v1.alerts.routes.DatabasePool.get_instance"
 
 _BBOX_OK = {"correcoes": [{"index": 0, "bbox": [10, 20, 30, 40]}]}
+
+
+@contextmanager
+def _patch_user_lookup(name=USER_NAME):  # type: ignore[no-untyped-def]
+    """Mocka o lookup de nome do usuário (`_nome_usuario_atual`) na rota.
+
+    Patcha `DatabasePool.get_instance` (pool pode não estar inicializado no
+    processo de teste) e `UserRepository` juntos, para o lookup nunca tocar
+    banco real independente da ordem de execução dos testes.
+    """
+    users = MagicMock()
+    users.get_by_id.return_value = {"name": name} if name is not None else None
+    with patch(_POOL_INSTANCE, return_value=MagicMock()), \
+            patch(_USER_REPOSITORY, return_value=users):
+        yield users
 
 
 @pytest.fixture
@@ -44,7 +63,7 @@ def _repo_ok():
     repo.corrigir_bboxes.return_value = {
         "violations": [{"class": "Sem protetor de ouvido", "bbox": [10.0, 20.0, 30.0, 40.0]}],
         "violations_historico": [
-            {"em": "2026-08-24T10:00:00+00:00", "por": USER_ID, "tipo": "bbox",
+            {"em": "2026-08-24T10:00:00+00:00", "por": USER_ID, "por_nome": USER_NAME, "tipo": "bbox",
              "violations_anteriores": [{"class": "Sem protetor de ouvido", "bbox": [1, 2, 3, 4]}]},
         ],
     }
@@ -52,7 +71,7 @@ def _repo_ok():
 
 
 def _patch(client, headers, body, repo=None):
-    with patch(_GET_REPO, return_value=repo if repo is not None else _repo_ok()):
+    with patch(_GET_REPO, return_value=repo if repo is not None else _repo_ok()), _patch_user_lookup():
         return client.patch(
             f"/api/alerts/{ALERT_ID}/violations", headers=headers, json=body
         )
@@ -73,6 +92,7 @@ class TestCorrigirViolations:
         # escolheria de quem é o alerta e quem assinou a correção.
         assert kwargs["tenant_id"] == TENANT_ID
         assert kwargs["por"] == USER_ID
+        assert kwargs["por_nome"] == USER_NAME
         assert kwargs["correcoes"] == [{"index": 0, "bbox": [10.0, 20.0, 30.0, 40.0]}]
 
     def test_success_returns_new_violations_and_provenance(self, client, auth_headers):
@@ -80,8 +100,22 @@ class TestCorrigirViolations:
         data = resp.get_json()["data"]
         assert data["violations"][0]["bbox"] == [10.0, 20.0, 30.0, 40.0]
         # Só quem/quando trafega — o array anterior inteiro fica no banco.
-        assert data["correcao_ultima"] == {"por": USER_ID, "em": "2026-08-24T10:00:00+00:00"}
+        # `por_nome` é o nome (badge nunca mostra o UUID de `por` cru).
+        assert data["correcao_ultima"] == {
+            "por": USER_ID, "por_nome": USER_NAME, "em": "2026-08-24T10:00:00+00:00",
+        }
         assert "violations_anteriores" not in data["correcao_ultima"]
+
+    def test_user_lookup_falha_grava_por_nome_none_sem_quebrar_a_correcao(self, client, auth_headers):
+        """Usuário não encontrado → `por_nome=None` passado ao repo, mas a
+        correção segue gravando (id em `por` já é auditoria suficiente)."""
+        repo = _repo_ok()
+        with patch(_GET_REPO, return_value=repo), _patch_user_lookup(name=None):
+            resp = client.patch(
+                f"/api/alerts/{ALERT_ID}/violations", headers=auth_headers, json=_BBOX_OK
+            )
+        assert resp.status_code == 200
+        assert repo.corrigir_bboxes.call_args[1]["por_nome"] is None
 
     def test_only_bbox_is_taken_from_client(self, client, auth_headers):
         """Corrigir POSIÇÃO não pode virar porta para reescrever CLASSE."""
@@ -178,7 +212,11 @@ class TestDetalheExpoeVeredito:
     def test_exposes_verdict_and_last_correction(self, client, auth_headers):
         alert = self._get(client, auth_headers, self._ROW).get_json()["data"]["alert"]
         assert alert["verification_verdict"] == "reject"
-        assert alert["correcao_ultima"] == {"por": USER_ID, "em": "2026-08-24T10:00:00+00:00"}
+        # Entrada do ledger é ANTERIOR ao `por_nome` (sem a chave) — vira
+        # None, nunca o UUID de `por` (é o defeito provado no DEV).
+        assert alert["correcao_ultima"] == {
+            "por": USER_ID, "por_nome": None, "em": "2026-08-24T10:00:00+00:00",
+        }
         # Regressão do assert de vazamento em test_alerts_routes.py:194.
         assert "verified_by" not in alert and "tenant_id" not in alert
 

@@ -83,7 +83,7 @@ interface Violacao {
 
 /** Última correção de caixa registrada no ledger append-only do alerta
  *  (`violations_historico` no backend, ver `_ultima_correcao`). */
-interface Correcao { por: string | null; em: string | null }
+interface Correcao { por: string | null; por_nome?: string | null; em: string | null }
 
 /** Projeção de `GET /api/alerts/:id` — só o que a rota realmente devolve. */
 export interface Evento {
@@ -770,7 +770,7 @@ export function EventoDetalhe() {
             <div className={s.badgeAutoria}>
               <Clock className={s.procedenciaIcone} aria-hidden />
               <p className={s.badgeAutoriaTexto} data-testid="badge-autoria">
-                Caixa corrigida por <strong>{evento.correcao_ultima.por ?? '—'}</strong>
+                Caixa corrigida por <strong>{evento.correcao_ultima.por_nome ?? '—'}</strong>
                 {evento.correcao_ultima.em && <><br />{dataHora(evento.correcao_ultima.em)}</>}
               </p>
             </div>
