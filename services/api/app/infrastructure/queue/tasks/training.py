@@ -146,6 +146,25 @@ def _publish_progress(job_id: str, payload: dict[str, Any]) -> None:
         logger.debug("publish_progress_failed: job=%s err=%s", job_id, exc)
 
 
+_FRAMEWORK_LABELS = {"rfdetr": "RF-DETR", "yolo26": "YOLO26", "yolox": "YOLOX"}
+
+
+def _build_model_name(framework: str, model_size: str, job_id: str) -> str:
+    """Nome honesto do trained_model: reflete o framework REAL do artefato.
+
+    `model_size` (ex.: 'yolo26n') é um campo legado do TrainingService que só
+    valida variantes YOLO26 (yolo26n/s/m/l/x) — pra jobs rfdetr/yolox ele
+    chega aqui só com o default 'yolo26n', sem relação com o artefato
+    treinado. Incluí-lo no nome pra esses frameworks batizaria RF-DETR de
+    "YOLO26 yolo26n": só entra no nome quando o framework É yolo26.
+    """
+    label = _FRAMEWORK_LABELS.get(framework, framework.upper())
+    short_job = job_id[:8]
+    if framework == "yolo26":
+        return f"{label} {model_size} - Job {short_job}"
+    return f"{label} - Job {short_job}"
+
+
 @celery.task(
     # D1: max_retries=0. Retry automático de job GPU é estritamente nocivo:
     # mesmos inputs dão a mesma falha, dobra o custo, e — o pior — APAGA a
@@ -165,7 +184,7 @@ def dispatch_training(
     imgsz: int = 640,
     batch: int = 16,
 ) -> dict:
-    """Dispara treinamento YOLO26 via Ultralytics Hub ou simulação."""
+    """Dispara treinamento real via RunPod (framework do job: rfdetr/yolox/yolo26)."""
     logger.info(
         "dispatch_training_start: job_id=%s model=%s epochs=%d",
         job_id, model_size, epochs,
@@ -259,6 +278,16 @@ def dispatch_training(
             # nunca para hub/simulado, cujo model_path não aponta pra nenhum
             # artefato real.
             r2_onnx_key = model_path if origin == "runpod" else None
+            # Nome honesto (fix "nome interno honesto"): o nome tinha
+            # "YOLO26" hardcoded (resto da era Ultralytics Hub) mesmo quando
+            # o artefato real é rfdetr/yolox — framework é NOT NULL DEFAULT
+            # 'rfdetr' desde a 097, buscado aqui pra bater com o mesmo
+            # tj.framework que a coluna FRAMEWORK abaixo já lê corretamente.
+            job_row = repo._execute_one(
+                "SELECT framework FROM training_jobs WHERE id = %s", (job_id,)
+            )
+            job_framework = str((job_row or {}).get("framework") or "rfdetr")
+            model_name = _build_model_name(job_framework, model_size, job_id)
             # C2 (task "treino honesto"): metrics (JSONB, migration 098 —
             # campo JSON já existente, sem migration nova) carrega o marcador
             # {'simulated': true, ...} pra artefatos simulados — indelével,
@@ -276,7 +305,7 @@ def dispatch_training(
                    WHERE tj.id = %s""",
                 (
                     new_model_id, job_id,
-                    f"YOLO26 {model_size} - Job {job_id[:8]}",
+                    model_name,
                     model_path,
                     metrics.get("mAP50", 0.0),
                     metrics.get("precision", 0.0),
