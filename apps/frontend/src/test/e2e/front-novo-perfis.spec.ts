@@ -45,6 +45,8 @@ const MENU: Array<{ rotulo: string; permissao: string | null }> = [
   { rotulo: 'Relatórios', permissao: 'reports:read' },
   // F5 PR-A: grupo Estúdio concatenado DEPOIS do EPI no Shell — último no DOM.
   { rotulo: 'Estúdio', permissao: 'frames:annotate' },
+  // F5 SR2 PR-1: grupo Admin concatenado por último — só o superadmin vê.
+  { rotulo: 'Administração', permissao: 'admin:panel' },
 ]
 
 /** O que o menu DEVE mostrar para um papel, derivado da matriz do backend. */

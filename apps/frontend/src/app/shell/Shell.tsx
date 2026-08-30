@@ -34,7 +34,7 @@ import { SeletorTenant } from './SeletorTenant'
 import { SessaoExpirando } from './SessaoExpirando'
 import { PREFIXO_NOVO } from '../RotasNovas'
 import { useMarcaDoTenant } from '../tokens/MarcaDoTenant'
-import { NAV_EPI, NAV_ESTUDIO, navVisivel } from './navPorPerfil'
+import { NAV_ADMIN, NAV_EPI, NAV_ESTUDIO, navVisivel } from './navPorPerfil'
 import * as s from './Shell.css'
 
 /** Marca: monograma + wordmark. Geometria canônica — nunca distorcer. */
@@ -66,6 +66,7 @@ const SEM_BARRA_LATERAL = [
   `${PREFIXO_NOVO}/quality`,
   `${PREFIXO_NOVO}/carga`,
   `${PREFIXO_NOVO}/estudio`,
+  `${PREFIXO_NOVO}/admin`,
 ]
 
 export function Shell({ carregando }: ShellProps) {
@@ -78,7 +79,7 @@ export function Shell({ carregando }: ShellProps) {
   const [colapsada, setColapsada] = useState(false)
   const [paletaAberta, setPaletaAberta] = useState(false)
 
-  const grupos = useMemo(() => navVisivel([...NAV_EPI, ...NAV_ESTUDIO], can), [can])
+  const grupos = useMemo(() => navVisivel([...NAV_EPI, ...NAV_ESTUDIO, ...NAV_ADMIN], can), [can])
 
   /**
    * `navPorPerfil` guarda o endereço FINAL de cada tela (`/epi/eventos`), que é

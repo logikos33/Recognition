@@ -17,7 +17,7 @@
 import type { LucideIcon } from 'lucide-react'
 import {
   Activity, AlertTriangle, BarChart3, Camera, CheckSquare,
-  FlaskConical, LayoutDashboard, Radio,
+  FlaskConical, LayoutDashboard, Radio, Shield,
 } from 'lucide-react'
 
 export interface ItemNav {
@@ -71,6 +71,22 @@ export const NAV_ESTUDIO: GrupoNav[] = [
     titulo: 'Estúdio',
     itens: [
       { rota: '/estudio', rotulo: 'Estúdio', icone: FlaskConical, permissao: 'frames:annotate' },
+    ],
+  },
+]
+
+/**
+ * Admin — grupo PRÓPRIO, com um único item de entrada para o painel da
+ * plataforma (`Admin.tsx` tem a lateral própria das sub-seções, como o
+ * Estúdio). `admin:panel` é SUPERADMIN-ONLY (`permissions.py:205-208`) —
+ * nenhum outro papel, nem `admin` do tenant, tem esta chave
+ * (`matriz-papeis.json`), então este grupo só aparece para o superadmin.
+ */
+export const NAV_ADMIN: GrupoNav[] = [
+  {
+    titulo: 'Administração',
+    itens: [
+      { rota: '/admin', rotulo: 'Administração', icone: Shield, permissao: 'admin:panel' },
     ],
   },
 ]
