@@ -50,6 +50,7 @@ const Estudio = lazy(() => import('./estudio/Estudio').then((m) => ({ default: m
 const DadosEstudio = lazy(() => import('./estudio/Dados').then((m) => ({ default: m.Dados })))
 const CoberturaEstudio = lazy(() => import('./estudio/Cobertura').then((m) => ({ default: m.Cobertura })))
 const ClassificarEstudio = lazy(() => import('./estudio/Classificar').then((m) => ({ default: m.Classificar })))
+const ClassesEstudio = lazy(() => import('./estudio/Classes').then((m) => ({ default: m.Classes })))
 
 /**
  * Prefixo do front novo enquanto os dois convivem. Sai no tombamento.
@@ -99,12 +100,13 @@ export const ROTAS_NOVAS: ReactElement[] = [
 
   // F5 — Estúdio (`Estúdio.dc.html`): de-para do delta manda `/estudio/*`.
   // Layout com gate `frames:annotate` e lateral própria; sub-rota só quando a
-  // tela EXISTE (Classes/IA/Dataset/Treinos/Modelos chegam nas PRs seguintes).
+  // tela EXISTE (IA/Dataset/Treinos/Modelos chegam nas PRs seguintes).
   <Route key="es" path="estudio" element={<Estudio />}>
     <Route key="esi" index element={<Navigate to="dados" replace />} />
     <Route key="esd" path="dados" element={<DadosEstudio />} />
     <Route key="esc" path="cobertura" element={<CoberturaEstudio />} />
     <Route key="escl" path="classificar" element={<ClassificarEstudio />} />
+    <Route key="escls" path="classes" element={<ClassesEstudio />} />
   </Route>,
 ]
 
