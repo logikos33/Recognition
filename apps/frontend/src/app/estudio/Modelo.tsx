@@ -36,6 +36,7 @@ import { Link } from 'react-router-dom'
 import { AlertTriangle, CheckCircle2, Settings } from 'lucide-react'
 
 import { api } from '../../services/api'
+import { nomeParaCliente } from '../../services/modelDisplay'
 import { useToast } from '../../components/ui/Toast/useToast'
 import { EmptyState } from '../../components/ui/EmptyState/EmptyState'
 import { Tooltip } from '../../components/ui/Tooltip/Tooltip'
@@ -52,14 +53,6 @@ const METRIC_HELP: Record<string, string> = {
   'mAP@50': 'mAP@50: acerto médio das detecções com sobreposição ≥ 50% — quanto maior, melhor',
   Precisão: 'Precisão: das detecções feitas, quantas estavam certas',
   Cobertura: 'Cobertura: dos objetos presentes, quantos o modelo encontrou',
-}
-
-/** `yolo26n/s/m` → `LGKV26n/s/m` — mesmo apelido do antigo (displayModelName). */
-function nomeExibicao(nome: string): string {
-  return nome
-    .replace(/yolo26n/gi, 'LGKV26n')
-    .replace(/yolo26s/gi, 'LGKV26s')
-    .replace(/yolo26m/gi, 'LGKV26m')
 }
 
 function dataFormatada(iso: string): string {
@@ -172,7 +165,7 @@ export function Modelo() {
         <span className={s.secaoTitulo}>Modelo ativo</span>
         {ativo ? (
           <>
-            <div className={s.nomeAtivo}>{nomeExibicao(ativo.name)}</div>
+            <div className={s.nomeAtivo}>{nomeParaCliente(ativo)}</div>
             <Metricas modelo={ativo} />
             <div className={s.rodapeAtivo}>
               <span>Origem: {originLabel(ativo.origin)}</span>
@@ -215,7 +208,10 @@ export function Modelo() {
             >
               <div className={s.modeloLinha}>
                 <span className={s.modeloNome}>
-                  {nomeExibicao(modelo.name)}
+                  {nomeParaCliente(modelo)}
+                  {/* nome interno era o único distintivo entre modelos sem
+                      apelido próprio — job id curto substitui (não é framework). */}
+                  <span className={s.dataModelo}> #{(modelo.job_id || modelo.id).slice(0, 8)}</span>
                   {modelo.is_active && (
                     <span className={s.badgeAtivo}>
                       <CheckCircle2 size={10} strokeWidth={2.5} aria-hidden="true" /> ativo
@@ -252,7 +248,7 @@ export function Modelo() {
       {modeloCenario && (
         <ModelScenarioWizard
           modelId={modeloCenario.id}
-          modelName={nomeExibicao(modeloCenario.name)}
+          modelName={nomeParaCliente(modeloCenario)}
           onClose={() => setModeloCenario(null)}
           onSaved={() => {
             toast.success('Cenário do modelo salvo')

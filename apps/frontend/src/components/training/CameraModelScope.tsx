@@ -36,6 +36,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../../services/api'
 import { cameraService } from '../../services/cameraService'
+import { nomeParaCliente } from '../../services/modelDisplay'
 import { useToast } from '../ui/Toast/useToast'
 import { useAuth } from '../../hooks/useAuth'
 import { Badge } from '../ui/Badge/Badge'
@@ -64,11 +65,20 @@ export interface ModelDeployment {
 export interface RegistryModel {
   id: string
   name: string | null
+  /** Nome voltado ao cliente (migration 129) — ver `nomeParaCliente`. */
+  display_name?: string | null
   framework?: string | null
   r2_onnx_key?: string | null
   is_active: boolean
   module_code?: string | null
   created_at?: string
+}
+
+/** Nome interno (`name`) + framework: SÓ para superadmin (política F5-LEVE
+ * — cliente NUNCA vê stack interno). Tenant vê `nomeParaCliente`. */
+function nomeDoModelo(m: RegistryModel, isSuperAdmin: boolean): string {
+  if (isSuperAdmin) return m.name || `Modelo ${m.id.slice(0, 8)}`
+  return nomeParaCliente(m)
 }
 
 interface Envelope<T> { success: boolean; message?: string; data?: T }
@@ -134,7 +144,7 @@ function draftDoDeployment(dep: ModelDeployment | undefined): Draft {
 
 export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloClass[] }) {
   const toast = useToast()
-  const { can } = useAuth()
+  const { can, isSuperAdmin } = useAuth()
   // Editar o escopo de uma câmera é CONFIGURAÇÃO DE CÂMERA, não aprovação de
   // treino: 'cameras:configure' já existe, já inclui admin, e sua própria
   // descrição no registry é "alterar configurações técnicas da câmera (FPS,
@@ -325,11 +335,12 @@ export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloCla
                       {/* Sem rota de desativar: com deployment gravado, "sem" não é escolha válida. */}
                       <option value="" disabled={!!dep}>— sem deployment (detector padrão do ambiente)</option>
                       {modelosDoModulo.map(m => (
-                        <option key={m.id} value={m.id}>{m.name || `Modelo ${m.id.slice(0, 8)}`}</option>
+                        <option key={m.id} value={m.id}>{nomeDoModelo(m, isSuperAdmin)}</option>
                       ))}
                     </select>
                     {modulo !== MODULO_PADRAO && <Badge variant="neutral">{modulo}</Badge>}
-                    {framework && <Badge variant="accent">{framework}</Badge>}
+                    {/* framework (YOLOX/RF-DETR) é stack interno — SÓ superadmin. */}
+                    {framework && isSuperAdmin && <Badge variant="accent">{framework}</Badge>}
                   </div>
                 </td>
                 <td style={cell}>

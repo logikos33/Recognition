@@ -93,7 +93,7 @@ describe('Modelo — estados', () => {
     expect(await screen.findByText(/GET \/api\/training\/models/)).toBeTruthy()
     responde([modelo()])
     fireEvent.click(screen.getByRole('button', { name: /tentar novamente/i }))
-    expect(await screen.findByText(/LGKV26n-epi-v11/)).toBeTruthy()
+    expect(await screen.findByText(/Logikos/)).toBeTruthy()
   })
 
   it('vazio: sem modelo treinado, mostra o EmptyState honesto (sem mock de dado)', async () => {
@@ -104,11 +104,12 @@ describe('Modelo — estados', () => {
 })
 
 describe('Modelo — lista e destaque do ativo', () => {
-  it('lista os modelos que o servidor devolve, com apelido LGKV26', async () => {
+  it('lista os modelos que o servidor devolve — nome genérico "Logikos" (sem display_name), distinguidos por sufixo de id', async () => {
     responde([modelo(), modelo({ id: 'm-2', name: 'yolo26s-epi-v10' })])
     monta()
-    expect(await screen.findByText('LGKV26n-epi-v11')).toBeTruthy()
-    expect(screen.getByText('LGKV26s-epi-v10')).toBeTruthy()
+    expect(await screen.findAllByText(/Logikos/)).toHaveLength(2)
+    expect(screen.getByText(/#m-1/)).toBeTruthy()
+    expect(screen.getByText(/#m-2/)).toBeTruthy()
   })
 
   it('modelo ativo aparece destacado, com mAP@50/precisão/cobertura', async () => {
@@ -154,7 +155,7 @@ describe('Modelo — lista e destaque do ativo', () => {
   it('modelo NÃO simulado não mostra o selo (mutação: remover o guard de isSimulatedArtifact quebra este teste)', async () => {
     responde([modelo({ origin: 'vast_ai', metrics: {} })])
     monta()
-    await screen.findByText('LGKV26n-epi-v11')
+    await screen.findByText(/Logikos/)
     expect(screen.queryByText(/SIMULAÇÃO/i)).toBeNull()
   })
 
@@ -173,7 +174,7 @@ describe('Modelo — ativar', () => {
     fireEvent.click(await screen.findByRole('button', { name: /^ativar$/i }))
     expect(post).toHaveBeenCalledWith('/v1/models/m-9/activate', {})
     expect(post).not.toHaveBeenCalledWith(expect.stringContaining('/training/models'), expect.anything())
-    await screen.findByText('LGKV26n-epi-v11') // ainda de pé após o toast de sucesso
+    await screen.findByText(/Logikos/) // ainda de pé após o toast de sucesso
     expect(toast.success).toHaveBeenCalledWith('Modelo ativado')
   })
 
@@ -213,7 +214,7 @@ describe('Modelo — cenário e link de classes', () => {
     monta()
     fireEvent.click(await screen.findByRole('button', { name: /configurar cenário/i }))
     expect(await screen.findByText('wizard-aberto:m-7')).toBeTruthy()
-    expect(wizard.props?.modelName).toBe('LGKV26m-epi-v12')
+    expect(wizard.props?.modelName).toBe('Logikos')
   })
 
   it('link "Configurar Classes" vai para /novo/estudio/classes (rotaNova)', async () => {
@@ -221,5 +222,20 @@ describe('Modelo — cenário e link de classes', () => {
     monta()
     const link = (await screen.findByRole('link', { name: /configurar classes/i })) as HTMLAnchorElement
     expect(link.getAttribute('href')).toBe('/novo/estudio/classes')
+  })
+})
+
+describe('Modelo — anti-vazamento de stack interno (política F5-LEVE)', () => {
+  it('sem display_name: nome interno (YOLO26/yolo26n) e framework NUNCA aparecem — cai em "Logikos"', async () => {
+    responde([modelo({ name: 'YOLO26 yolo26n - Job abc12345', framework: 'yolox', display_name: null })])
+    monta()
+    await screen.findByText(/Logikos/)
+    expect(document.body.innerHTML).not.toMatch(/yolo|rf-?detr|onnx/i)
+  })
+
+  it('com display_name atribuído: mostra o nome escolhido para o cliente', async () => {
+    responde([modelo({ display_name: 'Logikos V1' })])
+    monta()
+    expect(await screen.findByText(/Logikos V1/)).toBeTruthy()
   })
 })

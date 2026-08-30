@@ -76,7 +76,12 @@ export interface TrainingJob {
 
 export interface TrainedModel {
   id: string
+  job_id?: string
   name: string
+  /** Nome voltado ao cliente (migration 129, rebranding F5-LEVE) — NULL até
+   * alguém atribuir. Use `nomeParaCliente()` (services/modelDisplay.ts) para
+   * exibir; nunca `name`/`framework` cru em superfície de tenant. */
+  display_name?: string | null
   model_path: string
   map50?: number
   precision?: number

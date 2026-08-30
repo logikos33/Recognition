@@ -168,4 +168,24 @@ describe('Treino (Estúdio — treino ao vivo)', () => {
 
     await screen.findByText((text) => text.includes('20/50'))
   })
+
+  describe('anti-vazamento de stack interno (política F5-LEVE)', () => {
+    it('current job: model_size interno (yolo26n) nunca aparece — mostra "Logikos" genérico', async () => {
+      mockApi({ status: statusEnvelope(job('job-9', { model_size: 'yolo26n', status: 'running' }), true) })
+      render(<Treino />)
+      await screen.findByText(/Logikos/)
+      expect(document.body.innerHTML).not.toMatch(/yolo|rf-?detr|onnx/i)
+    })
+
+    it('histórico: model_size interno nunca aparece — mostra "Logikos" + sufixo de job id', async () => {
+      mockApi({
+        status: statusEnvelope(null, true),
+        jobs: [job('job-abc12345', { model_size: 'yolo26m', status: 'completed' })],
+      })
+      render(<Treino />)
+      await screen.findByText(/Logikos/)
+      expect(screen.getByText(/#job-abc1/)).toBeTruthy()
+      expect(document.body.innerHTML).not.toMatch(/yolo|rf-?detr|onnx/i)
+    })
+  })
 })
