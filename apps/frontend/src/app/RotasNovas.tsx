@@ -58,6 +58,8 @@ const ModelosPorCameraEstudio = lazy(() =>
 const TreinoEstudio = lazy(() => import('./estudio/Treino').then((m) => ({ default: m.Treino })))
 const Admin = lazy(() => import('./admin/Admin').then((m) => ({ default: m.Admin })))
 const VisaoGeralAdmin = lazy(() => import('./admin/VisaoGeral').then((m) => ({ default: m.VisaoGeral })))
+const DispositivosAdmin = lazy(() => import('./admin/Dispositivos').then((m) => ({ default: m.Dispositivos })))
+const AuditoriaAdmin = lazy(() => import('./admin/Auditoria').then((m) => ({ default: m.Auditoria })))
 
 /**
  * Prefixo do front novo enquanto os dois convivem. Sai no tombamento.
@@ -119,11 +121,14 @@ export const ROTAS_NOVAS: ReactElement[] = [
     <Route key="est" path="treino" element={<TreinoEstudio />} />
   </Route>,
 
-  // F5 SR2 PR-1 — Admin (`Admin Plataforma.dc.html`): layout com gate
-  // `admin:panel` (superadmin-only) e lateral própria. Só "Visão geral" existe
-  // nesta PR — as demais abas chegam nas próximas.
+  // F5 SR2 — Admin (`Admin Plataforma.dc.html`): layout com gate
+  // `admin:panel` (superadmin-only) e lateral própria. PR-1 trouxe "Visão
+  // geral"; PR-3 acrescenta "Dispositivos" e "Auditoria" — as demais abas
+  // chegam nas próximas.
   <Route key="ad" path="admin" element={<Admin />}>
     <Route key="adi" index element={<VisaoGeralAdmin />} />
+    <Route key="add" path="dispositivos" element={<DispositivosAdmin />} />
+    <Route key="ada" path="auditoria" element={<AuditoriaAdmin />} />
   </Route>,
 ]
 
