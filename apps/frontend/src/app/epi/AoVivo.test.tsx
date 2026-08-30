@@ -51,9 +51,11 @@ vi.mock('../../hooks/useAuth', () => ({
 
 // socket.io real abriria conexão de verdade; o que interessa aqui é o payload.
 let deteccoesWs: Record<string, Detection[]> = {}
+// Conectado por padrão — o teste de "SEM SINAL" (§11) desliga explicitamente.
+let conectadoWs = true
 vi.mock('../../hooks/useMonitoringSocket', () => ({
   useMonitoringSocket: () => ({
-    connected: false,
+    connected: conectadoWs,
     detections: deteccoesWs,
     alerts: [],
     subscribeCamera: vi.fn(),
@@ -125,6 +127,7 @@ beforeEach(() => {
   vi.stubGlobal('localStorage', new MemoriaStorage())
   permissoes = ['cameras:read']
   deteccoesWs = {}
+  conectadoWs = true
   vi.mocked(cameraService.start).mockImplementation((id: string) =>
     Promise.resolve({ camera_id: id, hls_url: tokenizada(id), status: 'started' } as never),
   )
@@ -471,5 +474,34 @@ describe('meus layouts', () => {
     }>
     // Ainda não salvou — a edição é só no estado até "Salvar layout atual".
     expect(salvo[0]?.nome).toBe('Parcial')
+  })
+})
+
+// ── §11 — aviso de sinal caído ──────────────────────────────────────────────
+
+describe('aviso de sinal caído (§11)', () => {
+  it('mostra SEM SINAL no ladrilho quando o WebSocket de detecções está fora', async () => {
+    conectadoWs = false
+    montar()
+    await screen.findByText('CAM-01 DOCA NORTE')
+    expect(screen.getAllByText('SEM SINAL').length).toBeGreaterThan(0)
+  })
+
+  it('não mostra o aviso com o WebSocket conectado', async () => {
+    conectadoWs = true
+    montar()
+    await screen.findByText('CAM-01 DOCA NORTE')
+    expect(screen.queryByText('SEM SINAL')).toBeNull()
+  })
+})
+
+// ── §13 — local e módulo no quadrinho ────────────────────────────────────────
+
+describe('local e módulo no quadrinho (§13)', () => {
+  it('mostra local e módulo como linha secundária no ladrilho — dado que GET /cameras já entrega', async () => {
+    respondeCameras([{ ...camera('cam-1', 'CAM-01 DOCA NORTE'), module_code: 'epi' }])
+    montar()
+    await screen.findByText('CAM-01 DOCA NORTE')
+    expect(screen.getByText('DOCA NORTE · EPI')).toBeTruthy()
   })
 })
