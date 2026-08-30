@@ -14,13 +14,14 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 386 arquivos, 64.895 linhas
+## Situação — 386 arquivos, 65.015 linhas
 
 | status | arquivos |
 |---|---:|
 | `INFRA` | 226 |
-| `PENDENTE` | 152 |
+| `PENDENTE` | 146 |
 | `SEM-DESENHO` | 7 |
+| `SUBSTITUIDA` | 6 |
 | `MIGRADO` | 1 |
 
 ## Como marcar um arquivo como migrado
@@ -349,13 +350,8 @@ apagado não são a mesma coisa.
 | `src/modules/quality/pages/QualityAndonDisplay.tsx` | `PENDENTE` | — | 162 |
 | `src/modules/quality/pages/QualityAnnotationWorkspace.tsx` | `PENDENTE` | — | 274 |
 | `src/modules/quality/pages/QualityCamerasPage.css.ts` | `PENDENTE` | — | 230 |
-| `src/modules/quality/pages/QualityCamerasPage.tsx` | `PENDENTE` | — | 191 |
-| `src/modules/quality/pages/QualityConfigPage.tsx` | `PENDENTE` | — | 721 |
-| `src/modules/quality/pages/QualityDashboard.tsx` | `PENDENTE` | — | 97 |
 | `src/modules/quality/pages/QualityDashboardDemo.tsx` | `PENDENTE` | — | 281 |
 | `src/modules/quality/pages/QualityInspectionDetail.tsx` | `PENDENTE` | — | 230 |
-| `src/modules/quality/pages/QualityInspectionsPage.tsx` | `PENDENTE` | — | 486 |
-| `src/modules/quality/pages/QualityPiecesPage.tsx` | `PENDENTE` | — | 429 |
 | `src/modules/quality/pages/QualityReportsPage.tsx` | `PENDENTE` | — | 384 |
 | `src/modules/quality/pages/QualityReworkPage.tsx` | `PENDENTE` | — | 483 |
 | `src/modules/quality/pages/QualityTrainingPage.tsx` | `PENDENTE` | — | 210 |
@@ -381,7 +377,6 @@ apagado não são a mesma coisa.
 | `src/pages/CamerasPage.css.ts` | `PENDENTE` | — | 225 |
 | `src/pages/CamerasPage.tsx` | `PENDENTE` | — | 434 |
 | `src/pages/CameraTriagePage.css.ts` | `PENDENTE` | — | 299 |
-| `src/pages/CountingPage.tsx` | `PENDENTE` | — | 515 |
 | `src/pages/DashboardIntegradoPage.css.ts` | `PENDENTE` | — | 209 |
 | `src/pages/DashboardPage.css.ts` | `PENDENTE` | — | 105 |
 | `src/pages/DashboardPage.tsx` | `PENDENTE` | — | 156 |
@@ -425,3 +420,9 @@ apagado não são a mesma coisa.
 | `src/pages/epi/EpiSitesPage.tsx` | `SEM-DESENHO` | — | 160 |
 | `src/pages/epi/InvestigationPage.tsx` | `SEM-DESENHO` | — | 746 |
 | `src/pages/ModuleSelectionPage.tsx` | `SEM-DESENHO` | — | 165 |
+| `src/modules/quality/pages/QualityCamerasPage.tsx` | `SUBSTITUIDA` | src/app/qualidade/Qualidade.tsx | 211 |
+| `src/modules/quality/pages/QualityConfigPage.tsx` | `SUBSTITUIDA` | src/app/qualidade/ConfigQualidade.tsx | 741 |
+| `src/modules/quality/pages/QualityDashboard.tsx` | `SUBSTITUIDA` | src/app/qualidade/Qualidade.tsx | 117 |
+| `src/modules/quality/pages/QualityInspectionsPage.tsx` | `SUBSTITUIDA` | src/app/qualidade/RevisaoQualidade.tsx | 506 |
+| `src/modules/quality/pages/QualityPiecesPage.tsx` | `SUBSTITUIDA` | src/app/qualidade/GestaoQualidade.tsx | 449 |
+| `src/pages/CountingPage.tsx` | `SUBSTITUIDA` | src/app/carga/Carga.tsx | 535 |
