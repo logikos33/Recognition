@@ -55,6 +55,7 @@ const ModeloEstudio = lazy(() => import('./estudio/Modelo').then((m) => ({ defau
 const ModelosPorCameraEstudio = lazy(() =>
   import('./estudio/ModelosPorCamera').then((m) => ({ default: m.ModelosPorCamera })),
 )
+const TreinoEstudio = lazy(() => import('./estudio/Treino').then((m) => ({ default: m.Treino })))
 
 /**
  * Prefixo do front novo enquanto os dois convivem. Sai no tombamento.
@@ -113,6 +114,7 @@ export const ROTAS_NOVAS: ReactElement[] = [
     <Route key="escls" path="classes" element={<ClassesEstudio />} />
     <Route key="esm" path="modelo" element={<ModeloEstudio />} />
     <Route key="esmc" path="modelos-por-camera" element={<ModelosPorCameraEstudio />} />
+    <Route key="est" path="treino" element={<TreinoEstudio />} />
   </Route>,
 ]
 
