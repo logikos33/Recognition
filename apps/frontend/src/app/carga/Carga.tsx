@@ -258,9 +258,10 @@ function Situacao({ dentro, meta }: { dentro: boolean; meta?: number }) {
 }
 
 export function Carga() {
-  const { can } = useAuth()
+  const { can, hasModule } = useAuth()
   const podeLer = can('counting:read')
   const podeEscrever = can('counting:write')
+  const temModuloCarga = hasModule('counting')
 
   const [aba, setAba] = useState<Aba>('dashboard')
   const [periodo, setPeriodo] = useState<Periodo>('sete')
@@ -308,10 +309,10 @@ export function Carga() {
     [],
   )
 
-  const precisaSessoes = podeLer && (aba === 'dashboard' || aba === 'baias')
-  const precisaRelatorio = podeLer && (aba === 'dashboard' || aba === 'validacao')
-  const precisaEventos = podeLer && aba === 'eventos'
-  const precisaCameras = podeLer && (aba === 'eventos' || aba === 'validacao')
+  const precisaSessoes = podeLer && temModuloCarga && (aba === 'dashboard' || aba === 'baias')
+  const precisaRelatorio = podeLer && temModuloCarga && (aba === 'dashboard' || aba === 'validacao')
+  const precisaEventos = podeLer && temModuloCarga && aba === 'eventos'
+  const precisaCameras = podeLer && temModuloCarga && (aba === 'eventos' || aba === 'validacao')
 
   const sessoes = useRecurso(precisaSessoes ? buscarSessoes : null)
   const relatorio = useRecurso(precisaRelatorio ? buscarRelatorio : null)
@@ -353,6 +354,22 @@ export function Carga() {
         <span className={s.centroTexto}>
           A Carga exige a permissão <code>counting:read</code>. Peça ao administrador do
           seu tenant.
+        </span>
+      </div>
+    )
+  }
+
+  // Módulo desligado (nota do cético do flip): sem isto a tela chamaria as
+  // rotas de qualquer jeito e tomaria 403 cru — mesmo tratamento do KPI
+  // "sem fonte" de Retrabalhos em Qualidade.tsx.
+  if (!temModuloCarga) {
+    return (
+      <div className={s.centro}>
+        <Lock size={36} strokeWidth={1.5} color={lk.cor.cinzaNevoa} aria-hidden="true" />
+        <span className={s.centroTitulo}>Módulo não habilitado</span>
+        <span className={s.centroTexto}>
+          O módulo Carga (<code>counting</code>) não está habilitado nesta sessão. Peça ao
+          administrador do seu tenant.
         </span>
       </div>
     )

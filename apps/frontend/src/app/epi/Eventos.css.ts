@@ -299,3 +299,10 @@ export const overlineLegenda = style({
 
 /** Par de botões de veredito dentro da célula. */
 export const grupoBotoes = style({ display: 'flex', gap: '6px', marginTop: '6px' })
+
+/** Confiança da detecção (§9 paridade) — dado, então mono; cinza, sem cor de estado. */
+export const confianca = style({
+  fontFamily: lk.fonte.mono,
+  fontSize: '12px',
+  color: lk.cor.cinzaNevoa,
+})

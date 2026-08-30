@@ -186,10 +186,11 @@ export function rotuloDaClasse(
 }
 
 export function RevisaoQualidade() {
-  const { can } = useAuth()
+  const { can, hasModule } = useAuth()
   const toast = useToast()
   const podeLer = can('verification:read')
   const podeDecidir = can('verification:write')
+  const temModuloQualidade = hasModule('quality')
 
   const [turno, setTurno] = useState('')
   const [cameraId, setCameraId] = useState('')
@@ -233,14 +234,14 @@ export function RevisaoQualidade() {
   }, [rota])
 
   useEffect(() => {
-    if (!podeLer) return
+    if (!podeLer || !temModuloQualidade) return
     carregar()
-  }, [carregar, podeLer])
+  }, [carregar, podeLer, temModuloQualidade])
 
   // Câmeras: traduz camera_id (UUID) → nome e serve o filtro. Falha aqui não
   // derruba a fila — o filtro some, a revisão continua.
   useEffect(() => {
-    if (!podeLer) return
+    if (!podeLer || !temModuloQualidade) return
     api
       .get<{ data?: { cameras?: Camera[] } }>('/v1/quality/cameras')
       .then((r) => setCameras(r.data?.cameras ?? []))
@@ -260,7 +261,7 @@ export function RevisaoQualidade() {
         setClasses(lista.map((c) => c.display_name ?? c.class_name ?? '').filter(Boolean))
       })
       .catch(() => undefined)
-  }, [podeLer])
+  }, [podeLer, temModuloQualidade])
 
   const selecionado = useMemo(
     () => (selId ? (fila ?? []).find((i) => i.id === selId) ?? null : null),
@@ -381,6 +382,22 @@ export function RevisaoQualidade() {
         <span className={s.centroTexto}>
           A fila de revisão exige a permissão <code>verification:read</code>. Peça ao
           administrador do seu tenant.
+        </span>
+      </div>
+    )
+  }
+
+  // Módulo desligado (nota do cético do flip): sem isto a tela chamaria as
+  // rotas de qualquer jeito e tomaria 403 cru — mesmo tratamento do KPI
+  // "sem fonte" de Retrabalhos em Qualidade.tsx.
+  if (!temModuloQualidade) {
+    return (
+      <div className={s.centro}>
+        <Lock size={36} strokeWidth={1.5} aria-hidden="true" />
+        <span className={s.centroTitulo}>Módulo não habilitado</span>
+        <span className={s.centroTexto}>
+          O módulo Qualidade (<code>quality</code>) não está habilitado nesta sessão. Peça
+          ao administrador do seu tenant.
         </span>
       </div>
     )

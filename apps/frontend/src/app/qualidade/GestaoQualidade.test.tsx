@@ -19,10 +19,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   permissoes: new Set<string>(),
+  temModulo: true,
 }))
 
 vi.mock('../../hooks/useAuth', () => ({
-  useAuth: () => ({ can: (p: string) => mocks.permissoes.has(p) }),
+  useAuth: () => ({ can: (p: string) => mocks.permissoes.has(p), hasModule: () => mocks.temModulo }),
 }))
 
 vi.mock('../../services/api', async (importOriginal) => {
@@ -220,6 +221,16 @@ const abrirAba = (nome: string) => fireEvent.click(screen.getByRole('tab', { nam
 beforeEach(() => {
   mocks.get.mockReset()
   mocks.permissoes = new Set(['reports:read', 'reports:export'])
+  mocks.temModulo = true
+})
+
+// ── módulo desligado (nota do cético do flip) ───────────────────────────────
+
+it('sem o módulo quality, a tela bloqueia e não chama rota nenhuma', () => {
+  mocks.temModulo = false
+  render(<GestaoQualidade />)
+  expect(screen.getByText('Módulo não habilitado')).toBeTruthy()
+  expect(mocks.get).not.toHaveBeenCalled()
 })
 
 // ── D1 · Dashboard ──────────────────────────────────────────────────────────

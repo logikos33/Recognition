@@ -519,6 +519,7 @@ export function Eventos() {
                   <th scope="col" className={s.cabecalhoCelula}>Hora</th>
                   <th scope="col" className={s.cabecalhoCelula}>Status</th>
                   <th scope="col" className={s.cabecalhoCelula}>Veredito humano</th>
+                  <th scope="col" className={s.cabecalhoCelula}>Confiança</th>
                   <th scope="col" className={s.cabecalhoCelula} />
                 </tr>
               </thead>
@@ -644,6 +645,16 @@ export function Eventos() {
                             </button>
                           </span>
                         )}
+                      </td>
+
+                      {/* Confiança da detecção (§9 paridade) — o dado já vinha,
+                          só não era desenhado. Primeira violação, como no legado. */}
+                      <td className={s.celula}>
+                        <span className={s.confianca}>
+                          {ev.violations?.[0]?.confidence != null
+                            ? `${Math.round(ev.violations[0].confidence * 100)}%`
+                            : '—'}
+                        </span>
                       </td>
 
                       <td className={s.celulaAcoes}>

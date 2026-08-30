@@ -53,7 +53,7 @@
  * ⛔ Nada aqui é inventado: sem endpoint, sem dado; sem rota, sem ação.
  */
 import { useCallback, useEffect, useState } from 'react'
-import { AlertTriangle, CheckCircle2, CircleSlash, Plus, SlidersHorizontal } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, CircleSlash, Lock, Plus, SlidersHorizontal } from 'lucide-react'
 
 import { useAuth } from '../../hooks/useAuth'
 import { api } from '../../services/api'
@@ -109,7 +109,7 @@ const PORQUE_LIMIAR_TRAVADO =
   'QUALITY_VOTING_THRESHOLD (quality_inference.py:539) e nunca lê estas colunas.'
 
 export function ConfigQualidade() {
-  const { can } = useAuth()
+  const { can, hasModule } = useAuth()
   const [aba, setAba] = useState<Aba>('c1')
   const [estacoes, setEstacoes] = useState<Estacao[] | null>(null)
   const [cameras, setCameras] = useState<CameraQualidade[] | null>(null)
@@ -117,8 +117,10 @@ export function ConfigQualidade() {
   const [erro, setErro] = useState<string | null>(null)
 
   const podeConfigurar = can('cameras:configure')
+  const temModuloQualidade = hasModule('quality')
 
   const carregar = useCallback(() => {
+    if (!temModuloQualidade) return
     setErro(null)
     setEstacoes(null)
     setCameras(null)
@@ -144,9 +146,25 @@ export function ConfigQualidade() {
       .get<{ data?: { cameras?: CameraQualidade[] } }>(ROTA_DISPONIVEIS)
       .then((r) => setNomes((n) => ({ ...n, ...mapaDeNomes(r.data?.cameras ?? []) })))
       .catch(() => undefined)
-  }, [])
+  }, [temModuloQualidade])
 
   useEffect(carregar, [carregar])
+
+  // Módulo desligado (nota do cético do flip): sem isto a tela chamaria as
+  // rotas de qualquer jeito e tomaria 403 cru — mesmo tratamento do KPI
+  // "sem fonte" de Retrabalhos em Qualidade.tsx.
+  if (!temModuloQualidade) {
+    return (
+      <div className={s.centro}>
+        <Lock size={36} strokeWidth={1.5} color={lk.cor.cinzaNevoa} aria-hidden="true" />
+        <span className={s.centroTitulo}>Módulo não habilitado</span>
+        <span className={s.vazioTexto}>
+          O módulo Qualidade (<code>quality</code>) não está habilitado nesta sessão. Peça
+          ao administrador do seu tenant.
+        </span>
+      </div>
+    )
+  }
 
   if (erro) {
     return (

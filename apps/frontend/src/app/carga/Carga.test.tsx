@@ -9,7 +9,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const auth = vi.hoisted(() => ({ can: vi.fn((_p: string) => true) }))
+const auth = vi.hoisted(() => ({ can: vi.fn((_p: string) => true), hasModule: vi.fn((_m: string) => true) }))
 vi.mock('../../hooks/useAuth', () => ({ useAuth: () => auth }))
 
 const get = vi.fn()
@@ -110,6 +110,7 @@ beforeEach(() => {
   get.mockReset()
   remover.mockReset().mockResolvedValue({ data: {} })
   auth.can.mockReset().mockReturnValue(true)
+  auth.hasModule.mockReset().mockReturnValue(true)
 })
 
 describe('Carga', () => {
@@ -118,6 +119,13 @@ describe('Carga', () => {
     render(<Carga />)
     expect(screen.getByText('Sem permissão')).toBeTruthy()
     expect(screen.getByText('counting:read')).toBeTruthy()
+    expect(get).not.toHaveBeenCalled()
+  })
+
+  it('sem o módulo counting, a tela bloqueia e não chama rota nenhuma', () => {
+    auth.hasModule.mockReturnValue(false)
+    render(<Carga />)
+    expect(screen.getByText('Módulo não habilitado')).toBeTruthy()
     expect(get).not.toHaveBeenCalled()
   })
 
