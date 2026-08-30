@@ -9,11 +9,11 @@
  *
  * A lateral é PRÓPRIA (220px, desenho); a do Shell some via SEM_BARRA_LATERAL.
  * Só entra item cuja rota EXISTE — as demais áreas da prancha (Ferramentas IA,
- * Dataset, Treinos, Modelos) chegam nas próximas PRs da F5.
+ * Dataset) chegam nas próximas PRs da F5.
  * Item apontando para rota inexistente é tela inventada.
  */
 import { Suspense } from 'react'
-import { Grid3x3, Images, SquareMousePointer, Tags } from 'lucide-react'
+import { Box, Cctv, Grid3x3, Images, SquareMousePointer, Tags } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
 
 import { useAuth } from '../../hooks/useAuth'
@@ -25,6 +25,8 @@ const ITENS = [
   { rota: 'cobertura', rotulo: 'Cobertura', Icone: Grid3x3 },
   { rota: 'classificar', rotulo: 'Classificar', Icone: SquareMousePointer },
   { rota: 'classes', rotulo: 'Classes', Icone: Tags },
+  { rota: 'modelo', rotulo: 'Modelos', Icone: Box },
+  { rota: 'modelos-por-camera', rotulo: 'Modelos por câmera', Icone: Cctv },
 ]
 
 export function Estudio() {
