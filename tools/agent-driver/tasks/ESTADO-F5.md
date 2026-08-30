@@ -47,13 +47,12 @@
 - 🔒 `GET /api/training/jobs` VAZA `callback_token` na listagem (training/routes.py) e escopo é por user_id, não tenant — registrar como issue de segurança para a pista de backend (risk:security = fila para revisão humana, não mexo).
 - `GET /api/classes` devolve `classes[]` na RAIZ (fora do envelope data) — bug de contrato conhecido; front novo vai consumir como está e registrar.
 
-## Placar de PRs
-| PR | tema | branch | estado |
-|---|---|---|---|
-| #571 | docs: bundle canônico F5 | docs/handoff-f5-bundle | ✅ MERGEADO 29/08 22:52Z |
-| #572 | Estúdio PR-A (gate+layout+Dados) | f5/estudio-pr-a | ✅ MERGEADO 29/08 23:22Z (CI 23/23; cético: 1 bloqueio corrigido) |
-| #574 | Estúdio PR-B (Cobertura+Classificar+débitos a/b) | f5/estudio-pr-b | aberto, CI rodando (372/372 local) |
-| — | Estúdio PR-C (Classes) | f5/estudio-pr-c (wt-f5b) | implementador sonnet em curso |
+## Placar de PRs — FINAL (15 mergeados, 0 abertos)
+#571 bundle · #572 A · #574 B · #577 C · #580 D · #583 E · #584 Acesso · #586 selos · #589 carimbos · #591 admin-nucleo · #594 dispositivos+auditoria · #595 tenants+usuarios · #596 kiosk · #597 mobile · (+ #585/#588/#590/#593 da migração-leve na mesma janela, sem colisão). Relatório completo: docs/reports/RELATORIO-F5.md.
+
+## SESSÃO F5-PESADA — FECHADA em 30/08 ~02h
+Aceite de código: Estúdio(7)+Admin(6)+Acesso(3)+Kiosk+Mobile no ar na develop; paridade auditada e carimbada; manifesto verdadeiro; listas design/backend entregues. ABERTO para humano: prova visual por perfil no DEV (credencial), aceite de demo do volante (/novo/estudio/dados), gates de terça 18h. Retomada: reler este arquivo + RELATORIO-F5.md.
+
 
 ## Pedidos-ao-backend (a registrar em doc na 1ª leva)
 1. Share links admin (zero backend). 2. Login devolver `force_password_reset`. 3. Parede kiosk por site (reforço DECISOES 29/08). 4. TV por site `/tv/:site`.
