@@ -40,6 +40,9 @@
 - DECISÃO de encaixe (minha, registrada p/ design): Cobertura e Classificar NÃO têm aba própria na prancha de 6 áreas — entram como sub-rotas extras da lateral do Estúdio (função do delta > desenho; divergência para a LISTA-PARA-O-DESIGN), em vez de espremê-las numa área onde não cabem.
 - Próximo: CI #572 → rito → merge; PR-B (Cobertura+Classificar; considerar #498 em voo no CropClassifier) ∥ PR-C (Classes).
 
+- 2026-08-29 noite — **SR1 FECHADA + Acesso no ar**: 8 PRs mergeados (#571 bundle · #572 A · #574 B · #577 C · #580 D · #583 E · #584 Acesso · #586 selos/paridade) + carimbo em CI. /novo/estudio completo (Dados·Cobertura·Classificar·Classes·Treinos·Modelos·Modelos-por-câmera), paridade 43 itens auditada por cético opus (3 bloqueadores quitados; adiamentos nomeados), Acesso aditivo com cético de auth ZERO bloqueios. Adendos v2/v3 do Vitor aplicados (economia: implementações sonnet, opus só cético crítico; inbound varrido a cada leva). Convivência: leve mergeou #585 (6→MIGRADO) e prepara f5leve/pr-b-demolicao — sync direto expirou 2×, canal = este ESTADO; lição operacional: MANIFESTO se regenera POR ÚLTIMO. CIs vermelhos da noite: 3, todos diagnosticados e corrigidos (offbrand em fixture; manifesto 2×).
+- PENDENTE para a régua do OK: prova visual por perfil no DEV (bloqueada em credencial — pedida ao Vitor), aceite de demo (história do volante) até segunda à noite, SR2 admin (nucleo→tenants/usuarios→dispositivos/auditoria), SR3 kiosk+mobile, RELATORIO-F5.md.
+
 ## Achados para outras pistas (não são meus arquivos)
 - 🔒 `GET /api/training/jobs` VAZA `callback_token` na listagem (training/routes.py) e escopo é por user_id, não tenant — registrar como issue de segurança para a pista de backend (risk:security = fila para revisão humana, não mexo).
 - `GET /api/classes` devolve `classes[]` na RAIZ (fora do envelope data) — bug de contrato conhecido; front novo vai consumir como está e registrar.

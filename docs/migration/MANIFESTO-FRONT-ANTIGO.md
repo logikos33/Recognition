@@ -14,14 +14,14 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 394 arquivos, 67.237 linhas
+## Situação — 386 arquivos, 64.976 linhas
 
 | status | arquivos |
 |---|---:|
 | `INFRA` | 226 |
-| `PENDENTE` | 151 |
-| `MIGRADO` | 10 |
+| `PENDENTE` | 149 |
 | `SEM-DESENHO` | 7 |
+| `MIGRADO` | 4 |
 
 ## Como marcar um arquivo como migrado
 
@@ -40,7 +40,7 @@ apagado não são a mesma coisa.
 | arquivo | status | migrado para | linhas |
 |---|---|---|---:|
 | `src/App.tsx` | `INFRA` | — | 112 |
-| `src/AppRoutes.tsx` | `INFRA` | — | 182 |
+| `src/AppRoutes.tsx` | `INFRA` | — | 188 |
 | `src/components/annotation/AnnotationStudio.css.ts` | `INFRA` | — | 514 |
 | `src/components/annotation/AnnotationStudio.tsx` | `INFRA` | — | 1458 |
 | `src/components/annotation/boxGeometry.ts` | `INFRA` | — | 81 |
@@ -265,16 +265,10 @@ apagado não são a mesma coisa.
 | `src/utils/labels.ts` | `INFRA` | — | 195 |
 | `src/utils/statusColors.ts` | `INFRA` | — | 18 |
 | `src/utils/timeBuckets.ts` | `INFRA` | — | 106 |
-| `src/pages/epi/AlertDetailPage.tsx` | `MIGRADO` | src/app/epi/EventoDetalhe.tsx | 648 |
-| `src/pages/epi/EpiAlerts.tsx` | `MIGRADO` | src/app/epi/Eventos.tsx | 32 |
-| `src/pages/epi/EpiCameras.tsx` | `MIGRADO` | src/app/epi/Cameras.tsx | 33 |
-| `src/pages/epi/EpiDashboard.tsx` | `MIGRADO` | src/app/epi/Dashboard.tsx | 156 |
 | `src/pages/ModuleClassesPage.tsx` | `MIGRADO` | src/app/estudio/Classes.tsx | 765 |
-| `src/pages/MonitoringPage.tsx` | `MIGRADO` | src/app/epi/AoVivo.tsx | 685 |
 | `src/pages/ReportsPage.tsx` | `MIGRADO` | src/app/epi/Relatorios.tsx | 31 |
 | `src/pages/TrainingPage.css.ts` | `MIGRADO` | src/app/estudio/*.css.ts | 361 |
 | `src/pages/TrainingPage.tsx` | `MIGRADO` | src/app/estudio/* | 1072 |
-| `src/pages/VerificationQueuePage.tsx` | `MIGRADO` | src/app/epi/Verificacao.tsx | 291 |
 | `src/modules/admin/AdminLayout.css.ts` | `PENDENTE` | — | 249 |
 | `src/modules/admin/AdminLayout.tsx` | `PENDENTE` | — | 278 |
 | `src/modules/admin/components/admin.css.ts` | `PENDENTE` | — | 275 |
@@ -395,7 +389,6 @@ apagado não são a mesma coisa.
 | `src/pages/DashboardPage.css.ts` | `PENDENTE` | — | 105 |
 | `src/pages/DashboardPage.tsx` | `PENDENTE` | — | 156 |
 | `src/pages/DesignSystemPage.tsx` | `PENDENTE` | — | 317 |
-| `src/pages/epi/EpiDashboard.css.ts` | `PENDENTE` | — | 43 |
 | `src/pages/epi/EpiSitesPage.css.ts` | `PENDENTE` | — | 69 |
 | `src/pages/epi/lupaEvidencia.ts` | `PENDENTE` | — | 68 |
 | `src/pages/ForgotPasswordPage.tsx` | `PENDENTE` | — | 72 |
@@ -424,7 +417,6 @@ apagado não são a mesma coisa.
 | `src/pages/monitoring/SiteMonitor.tsx` | `PENDENTE` | — | 428 |
 | `src/pages/monitoring/ThresholdsModal.tsx` | `PENDENTE` | — | 106 |
 | `src/pages/monitoring/VersionPanel.tsx` | `PENDENTE` | — | 70 |
-| `src/pages/MonitoringPage.css.ts` | `PENDENTE` | — | 379 |
 | `src/pages/ResetPasswordPage.tsx` | `PENDENTE` | — | 84 |
 | `src/pages/CameraTriagePage.tsx` | `SEM-DESENHO` | — | 482 |
 | `src/pages/DashboardIntegradoPage.tsx` | `SEM-DESENHO` | — | 418 |
