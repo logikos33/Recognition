@@ -50,6 +50,8 @@ export function useAuth() {
     localStorage.setItem('user', JSON.stringify(user))
     setUser(user)
     // Reload para App.tsx ler do localStorage (hooks são instâncias separadas).
+    // ⚠️ `redirectTo` SÓ aceita literais internos dos call sites — nunca ligue
+    // a query param (`params.get('next')`): vira open-redirect (achado do cético).
     // `redirectTo` default '/' preserva o Login antigo; a Entrar nova (F5 SR2)
     // manda rotaNova('/') para cair no front novo pós-login.
     window.location.href = redirectTo
