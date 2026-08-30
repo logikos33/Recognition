@@ -135,6 +135,34 @@ describe('Modelo — lista e destaque do ativo', () => {
     expect(await screen.findByText('Capacete')).toBeTruthy()
     expect(screen.getByText('Luva')).toBeTruthy()
   })
+
+  it('origem do treino aparece como rótulo pt-BR (não o código cru)', async () => {
+    responde([modelo({ origin: 'vast_ai' })])
+    monta()
+    expect(await screen.findByText('Origem: GPU Vast.ai')).toBeTruthy()
+  })
+
+  it('modelo simulado (metrics.simulated=true) mostra o selo de simulação no destaque E no card', async () => {
+    responde([modelo({ id: 'm-sim', is_active: true, metrics: { simulated: true } })])
+    monta()
+    // Selo aparece 2x: no card de destaque "Modelo ativo" e no card da lista
+    // (mesmo modelo, is_active=true) — as duas leituras não podem esconder a
+    // simulação em nenhuma delas.
+    expect((await screen.findAllByText(/SIMULAÇÃO — não é treino real/i)).length).toBe(2)
+  })
+
+  it('modelo NÃO simulado não mostra o selo (mutação: remover o guard de isSimulatedArtifact quebra este teste)', async () => {
+    responde([modelo({ origin: 'vast_ai', metrics: {} })])
+    monta()
+    await screen.findByText('LGKV26n-epi-v11')
+    expect(screen.queryByText(/SIMULAÇÃO/i)).toBeNull()
+  })
+
+  it('dono do modelo aparece com o nome', async () => {
+    responde([modelo({ owner_name: 'Vitor Emanuel', owner_email: 'vitor@logikosvision.com.br' })])
+    monta()
+    expect(await screen.findByText('Dono: Vitor Emanuel')).toBeTruthy()
+  })
 })
 
 describe('Modelo — ativar', () => {

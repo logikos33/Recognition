@@ -155,9 +155,6 @@ export const pilulaAtencao = style([pilula, { color: lk.estado.atencao, backgrou
 export const pilulaNc = style([pilula, { color: lk.estado.nc, background: veu(lk.estado.nc, 14) }])
 export const pilulaNeutra = style([pilula, { color: lk.cor.cinzaNevoa, background: veu(lk.cor.cinzaNevoa, 14) }])
 
-/** Marcação indelével de simulação — NUNCA no mesmo formato de métrica real. */
-export const pilulaSimulacao = style([pilulaNc, { fontWeight: 700 }])
-
 export const progressoLinha = style({ display: 'flex', alignItems: 'center', gap: lk.espaco.x2 })
 
 export const progressoTrilho = style({

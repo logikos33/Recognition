@@ -211,6 +211,8 @@ export const dataModelo = style({
   color: lk.cor.cinzaNevoa,
 })
 
+export const dataAtivo = style([dataModelo, { marginTop: '6px' }])
+
 export const aviso = style({
   display: 'flex',
   alignItems: 'flex-start',

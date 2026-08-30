@@ -36,6 +36,7 @@ import {
 } from '../../utils/labels'
 import type { ApiResponse, TrainingJob } from '../../types'
 import { LogikosLoader } from '../shell/LogikosLoader'
+import { SeloSimulacao } from './selos'
 import * as s from './Treino.css'
 
 const WS_URL = (import.meta.env.VITE_WS_URL as string | undefined)
@@ -85,15 +86,6 @@ function pilulaDoStatus(status: string): string {
     case 'running': case 'pending': return s.pilulaAtencao
     default: return s.pilulaNeutra
   }
-}
-
-/** Marcação indelével de simulação (task "treino honesto", C2). */
-function SeloSimulacao() {
-  return (
-    <span className={s.pilulaSimulacao}>
-      <AlertTriangle size={10} style={{ marginRight: 3 }} /> SIMULAÇÃO — não é treino real
-    </span>
-  )
 }
 
 /** Sparkline local (renasce `MiniChart` da TrainingPage) — só lk.estado nas linhas. */
@@ -434,9 +426,27 @@ export function Treino() {
               <span className={s.historicoData}>{fmtDate(job.created_at)}</span>
               <div className={s.espacador} />
               {/* current_epoch é o REAL rodado — nunca total_epochs (o pedido). */}
-              <span className={s.historicoEpocas}>{job.current_epoch}/{job.total_epochs} ép.</span>
+              <span className={s.historicoEpocas}>
+                {job.current_epoch}/{job.total_epochs} ép.
+                <InfoTooltip text={FIELD_HELP.epochs} />
+              </span>
               {job.metrics?.map50 != null && (
-                <span className={s.historicoEpocas}>mAP@50 {(job.metrics.map50 * 100).toFixed(1)}%</span>
+                <span className={s.historicoEpocas}>
+                  mAP@50 {(job.metrics.map50 * 100).toFixed(1)}%
+                  <InfoTooltip text={FIELD_HELP.map50} />
+                </span>
+              )}
+              {job.metrics?.precision != null && (
+                <span className={s.historicoEpocas}>
+                  Precisão {(job.metrics.precision * 100).toFixed(1)}%
+                  <InfoTooltip text={FIELD_HELP.precision} />
+                </span>
+              )}
+              {job.metrics?.recall != null && (
+                <span className={s.historicoEpocas}>
+                  Cobertura {(job.metrics.recall * 100).toFixed(1)}%
+                  <InfoTooltip text={FIELD_HELP.recall} />
+                </span>
               )}
               <span className={pilulaDoStatus(job.status)}>{statusToLabel(job.status, TRAINING_STATUS_OVERRIDES)}</span>
               {job.metrics?.simulated === true && <SeloSimulacao />}

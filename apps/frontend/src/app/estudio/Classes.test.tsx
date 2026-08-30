@@ -92,7 +92,7 @@ describe('Classes (Estúdio)', () => {
     expect(post).toHaveBeenCalledWith('/classes', {
       name: 'Luva',
       color: VALORES.cianoVisao,
-      module_code: 'epi',
+      module: 'epi',
     })
   })
 

@@ -317,7 +317,7 @@ export function Classes() {
     if (!name) return
     setCreating(true)
     api
-      .post<ApiResponse<{ class_id: number }>>('/classes', { name, color: newColor, module_code: MODULE_CODE })
+      .post<ApiResponse<{ class_id: number }>>('/classes', { name, color: newColor, module: MODULE_CODE })
       .then(() => {
         setNewName('')
         toast.success(`Classe "${name}" criada`)
