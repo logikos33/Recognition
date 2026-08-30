@@ -1,4 +1,21 @@
 /**
+ * ⚠️ SUPERADA — estilos da tela que tem substituta no front novo.
+ *
+ * @migrado-para src/app/estudio/*.css.ts — Dados/Cobertura/Classificar/
+ * Modelo/ModelosPorCamera/Treino.css.ts (vanilla-extract com tokens `lk.*`,
+ * não os tokens `vars` daqui)
+ *
+ * Paridade fechada em 30/08/2026 junto com TrainingPage.tsx — ver o carimbo
+ * daquele arquivo e a seção "Estúdio" em
+ * docs/migration/PARIDADE-ANTIGO-VS-NOVO.md. Estilo não carrega função; nada
+ * aqui bloqueia remoção além do que o .tsx já documenta.
+ *
+ * Continua VIVO enquanto TrainingPage.tsx servir a rota antiga (os dois
+ * fronts convivem até a migração terminar — decisão do Vitor, 27/08). Não
+ * apague nesta rodada; a lista de remoção está em
+ * docs/migration/MANIFESTO-FRONT-ANTIGO.md.
+ */
+/**
  * TrainingPage styles — dark theme using design tokens.
  */
 import { style } from '@vanilla-extract/css'

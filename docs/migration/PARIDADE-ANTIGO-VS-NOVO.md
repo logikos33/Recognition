@@ -183,3 +183,72 @@ Nota de consistência: as linhas "_Nenhuma perda sobreviveu à refutação_" no
 "Detalhe por tela" contradiziam a lista numerada (Eventos e Ao Vivo tinham
 perdas confirmadas na síntese). **A lista numerada é a autoridade** — os
 carimbos das 6 telas citam este bloco.
+
+---
+
+## Estúdio — antigo `pages/TrainingPage.tsx` (6 abas) + `pages/ModuleClassesPage.tsx` → novo `app/estudio/*` (F5 SR1, PRs #572/#574/#577/#580/#583/#586)
+
+Mesmo método das rodadas anteriores: comparação função a função entre a fonte
+da paridade (`TrainingPage.tsx` para as 6 abas Imagens/Cobertura/Classificar/
+Modelo/Modelos por câmera/Treino; `ModuleClassesPage.tsx` para Classes) e a
+substituta (`app/estudio/{Dados,Cobertura,Classificar,Modelo,
+ModelosPorCamera,Treino,Classes}.tsx`), com cético dedicado tentando refutar
+cada perda alegada.
+
+| | |
+|---|---:|
+| itens auditados | 43 |
+| **cobertos** (função existe na substituta) | **35+** |
+| bloqueadores achados e quitados no PR #586 | 3 |
+| bug latente achado e corrigido (não era do antigo) | 1 |
+| N/A (não é dívida de paridade) | 2 |
+| adiamentos nomeados (decisão de desenho, não perda) | 2 |
+
+**Cobertos (evidência por caminho, sem colar código):** as 6 abas viram
+sub-rotas próprias reaproveitando a MESMA orquestração INFRA
+(`components/annotation/AnnotationStudio.tsx`, `CropClassifier.tsx`,
+`components/training/CoverageMatrix.tsx`, `CameraModelScope.tsx` — nada disso
+foi reescrito, só reembrulhado) — ver os `import`s no topo de cada
+`app/estudio/*.tsx`. "Sair para propostas" (callback interno em
+`TrainingPage.tsx:453`) virou navegação real para
+`/estudio/dados?status=proposta_pendente` em `app/estudio/Classificar.tsx`
+(rota própria, sem estado de aba compartilhado para reaproveitar). Leitura de
+classes usa o mesmo `ModuleService.get_classes` (`app/estudio/Classes.tsx`,
+cabeçalho). current_epoch (nunca total_epochs) preservado em
+`app/estudio/Treino.tsx`.
+
+**3 bloqueadores quitados no PR #586** (achados pelo cético comparando
+`Modelo.tsx`/`Treino.tsx` novos contra `TrainingPage.tsx`, faltavam por
+inteiro na primeira leva das PRs A–E): selo de simulação, proveniência
+(`origin`) e dono do modelo. Os três moram agora em `app/estudio/selos.tsx`
+(`SeloSimulacao`, `originLabel`, `OwnerInfo`), consumidos por `Modelo.tsx` e
+`Treino.tsx`.
+
+**1 bug latente corrigido:** a criação de classe em `app/estudio/Classes.tsx`
+portou o payload com o campo errado (`module_code`) — `ModuleClassesPage.tsx`
+(linha 438) sempre usou `module`. Não era uma perda de função do antigo para
+o novo; era um bug introduzido na própria migração, achado pelo cético e
+corrigido no PR #586.
+
+**2 N/A — não são dívida de paridade:**
+- Fila por incerteza (`?ordenar=incerteza`): existe no backend
+  (`services/api/app/api/v1/training/image_handlers.py`,
+  `infrastructure/database/repositories/frame_repository.py`) mas NENHUM dos
+  dois fronts chama — não é regressão da migração, é feature nunca ligada.
+  Registrado em `PEDIDOS-AO-BACKEND-F5.md` item 6.
+- Ação em lote (arquivar/restaurar várias classes de uma vez): não existe em
+  nenhum dos dois fronts — nada para portar.
+
+**2 adiamentos nomeados (decisão de desenho, não perda):**
+- **(a)** O "Desfazer" imediato do toast de arquivar classe
+  (`ModuleClassesPage.tsx:378`, react-hot-toast com botão embutido) não tem
+  como portar literalmente — o `useToast` do front novo não hospeda botão
+  dentro do toast (explicado em `app/estudio/Classes.tsx`, cabeçalho). Vira
+  "Restaurar" na seção Arquivadas, sempre visível — mesma reversibilidade
+  (arquivar nunca apaga), reversão não-imediata em vez de um clique no toast.
+- **(b)** Fila por incerteza (mesmo item do N/A acima) também não tem
+  chamador do lado do PRODUTO — decisão de ligar ou não o filtro é de
+  produto, não um item de paridade fechado ou aberto.
+
+Carimbos: `apps/frontend/src/pages/TrainingPage.tsx`,
+`TrainingPage.css.ts` e `ModuleClassesPage.tsx` citam esta seção.

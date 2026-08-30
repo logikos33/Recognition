@@ -14,15 +14,15 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 386 arquivos, 65.015 linhas
+## Situação — 386 arquivos, 65.096 linhas
 
 | status | arquivos |
 |---|---:|
 | `INFRA` | 226 |
-| `PENDENTE` | 146 |
+| `PENDENTE` | 143 |
 | `SEM-DESENHO` | 7 |
 | `SUBSTITUIDA` | 6 |
-| `MIGRADO` | 1 |
+| `MIGRADO` | 4 |
 
 ## Como marcar um arquivo como migrado
 
@@ -266,7 +266,10 @@ apagado não são a mesma coisa.
 | `src/utils/labels.ts` | `INFRA` | — | 195 |
 | `src/utils/statusColors.ts` | `INFRA` | — | 18 |
 | `src/utils/timeBuckets.ts` | `INFRA` | — | 106 |
+| `src/pages/ModuleClassesPage.tsx` | `MIGRADO` | src/app/estudio/Classes.tsx | 765 |
 | `src/pages/ReportsPage.tsx` | `MIGRADO` | src/app/epi/Relatorios.tsx | 31 |
+| `src/pages/TrainingPage.css.ts` | `MIGRADO` | src/app/estudio/*.css.ts | 361 |
+| `src/pages/TrainingPage.tsx` | `MIGRADO` | src/app/estudio/* | 1072 |
 | `src/modules/admin/AdminLayout.css.ts` | `PENDENTE` | — | 249 |
 | `src/modules/admin/AdminLayout.tsx` | `PENDENTE` | — | 278 |
 | `src/modules/admin/components/admin.css.ts` | `PENDENTE` | — | 275 |
@@ -392,7 +395,6 @@ apagado não são a mesma coisa.
 | `src/pages/HomePage.tsx` | `PENDENTE` | — | 134 |
 | `src/pages/Login.css.ts` | `PENDENTE` | — | 177 |
 | `src/pages/Login.tsx` | `PENDENTE` | — | 106 |
-| `src/pages/ModuleClassesPage.tsx` | `PENDENTE` | — | 733 |
 | `src/pages/ModuleSelectionPage.css.ts` | `PENDENTE` | — | 172 |
 | `src/pages/monitoring/ChartsSection.tsx` | `PENDENTE` | — | 479 |
 | `src/pages/monitoring/CollectionPanel.tsx` | `PENDENTE` | — | 101 |
@@ -411,8 +413,6 @@ apagado não são a mesma coisa.
 | `src/pages/monitoring/ThresholdsModal.tsx` | `PENDENTE` | — | 106 |
 | `src/pages/monitoring/VersionPanel.tsx` | `PENDENTE` | — | 70 |
 | `src/pages/ResetPasswordPage.tsx` | `PENDENTE` | — | 84 |
-| `src/pages/TrainingPage.css.ts` | `PENDENTE` | — | 344 |
-| `src/pages/TrainingPage.tsx` | `PENDENTE` | — | 1040 |
 | `src/pages/CameraTriagePage.tsx` | `SEM-DESENHO` | — | 482 |
 | `src/pages/DashboardIntegradoPage.tsx` | `SEM-DESENHO` | — | 418 |
 | `src/pages/epi/EpiOperationsPage.tsx` | `SEM-DESENHO` | — | 72 |
