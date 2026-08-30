@@ -271,6 +271,24 @@ describe('polaridade em três estados', () => {
   })
 })
 
+describe('confiança da detecção (§9 paridade)', () => {
+  it('mostra a confiança da primeira violação em NN%', async () => {
+    montar()
+    await screen.findByText('CAM-04 Expedição')
+    expect(linhaDe('CAM-04 Expedição').textContent).toContain('87%')
+  })
+
+  it('sem confiança mostra travessão, não zero nem vazio', async () => {
+    h.pagina = {
+      ...h.pagina,
+      alerts: [{ ...EVENTOS[0], violations: [{ class: 'no_helmet' }] }],
+    }
+    montar()
+    await screen.findByText('CAM-04 Expedição')
+    expect(linhaDe('CAM-04 Expedição').textContent).toContain('—')
+  })
+})
+
 describe('paginação — page/per_page, como o backend calcula o offset', () => {
   it('pede a primeira página com per_page, nunca offset', async () => {
     montar()

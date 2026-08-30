@@ -11,7 +11,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const auth = vi.hoisted(() => ({ can: vi.fn((_p: string) => true) }))
+const auth = vi.hoisted(() => ({ can: vi.fn((_p: string) => true), hasModule: vi.fn((_m: string) => true) }))
 vi.mock('../../hooks/useAuth', () => ({ useAuth: () => auth }))
 
 const get = vi.fn()
@@ -61,6 +61,14 @@ const abrirC2 = () => fireEvent.click(screen.getByRole('tab', { name: /limiares/
 beforeEach(() => {
   get.mockReset()
   auth.can.mockReset().mockReturnValue(true)
+  auth.hasModule.mockReset().mockReturnValue(true)
+})
+
+it('sem o módulo quality, a tela bloqueia e não chama rota nenhuma', () => {
+  auth.hasModule.mockReturnValue(false)
+  render(<ConfigQualidade />)
+  expect(screen.getByText('Módulo não habilitado')).toBeTruthy()
+  expect(get).not.toHaveBeenCalled()
 })
 
 describe('configuração da qualidade — aba C1 (pontos & rotas)', () => {

@@ -1131,6 +1131,10 @@ export function Cameras() {
                   <dd>{nomeDoSite(selecionada.site_id) ?? 'Sem site vinculado'}</dd>
                   <dt className={s.rotulo}>Área</dt>
                   <dd>{selecionada.location || '—'}</dd>
+                  {/* §15 paridade: única leitura de fabricante fora da edição
+                      (só admin abre). Visível a quem lê a câmera. */}
+                  <dt className={s.rotulo}>Fabricante</dt>
+                  <dd>{selecionada.manufacturer || '—'}</dd>
                   <dt className={s.rotulo}>Endereço</dt>
                   <dd className={s.valorMono}>
                     {enderecoMascarado(selecionada)} <span className={s.rotulo}>· senha oculta</span>

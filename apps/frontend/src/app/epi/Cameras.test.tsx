@@ -322,6 +322,15 @@ it('o endereço RTSP nunca exibe senha', async () => {
   expect(screen.getByText(/rtsp:\/\/admin:\*\*\*\*@10\.0\.3\.11:554/)).toBeTruthy()
 })
 
+// ── fabricante no painel de detalhe (§15 paridade) ───────────────────────────
+
+it('mostra o fabricante da câmera sem precisar abrir a edição', async () => {
+  montar()
+  await esperarCarregado()
+  expect(screen.getByText('Fabricante')).toBeTruthy()
+  expect(screen.getByText('intelbras')).toBeTruthy()
+})
+
 // ── aba Saúde ────────────────────────────────────────────────────────────────
 
 describe('aba Saúde', () => {

@@ -82,6 +82,7 @@ import {
   CircleDashed,
   Clock,
   Inbox,
+  Lock,
   RotateCcw,
   XCircle,
 } from 'lucide-react'
@@ -1099,8 +1100,25 @@ const ABAS: Array<[Aba, string]> = [
 ]
 
 export function GestaoQualidade() {
+  const { hasModule } = useAuth()
   const [aba, setAba] = useState<Aba>('d1')
   const [periodo, setPeriodo] = useState<Periodo>('hoje')
+
+  // Módulo desligado (nota do cético do flip): sem isto os painéis chamariam
+  // as rotas de qualquer jeito e tomariam 403 cru — mesmo tratamento do KPI
+  // "sem fonte" de Retrabalhos em Qualidade.tsx.
+  if (!hasModule('quality')) {
+    return (
+      <div className={s.centro}>
+        <Lock size={30} strokeWidth={1.5} aria-hidden="true" />
+        <span className={s.centroTitulo}>Módulo não habilitado</span>
+        <span className={s.centroTexto}>
+          O módulo Qualidade (<code>quality</code>) não está habilitado nesta sessão. Peça
+          ao administrador do seu tenant.
+        </span>
+      </div>
+    )
+  }
 
   return (
     <div className={s.raiz}>

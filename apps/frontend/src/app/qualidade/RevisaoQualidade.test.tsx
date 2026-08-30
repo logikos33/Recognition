@@ -43,8 +43,9 @@ vi.mock('../../services/api', () => ({
 }))
 
 let permissoes = new Set(['verification:read', 'verification:write'])
+let temModulo = true
 vi.mock('../../hooks/useAuth', () => ({
-  useAuth: () => ({ can: (p: string) => permissoes.has(p) }),
+  useAuth: () => ({ can: (p: string) => permissoes.has(p), hasModule: () => temModulo }),
 }))
 
 const toastOk = vi.fn()
@@ -135,9 +136,20 @@ beforeEach(() => {
   toastOk.mockReset()
   toastErro.mockReset()
   permissoes = new Set(['verification:read', 'verification:write'])
+  temModulo = true
   patch.mockResolvedValue({ success: true, data: { inspection_id: 'insp-a', feedback_status: 'x' } })
   vi.spyOn(Date, 'now').mockReturnValue(AGORA)
   servir()
+})
+
+// ── módulo desligado (nota do cético do flip) ───────────────────────────────
+
+it('sem o módulo quality, a fila bloqueia e não chama rota nenhuma', () => {
+  get.mockReset()
+  temModulo = false
+  render(<RevisaoQualidade />)
+  expect(screen.getByText('Módulo não habilitado')).toBeTruthy()
+  expect(get).not.toHaveBeenCalled()
 })
 
 // ── 1 · A inversão ──────────────────────────────────────────────────────────
