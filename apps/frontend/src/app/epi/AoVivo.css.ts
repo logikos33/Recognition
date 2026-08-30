@@ -519,3 +519,183 @@ export const ladrilhoVago = style([ladrilhoBase, {
   fontSize: '12px',
   textDecoration: 'none',
 }])
+
+// ── Seletor de site (parede por site) ───────────────────────────────────────
+
+/** Select nu — a caixa vem de `colunas` (reaproveitada), só o controle interno. */
+export const seletorSiteControle = style({
+  border: 'none',
+  background: 'transparent',
+  color: lk.cor.brancoSinal,
+  fontFamily: lk.fonte.ui,
+  fontSize: '13px',
+  cursor: 'pointer',
+})
+
+// ── Modo Montar ──────────────────────────────────────────────────────────────
+
+const botaoMontarBase = style({
+  height: '38px',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  padding: '0 14px',
+  border: `1px solid ${lk.cor.borda}`,
+  borderRadius: lk.raio.s,
+  background: 'transparent',
+  fontFamily: lk.fonte.ui,
+  fontSize: '13px',
+  fontWeight: 600,
+  cursor: 'pointer',
+})
+
+export const botaoMontar = styleVariants({
+  inativo: [botaoMontarBase, { color: lk.cor.cianoVisao, borderColor: CIANO_BORDA }],
+  ativo: [
+    botaoMontarBase,
+    { color: lk.cor.preto, background: lk.cor.cianoVisao, borderColor: lk.cor.cianoVisao },
+  ],
+})
+
+// ── Meus layouts ─────────────────────────────────────────────────────────────
+
+export const barraLayouts = style({
+  display: 'flex',
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  gap: '8px',
+  padding: '10px 14px',
+  background: lk.cor.grafite,
+  border: `1px solid ${lk.cor.borda}`,
+  borderRadius: lk.raio.m,
+})
+
+export const rotuloLayouts = style({
+  fontFamily: lk.fonte.mono,
+  fontSize: '10.5px',
+  letterSpacing: OVERLINE_TRACKING,
+  color: lk.cor.cinzaNevoa,
+})
+
+const chipLayoutBase = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  height: '32px',
+  padding: '0 12px',
+  border: 'none',
+  borderRadius: '7px',
+  fontSize: '13px',
+  cursor: 'pointer',
+})
+
+export const chipLayout = styleVariants({
+  inativo: [
+    chipLayoutBase,
+    { border: `1px solid ${lk.cor.borda}`, background: 'transparent', color: lk.cor.cinzaNevoa },
+  ],
+  ativo: [
+    chipLayoutBase,
+    { border: `1px solid ${lk.cor.cianoVisao}`, background: lk.cor.preto, color: lk.cor.cianoVisao },
+  ],
+})
+
+/** Reset de botão dentro do chip — usado tanto no nome (aplica) quanto no X (remove). */
+export const botaoChip = style({
+  display: 'flex',
+  alignItems: 'center',
+  padding: 0,
+  border: 'none',
+  background: 'transparent',
+  color: 'inherit',
+  font: 'inherit',
+  cursor: 'pointer',
+})
+
+export const chipSalvar = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '7px',
+  height: '32px',
+  padding: '0 12px',
+  borderRadius: '7px',
+  border: `1px dashed ${lk.cor.borda}`,
+  background: 'transparent',
+  color: lk.cor.cinzaNevoa,
+  fontFamily: lk.fonte.ui,
+  fontSize: '13px',
+  cursor: 'pointer',
+  ':disabled': { opacity: 0.4, cursor: 'not-allowed' },
+})
+
+export const contagemLayouts = style({
+  marginLeft: 'auto',
+  fontFamily: lk.fonte.mono,
+  fontSize: '10.5px',
+  color: lk.cor.cinzaNevoa,
+})
+
+export const linkGradeCompleta = style({
+  alignSelf: 'flex-start',
+  border: 'none',
+  background: 'transparent',
+  color: lk.cor.cianoVisao,
+  fontFamily: lk.fonte.ui,
+  fontSize: '12.5px',
+  cursor: 'pointer',
+  textDecoration: 'underline',
+  padding: 0,
+})
+
+// ── Célula de montagem (slot arrastável) ────────────────────────────────────
+
+/** Wrapper de célula ocupada: só posiciona — o Ladrilho dentro já tem o visual. */
+export const celulaOcupada = style({ position: 'relative' })
+
+/** Select nativo transparente sobre um botão/placeholder visual (⋯ ou vago). */
+export const selectSobreposto = style({
+  position: 'absolute',
+  inset: 0,
+  width: '100%',
+  height: '100%',
+  opacity: 0,
+  cursor: 'pointer',
+})
+
+export const menuCelula = style({
+  position: 'absolute',
+  bottom: '8px',
+  left: '8px',
+  zIndex: 4,
+  width: '28px',
+  height: '28px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 0,
+  background: VEU,
+  border: `1px solid ${lk.cor.borda}`,
+  borderRadius: '6px',
+  color: lk.cor.cinzaNevoa,
+  cursor: 'pointer',
+})
+
+export const soltePraTrocar = style({
+  fontFamily: lk.fonte.mono,
+  fontSize: '10px',
+  letterSpacing: '0.14em',
+  color: lk.cor.cianoVisao,
+})
+
+export const soltePraTrocarSobre = style([soltePraTrocar, {
+  position: 'absolute',
+  left: '11px',
+  bottom: '11px',
+  zIndex: 5,
+}])
+
+export const rodapeMontagem = style({
+  flex: 'none',
+  fontSize: '12.5px',
+  color: lk.cor.cinzaNevoa,
+})

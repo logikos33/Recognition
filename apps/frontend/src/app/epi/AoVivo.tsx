@@ -53,7 +53,17 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { Link } from 'react-router-dom'
-import { Maximize2, Plus, Video, X } from 'lucide-react'
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import { LayoutGrid, Maximize2, MoreVertical, Plus, Video, X } from 'lucide-react'
 
 import { api, getToken } from '../../services/api'
 import { useAuth } from '../../hooks/useAuth'
@@ -106,6 +116,69 @@ interface AlertaRecente {
   violations?: Array<{ class?: string }> | null
   created_at?: string | null
   captured_at?: string | null
+}
+
+// ---------------------------------------------------------------------------
+// Site (parede POR SITE) — agrupamento client-side pelo `site_id` que já vem
+// em cada câmera de GET /cameras. `GET /v1/edge/sites` existe e teria o nome
+// real, mas é admin/superadmin-only (`routes.py:1117`) e esta tela é aberta
+// por qualquer papel com `cameras:read` — chamá-la quebraria a tela para
+// operador comum. Sem nome real, o rótulo é honesto: o id curto, não um nome
+// inventado.
+// ---------------------------------------------------------------------------
+const SEM_SITE = 'sem-site'
+
+function chaveDeSite(c: Camera): string {
+  return c.site_id ?? SEM_SITE
+}
+
+function rotuloDeSite(id: string): string {
+  return id === SEM_SITE ? 'SEM SITE' : `SITE ${id.slice(0, 8).toUpperCase()}`
+}
+
+// ---------------------------------------------------------------------------
+// Layouts nomeados — localStorage chaveado por site (decisão do Vitor
+// 30/08/2026: client-side, sem endpoint). Tolerante a quota cheia / modo
+// privado / conteúdo corrompido: layout salvo é conveniência, nunca dado.
+// ---------------------------------------------------------------------------
+interface LayoutSalvo {
+  nome: string
+  colunas: number
+  /** ids de câmera na ordem dos quadros; `null` = quadro vazio. */
+  slots: Array<string | null>
+}
+
+const MAX_LAYOUTS = 10
+
+function chaveLayouts(siteId: string): string {
+  return `lk-parede:${siteId}`
+}
+
+function ehLayoutSalvo(v: unknown): v is LayoutSalvo {
+  return (
+    v != null &&
+    typeof v === 'object' &&
+    typeof (v as LayoutSalvo).nome === 'string' &&
+    typeof (v as LayoutSalvo).colunas === 'number' &&
+    Array.isArray((v as LayoutSalvo).slots)
+  )
+}
+
+function lerLayouts(siteId: string): LayoutSalvo[] {
+  try {
+    const cru: unknown = JSON.parse(localStorage.getItem(chaveLayouts(siteId)) ?? 'null')
+    return Array.isArray(cru) ? cru.filter(ehLayoutSalvo).slice(0, MAX_LAYOUTS) : []
+  } catch {
+    return []
+  }
+}
+
+function gravarLayouts(siteId: string, layouts: LayoutSalvo[]) {
+  try {
+    localStorage.setItem(chaveLayouts(siteId), JSON.stringify(layouts.slice(0, MAX_LAYOUTS)))
+  } catch {
+    // Modo privado / cota cheia: o layout é conveniência, não dado.
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -372,6 +445,135 @@ function horaDe(iso: string | null | undefined): string {
 }
 
 // ---------------------------------------------------------------------------
+// CelulaSlot — um quadro da grade de montagem (câmera OU vago), arrastável.
+// Fora do modo Montar é só leitura: sem alça, sem seletor, sem menu.
+// ---------------------------------------------------------------------------
+interface CelulaSlotProps {
+  indice: number
+  camera: Camera | null
+  camerasDisponiveis: Camera[]
+  montando: boolean
+  compacto: boolean
+  selecionado: boolean
+  suprimido: boolean
+  deteccoes: Detection[]
+  arrastando: string | null
+  onEscolher: (cameraId: string) => void
+  onRemover: () => void
+  onSelecionar: () => void
+  onDestacar: () => void
+}
+
+function CelulaSlot({
+  indice,
+  camera,
+  camerasDisponiveis,
+  montando,
+  compacto,
+  selecionado,
+  suprimido,
+  deteccoes,
+  arrastando,
+  onEscolher,
+  onRemover,
+  onSelecionar,
+  onDestacar,
+}: CelulaSlotProps) {
+  const idSlot = `slot-${indice}`
+  const { attributes, listeners, setNodeRef: setArrastoRef } = useDraggable({
+    id: idSlot,
+    disabled: !montando || camera == null,
+  })
+  const { setNodeRef: setSolturaRef, isOver } = useDroppable({ id: idSlot, disabled: !montando })
+  const refs = (el: HTMLDivElement | null) => {
+    setArrastoRef(el)
+    setSolturaRef(el)
+  }
+  const soltarAqui = montando && isOver && arrastando != null && arrastando !== idSlot
+  const arrasto = montando ? { ...attributes, ...listeners } : {}
+
+  if (camera == null) {
+    return (
+      <div ref={refs} {...arrasto}>
+        {soltarAqui ? (
+          <div className={s.ladrilhoVago}>
+            <span className={s.soltePraTrocar}>SOLTE PARA TROCAR</span>
+          </div>
+        ) : montando ? (
+          <label className={s.ladrilhoVago}>
+            <Plus size={22} strokeWidth={1.7} aria-hidden />
+            Escolher câmera
+            <select
+              className={s.selectSobreposto}
+              aria-label={`Escolher câmera para o quadro ${indice + 1}`}
+              value=""
+              onChange={(e) => {
+                if (e.target.value) onEscolher(e.target.value)
+              }}
+            >
+              <option value="" disabled>
+                Escolher câmera
+              </option>
+              {camerasDisponiveis.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <div className={s.ladrilhoVago}>
+            <span>Vazio</span>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div ref={refs} className={s.celulaOcupada} {...arrasto}>
+      <Ladrilho
+        camera={camera}
+        deteccoes={deteccoes}
+        compacto={compacto}
+        selecionado={selecionado}
+        suprimido={suprimido}
+        onSelecionar={onSelecionar}
+        onDestacar={onDestacar}
+      />
+      {montando &&
+        (soltarAqui ? (
+          <span className={s.soltePraTrocarSobre}>SOLTE PARA TROCAR</span>
+        ) : (
+          <label
+            className={s.menuCelula}
+            title="Trocar câmera desta posição"
+            aria-label={`Trocar câmera do quadro ${indice + 1}`}
+          >
+            <MoreVertical size={14} strokeWidth={1.8} aria-hidden />
+            <select
+              className={s.selectSobreposto}
+              aria-label={`Trocar câmera do quadro ${indice + 1}`}
+              value={camera.id}
+              onChange={(e) => {
+                if (!e.target.value) onRemover()
+                else if (e.target.value !== camera.id) onEscolher(e.target.value)
+              }}
+            >
+              <option value="">— remover —</option>
+              {camerasDisponiveis.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ))}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // AoVivo
 // ---------------------------------------------------------------------------
 export function AoVivo() {
@@ -387,6 +589,14 @@ export function AoVivo() {
   const [overlay, setOverlay] = useState(true)
   const [selecionada, setSelecionada] = useState<string | null>(null)
   const [focada, setFocada] = useState<string | null>(null)
+
+  const [siteEscolhido, setSiteEscolhido] = useState<string | null>(null)
+  const [montando, setMontando] = useState(false)
+  const [slots, setSlots] = useState<Array<string | null> | null>(null)
+  const [layouts, setLayouts] = useState<LayoutSalvo[]>([])
+  const [layoutAtivo, setLayoutAtivo] = useState<string | null>(null)
+  const [arrastando, setArrastando] = useState<string | null>(null)
+  const sensores = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
 
   const carregar = useCallback(async () => {
     setCarregando(true)
@@ -430,24 +640,155 @@ export function AoVivo() {
   const compacto = colunasEfetivas >= COLUNAS_COMPACTAS
   const emDestaque = preset === 'destaque'
 
+  // Grupos de site — na ORDEM em que aparecem em `cameras` (estável, não
+  // alfabética: pula de assunto e o operador se perde). 1 grupo só = a tela
+  // inteira já é 1 site, o seletor não tem o que separar.
+  const gruposSite = useMemo(() => {
+    const vistos = new Set<string>()
+    const grupos: string[] = []
+    for (const c of cameras ?? []) {
+      const chave = chaveDeSite(c)
+      if (!vistos.has(chave)) {
+        vistos.add(chave)
+        grupos.push(chave)
+      }
+    }
+    return grupos
+  }, [cameras])
+
+  const siteAtivo =
+    gruposSite.length <= 1
+      ? (gruposSite[0] ?? null)
+      : (siteEscolhido ?? gruposSite[0] ?? null)
+
+  const camerasDoSite = useMemo(
+    () =>
+      gruposSite.length <= 1
+        ? (cameras ?? [])
+        : (cameras ?? []).filter((c) => chaveDeSite(c) === siteAtivo),
+    [cameras, gruposSite, siteAtivo],
+  )
+
+  // Trocar de site invalida qualquer montagem em curso — os slots guardam
+  // ids de câmera do site anterior, e os layouts salvos são por site.
+  useEffect(() => {
+    if (siteAtivo == null) return
+    setLayouts(lerLayouts(siteAtivo))
+    setLayoutAtivo(null)
+    setSlots(null)
+    setMontando(false)
+  }, [siteAtivo])
+
   const camDe = useCallback(
-    (id: string | null) => (id == null ? null : (cameras?.find((c) => c.id === id) ?? null)),
-    [cameras],
+    (id: string | null) => (id == null ? null : (camerasDoSite.find((c) => c.id === id) ?? null)),
+    [camerasDoSite],
   )
   const cameraSelecionada = camDe(selecionada)
-  const cameraFocada = camDe(focada) ?? cameras?.[0] ?? null
+  const cameraFocada = camDe(focada) ?? camerasDoSite[0] ?? null
 
   const deteccoesDe = useCallback(
     (id: string): Detection[] => (overlay ? (detections[id] ?? []) : []),
     [detections, overlay],
   )
 
-  const ativas = useMemo(() => cameras?.filter((c) => c.is_active).length ?? 0, [cameras])
+  const ativas = useMemo(() => camerasDoSite.filter((c) => c.is_active).length, [camerasDoSite])
 
   const destacar = useCallback((id: string) => {
     setPreset('destaque')
     setFocada(id)
     setSelecionada(null)
+    // "Destacar" só é visível na grade cheia ou na de destaque — sair da
+    // montagem, senão o clique não teria efeito nenhum na tela.
+    setSlots(null)
+    setLayoutAtivo(null)
+    setMontando(false)
+  }, [])
+
+  // ── Modo Montar + layouts salvos ──────────────────────────────────────────
+
+  const idsNosSlots = useMemo(
+    () => new Set((slots ?? []).filter((id): id is string => id != null)),
+    [slots],
+  )
+  const disponiveisPara = useCallback(
+    (atualId: string | null) =>
+      camerasDoSite.filter((c) => c.id === atualId || !idsNosSlots.has(c.id)),
+    [camerasDoSite, idsNosSlots],
+  )
+
+  const alternarMontar = useCallback(() => {
+    setMontando((atual) => {
+      const proximo = !atual
+      setSlots((cur) => cur ?? (proximo ? camerasDoSite.map((c) => c.id) : cur))
+      return proximo
+    })
+  }, [camerasDoSite])
+
+  const verGradeCompleta = useCallback(() => {
+    setSlots(null)
+    setLayoutAtivo(null)
+    setMontando(false)
+  }, [])
+
+  const aplicarLayout = useCallback((l: LayoutSalvo) => {
+    setLayoutAtivo((atual) => {
+      if (atual === l.nome) {
+        setSlots(null)
+        return null
+      }
+      setSlots(l.slots)
+      setColunas(l.colunas)
+      setPreset('custom')
+      return l.nome
+    })
+  }, [])
+
+  const removerLayout = useCallback(
+    (nome: string) => {
+      if (siteAtivo == null) return
+      setLayouts((atual) => {
+        const proximos = atual.filter((l) => l.nome !== nome)
+        gravarLayouts(siteAtivo, proximos)
+        return proximos
+      })
+      setLayoutAtivo((atual) => {
+        if (atual !== nome) return atual
+        setSlots(null)
+        return null
+      })
+    },
+    [siteAtivo],
+  )
+
+  const salvarLayoutAtual = useCallback(() => {
+    if (siteAtivo == null || layouts.length >= MAX_LAYOUTS) return
+    const nome = window.prompt('Nome deste layout:')?.trim()
+    if (!nome) return
+    const novo: LayoutSalvo = {
+      nome,
+      colunas: colunasEfetivas,
+      slots: slots ?? camerasDoSite.map((c) => c.id),
+    }
+    setLayouts((atual) => {
+      const proximos = [...atual.filter((l) => l.nome !== nome), novo].slice(0, MAX_LAYOUTS)
+      gravarLayouts(siteAtivo, proximos)
+      return proximos
+    })
+    setSlots(novo.slots)
+    setLayoutAtivo(nome)
+  }, [siteAtivo, layouts.length, colunasEfetivas, slots, camerasDoSite])
+
+  const aoSoltarSlot = useCallback((e: DragEndEvent) => {
+    setArrastando(null)
+    if (!e.over || e.active.id === e.over.id) return
+    const de = Number(String(e.active.id).replace('slot-', ''))
+    const para = Number(String(e.over.id).replace('slot-', ''))
+    setSlots((atual) => {
+      if (atual == null) return atual
+      const proximo = [...atual]
+      ;[proximo[de], proximo[para]] = [proximo[para], proximo[de]]
+      return proximo
+    })
   }, [])
 
   if (!podeVer) {
@@ -478,7 +819,7 @@ export function AoVivo() {
     )
   }
 
-  if (cameras == null || cameras.length === 0) {
+  if (cameras == null || cameras.length === 0 || camerasDoSite.length === 0) {
     return (
       <div className={s.centrado}>
         <Video size={36} strokeWidth={1.5} aria-hidden />
@@ -498,8 +839,27 @@ export function AoVivo() {
       <div className={s.barra}>
         <h1 className={s.titulo}>Ao Vivo</h1>
         <span className={s.resumo}>
-          {cameras.length} CÂMERAS · {ativas} ATIVAS
+          {camerasDoSite.length} CÂMERAS · {ativas} ATIVAS
         </span>
+
+        {gruposSite.length > 1 && (
+          <div className={s.colunas.inativo}>
+            <span className={s.rotuloColunas}>SITE</span>
+            <select
+              className={s.seletorSiteControle}
+              aria-label="Site"
+              value={siteAtivo ?? ''}
+              onChange={(e) => setSiteEscolhido(e.target.value)}
+            >
+              {gruposSite.map((id) => (
+                <option key={id} value={id}>
+                  {rotuloDeSite(id)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <span className={s.espacador} />
 
         <div className={s.grupoPresets} role="group" aria-label="Layout da grade">
@@ -561,11 +921,95 @@ export function AoVivo() {
           </span>
           Overlay de detecção
         </button>
+
+        <button
+          type="button"
+          className={s.botaoMontar[montando ? 'ativo' : 'inativo']}
+          aria-pressed={montando}
+          onClick={alternarMontar}
+        >
+          <LayoutGrid size={15} strokeWidth={1.9} aria-hidden />
+          Montar
+        </button>
+      </div>
+
+      <div className={s.barraLayouts}>
+        <span className={s.rotuloLayouts}>MEUS LAYOUTS</span>
+        {layouts.map((l) => (
+          <span key={l.nome} className={s.chipLayout[layoutAtivo === l.nome ? 'ativo' : 'inativo']}>
+            <button type="button" onClick={() => aplicarLayout(l)} className={s.botaoChip}>
+              {l.nome}
+            </button>
+            <button
+              type="button"
+              className={s.botaoChip}
+              aria-label={`Remover layout ${l.nome}`}
+              onClick={() => removerLayout(l.nome)}
+            >
+              <X size={12} strokeWidth={2} aria-hidden />
+            </button>
+          </span>
+        ))}
+        <button
+          type="button"
+          className={s.chipSalvar}
+          disabled={layouts.length >= MAX_LAYOUTS}
+          onClick={salvarLayoutAtual}
+        >
+          <Plus size={13} strokeWidth={2} aria-hidden />
+          Salvar layout atual
+        </button>
+        {slots != null && (
+          <button type="button" className={s.linkGradeCompleta} onClick={verGradeCompleta}>
+            Ver grade completa
+          </button>
+        )}
+        <span className={s.contagemLayouts}>{layouts.length} de {MAX_LAYOUTS} layouts</span>
       </div>
 
       <div className={s.area}>
         <div className={s.coluna}>
-          {emDestaque && cameraFocada != null ? (
+          {slots != null ? (
+            <DndContext
+              sensors={sensores}
+              collisionDetection={closestCenter}
+              onDragStart={(e) => setArrastando(String(e.active.id))}
+              onDragEnd={aoSoltarSlot}
+              onDragCancel={() => setArrastando(null)}
+            >
+              <div
+                className={s.grade}
+                data-testid="grade-montagem"
+                style={{ gridTemplateColumns: `repeat(${colunasEfetivas}, 1fr)` }}
+              >
+                {slots.map((camId, indice) => {
+                  const camera = camId == null ? null : (camerasDoSite.find((c) => c.id === camId) ?? null)
+                  return (
+                    <CelulaSlot
+                      key={indice}
+                      indice={indice}
+                      camera={camera}
+                      camerasDisponiveis={disponiveisPara(camId)}
+                      montando={montando}
+                      compacto={compacto}
+                      selecionado={camera != null && selecionada === camera.id}
+                      suprimido={camera != null && selecionada === camera.id}
+                      deteccoes={camera != null ? deteccoesDe(camera.id) : []}
+                      arrastando={arrastando}
+                      onEscolher={(novoId) =>
+                        setSlots((cur) => cur?.map((v, i) => (i === indice ? novoId : v)) ?? cur)
+                      }
+                      onRemover={() =>
+                        setSlots((cur) => cur?.map((v, i) => (i === indice ? null : v)) ?? cur)
+                      }
+                      onSelecionar={() => camera != null && setSelecionada(camera.id)}
+                      onDestacar={() => camera != null && destacar(camera.id)}
+                    />
+                  )
+                })}
+              </div>
+            </DndContext>
+          ) : emDestaque && cameraFocada != null ? (
             <div className={s.destaque}>
               <div className={s.focoColuna}>
                 <Ladrilho
@@ -580,7 +1024,7 @@ export function AoVivo() {
                 />
               </div>
               <div className={s.trilhoLateral}>
-                {cameras
+                {camerasDoSite
                   .filter((c) => c.id !== cameraFocada.id)
                   .map((c) => (
                     <Ladrilho
@@ -601,7 +1045,7 @@ export function AoVivo() {
               data-testid="grade"
               style={{ gridTemplateColumns: `repeat(${colunasEfetivas}, 1fr)` }}
             >
-              {cameras.map((c) => (
+              {camerasDoSite.map((c) => (
                 <Ladrilho
                   key={c.id}
                   camera={c}
@@ -618,6 +1062,12 @@ export function AoVivo() {
                 Adicionar câmera
               </Link>
             </div>
+          )}
+          {montando && (
+            <span className={s.rodapeMontagem}>
+              Arraste um quadro sobre outro para trocar de posição. O layout salvo guarda qual
+              câmera fica em qual quadro — o operador decora posição, não nome.
+            </span>
           )}
         </div>
 
