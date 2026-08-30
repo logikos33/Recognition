@@ -56,6 +56,8 @@ const ModelosPorCameraEstudio = lazy(() =>
   import('./estudio/ModelosPorCamera').then((m) => ({ default: m.ModelosPorCamera })),
 )
 const TreinoEstudio = lazy(() => import('./estudio/Treino').then((m) => ({ default: m.Treino })))
+const Admin = lazy(() => import('./admin/Admin').then((m) => ({ default: m.Admin })))
+const VisaoGeralAdmin = lazy(() => import('./admin/VisaoGeral').then((m) => ({ default: m.VisaoGeral })))
 
 /**
  * Prefixo do front novo enquanto os dois convivem. Sai no tombamento.
@@ -115,6 +117,13 @@ export const ROTAS_NOVAS: ReactElement[] = [
     <Route key="esm" path="modelo" element={<ModeloEstudio />} />
     <Route key="esmc" path="modelos-por-camera" element={<ModelosPorCameraEstudio />} />
     <Route key="est" path="treino" element={<TreinoEstudio />} />
+  </Route>,
+
+  // F5 SR2 PR-1 — Admin (`Admin Plataforma.dc.html`): layout com gate
+  // `admin:panel` (superadmin-only) e lateral própria. Só "Visão geral" existe
+  // nesta PR — as demais abas chegam nas próximas.
+  <Route key="ad" path="admin" element={<Admin />}>
+    <Route key="adi" index element={<VisaoGeralAdmin />} />
   </Route>,
 ]
 
