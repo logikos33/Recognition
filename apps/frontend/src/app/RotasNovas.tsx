@@ -60,6 +60,9 @@ const Admin = lazy(() => import('./admin/Admin').then((m) => ({ default: m.Admin
 const VisaoGeralAdmin = lazy(() => import('./admin/VisaoGeral').then((m) => ({ default: m.VisaoGeral })))
 const DispositivosAdmin = lazy(() => import('./admin/Dispositivos').then((m) => ({ default: m.Dispositivos })))
 const AuditoriaAdmin = lazy(() => import('./admin/Auditoria').then((m) => ({ default: m.Auditoria })))
+const TenantsAdmin = lazy(() => import('./admin/Tenants').then((m) => ({ default: m.Tenants })))
+const TenantDetalheAdmin = lazy(() => import('./admin/TenantDetalhe').then((m) => ({ default: m.TenantDetalhe })))
+const UsuariosAdmin = lazy(() => import('./admin/Usuarios').then((m) => ({ default: m.Usuarios })))
 
 /**
  * Prefixo do front novo enquanto os dois convivem. Sai no tombamento.
@@ -122,11 +125,14 @@ export const ROTAS_NOVAS: ReactElement[] = [
   </Route>,
 
   // F5 SR2 — Admin (`Admin Plataforma.dc.html`): layout com gate
-  // `admin:panel` (superadmin-only) e lateral própria. PR-1 trouxe "Visão
-  // geral"; PR-3 acrescenta "Dispositivos" e "Auditoria" — as demais abas
-  // chegam nas próximas.
+  // `admin:panel` (superadmin-only) e lateral própria. Visão geral (PR-1),
+  // Tenants/Detalhe com white-label e Usuários (PR-2), Dispositivos e
+  // Auditoria (PR-3). Resta Links compartilhados (aguarda backend).
   <Route key="ad" path="admin" element={<Admin />}>
     <Route key="adi" index element={<VisaoGeralAdmin />} />
+    <Route key="adt" path="tenants" element={<TenantsAdmin />} />
+    <Route key="adtd" path="tenants/:tenantId" element={<TenantDetalheAdmin />} />
+    <Route key="adu" path="usuarios" element={<UsuariosAdmin />} />
     <Route key="add" path="dispositivos" element={<DispositivosAdmin />} />
     <Route key="ada" path="auditoria" element={<AuditoriaAdmin />} />
   </Route>,
