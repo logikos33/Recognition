@@ -3,26 +3,21 @@
  * Pos-login: operator → /modules, superadmin → /admin.
  * Rotas /admin/* protegidas por AdminRoute (role superadmin).
  */
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
 import { ErrorBoundary } from './components/shared/ErrorBoundary'
 import { AdminRoute } from './components/guards/AdminRoute'
 import { useAuth } from './hooks/useAuth'
 import { ModuleSelectionPage } from './pages/ModuleSelectionPage'
 import { TrainingPage } from './pages/TrainingPage'
-import { EpiDashboard } from './pages/epi/EpiDashboard'
-import { EpiAlerts } from './pages/epi/EpiAlerts'
-import { AlertDetailPage } from './pages/epi/AlertDetailPage'
-import { EpiCameras } from './pages/epi/EpiCameras'
 import { CameraTriagePage } from './pages/CameraTriagePage'
 import { FuelingPage } from './pages/fueling/FuelingPage'
 import { FuelingValidationPage } from './pages/fueling/FuelingValidationPage'
 import { ReportsPage } from './pages/ReportsPage'
-import { VerificationQueuePage } from './pages/VerificationQueuePage'
 import { CountingPage } from './pages/CountingPage'
 import ModuleClassesPage from './pages/ModuleClassesPage'
 import { EpiOperationsPage } from './pages/epi/EpiOperationsPage'
-import { MonitoringPage } from './pages/MonitoringPage'
 import { EpiScenarioEditorPage } from './pages/epi/EpiScenarioEditorPage'
+import { rotaNova } from './app/RotasNovas'
 import { InvestigationPage } from './pages/epi/InvestigationPage'
 import { EpiSitesPage } from './pages/epi/EpiSitesPage'
 import { DashboardIntegradoPage } from './pages/DashboardIntegradoPage'
@@ -38,6 +33,17 @@ const EdgeMonitoringPage = lazy(() => import('./pages/monitoring/EdgeMonitoringP
 function RootRedirect() {
   const { isSuperAdmin } = useAuth()
   return <Navigate to={isSuperAdmin ? '/admin' : '/modules'} replace />
+}
+
+/** As 6 telas EPI antigas demolidas (lote 1) viraram redirect pro front novo. */
+function Redireciona({ para }: { para: string }) {
+  const location = useLocation()
+  return <Navigate to={`${para}${location.search}`} replace />
+}
+
+function AlertaRedirect() {
+  const { alertId } = useParams()
+  return <Redireciona para={rotaNova(`/epi/eventos/${alertId}`)} />
 }
 
 /**
@@ -100,17 +106,17 @@ export function AppRoutes() {
         <Route path="/modules" element={<ModuleSelectionPage />} />
 
         {/* EPI module — canonical routes */}
-        <Route path="/epi/dashboard" element={<EpiDashboard />} />
-        <Route path="/epi/cameras" element={<EpiCameras />} />
+        <Route path="/epi/dashboard" element={<Redireciona para={rotaNova('/epi/dashboard')} />} />
+        <Route path="/epi/cameras" element={<Redireciona para={rotaNova('/epi/cameras')} />} />
         <Route path="/epi/cameras/triagem" element={<CameraTriagePage />} />
-        <Route path="/epi/alerts" element={<EpiAlerts />} />
-        <Route path="/epi/alerts/:alertId" element={<AlertDetailPage />} />
+        <Route path="/epi/alerts" element={<Redireciona para={rotaNova('/epi/eventos')} />} />
+        <Route path="/epi/alerts/:alertId" element={<AlertaRedirect />} />
         <Route path="/epi/training" element={<TrainingPage />} />
         <Route path="/epi/training/classes" element={<ModuleClassesPage />} />
         <Route path="/epi/cameras/:cameraId/operations" element={<EpiOperationsPage />} />
         <Route path="/epi/cameras/:cameraId/scenario" element={<EpiScenarioEditorPage />} />
         <Route path="/epi/reports" element={<ReportsPage />} />
-        <Route path="/epi/verification" element={<VerificationQueuePage />} />
+        <Route path="/epi/verification" element={<Redireciona para={rotaNova('/epi/verificacao')} />} />
         <Route path="/epi/counting" element={<CountingPage />} />
         <Route path="/epi/health" element={<StreamHealthRedirect />} />
         <Route path="/epi/sites-health" element={<SitesHealthRedirect />} />
@@ -146,8 +152,8 @@ export function AppRoutes() {
         <Route path="/training" element={<Navigate to="/epi/training" replace />} />
         <Route path="/module-classes" element={<Navigate to="/epi/training/classes" replace />} />
         <Route path="/monitoring" element={<EdgeMonitoringGate />} />
-        <Route path="/epi/monitoring" element={<MonitoringPage />} />
-        <Route path="/alerts" element={<Navigate to="/epi/alerts" replace />} />
+        <Route path="/epi/monitoring" element={<Redireciona para={rotaNova('/epi/live')} />} />
+        <Route path="/alerts" element={<Redireciona para={rotaNova('/epi/eventos')} />} />
 
         {/* Quality module — carregado via lazy para isolamento de bundle */}
         <Route

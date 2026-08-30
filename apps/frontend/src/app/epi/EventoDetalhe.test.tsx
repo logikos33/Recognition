@@ -224,6 +224,35 @@ describe('caixa da evidência', () => {
     })
   })
 
+  // As duas travas abaixo são as negativas que a AlertDeepLink.test.tsx
+  // original provava sobre `boxStyle` (arquivada em
+  // archive/front-antigo-epi-lote1-2026-08-30) — a mesma matemática, só
+  // renomeada para `caixaEmPorcento` (ver comentário na definição).
+  it('não usa a convenção de centro: [x,y] é canto, não centro', () => {
+    // Com [cx,cy,w,h] o left seria (100−40/2)/800 = 10% e o top (50−30/2)/600 = 5,8333%.
+    const box = caixaEmPorcento([100, 50, 40, 30], 800, 600)
+    expect(box.left).not.toBe('10%')
+    expect(box.top).not.toBe('5.8333%')
+  })
+
+  it('não trata bbox como normalizado 0..1', () => {
+    const comoSeNormalizado = caixaEmPorcento([0.5, 0.5, 0.2, 0.4], 800, 600)
+    // A convenção 0..1 produziria exatamente isto — se voltar, este teste quebra.
+    expect(comoSeNormalizado).not.toEqual({
+      left: '40%', top: '30%', width: '20%', height: '40%',
+    })
+    // Números 0..1 lidos como pixels dão caixa degenerada (sub-pixel), não plausível.
+    expect(parseFloat(comoSeNormalizado.width)).toBeLessThan(0.1)
+    expect(parseFloat(comoSeNormalizado.height)).toBeLessThan(0.1)
+  })
+
+  it('não desenha caixa antes da imagem carregar', async () => {
+    responde(EVENTO)
+    montar()
+    await screen.findByAltText('Frame da evidência')
+    expect(screen.queryByTestId('caixa-violacao')).toBeNull()
+  })
+
   it('bbox de unidade desconhecida não é desenhada, e a tela diz isso', async () => {
     responde({
       ...EVENTO,

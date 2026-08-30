@@ -2,6 +2,17 @@
  * Task-063 — evidência visual do painel "Desempenho por câmera" (CamerasPage)
  * e da tela de Operação (TrainingModeLayout).
  *
+ * PR-B (30/08, pré-flip): `EpiCameras.tsx` foi demolida; `/epi/cameras` agora
+ * REDIRECIONA (client-side, `<Redireciona>` em AppRoutes.tsx) para
+ * `/novo/epi/cameras` — a substituta `app/epi/Cameras.tsx` tem o mesmo painel
+ * de FPS na 5ª aba "Desempenho" (texto "Quadros por segundo analisados" no
+ * lugar do antigo "Desempenho por câmera"). `page.goto('/epi/cameras')`
+ * segue o redirect sozinho — só as asserções pós-clique mudaram.
+ * `/epi/cameras/:id/operations` NÃO foi tocada nesta leva — continua servindo
+ * `EpiOperationsPage.tsx` (tela viva); os testes de Operação abaixo ficam
+ * exatamente como eram. Recuperação: `git show
+ * archive/front-antigo-epi-lote1-2026-08-30:apps/frontend/src/pages/epi/EpiCameras.tsx`.
+ *
  * Não faz asserções funcionais: captura screenshots antes/depois da correção
  * visual (tokens WS1). Controle do prefixo via env SHOT_PREFIX=before|after.
  *
@@ -232,15 +243,14 @@ const THEMES = ['recognition-dark', 'professional'] as const
 
 for (const theme of THEMES) {
   test.describe(`task-063 evidência visual — tema ${theme}`, () => {
-    test(`CamerasPage com painel Desempenho por câmera (${theme})`, async ({ page }) => {
+    test(`Cameras — aba Desempenho (${theme})`, async ({ page }) => {
       await setupRoutes(page, theme)
       await page.goto('/epi/cameras')
       // Seleciona a câmera na lista lateral
       await page.getByText('Câmera Pátio').first().click()
-      await page.getByText('Desempenho por câmera').waitFor({ state: 'visible' })
+      await page.getByRole('tab', { name: 'Desempenho' }).click()
+      await page.getByText('Quadros por segundo analisados').waitFor({ state: 'visible' })
       await page.waitForTimeout(800)
-      // Garante o painel de FPS no viewport
-      await page.getByText('Desempenho por câmera').scrollIntoViewIfNeeded()
       await shoot(page, `cameras-fps-${theme}`)
     })
 
@@ -255,14 +265,14 @@ for (const theme of THEMES) {
 }
 
 test.describe('task-063 — white-label com superfícies claras (repro do bug)', () => {
-  test('CamerasPage + painel FPS sob superfícies claras', async ({ page }) => {
+  test('Cameras · aba Desempenho sob superfícies claras', async ({ page }) => {
     await setupRoutes(page, 'recognition-dark')
     await page.goto('/epi/cameras')
     await page.getByText('Câmera Pátio').first().click()
-    await page.getByText('Desempenho por câmera').waitFor({ state: 'visible' })
+    await page.getByRole('tab', { name: 'Desempenho' }).click()
+    await page.getByText('Quadros por segundo analisados').waitFor({ state: 'visible' })
     await page.waitForTimeout(500)
     await applyLightSurfaces(page)
-    await page.getByText('Desempenho por câmera').scrollIntoViewIfNeeded()
     await shoot(page, 'lightsurface-cameras-fps')
   })
 
@@ -281,12 +291,11 @@ test.describe('task-063 — white-label com superfícies claras (repro do bug)',
 test.describe('task-063 — estados de hover (fix)', () => {
   test.skip(!!process.env.SKIP_HOVER, 'hover states não aplicáveis neste branch')
 
-  test('hover em botão de FPS do painel Desempenho por câmera', async ({ page }) => {
+  test('hover em botão de FPS da aba Desempenho', async ({ page }) => {
     await setupRoutes(page, 'recognition-dark')
     await page.goto('/epi/cameras')
     await page.getByText('Câmera Pátio').first().click()
-    await page.getByText('Desempenho por câmera').waitFor({ state: 'visible' })
-    await page.getByText('Desempenho por câmera').scrollIntoViewIfNeeded()
+    await page.getByRole('tab', { name: 'Desempenho' }).click()
     await page.getByRole('button', { name: '10 fps' }).hover()
     await page.waitForTimeout(400)
     await shoot(page, 'hover-fps-btn')
