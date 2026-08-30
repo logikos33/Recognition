@@ -1,4 +1,36 @@
 /**
+ * ⚠️ SUPERADA — esta tela tem substituta no front novo.
+ *
+ * @migrado-para src/app/estudio/Classes.tsx
+ * rota nova: /novo/estudio/classes
+ *
+ * Paridade fechada em 30/08/2026 (PRs #577/#586, F5 SR1): mesmo endpoint de
+ * leitura (`GET /modules/{module}/classes?include_archived=1`, mesmo
+ * `ModuleService.get_classes` — não a rota crua), mesmas mutações via
+ * `/api/classes` (POST/PATCH/DELETE), reordenar por drag = mesma tecla 1–9.
+ * 1 bug latente achado pelo cético e corrigido no PR #586: a criação de
+ * classe no front novo portou o nome errado do campo (`module_code` em vez de
+ * `module` — o campo que ESTE arquivo usa corretamente, linha 438);
+ * corrigido em `Classes.tsx`.
+ *
+ * ADIADO (nomeado, não é perda de função): o "Desfazer" imediato do toast de
+ * arquivar (react-hot-toast com botão embutido, linha 378 abaixo) não tem
+ * como portar literalmente — o `useToast` do front novo não hospeda botão
+ * dentro do toast. Vira "Restaurar" na seção Arquivadas (sempre visível, um
+ * clique) — mesma reversibilidade (arquivar nunca apaga), componente
+ * diferente. Ver `Classes.tsx` (cabeçalho) e a seção "Estúdio" em
+ * docs/migration/PARIDADE-ANTIGO-VS-NOVO.md.
+ *
+ * Continua VIVA e servindo a rota antiga: os dois fronts convivem até a
+ * migração terminar (decisão do Vitor, 27/08). Não apague nesta rodada.
+ *
+ * Na rodada de remoção, ANTES de apagar: a substituta foi provada renderizando
+ * com dado real no DEV, mas paridade de FUNCIONALIDADE não foi conferida item a
+ * item. Compare as duas telas primeiro — e confira quem mais importa deste
+ * arquivo (componentes e estilos só dele saem junto; os compartilhados, não).
+ * A lista está em docs/migration/MANIFESTO-FRONT-ANTIGO.md.
+ */
+/**
  * ModuleClassesPage — o lugar ÚNICO para editar classes (estúdio de anotação).
  *
  * - Classes do tenant ativas, ordenadas por display_order, com: badge da
