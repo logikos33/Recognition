@@ -6,9 +6,9 @@
  * de propósito: no desenho a coluna É o estado, e o cartão não muda de forma
  * entre "aberta" e "concluída" — só de opacidade.
  */
-import { style, styleVariants } from '@vanilla-extract/css'
+import { globalStyle, style, styleVariants } from '@vanilla-extract/css'
 
-import { lk, OVERLINE_TRACKING } from '../tokens/lk.css'
+import { OVERLINE_TRACKING, TELA_ESTREITA, lk } from '../tokens/lk.css'
 
 export const pagina = style({
   maxWidth: lk.medida.conteudoMax,
@@ -18,6 +18,13 @@ export const pagina = style({
   display: 'flex',
   flexDirection: 'column',
   gap: lk.espaco.x2,
+  // 24px de cada lado é o dobro do que sobra pra ler numa coluna de telefone.
+  // `overflowWrap: anywhere`: no runner do CI a JetBrains Mono não existe e o
+  // fallback (Courier) é mais largo — token comprido que aqui coube passa a
+  // vazar lá. Quebrar em qualquer ponto é honesto; esconder overflow não é.
+  '@media': {
+    [TELA_ESTREITA]: { padding: lk.espaco.x2, overflowWrap: 'anywhere' },
+  },
 })
 
 export const cabecalho = style({
@@ -25,6 +32,9 @@ export const cabecalho = style({
   alignItems: 'center',
   gap: '14px',
   flexWrap: 'wrap',
+  // `minWidth: 0`: sem isto, o par "Kanban"/"Lista" vira o "automatic minimum
+  // size" do cabeçalho inteiro e arrasta a página pra fora do viewport.
+  '@media': { [TELA_ESTREITA]: { flexDirection: 'column', alignItems: 'stretch', minWidth: '0' } },
 })
 
 export const titulo = style({
@@ -33,6 +43,10 @@ export const titulo = style({
   fontWeight: 700,
   fontSize: '26px',
   color: lk.cor.brancoSinal,
+  // "corretivas" sozinha (a maior palavra do título, sem hífen) é mais larga
+  // que a coluna inteira do telefone a 26px — min-content de texto é o
+  // tamanho da MAIOR PALAVRA, então só a fonte menor resolve, não wrap.
+  '@media': { [TELA_ESTREITA]: { fontSize: '21px' } },
 })
 
 export const empurra = style({ flex: 1 })
@@ -44,6 +58,7 @@ export const segmentado = style({
   borderRadius: lk.raio.s,
   padding: '3px',
   gap: '2px',
+  '@media': { [TELA_ESTREITA]: { flexWrap: 'wrap', minWidth: '0' } },
 })
 
 const segmentoBase = style({
@@ -55,6 +70,7 @@ const segmentoBase = style({
   fontSize: '13px',
   fontWeight: 600,
   cursor: 'pointer',
+  '@media': { [TELA_ESTREITA]: { height: '44px' } },
 })
 
 export const segmento = styleVariants({
@@ -73,6 +89,18 @@ export const faixaTaxa = style({
   border: `1px solid ${lk.cor.borda}`,
   borderRadius: lk.raio.g,
   flexWrap: 'wrap',
+  // Leitura empilhada: número, rótulo, trilho cheio e contagem, cada um na
+  // sua linha. Padding de 20px de cada lado é generoso demais numa coluna de
+  // telefone já espremida pela sidebar fixa do shell — reduz pra sobrar
+  // largura de verdade pro conteúdo.
+  '@media': {
+    [TELA_ESTREITA]: {
+      flexDirection: 'column',
+      alignItems: 'stretch',
+      gap: lk.espaco.x1,
+      padding: `${lk.espaco.x1} 12px`,
+    },
+  },
 })
 
 export const taxaNumero = style({
@@ -81,9 +109,18 @@ export const taxaNumero = style({
   fontSize: '38px',
   lineHeight: 1,
   color: lk.cor.brancoSinal,
+  // "100%" é um único token sem quebra — a 38px ele sozinho é o piso de
+  // largura da faixa inteira numa coluna de telefone.
+  '@media': { [TELA_ESTREITA]: { fontSize: '26px' } },
 })
 
-export const taxaRotulo = style({ fontSize: '12.5px', color: lk.cor.cinzaNevoa })
+export const taxaRotulo = style({
+  fontSize: '12.5px',
+  color: lk.cor.cinzaNevoa,
+  // "reconhecimento" sozinho já é mais largo que a coluna de um telefone —
+  // sem isto a palavra vira o piso de largura da faixa inteira.
+  '@media': { [TELA_ESTREITA]: { overflowWrap: 'break-word' } },
+})
 
 export const taxaTrilho = style({
   flex: 1,
@@ -92,6 +129,10 @@ export const taxaTrilho = style({
   background: lk.cor.preto,
   borderRadius: '5px',
   overflow: 'hidden',
+  // O piso de 120px é bom de mira num trilho ao lado de texto (desktop); numa
+  // coluna de ~100px de telefone ele é quem estoura a página — o número já
+  // ao lado carrega o dado, o trilho pode encolher.
+  '@media': { [TELA_ESTREITA]: { minWidth: '0' } },
 })
 
 export const taxaBarra = style({ height: '100%', background: lk.estado.ok })
@@ -100,6 +141,8 @@ export const taxaContagem = style({
   fontFamily: lk.fonte.mono,
   fontSize: '12px',
   color: lk.cor.cinzaNevoa,
+  // "RECONHECIDAS" sozinha em mono é mais larga que a coluna do telefone.
+  '@media': { [TELA_ESTREITA]: { overflowWrap: 'break-word' } },
 })
 
 // ── Kanban ──────────────────────────────────────────────────────────────────
@@ -109,7 +152,11 @@ export const kanban = style({
   gridTemplateColumns: '1fr 1fr',
   gap: '12px',
   alignItems: 'start',
-  '@media': { 'screen and (max-width: 900px)': { gridTemplateColumns: '1fr' } },
+  // `minmax(0, 1fr)`, não `1fr` sozinho: uma track `1fr` pura ainda respeita o
+  // min-content dos filhos (a "automatic minimum size" do CSS Grid) — com um
+  // cartão cujo rodapé (estado + hora) não quebra linha, isso empurra a única
+  // coluna pra fora da tela. `minmax(0, …)` é o que deixa a coluna encolher.
+  '@media': { 'screen and (max-width: 900px)': { gridTemplateColumns: 'minmax(0, 1fr)' } },
 })
 
 export const coluna = style({ display: 'flex', flexDirection: 'column', gap: lk.espaco.x1 })
@@ -119,6 +166,7 @@ export const colunaTopo = style({
   alignItems: 'center',
   gap: lk.espaco.x1,
   padding: '0 4px',
+  '@media': { [TELA_ESTREITA]: { flexWrap: 'wrap' } },
 })
 
 export const overline = style({
@@ -168,7 +216,12 @@ export const origem = style({
   color: lk.cor.cianoVisao,
 })
 
-export const cartaoRodape = style({ display: 'flex', alignItems: 'center', gap: lk.espaco.x1 })
+export const cartaoRodape = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: lk.espaco.x1,
+  '@media': { [TELA_ESTREITA]: { flexWrap: 'wrap' } },
+})
 
 export const quando = style({
   marginLeft: 'auto',
@@ -210,6 +263,7 @@ export const botaoCartao = style({
     '&:hover:not(:disabled)': { borderColor: lk.estado.ok, color: lk.estado.ok },
     '&:disabled': { cursor: 'not-allowed', opacity: 0.5 },
   },
+  '@media': { [TELA_ESTREITA]: { height: '44px' } },
 })
 
 // ── Lista ───────────────────────────────────────────────────────────────────
@@ -221,6 +275,8 @@ export const tabela = style({
   border: `1px solid ${lk.cor.borda}`,
   borderRadius: lk.raio.m,
   overflowX: 'auto',
+  // SR3: "lista vira cards" — uma coluna só, cada registro empilhado.
+  '@media': { [TELA_ESTREITA]: { display: 'block' } },
 })
 
 export const th = style({
@@ -230,6 +286,30 @@ export const th = style({
   letterSpacing: '0.14em',
   color: lk.cor.cinzaNevoa,
   borderBottom: `1px solid ${lk.cor.borda}`,
+  // Sem grid não há coluna pra rotular — o cartão lê pelo próprio texto.
+  '@media': { [TELA_ESTREITA]: { display: 'none' } },
+})
+
+/**
+ * Cada registro do `.tsx` é um `<div style={{ display: 'contents' }}>` — os 4
+ * campos (EVENTO/ORIGEM/QUANDO/ESTADO) viram itens diretos do grid. Vira
+ * card: os 4 `th` são sempre os 4 primeiros filhos de `tabela`, então
+ * `nth-child(n+5)` pega só os wrappers de registro, nunca o cabeçalho.
+ */
+globalStyle(`${tabela} > div:nth-child(n+5)`, {
+  '@media': {
+    [TELA_ESTREITA]: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '4px',
+      padding: '10px 0',
+      borderBottom: `1px solid ${lk.cor.borda}`,
+    },
+  },
+})
+
+globalStyle(`${tabela} > div:last-child`, {
+  '@media': { [TELA_ESTREITA]: { borderBottom: 'none' } },
 })
 
 export const td = style({
@@ -292,6 +372,7 @@ export const botaoPrimario = style({
   textDecoration: 'none',
   cursor: 'pointer',
   ':hover': { background: lk.cor.cianoProfundo },
+  '@media': { [TELA_ESTREITA]: { height: '44px' } },
 })
 
 /**

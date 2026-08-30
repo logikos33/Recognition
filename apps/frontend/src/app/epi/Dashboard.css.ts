@@ -10,7 +10,7 @@
  */
 import { style, styleVariants } from '@vanilla-extract/css'
 
-import { lk, OVERLINE_TRACKING } from '../tokens/lk.css'
+import { OVERLINE_TRACKING, TELA_ESTREITA, lk } from '../tokens/lk.css'
 
 export const raiz = style({
   display: 'flex',
@@ -25,6 +25,10 @@ export const cabecalho = style({
   alignItems: 'center',
   gap: '12px',
   flexWrap: 'wrap',
+  // `minWidth: 0`: sem isto, o botão "Personalizar widgets" (uma única
+  // palavra sem quebra) vira o "automatic minimum size" do cabeçalho inteiro
+  // e arrasta a página pra fora do viewport — o clássico estouro de flexbox.
+  '@media': { [TELA_ESTREITA]: { flexDirection: 'column', alignItems: 'stretch', minWidth: '0' } },
 })
 
 export const titulo = style({
@@ -32,6 +36,10 @@ export const titulo = style({
   fontFamily: lk.fonte.titulo,
   fontWeight: 700,
   fontSize: '26px',
+  // "Dashboard" é uma palavra só — min-content de texto é o tamanho da MAIOR
+  // PALAVRA, então a 26px ela sozinha já é mais larga que a coluna do
+  // telefone. Só a fonte menor resolve, wrap não ajuda numa palavra única.
+  '@media': { [TELA_ESTREITA]: { fontSize: '21px' } },
 })
 
 export const espacador = style({ flex: 1 })
@@ -47,6 +55,7 @@ export const seletor = style({
   fontSize: '13px',
   cursor: 'pointer',
   ':focus-visible': { outline: `2px solid ${lk.cor.cianoVisao}`, outlineOffset: '1px' },
+  '@media': { [TELA_ESTREITA]: { height: '44px', width: '100%' } },
 })
 
 export const botaoFantasma = style({
@@ -63,6 +72,7 @@ export const botaoFantasma = style({
   gap: '6px',
   cursor: 'pointer',
   ':hover': { color: lk.cor.brancoSinal, borderColor: lk.cor.cianoVisao },
+  '@media': { [TELA_ESTREITA]: { height: '44px', minWidth: '0', flexWrap: 'wrap' } },
 })
 
 export const envoltorioPopover = style({ position: 'relative' })
@@ -102,8 +112,12 @@ export const gridKpi = style({
   gridTemplateColumns: '360px 1fr 1fr 1fr',
   gap: '12px',
   '@media': {
-    '(max-width: 1180px)': { gridTemplateColumns: '1fr 1fr' },
-    '(max-width: 720px)': { gridTemplateColumns: '1fr' },
+    '(max-width: 1180px)': { gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)' },
+    // Harmonizado com o breakpoint mobile único (era 720px solto) — "cards
+    // empilham 1 coluna" abaixo de 768px, SR3. `minmax(0, 1fr)`, não `1fr`
+    // sozinho: uma track `1fr` ainda respeita o min-content dos filhos e um
+    // cartão com número de 84px de fonte estoura a única coluna.
+    [TELA_ESTREITA]: { gridTemplateColumns: 'minmax(0, 1fr)' },
   },
 })
 
@@ -133,7 +147,12 @@ export const overline = style({
   color: lk.cor.cinzaNevoa,
 })
 
-export const linhaOverline = style({ display: 'flex', alignItems: 'center', gap: lk.espaco.x1 })
+export const linhaOverline = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: lk.espaco.x1,
+  '@media': { [TELA_ESTREITA]: { flexWrap: 'wrap' } },
+})
 
 export const botaoAjuda = style({
   width: '16px',
@@ -169,13 +188,21 @@ export const dica = style({
   boxShadow: '0 8px 32px rgba(0, 0, 0, 0.7)',
 })
 
-export const scoreLinha = style({ display: 'flex', alignItems: 'flex-end', gap: '14px' })
+export const scoreLinha = style({
+  display: 'flex',
+  alignItems: 'flex-end',
+  gap: '14px',
+  '@media': { [TELA_ESTREITA]: { flexWrap: 'wrap' } },
+})
 
 export const scoreNumero = style({
   fontFamily: lk.fonte.titulo,
   fontWeight: 700,
   fontSize: '84px',
   lineHeight: 0.9,
+  // 84px de fonte é maior que a coluna inteira num telefone — o score
+  // continua sendo o dado principal do cartão, só menor.
+  '@media': { [TELA_ESTREITA]: { fontSize: '48px' } },
 })
 
 export const scoreLado = style({
@@ -205,6 +232,7 @@ export const rodapeMono = style({
   fontSize: '10.5px',
   letterSpacing: '0.06em',
   color: lk.cor.cinzaNevoa,
+  '@media': { [TELA_ESTREITA]: { flexWrap: 'wrap' } },
 })
 
 export const kpiValor = style({
@@ -242,7 +270,7 @@ export const gridPaineis = style({
   gridTemplateColumns: '1.4fr 1fr 1fr',
   gap: '12px',
   alignItems: 'start',
-  '@media': { '(max-width: 1180px)': { gridTemplateColumns: '1fr' } },
+  '@media': { '(max-width: 1180px)': { gridTemplateColumns: 'minmax(0, 1fr)' } },
 })
 
 export const painel = style([cartaoBase, { gap: '12px', padding: '18px' }])
@@ -251,6 +279,7 @@ export const painelCabecalho = style({
   display: 'flex',
   alignItems: 'center',
   gap: lk.espaco.x1,
+  '@media': { [TELA_ESTREITA]: { flexWrap: 'wrap' } },
 })
 
 export const painelTitulo = style({ fontSize: '14px', fontWeight: 600 })
@@ -283,6 +312,9 @@ export const barras = style({
   alignItems: 'flex-end',
   gap: '5px',
   height: '110px',
+  // Rótulo de hora ("14h") tem largura mínima própria; com ~24 barras isso
+  // soma mais que a tela some — rolagem CONTIDA aqui, nunca na página.
+  '@media': { [TELA_ESTREITA]: { overflowX: 'auto' } },
 })
 
 export const colunaBarra = style({
@@ -293,6 +325,7 @@ export const colunaBarra = style({
   gap: '5px',
   height: '100%',
   justifyContent: 'flex-end',
+  '@media': { [TELA_ESTREITA]: { minWidth: '10px' } },
 })
 
 export const barra = style({
@@ -365,6 +398,7 @@ export const rankingLinha = style({
   display: 'flex',
   alignItems: 'center',
   gap: '12px',
+  '@media': { [TELA_ESTREITA]: { flexWrap: 'wrap' } },
 })
 
 export const rankingPos = style({
@@ -383,6 +417,8 @@ export const rankingNome = style({
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
+  // Sobra menos coluna pro nome — dá respiro pro trilho, que é o dado.
+  '@media': { [TELA_ESTREITA]: { width: '96px' } },
 })
 
 /** Regra do ciano: só as 3 primeiras posições saem em destaque — resto neutro. */
@@ -496,6 +532,7 @@ export const botaoPrimario = style({
   fontWeight: 700,
   cursor: 'pointer',
   ':hover': { background: lk.cor.cianoProfundo },
+  '@media': { [TELA_ESTREITA]: { height: '44px' } },
 })
 
 /** Vazio/erro DENTRO de um painel — não derruba a tela inteira. */

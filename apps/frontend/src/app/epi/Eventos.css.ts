@@ -11,9 +11,9 @@
  * `rgba()` não aceita variável — escrever o rgba na mão devolveria o hex fixo
  * do desenho e a tela deixaria de acompanhar a marca do tenant.
  */
-import { style, styleVariants } from '@vanilla-extract/css'
+import { globalStyle, style, styleVariants } from '@vanilla-extract/css'
 
-import { lk, OVERLINE_TRACKING } from '../tokens/lk.css'
+import { OVERLINE_TRACKING, TELA_ESTREITA, lk } from '../tokens/lk.css'
 
 /** Fio de 1px entre linhas — o desenho usa cinza a 8%, não a borda cheia. */
 const DIVISOR = `color-mix(in srgb, ${lk.cor.cinzaNevoa} 8%, transparent)`
@@ -31,6 +31,8 @@ export const cabecalho = style({
   alignItems: 'center',
   flexWrap: 'wrap',
   gap: '10px',
+  /** SR3: coluna única — título, meta e cada filtro em sua própria linha. */
+  '@media': { [TELA_ESTREITA]: { flexDirection: 'column', alignItems: 'stretch' } },
 })
 
 export const titulo = style({
@@ -62,6 +64,8 @@ export const filtro = style({
   selectors: {
     '&:focus-visible': { outline: `2px solid ${lk.cor.cianoVisao}`, outlineOffset: '1px' },
   },
+  /** SR3: alvo ≥44px e largura cheia — o select vira uma linha da coluna. */
+  '@media': { [TELA_ESTREITA]: { height: '44px', width: '100%', boxSizing: 'border-box' } },
 })
 
 /** Botão secundário do desenho: 32px, borda fria, ciano só no hover/foco. */
@@ -84,6 +88,8 @@ export const botao = style({
   selectors: {
     '&:focus-visible': { outline: `2px solid ${lk.cor.cianoVisao}`, outlineOffset: '1px' },
   },
+  /** SR3: alvo ≥44px — regra do handoff mobile para quem opera em pé. */
+  '@media': { [TELA_ESTREITA]: { height: '44px' } },
 })
 
 /** Primário: ciano CHEIO — o único lugar da tela onde ele é fundo, e é botão. */
@@ -98,6 +104,9 @@ export const botaoPrimario = style([
     fontWeight: 700,
     fontSize: '13px',
     ':hover': { background: lk.cor.cianoProfundo, color: lk.cor.preto },
+    // `botao` já herda o alvo ≥44px, mas esta classe redeclara `height` sem
+    // media — sem repetir aqui, o valor incondicional de 34px venceria.
+    '@media': { [TELA_ESTREITA]: { height: '44px' } },
   },
 ])
 
@@ -109,6 +118,7 @@ export const barraSelecao = style({
   background: `color-mix(in srgb, ${lk.cor.cianoVisao} 5%, transparent)`,
   border: `1px solid color-mix(in srgb, ${lk.cor.cianoVisao} 30%, transparent)`,
   borderRadius: lk.raio.s,
+  '@media': { [TELA_ESTREITA]: { flexDirection: 'column', alignItems: 'stretch' } },
 })
 
 export const contagemSelecao = style({
@@ -128,6 +138,39 @@ export const tabela = style({
   width: '100%',
   borderCollapse: 'collapse',
   minWidth: '980px',
+  /**
+   * SR3: "lista vira cards". O `<table>` real não vira bloco sozinho — thead,
+   * tbody, tr e td precisam do próprio `display` trocado, senão o navegador
+   * refaz a caixa de tabela por baixo (fixup do CSS 2.1) e a rolagem
+   * horizontal volta pela porta dos fundos.
+   */
+  '@media': { [TELA_ESTREITA]: { display: 'block', width: '100%', minWidth: '0' } },
+})
+
+globalStyle(`${tabela} thead`, {
+  // Sem coluna, o rótulo "EVENTO/CÂMERA/HORA…" perde sentido; o cartão lê
+  // pela cor+ícone+palavra que cada célula já carrega.
+  '@media': { [TELA_ESTREITA]: { display: 'none' } },
+})
+
+globalStyle(`${tabela} tbody`, {
+  '@media': { [TELA_ESTREITA]: { display: 'block', width: '100%' } },
+})
+
+globalStyle(`${tabela} tbody tr`, {
+  '@media': {
+    [TELA_ESTREITA]: {
+      display: 'flex',
+      flexDirection: 'column',
+      width: '100%',
+      padding: '10px 0',
+      borderBottom: `1px solid ${lk.cor.borda}`,
+    },
+  },
+})
+
+globalStyle(`${tabela} tbody tr:last-child`, {
+  '@media': { [TELA_ESTREITA]: { borderBottom: 'none' } },
 })
 
 /** Overline do handoff: mono, caixa alta, tracking largo. */
@@ -149,13 +192,25 @@ export const celula = style({
   borderBottom: `1px solid ${DIVISOR}`,
   fontSize: '13px',
   verticalAlign: 'middle',
+  // A `tr` já ganha a borda/o espaçamento do cartão a 768px; aqui é só tirar
+  // o divisor duplicado e deixar cada dado ocupar a largura toda.
+  '@media': {
+    [TELA_ESTREITA]: { display: 'block', width: '100%', padding: '3px 0', borderBottom: 'none' },
+  },
 })
 
 export const celulaMono = style([celula, { fontFamily: lk.fonte.mono }])
 
 export const celulaAcoes = style([
   celula,
-  { display: 'flex', gap: lk.espaco.x1, justifyContent: 'flex-end', flexWrap: 'wrap' },
+  {
+    display: 'flex',
+    gap: lk.espaco.x1,
+    justifyContent: 'flex-end',
+    flexWrap: 'wrap',
+    // Empilha "Reconhecer"/"Abrir →" full-width — mesmo alvo ≥44px do `botao`.
+    '@media': { [TELA_ESTREITA]: { flexDirection: 'column', alignItems: 'stretch' } },
+  },
 ])
 
 /** Linha apontada por deep-link (sino de notificações) — realce temporário. */
@@ -298,7 +353,12 @@ export const overlineLegenda = style({
 })
 
 /** Par de botões de veredito dentro da célula. */
-export const grupoBotoes = style({ display: 'flex', gap: '6px', marginTop: '6px' })
+export const grupoBotoes = style({
+  display: 'flex',
+  gap: '6px',
+  marginTop: '6px',
+  '@media': { [TELA_ESTREITA]: { flexDirection: 'column' } },
+})
 
 /** Confiança da detecção (§9 paridade) — dado, então mono; cinza, sem cor de estado. */
 export const confianca = style({
