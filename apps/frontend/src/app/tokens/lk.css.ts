@@ -117,3 +117,12 @@ export const VALORES = {
   grafite: '#14141C',
   cianoVisao: '#00E5FF',
 } as const
+
+/**
+ * Paleta pré-definida de cor de MARCA para o white-label do tenant (Admin →
+ * Tenant Detalhe, `Admin Plataforma.dc.html`). São OPÇÕES enviadas ao backend
+ * (`color_primary` em `/v1/admin/tenants/<id>/branding`), não tokens de estilo
+ * do shell — por isso moram aqui como valor cru, mesmo motivo de `VALORES`
+ * acima (única exceção do teste `semHexSolto`).
+ */
+export const ACENTOS_MARCA_PRESET = ['#00E5FF', '#7CE38B', '#FFB86B', '#B39DFF'] as const
