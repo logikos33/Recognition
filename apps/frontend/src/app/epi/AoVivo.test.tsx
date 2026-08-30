@@ -175,6 +175,31 @@ describe('sessão única de playback', () => {
     fireEvent.click(screen.getByLabelText('Fechar painel'))
     await waitFor(() => expect(playersDe('cam-1')).toHaveLength(1))
   })
+
+  // D-56: dois tokens vivos para a mesma câmera baixando o mesmo .ts em
+  // produção — a origem era card+gaveta cada um mintando seu próprio
+  // /stream/start sem se coordenar (ver MonitoringPage.test.tsx original,
+  // arquivado em archive/front-antigo-epi-lote1-2026-08-30).
+  it('abrir+fechar a gaveta NÃO dispara segundo /stream/start nem token novo', async () => {
+    // cam-2 também sobe seu player na grade — a contagem é POR câmera.
+    const chamadasCam1 = () =>
+      vi.mocked(cameraService.start).mock.calls.filter((c) => c[0] === 'cam-1').length
+
+    montar()
+    await waitFor(() => expect(playersDe('cam-1')).toHaveLength(1))
+    expect(chamadasCam1()).toBe(1)
+
+    fireEvent.click(screen.getByLabelText('Abrir CAM-01 DOCA NORTE'))
+    await screen.findByLabelText('Detalhes de CAM-01 DOCA NORTE')
+    await waitFor(() => expect(playersDe('cam-1')).toHaveLength(1))
+    // Cache do useLiveView reaproveitado — nenhum segundo token mintado.
+    expect(chamadasCam1()).toBe(1)
+
+    fireEvent.click(screen.getByLabelText('Fechar painel'))
+    await waitFor(() => expect(playersDe('cam-1')).toHaveLength(1))
+    // Reaquisição do card ao fechar também não minta token novo.
+    expect(chamadasCam1()).toBe(1)
+  })
 })
 
 // ── 3. Bounding box não é alvo de clique ────────────────────────────────────

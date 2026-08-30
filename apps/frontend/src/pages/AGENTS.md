@@ -11,14 +11,12 @@ pages/
 ├── Login.tsx                        # Authentication form
 ├── HomePage.tsx                     # Dashboard / landing
 ├── CamerasPage.tsx                  # Camera management + grid
-├── MonitoringPage.tsx               # HLS player + real-time alerts
 ├── DashboardPage.tsx                # System stats overview
 ├── AlertsHistoryPage.tsx            # Paginated alerts + CSV export
 ├── TrainingPage.tsx                 # Model training interface
-├── epi/                             # EPI monitoring module
-│   ├── EpiDashboard.tsx             # EPI stats + class distribution
-│   ├── EpiCameras.tsx               # EPI-specific camera list
-│   └── EpiAlerts.tsx                # EPI violation alerts
+├── epi/                             # EPI monitoring module (Dashboard/Cameras/Alerts
+│                                     #  + MonitoringPage demolidos 2026-08-30, ver
+│                                     #  app/epi/{Dashboard,Cameras,Eventos,AoVivo}.tsx)
 └── fueling/                         # Fueling bay monitoring module
     └── FuelingPlaceholder.tsx       # (reserved for future use)
 ```
@@ -28,11 +26,11 @@ pages/
 ### Max 300 Lines Per File
 - Single-responsibility: each page = one major feature
 - If exceeding: split into child components in `components/`
-- Example: MonitoringPage (272 lines) uses CameraPlayer + DetectionOverlay
+- Example: DashboardPage uses stat-card child components
 
 ### Naming Convention
 - Format: `{Feature}Page.tsx`
-- Examples: `CamerasPage`, `MonitoringPage`, `AlertsHistoryPage`
+- Examples: `CamerasPage`, `AlertsHistoryPage`
 
 ### Architecture Pattern
 ```
@@ -84,23 +82,9 @@ Page Component (hooks, state management)
 - **Layout**: Header with button, grid of CameraCards or empty state
 - **Styling**: Dark theme, responsive grid (`minmax(300px, 1fr)`)
 
-### MonitoringPage.tsx
-- **Purpose**: Real-time HLS player + detections overlay
-- **Components Used**: CameraPlayer, DetectionOverlay
-- **Hooks Used**: `useMonitoringSocket`, `useSearchParams`
-- **State**:
-  - `cameras: Camera[]` — filtered to active streams only
-  - `activeCameraId: string | null` — selected camera (from URL param)
-  - `connected: boolean` — WebSocket status (from hook)
-  - `detections: Record<cameraId, Detection[]>` — from hook
-  - `alerts: Alert[]` — from hook
-- **WebSocket Integration**:
-  - Subscribe to active camera detections
-  - Real-time detection overlays
-  - Alert notifications from backend
-- **Layout**: Sidebar (stream list + alerts) + main player
-- **URL Param**: `?camera={id}` for deep linking
-- **Styling**: 2-column grid, active camera highlighted
+### MonitoringPage.tsx — REMOVIDA (2026-08-30)
+Demolida no lote 1 (PR-B); substituta é `app/epi/AoVivo.tsx` (rota `/novo/epi/live`).
+Recuperação: `git show archive/front-antigo-epi-lote1-2026-08-30:apps/frontend/src/pages/MonitoringPage.tsx`.
 
 ### AnnotationPage.tsx — REMOVIDA (2026-08)
 - Página morta (nenhuma rota apontava para ela) deletada junto com o
@@ -156,31 +140,11 @@ Page Component (hooks, state management)
 
 ### epi/ — EPI Monitoring Module
 
-#### EpiDashboard.tsx
-- **Purpose**: EPI-specific statistics dashboard
-- **State**:
-  - `stats: ModuleStats | null` — EPI module metrics
-  - `classes: ModuleClass[]` — EPI classes (helmet, vest, gloves, etc.)
-  - `loading: boolean`
-- **Services Used**: `moduleService.getStats('epi')`, `moduleService.getClasses('epi')`
-- **Display**: Stat cards (icons + values), class distribution chart
-- **Styling**: Color-coded by class (green=present, red=absent)
-
-#### EpiCameras.tsx
-- **Purpose**: Cameras filtered/grouped for EPI monitoring
-- **Features**:
-  - List of cameras monitoring EPI
-  - Real-time violation counts per camera
-  - Quick access to live monitoring
-- **Differs from CamerasPage**: EPI-only filtering, violation stats
-
-#### EpiAlerts.tsx
-- **Purpose**: EPI violation alerts
-- **Features**:
-  - Real-time alert feed (no/helmet, no/vest, etc.)
-  - Violation frequency by class
-  - Acknowledge/dismiss actions
-- **Integration**: WebSocket from `useMonitoringSocket`
+#### EpiDashboard.tsx, EpiCameras.tsx, EpiAlerts.tsx — REMOVIDAS (2026-08-30)
+Demolidas no lote 1 (PR-B); substitutas são `app/epi/Dashboard.tsx`,
+`app/epi/Cameras.tsx` e `app/epi/Eventos.tsx` (rotas
+`/novo/epi/{dashboard,cameras,eventos}`).
+Recuperação: `git show archive/front-antigo-epi-lote1-2026-08-30:apps/frontend/src/pages/epi/<arquivo>.tsx`.
 
 ### fueling/ — Fueling Bay Monitoring Module
 
@@ -310,7 +274,6 @@ describe('CamerasPage', () => {
 ## Deep Linking
 
 Pages supporting URL parameters:
-- **MonitoringPage**: `?camera={cameraId}`
 - **AlertsHistoryPage**: `?page=1&camera={id}&from={date}`
 - **Others**: As needed
 

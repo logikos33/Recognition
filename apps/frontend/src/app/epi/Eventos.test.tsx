@@ -21,7 +21,7 @@
  * nesta família já custou metade das linhas de uma página.
  */
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useParams } from 'react-router-dom'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -98,6 +98,7 @@ vi.mock('../../services/cameraService', () => ({
 }))
 
 import { Eventos } from './Eventos'
+import { rotaNova } from '../RotasNovas'
 
 /** Formato real do backend (RVB Isolantes — CAM-01/04/07). */
 const EVENTOS = [
@@ -343,6 +344,31 @@ describe('reconhecer é ato explícito', () => {
     await screen.findByText('CAM-01 Doca Norte')
     const botoes = [...linhaDe('CAM-01 Doca Norte').querySelectorAll('button')]
     expect(botoes.some((b) => b.textContent === 'Reconhecer')).toBe(false)
+  })
+})
+
+describe('navegação lista→detalhe', () => {
+  // O que a AlertDeepLink.test.tsx original (arquivada em
+  // archive/front-antigo-epi-lote1-2026-08-30) provava sobre a lista antiga:
+  // o clique leva ao detalhe do evento CERTO. Aqui o clique é no link
+  // "Abrir →" (a linha inteira não navega mais — ver Eventos.tsx).
+  function DetalheStub() {
+    const { id } = useParams<{ id: string }>()
+    return <span>detalhe:{id}</span>
+  }
+
+  it('clique em "Abrir →" leva ao detalhe do evento certo', async () => {
+    render(
+      <MemoryRouter initialEntries={['/epi/eventos']}>
+        <Routes>
+          <Route path="/epi/eventos" element={<Eventos />} />
+          <Route path={rotaNova('/epi/eventos/:id')} element={<DetalheStub />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await screen.findByText('CAM-04 Expedição')
+    fireEvent.click(linhaDe('CAM-04 Expedição').querySelector('a')!)
+    expect(await screen.findByText('detalhe:e1')).toBeTruthy()
   })
 })
 

@@ -306,7 +306,7 @@ function FeatureGate() {
   if (loading) return <LoadingSpinner />
   if (!hasModule('epi')) return <div>EPI module not available</div>
 
-  return <EpiDashboard />
+  return <Dashboard /> {/* app/epi/Dashboard.tsx — EpiDashboard.tsx demolida 2026-08-30 */}
 }
 ```
 
@@ -346,7 +346,8 @@ function CameraMonitor() {
 ### Using useMonitoringSocket + useAuth
 
 ```typescript
-function MonitoringPage() {
+// MonitoringPage.tsx demolida 2026-08-30 — substituta é app/epi/AoVivo.tsx
+function AoVivo() {
   const { isAuthenticated } = useAuth()
   const { connected, detections } = useMonitoringSocket({
     wsUrl: import.meta.env.VITE_WS_URL || 'http://localhost:5001',

@@ -35,7 +35,8 @@ const SOAK_MAX_STALL_S = Number(process.env.SOAK_MAX_STALL_S ?? '45')
 const EMAIL = process.env.SOAK_EMAIL ?? 'admin@recognition.dev'
 const PASSWORD = process.env.SOAK_PASSWORD ?? ''
 const OUT = process.env.SOAK_OUT ?? 'soak-liveview-timeline.jsonl'
-const MONITORING_PATH = process.env.SOAK_PATH ?? '/epi/monitoring'
+// /epi/monitoring foi demolida 2026-08-30 (PR-B) — vira o front novo (/novo/epi/live)
+const MONITORING_PATH = process.env.SOAK_PATH ?? '/novo/epi/live'
 
 interface HttpEvent {
   t: number

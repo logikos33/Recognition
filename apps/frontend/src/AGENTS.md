@@ -39,13 +39,10 @@ src/
 │   ├── HomePage.tsx           # Dashboard home
 │   ├── DashboardPage.tsx      # KPIs dashboard
 │   ├── CamerasPage.tsx        # Camera management
-│   ├── MonitoringPage.tsx     # HLS monitoring
 │   ├── AlertsHistoryPage.tsx  # Alert history
 │   ├── TrainingPage.tsx       # Model training
-│   ├── epi/                   # EPI-specific modules
-│   │   ├── EpiDashboard.tsx
-│   │   ├── EpiCameras.tsx
-│   │   └── EpiAlerts.tsx
+│   ├── epi/                   # EPI-specific modules (Dashboard/Cameras/Alerts/Monitoring
+│   │                           #  demolidos 2026-08-30 — ver app/epi/{Dashboard,Cameras,Eventos,AoVivo}.tsx)
 │   └── fueling/               # Fueling module (placeholder)
 └── types/                     # TypeScript interfaces
     └── index.ts               # Shared types (User, Camera, Alert, etc.)
@@ -302,18 +299,9 @@ REMOVIDO — órfão (zero imports, confirmado via `rg`).
 
 ### Monitoring
 
-#### MonitoringPage.tsx
-- **Left sidebar**: Camera list + alerts panel
-- **Main area**: HLS player + detection overlay
-- **Query param**: `?camera=<id>` pre-selects camera
-- Uses `useMonitoringSocket()` for real-time detections
-- Auto-subscribes/unsubscribes from WebSocket on camera change
-
-```typescript
-// Camera selection via query params
-const [searchParams] = useSearchParams()
-const selectedId = searchParams.get('camera')
-```
+#### MonitoringPage.tsx — REMOVIDA (2026-08-30)
+Demolida no lote 1 (PR-B); substituta é `app/epi/AoVivo.tsx` (rota `/novo/epi/live`).
+Recuperação: `git show archive/front-antigo-epi-lote1-2026-08-30:apps/frontend/src/pages/MonitoringPage.tsx`.
 
 #### AlertsHistoryPage.tsx
 - Paginated alert list
@@ -418,12 +406,10 @@ All routes defined in one extracted component to keep App.tsx < 100 lines.
   <Route path="/" element={<HomePage />} />
   <Route path="/dashboard" element={<DashboardPage />} />
   <Route path="/cameras" element={<CamerasPage />} />
-  <Route path="/monitoring" element={<MonitoringPage />} />
   <Route path="/alerts" element={<AlertsHistoryPage />} />
   <Route path="/training" element={<TrainingPage />} />
-  <Route path="/epi/dashboard" element={<EpiDashboard />} />
-  <Route path="/epi/cameras" element={<EpiCameras />} />
-  <Route path="/epi/alerts" element={<EpiAlerts />} />
+  {/* /monitoring, /epi/dashboard, /epi/cameras, /epi/alerts: telas demolidas
+      2026-08-30, agora redirect pra app/epi/{AoVivo,Dashboard,Cameras,Eventos}.tsx */}
   <Route path="/fueling/*" element={<FuelingPlaceholder />} />
   <Route path="*" element={<Navigate to="/" replace />} />
 </Routes>
