@@ -20,6 +20,9 @@ const mocks = vi.hoisted(() => ({
   post: vi.fn(),
   list: vi.fn(),
   can: true as boolean,
+  // Default true preserva o fluxo de engenharia já coberto abaixo (badge de
+  // framework visível) — os testes de anti-vazamento ligam false.
+  isSuperAdmin: true as boolean,
   permissoesPedidas: [] as string[],
 }))
 
@@ -28,6 +31,7 @@ vi.mock('../../services/cameraService', () => ({ cameraService: { list: mocks.li
 vi.mock('../../hooks/useAuth', () => ({
   useAuth: () => ({
     can: (chave: string) => { mocks.permissoesPedidas.push(chave); return mocks.can },
+    isSuperAdmin: mocks.isSuperAdmin,
   }),
 }))
 
@@ -40,7 +44,8 @@ const DEPLOY = {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.can = true
-    mocks.permissoesPedidas = []
+  mocks.isSuperAdmin = true
+  mocks.permissoesPedidas = []
   mocks.list.mockResolvedValue([
     { id: 'cam-1', name: 'Canal 8', is_active: true, active_module: 'epi' },
     { id: 'cam-2', name: 'Canal 6', is_active: true, active_module: null },
@@ -246,6 +251,72 @@ describe('CameraModelScope', () => {
     expect(screen.getByText(/marque ≥1 classe/)).toBeDefined()
     fireEvent.click(screen.getByLabelText('Salvar escopo de Canal 8'))
     expect(mocks.post).not.toHaveBeenCalled()
+  })
+})
+
+describe('CameraModelScope — anti-vazamento de stack interno (política F5-LEVE)', () => {
+  // Forma real de um modelo "não rebatizado": name/framework internos,
+  // display_name ainda NULL (ninguém atribuiu na tela de rebranding).
+  const MODELO_INTERNO = {
+    id: 'm-leak', name: 'YOLO26 yolo26n - Job abc12345', framework: 'yolox',
+    r2_onnx_key: 'models/x/leak.onnx', is_active: true, module_code: 'epi',
+    display_name: null as string | null,
+  }
+
+  function mockaModeloUnico(modelo: typeof MODELO_INTERNO, { comDeployment = false } = {}) {
+    mocks.get.mockImplementation(async (path: string) => {
+      if (path === '/v1/models') return { success: true, data: { models: [modelo] } }
+      if (path === '/v1/models/m-leak') {
+        return { success: true, data: { model: modelo, lineage: { dataset_version: { class_distribution: { Luvas: 10 } } } } }
+      }
+      if (path === '/cameras/model-config?module=epi') {
+        return {
+          success: true,
+          data: {
+            deployments: comDeployment ? {
+              'cam-1': {
+                id: 'dep-leak', model_id: 'm-leak', camera_id: 'cam-1', module_code: 'epi',
+                status: 'active', created_at: '2026-08-21T10:00:00Z', config: { classes: ['Luvas'] },
+              },
+            } : {},
+          },
+        }
+      }
+      if (path.startsWith('/cameras/model-config')) return { success: true, data: { deployments: {} } }
+      throw new Error(`GET inesperado: ${path}`)
+    })
+  }
+
+  it('não-superadmin: nome interno e framework NUNCA aparecem — cai em "Logikos"', async () => {
+    mocks.isSuperAdmin = false
+    mockaModeloUnico(MODELO_INTERNO)
+    render(<CameraModelScope classesCatalogo={[]} />)
+
+    const sel = await screen.findByLabelText('Modelo da câmera Canal 8') as HTMLSelectElement
+    const opt = Array.from(sel.options).find(o => o.value === 'm-leak')!
+    expect(opt.textContent).toBe('Logikos')
+    expect(document.body.innerHTML).not.toMatch(/yolo|rf-?detr|onnx/i)
+  })
+
+  it('não-superadmin com display_name atribuído: mostra o nome escolhido para o cliente', async () => {
+    mocks.isSuperAdmin = false
+    mockaModeloUnico({ ...MODELO_INTERNO, display_name: 'Logikos V1' })
+    render(<CameraModelScope classesCatalogo={[]} />)
+
+    const sel = await screen.findByLabelText('Modelo da câmera Canal 8') as HTMLSelectElement
+    const opt = Array.from(sel.options).find(o => o.value === 'm-leak')!
+    expect(opt.textContent).toBe('Logikos V1')
+  })
+
+  it('superadmin: continua vendo nome e framework internos — não regressão da engenharia', async () => {
+    mocks.isSuperAdmin = true
+    mockaModeloUnico(MODELO_INTERNO, { comDeployment: true })
+    render(<CameraModelScope classesCatalogo={[]} />)
+
+    const sel = await screen.findByLabelText('Modelo da câmera Canal 8') as HTMLSelectElement
+    const opt = Array.from(sel.options).find(o => o.value === 'm-leak')!
+    expect(opt.textContent).toBe(MODELO_INTERNO.name)
+    expect(screen.getAllByText('YOLOX').length).toBeGreaterThan(0)
   })
 })
 

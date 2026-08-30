@@ -17,6 +17,9 @@ const mocks = vi.hoisted(() => ({
   setCameraModel: vi.fn(),
   listModels: vi.fn(),
   isAdmin: true as boolean,
+  // Default true preserva os testes de badge já existentes abaixo (fluxo de
+  // engenharia) — os testes de anti-vazamento ligam false.
+  isSuperAdmin: true as boolean,
 }))
 
 vi.mock('../../services/countingService', () => ({
@@ -33,12 +36,13 @@ vi.mock('../../services/trainingService', () => ({
 }))
 
 vi.mock('../../hooks/useAuth', () => ({
-  useAuth: () => ({ isAdmin: mocks.isAdmin }),
+  useAuth: () => ({ isAdmin: mocks.isAdmin, isSuperAdmin: mocks.isSuperAdmin }),
 }))
 
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.isAdmin = true
+  mocks.isSuperAdmin = true
   mocks.getCameraModels.mockResolvedValue({
     status: 'success',
     data: { camera_id: 'cam-1', models: { epi: null, quality: null, counting: null } },
@@ -167,5 +171,60 @@ describe('CameraModelAssignment', () => {
       expect(screen.getByText('RF-DETR')).toBeDefined()
     })
     expect(screen.queryByText('YOLOX')).toBeNull()
+  })
+
+  describe('anti-vazamento de stack interno (política F5-LEVE)', () => {
+    // Forma real de um modelo "não rebatizado": name/framework internos,
+    // display_name ainda NULL (ninguém atribuiu na tela de rebranding).
+    const MODELO_INTERNO = {
+      id: 'model-1', name: 'YOLO26 yolo26n - Job abc12345', framework: 'yolox',
+      map50: 0.8, display_name: null as string | null,
+    }
+
+    it('não-superadmin: nome interno e framework NUNCA aparecem — cai em "Logikos"', async () => {
+      mocks.isSuperAdmin = false
+      mocks.getCameraModels.mockResolvedValue({
+        status: 'success',
+        data: { camera_id: 'cam-1', models: { epi: 'model-1', quality: null, counting: null } },
+      })
+      mocks.listModels.mockResolvedValue({ status: 'success', data: { models: [MODELO_INTERNO] } })
+
+      render(<CameraModelAssignment cameraId="cam-1" />)
+
+      const epiSelect = await screen.findByLabelText('Modelo do módulo EPI') as HTMLSelectElement
+      const opt = Array.from(epiSelect.options).find(o => o.value === 'model-1')!
+      expect(opt.textContent).toBe('Logikos (mAP50 80%)')
+      expect(document.body.innerHTML).not.toMatch(/yolo|rf-?detr|onnx/i)
+    })
+
+    it('não-superadmin com display_name atribuído: mostra o nome escolhido para o cliente', async () => {
+      mocks.isSuperAdmin = false
+      mocks.listModels.mockResolvedValue({
+        status: 'success',
+        data: { models: [{ ...MODELO_INTERNO, display_name: 'Logikos V1' }] },
+      })
+
+      render(<CameraModelAssignment cameraId="cam-1" />)
+
+      const epiSelect = await screen.findByLabelText('Modelo do módulo EPI') as HTMLSelectElement
+      const opt = Array.from(epiSelect.options).find(o => o.value === 'model-1')!
+      expect(opt.textContent).toBe('Logikos V1 (mAP50 80%)')
+    })
+
+    it('superadmin: continua vendo nome e framework internos — não regressão da engenharia', async () => {
+      mocks.isSuperAdmin = true
+      mocks.getCameraModels.mockResolvedValue({
+        status: 'success',
+        data: { camera_id: 'cam-1', models: { epi: 'model-1', quality: null, counting: null } },
+      })
+      mocks.listModels.mockResolvedValue({ status: 'success', data: { models: [MODELO_INTERNO] } })
+
+      render(<CameraModelAssignment cameraId="cam-1" />)
+
+      const epiSelect = await screen.findByLabelText('Modelo do módulo EPI') as HTMLSelectElement
+      const opt = Array.from(epiSelect.options).find(o => o.value === 'model-1')!
+      expect(opt.textContent).toBe(`${MODELO_INTERNO.name} (mAP50 80%)`)
+      expect(screen.getByText('YOLOX')).toBeDefined()
+    })
   })
 })

@@ -22,6 +22,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Cpu } from 'lucide-react'
 import { countingService } from '../../services/countingService'
 import { trainingService } from '../../services/trainingService'
+import { nomeParaCliente } from '../../services/modelDisplay'
 import { useToast } from '../ui/Toast/useToast'
 import { useAuth } from '../../hooks/useAuth'
 import { Badge } from '../ui/Badge/Badge'
@@ -39,6 +40,8 @@ type ModuleKey = (typeof MODULES)[number]['key']
 interface ModelOption {
   id: string
   name?: string
+  /** Nome voltado ao cliente (migration 129) — ver `nomeParaCliente`. */
+  display_name?: string | null
   map50?: number | null
   /** trained_models.framework — "yolox" | "rfdetr" (task-083). */
   framework?: string | null
@@ -52,14 +55,16 @@ const FRAMEWORK_LABELS: Record<string, string> = {
   rfdetr: 'RF-DETR',
 }
 
-function modelLabel(m: ModelOption): string {
-  const name = m.name || `Modelo ${m.id.slice(0, 8)}`
+/** Nome interno (`name`) + framework: SÓ para superadmin (política F5-LEVE
+ * — cliente NUNCA vê stack interno). Tenant vê `nomeParaCliente`. */
+function modelLabel(m: ModelOption, isSuperAdmin: boolean): string {
+  const name = isSuperAdmin ? (m.name || `Modelo ${m.id.slice(0, 8)}`) : nomeParaCliente(m)
   return m.map50 != null ? `${name} (mAP50 ${(m.map50 * 100).toFixed(0)}%)` : name
 }
 
 export function CameraModelAssignment({ cameraId }: { cameraId: string }) {
   const toast = useToast()
-  const { isAdmin } = useAuth()
+  const { isAdmin, isSuperAdmin } = useAuth()
   const [assignment, setAssignment] = useState<ModelAssignment>(EMPTY_ASSIGNMENT)
   const [models, setModels] = useState<ModelOption[]>([])
   const [loading, setLoading] = useState(true)
@@ -144,7 +149,8 @@ export function CameraModelAssignment({ cameraId }: { cameraId: string }) {
               <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <span style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 6 }}>
                   {label}{savingModule === key ? ' — salvando...' : ''}
-                  {framework && <Badge variant="accent">{framework}</Badge>}
+                  {/* framework (YOLOX/RF-DETR) é stack interno — SÓ superadmin. */}
+                  {framework && isSuperAdmin && <Badge variant="accent">{framework}</Badge>}
                 </span>
                 <select
                   value={assignment[key] ?? ''}
@@ -156,7 +162,7 @@ export function CameraModelAssignment({ cameraId }: { cameraId: string }) {
                 >
                   <option value="">Modelo padrão</option>
                   {models.map(m => (
-                    <option key={m.id} value={m.id}>{modelLabel(m)}</option>
+                    <option key={m.id} value={m.id}>{modelLabel(m, isSuperAdmin)}</option>
                   ))}
                 </select>
               </div>

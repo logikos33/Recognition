@@ -225,18 +225,22 @@ class TrainingRepository(BaseRepository):
     def get_models_by_user(self, user_id: UUID) -> list[dict[str, Any]]:
         """Lista modelos do usuário, com dono (owner_name/owner_email).
 
-        SELECT explícito (todas as colunas da 003 + 052 + 090 + 098) — o JOIN
-        com users deriva o nome/email do dono via created_by (fallback
+        SELECT explícito (todas as colunas da 003 + 052 + 090 + 098 + 129) —
+        o JOIN com users deriva o nome/email do dono via created_by (fallback
         user_id). `framework` (migration 098 — "yolox"/"rfdetr") incluído
         para a UI mostrar o backend de detecção efetivo por modelo/câmera
         (task-083) — antes o payload não carregava essa informação e a tela
         de atribuição de modelo não tinha como exibi-la. `metrics` (JSONB,
         098) incluído pela task "treino honesto" (C2) — carrega o marcador
         {'simulated': true} pra artefatos simulados, além de `origin`.
+        `display_name` (migration 129, rebranding F5-LEVE) — nome voltado ao
+        cliente; NULL até alguém atribuir. `name`/`framework` continuam no
+        payload (SÓ para superadmin ler — o front decide a exibição).
         """
         return self._execute(
             """
-            SELECT tm.id, tm.user_id, tm.job_id, tm.name, tm.model_path,
+            SELECT tm.id, tm.user_id, tm.job_id, tm.name, tm.display_name,
+                   tm.model_path,
                    tm.map50, tm.precision, tm.recall, tm.is_active,
                    tm.created_at, tm.scenario_config,
                    tm.created_by, tm.origin, tm.tenant_id, tm.framework,

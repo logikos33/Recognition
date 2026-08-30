@@ -23,6 +23,7 @@ import { AlertTriangle, Play, RefreshCw, Square, Zap } from 'lucide-react'
 
 import { useAuth } from '../../hooks/useAuth'
 import { api, getToken } from '../../services/api'
+import { NOME_PADRAO_CLIENTE } from '../../services/modelDisplay'
 import { useToast } from '../../components/ui/Toast/useToast'
 import { useTrainingSocket } from '../../hooks/useTrainingSocket'
 import { InfoTooltip } from '../../components/ui/InfoTooltip/InfoTooltip'
@@ -54,13 +55,6 @@ interface CurrentJobStatus {
     metrics: Record<string, number>
     error?: string
   } | null
-}
-
-function displayModelName(name: string): string {
-  return name
-    .replace(/yolo26n/gi, 'LGKV26n')
-    .replace(/yolo26s/gi, 'LGKV26s')
-    .replace(/yolo26m/gi, 'LGKV26m')
 }
 
 function formatEta(seconds: number): string {
@@ -322,7 +316,10 @@ export function Treino() {
           <>
             <div className={s.linhaAoVivo}>
               {isRunning && <LogikosLoader variante="spinner" estado="waiting" />}
-              <span className={s.nomeJob}>{displayModelName(currentJob.model_size)}</span>
+              {/* TrainingJob não tem display_name (só trained_models tem,
+                  migration 129) — job em andamento é sempre o rótulo
+                  genérico do cliente; model_size ("yolo26n") é stack interno. */}
+              <span className={s.nomeJob}>{NOME_PADRAO_CLIENTE}</span>
               {isRunning && <span className={s.pilulaAoVivo}>AO VIVO</span>}
               <span className={pilulaDoStatus(currentJob.status)}>
                 {statusToLabel(currentJob.status, TRAINING_STATUS_OVERRIDES)}
@@ -421,7 +418,9 @@ export function Treino() {
               className={job.status === 'failed' ? `${s.historicoLinha} ${s.historicoLinhaFalhou}` : s.historicoLinha}
             >
               <span className={s.historicoNome}>
-                {displayModelName(job.model_size)} · {PRESET_LABELS[job.preset] ?? humanize(job.preset)}
+                {/* model_size ("yolo26n") é stack interno — nunca no cliente.
+                    job id curto substitui como distintivo entre entradas. */}
+                {NOME_PADRAO_CLIENTE} #{job.id.slice(0, 8)} · {PRESET_LABELS[job.preset] ?? humanize(job.preset)}
               </span>
               <span className={s.historicoData}>{fmtDate(job.created_at)}</span>
               <div className={s.espacador} />
