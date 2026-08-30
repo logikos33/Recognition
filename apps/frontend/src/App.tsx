@@ -2,6 +2,7 @@
  * App.tsx — routing e auth gate.
  * Max 100 linhas. Rotas em AppRoutes.tsx.
  */
+import { Suspense, lazy } from 'react'
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
 import { Login } from './pages/Login'
@@ -12,10 +13,16 @@ import { AppShell } from './components/layout/AppShell/AppShell'
 import { AppLayout } from './components/layout/AppLayout/AppLayout'
 import { ChatFAB } from './components/chat/ChatFAB'
 import { GlobalBanners } from './components/layout/GlobalBanners'
-import { PREFIXO_NOVO, ROTAS_NOVAS, ROTAS_NOVAS_SEM_SHELL } from './app/RotasNovas'
+import { PREFIXO_NOVO, ROTAS_NOVAS, ROTAS_NOVAS_SEM_SHELL, rotaNova } from './app/RotasNovas'
 import { Shell } from './app/shell/Shell'
 import { ThemeProvider } from './theme/ThemeProvider'
 import type { User } from './hooks/useAuth'
+
+// F5 SR2 — Acesso novo, ADITIVO ao ramo deslogado. Login/ForgotPasswordPage/
+// ResetPasswordPage acima seguem intocados e atendem o catch-all `*`.
+const Entrar = lazy(() => import('./app/acesso/Entrar').then((m) => ({ default: m.Entrar })))
+const EsqueciSenha = lazy(() => import('./app/acesso/EsqueciSenha').then((m) => ({ default: m.EsqueciSenha })))
+const RedefinirSenha = lazy(() => import('./app/acesso/RedefinirSenha').then((m) => ({ default: m.RedefinirSenha })))
 
 /**
  * O FAB do chat é `position: fixed` no canto inferior direito (chat.css.ts:9,
@@ -80,11 +87,16 @@ export default function App() {
   if (!isAuthenticated || !user) {
     return (
       <BrowserRouter>
-        <Routes>
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
-          <Route path="*" element={<Login />} />
-        </Routes>
+        <Suspense fallback={null}>
+          <Routes>
+            <Route path={rotaNova('/entrar')} element={<Entrar />} />
+            <Route path={rotaNova('/esqueci-senha')} element={<EsqueciSenha />} />
+            <Route path={rotaNova('/redefinir-senha')} element={<RedefinirSenha />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route path="*" element={<Login />} />
+          </Routes>
+        </Suspense>
       </BrowserRouter>
     )
   }

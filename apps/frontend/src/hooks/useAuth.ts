@@ -41,14 +41,18 @@ export function useAuth() {
     return user.permissions?.includes(permission) ?? false
   }
 
-  const login = useCallback(async (email: string, password: string): Promise<User> => {
+  const login = useCallback(async (
+    email: string, password: string, redirectTo = '/'
+  ): Promise<User> => {
     const res = await api.post<any>('/auth/login', { email, password })
     const { token, user } = res.data  // ✅ correto: res.data contém {token, user}
     setToken(token)
     localStorage.setItem('user', JSON.stringify(user))
     setUser(user)
-    // Reload para App.tsx ler do localStorage (hooks são instâncias separadas)
-    window.location.href = '/'
+    // Reload para App.tsx ler do localStorage (hooks são instâncias separadas).
+    // `redirectTo` default '/' preserva o Login antigo; a Entrar nova (F5 SR2)
+    // manda rotaNova('/') para cair no front novo pós-login.
+    window.location.href = redirectTo
     return user
   }, [])
 
