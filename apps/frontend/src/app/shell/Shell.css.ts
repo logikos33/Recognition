@@ -2,11 +2,43 @@
  * Shell Logikos Vision — TopBar 56 · sidebar 236/64 · banner admin 42+2.
  * Medidas do README do handoff, via token. Zero hex solto.
  */
-import { style } from '@vanilla-extract/css'
+import { assignVars, style } from '@vanilla-extract/css'
 
+import { vars } from '../../styles/theme.css'
 import { lk } from '../tokens/lk.css'
 
+/**
+ * F5-LEVE (identidade): componentes LEGADOS renderizados sob este shell
+ * (`CameraPlayer` via AoVivo, `TrainingGallery`/`CropClassifier` via
+ * Estúdio, ...) importam `vars.color.primary/primaryLight/primaryDark/
+ * primaryAlpha` do contrato antigo (`styles/theme.css.ts`). Esse contrato é
+ * aplicado em `document.documentElement` pelo `AppShell` (tema
+ * recognition-dark/cyberpunk/professional) — uma custom property de
+ * `<html>`, então ela cascateia para DENTRO do shell novo também, e o roxo
+ * do tema legado (professional/cyberpunk: `#8b5cf6`) vaza pra cá.
+ *
+ * Sobrescrever as quatro vars aqui, na raiz do shell novo, corta a herança
+ * pra este subtree inteiro — pinta com os tokens `lk` (ciano), sem tocar no
+ * tema antigo nem nos componentes legados em si. Remoção quando o legado
+ * morrer (`docs/migration/MANIFESTO-FRONT-ANTIGO.md`).
+ */
+export const paletaLkSobreTemaLegado = assignVars(
+  {
+    primary: vars.color.primary,
+    primaryLight: vars.color.primaryLight,
+    primaryDark: vars.color.primaryDark,
+    primaryAlpha: vars.color.primaryAlpha,
+  },
+  {
+    primary: lk.cor.cianoVisao,
+    primaryLight: lk.cor.cianoVisao,
+    primaryDark: lk.cor.cianoProfundo,
+    primaryAlpha: `color-mix(in srgb, ${lk.cor.cianoVisao} 12%, transparent)`,
+  },
+)
+
 export const raiz = style({
+  vars: paletaLkSobreTemaLegado,
   minHeight: '100vh',
   background: lk.cor.preto,
   color: lk.cor.brancoSinal,
