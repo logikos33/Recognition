@@ -11,19 +11,29 @@
  *
  * ─── A FILA — leia antes de mexer ────────────────────────────────────────────
  *
- * Já custou caro aqui (PRs 496, 500 e 487). As três regras que sobraram:
+ * Já custou caro aqui (PRs 496, 500, 487 e a fila que mentia sobre "N
+ * restantes" com dois revisores ao mesmo tempo — paridade §3). As regras que
+ * sobraram:
  *
- *  1. **Índice sobre lista local estável, nunca posição do servidor.** A fila
- *     local é APPEND-ONLY: item decidido NÃO sai dela e nada é reordenado
- *     depois de entrar. Remover o decidido faria o array encolher sob o índice
- *     — o "próximo" viraria o item errado, e o ← do desenho não teria para
- *     onde voltar.
- *  2. **Reabastecimento por dedup de id, jamais por OFFSET.** Decidir um alerta
- *     o tira do filtro `needs_human` no servidor: a próxima leitura da MESMA
- *     "página" já é outro conjunto. É a família exata do OFFSET que perdia 50%
- *     das linhas no PR 500. Quem separa "já está na fila" de "trabalho novo" é
- *     `anexarSemRepetir` — o mesmo mecanismo do estúdio de anotação, importado
- *     daqui e não reescrito.
+ *  1. **Nunca reordena o que já está na tela; remove só quem já não é meu
+ *     trabalho.** Item que EU decidi nesta sessão nunca sai (fica marcado —
+ *     regra do "carimba" abaixo). Item que sumiu do servidor e não fui eu quem
+ *     decidiu SAI — foi outra pessoa que revisou por fora, e deixá-lo na tela é
+ *     apresentar para julgar (de novo) o que já foi julgado, sobrescrevendo em
+ *     silêncio o veredito alheio. `carregar` só remove sob essa certeza (ver
+ *     regra 2). O índice nunca é um número cru sobre o array: `carregar`
+ *     recalcula a posição pelo ID do item que estava na tela — se um item ANTES
+ *     dele sai, o índice não pode ficar apontando pra o vizinho errado, que era
+ *     exatamente o bug do PR 496.
+ *  2. **Reabastecimento por dedup de id, jamais por OFFSET — e só remove sob
+ *     lote INTEIRO.** Decidir um alerta o tira do filtro `needs_human` no
+ *     servidor: a próxima leitura da MESMA "página" já é outro conjunto. É a
+ *     família exata do OFFSET que perdia 50% das linhas no PR 500. Quem separa
+ *     "já está na fila" de "trabalho novo" é `anexarSemRepetir` — o mesmo
+ *     mecanismo do estúdio de anotação, importado daqui e não reescrito. O
+ *     endpoint corta em `limit` e não pagina: um lote CHEIO não prova que quem
+ *     faltou foi revisado — pode estar só além do corte. Por isso a regra 1 só
+ *     remove quando o lote veio ABAIXO do limite; lote cheio não tira ninguém.
  *  3. **Listener sem closure velha.** O `keydown` é re-registrado quando o item
  *     corrente muda. Um handler preso ao render antigo é o "ref atrasado" do
  *     PR 496: a tecla C carimba veredito no item que já não está na tela.
@@ -178,7 +188,8 @@ export function Verificacao() {
   const podeLer = can('verification:read')
   const podeEscrever = can('verification:write')
 
-  // APPEND-ONLY. Ver regra 1 do cabeçalho: nada sai, nada reordena.
+  // Ver regra 1 do cabeçalho: item meu não sai; item de outro que sumiu do
+  // servidor sai (sob a certeza da regra 2).
   const [fila, setFila] = useState<ItemVerificacao[]>([])
   const [indice, setIndice] = useState(0)
   const [decididos, setDecididos] = useState<Record<string, Veredito>>({})
@@ -194,22 +205,25 @@ export function Verificacao() {
   // dado de treino; duplicar aqui suja o dataset em silêncio.
   const enviandoRef = useRef(false)
 
-  /**
-   * Alertas que a fila do servidor DEIXOU DE LISTAR — quase sempre porque
-   * outra pessoa já os revisou.
-   *
-   * A fila local é append-only de propósito (regra 1 do cabeçalho): remover
-   * encolheria o array sob o índice e o "próximo" viraria o item errado. Só que
-   * não remover, sozinho, deixa um buraco: o item some do servidor, continua na
-   * tela, é apresentado para julgar, e o veredito VAI. Dois vereditos humanos
-   * no mesmo alerta sujam dado de treino em silêncio — e quem carimbou por
-   * último nem fica sabendo que estava decidindo o que já estava decidido.
-   *
-   * Então ele fica na fila, na posição dele, mas marcado — e sem botão.
-   */
-  const [resolvidosPorOutro, setResolvidosPorOutro] = useState<Set<string>>(new Set())
-  /** Espelho da fila para leitura fora do render (ver `carregar`). */
+  // Espelhos para leitura fora do render, de dentro de `carregar`: é um
+  // useCallback estável (deps `[]`, como sempre foi) e não pode fechar sobre
+  // fila/índice/decididos/toast do render em que foi criado. `toast` também
+  // precisa de espelho — não é seguro assumir que ele é estável: entrar como
+  // dep recriaria `carregar` a cada valor novo, e o efeito de polling abaixo
+  // (que depende de `carregar`) desmontaria e chamaria `carregar()` nesse
+  // instante — se a própria chamada gerar um `toast` novo (como em qualquer
+  // dublê de teste que devolve `{ ...vi.fn() }` a cada render), isso realimenta
+  // o próprio gatilho e derruba o processo em OOM.
   const filaRef = useRef<ItemVerificacao[]>([])
+  const indiceRef = useRef(0)
+  const decididosRef = useRef<Record<string, Veredito>>({})
+  const toastRef = useRef(toast)
+  useEffect(() => {
+    filaRef.current = fila
+    indiceRef.current = indice
+    decididosRef.current = decididos
+    toastRef.current = toast
+  }, [fila, indice, decididos, toast])
 
   const carregar = useCallback(async () => {
     try {
@@ -217,25 +231,30 @@ export function Verificacao() {
         `/verification/queue?limit=${LIMITE}`,
       )
       const itens = res?.data?.items ?? []
+      const idsServidor = new Set(itens.map((i) => i.id))
 
-      // Só dá para concluir "sumiu do servidor" quando vimos a fila INTEIRA.
-      // O endpoint não pagina, mas corta em `limit`: se voltou cheio, o que
-      // não veio pode estar apenas além do corte, e marcar isso como "outra
-      // pessoa resolveu" seria mentira — tirando o botão de alertas que ainda
-      // precisam de veredito.
-      //
-      // Lido de `filaRef`, não de dentro de um updater de `setFila`: chamar
-      // outro setState lá dentro é efeito colateral em função que o React pode
-      // executar duas vezes.
-      if (itens.length < LIMITE) {
-        const noServidor = new Set(itens.map((i) => i.id))
-        setResolvidosPorOutro(
-          new Set(filaRef.current.filter((i) => !noServidor.has(i.id)).map((i) => i.id)),
+      // Lote CHEIO não prova nada sobre quem faltou (regra 2) — só remove
+      // abaixo do limite, e nunca remove o que EU decidi (regra 1).
+      const truncado = itens.length >= LIMITE
+      const idAntes = filaRef.current[indiceRef.current]?.id
+      const continuam = filaRef.current.filter(
+        (i) => truncado || idsServidor.has(i.id) || Boolean(decididosRef.current[i.id]),
+      )
+      // Ordena o LOTE, anexa sem repetir. Nunca reordena quem já ficou.
+      const nova = anexarSemRepetir(continuam, ordenarPorIncerteza(itens))
+
+      // O item na tela sumiu e não fui eu quem decidiu: outra pessoa revisou
+      // por fora enquanto o operador olhava para ele. Índice pelo ID, nunca
+      // pela posição crua — item removido ANTES dele encolheria o array.
+      const novoIndice = idAntes === undefined ? indiceRef.current : nova.findIndex((i) => i.id === idAntes)
+      if (idAntes !== undefined && novoIndice === -1) {
+        toastRef.current.info(
+          'Alerta já revisado',
+          'Outra pessoa decidiu este alerta enquanto ele estava aberto aqui.',
         )
       }
-
-      // Ordena o LOTE, anexa sem repetir. Nunca reordena o que já está na tela.
-      setFila((f) => anexarSemRepetir(f, ordenarPorIncerteza(itens)))
+      setFila(nova)
+      setIndice(novoIndice === -1 ? Math.min(indiceRef.current, Math.max(0, nova.length - 1)) : novoIndice)
       setErro(null)
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Erro ao carregar a fila')
@@ -253,10 +272,6 @@ export function Verificacao() {
     const id = setInterval(() => void carregar(), POLL_MS)
     return () => clearInterval(id)
   }, [carregar, podeLer])
-
-  useEffect(() => {
-    filaRef.current = fila
-  }, [fila])
 
   const atual = fila[indice]
   const pendentes = useMemo(
@@ -314,14 +329,11 @@ export function Verificacao() {
 
   const decidir = useCallback(
     async (verdict: Veredito) => {
-      // Não carimba o que já saiu da fila do servidor: seria um segundo
-      // veredito humano no mesmo alerta, e veredito é dado de treino.
+      // Item revisado por outro já saiu de `fila` em `carregar` — não há mais
+      // botão para clicar nele. O que resta aqui é honrar o erro do backend se
+      // mesmo assim ele recusar (corrida rara: revisão chegou entre o último
+      // poll e este clique) — nunca engolir em silêncio.
       if (!atual || !podeEscrever || enviandoRef.current) return
-      if (resolvidosPorOutro.has(atual.id) && !decididos[atual.id]) {
-        toast.info('Alerta já revisado', 'Outra pessoa decidiu este alerta enquanto ele estava aberto aqui.')
-        avancar()
-        return
-      }
       enviandoRef.current = true
       setEnviando(true)
       try {
@@ -337,7 +349,7 @@ export function Verificacao() {
         setEnviando(false)
       }
     },
-    [atual, avancar, decididos, podeEscrever, resolvidosPorOutro, toast],
+    [atual, avancar, podeEscrever, toast],
   )
 
   // ⚠️ Deps completas de propósito: o listener acompanha o item corrente. Um

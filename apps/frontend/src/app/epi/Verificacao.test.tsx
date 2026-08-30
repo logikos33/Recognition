@@ -203,21 +203,24 @@ describe('avanço da fila (PRs 496, 500, 487)', () => {
   it('reabastecimento ANEXA — não reordena a fila sob os olhos do operador', async () => {
     // PRs 487 e 500: o item decidido some do filtro `needs_human` no servidor, então
     // a leitura seguinte é OUTRO conjunto. Se o novo lote substituísse a fila (ou
-    // fosse reordenado por incerteza junto com ela), o item na tela mudaria
-    // sozinho no meio da decisão.
+    // fosse reordenado por incerteza junto com ela), a ordem mudaria sozinha no
+    // meio da decisão.
     vi.useFakeTimers()
     get.mockResolvedValueOnce(fila([A, B])) //      ordem local: B, A
-    get.mockResolvedValue(fila([A, item('z', 'no_helmet', 0.5)])) // z é MAIS duvidoso que tudo
-
     montar()
     await vi.waitFor(() => expect(screen.getByText('Sem colete')).toBeTruthy())
 
+    clicar(screen.getByRole('button', { name: /Confirmar/ })) // decide B, avança pra A
+    await vi.waitFor(() => expect(screen.getByText('Sem capacete')).toBeTruthy())
+
+    // Segunda leitura: B (já meu) some do servidor, e z (mais duvidoso que tudo) entra.
+    get.mockResolvedValue(fila([A, item('z', 'no_helmet', 0.5)]))
     await act(async () => {
       await vi.advanceTimersByTimeAsync(15_000)
     })
 
     // z entrou na fila, mas ATRÁS: o operador segue exatamente onde estava.
-    expect(screen.getByText('Sem colete')).toBeTruthy()
+    expect(screen.getByText('Sem capacete')).toBeTruthy()
     expect(get).toHaveBeenCalledTimes(2)
   })
 
@@ -427,39 +430,51 @@ describe('contrato do desenho', () => {
 // ── 5 · Alerta que outra pessoa já revisou ──────────────────────────────────
 
 describe('dois revisores ao mesmo tempo', () => {
-  it('não carimba veredito em alerta que saiu da fila do servidor', async () => {
-    // O achado: a fila local é append-only (regra 1), então item que outro
-    // operador revisou NUNCA sai daqui — segue contando em "N RESTANTES" e é
-    // apresentado para julgar. O veredito ia, e SOBRESCREVIA em silêncio o que
-    // a outra pessoa já tinha decidido. Dado de auditoria trocado sem ninguém
-    // saber, e com dois revisores isso acontece no primeiro dia.
+  it('item julgado por outro SOME da fila; o meu fica com o estado; a contagem reflete o servidor', async () => {
+    // O achado (paridade §3): a fila mentia sobre o que falta julgar — item
+    // que outro operador revisou nunca saía, seguia contando em "N RESTANTES"
+    // e era apresentado de novo para julgar, sobrescrevendo em silêncio o
+    // veredito alheio. Dado de auditoria trocado sem ninguém saber, e com dois
+    // revisores isso acontecia no primeiro dia.
     vi.useFakeTimers()
-    get.mockResolvedValueOnce(fila([B, C]))
+    get.mockResolvedValueOnce(fila([A, B, C])) // ordem local: B, C, A
     montar()
-    await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(screen.getByText('Sem colete')).toBeTruthy()) // B
+    expect(screen.getByText('3 RESTANTES')).toBeTruthy()
 
-    // Segunda leitura: B sumiu — alguém revisou por fora. Veio MENOS que o
-    // limite, então dá para concluir que sumiu (e não que ficou além do corte).
-    get.mockResolvedValueOnce(fila([C]))
-    await vi.advanceTimersByTimeAsync(15_000)
+    clicar(screen.getByRole('button', { name: /Confirmar/ })) // EU decido B
+    await vi.waitFor(() => expect(screen.getByText('Sem óculos')).toBeTruthy()) // avança pra C
+
+    // Segunda leitura: só A sobra no servidor. B sumiu porque EU decidi (não
+    // conta contra ninguém); C sumiu porque OUTRA PESSOA revisou por fora —
+    // veio abaixo do limite, então dá para concluir isso com segurança.
+    get.mockResolvedValueOnce(fila([A]))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000)
+    })
     await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(2))
 
-    // B continua na tela, na posição dele — a fila não encolhe sob o índice.
-    // Mas o veredito não pode ir.
-    post.mockClear()
-    tecla('c')
-    await vi.advanceTimersByTimeAsync(0)
-    expect(post).not.toHaveBeenCalled()
+    // C (do outro revisor) sumiu — nem sequer é mostrado de novo — e o
+    // operador foi avisado, sem precisar clicar em nada para descobrir.
+    expect(screen.queryByText('Sem óculos')).toBeNull()
     expect(toastInfo).toHaveBeenCalled()
+    // A contagem já não mente: só A falta julgar.
+    expect(screen.getByText('Sem capacete')).toBeTruthy()
+    expect(screen.getByText('1 RESTANTES')).toBeTruthy()
+
+    // B (o meu) continua na fila com o estado — ← ainda volta pra ele.
+    tecla('ArrowLeft')
+    await vi.waitFor(() => expect(screen.getByText('Sem colete')).toBeTruthy())
+    expect(screen.getByText('Confirmado')).toBeTruthy()
     vi.useRealTimers()
   })
 
-  it('lote CHEIO não marca ninguém: o que faltou pode estar além do corte', async () => {
+  it('lote CHEIO não remove ninguém: o que faltou pode estar além do corte', async () => {
     // O endpoint corta em `limit` e não pagina. Se o lote voltou COM o tamanho
     // do limite, o que não veio pode estar apenas além do corte — concluir ali
-    // "outra pessoa resolveu" seria mentira, e tiraria o botão de alertas que
-    // ainda precisam de veredito. É o caso que faz a guarda errar para o lado
-    // caro: travar trabalho legítimo.
+    // "outra pessoa resolveu" seria mentira, e tiraria da tela alertas que
+    // ainda precisam de veredito. É o caso que faz `carregar` errar para o
+    // lado caro: preservar trabalho legítimo em vez de escondê-lo.
     vi.useFakeTimers()
     const cheio = Array.from({ length: 50 }, (_, i) => item(`x${i}`, 'no_helmet', 0.6))
     get.mockResolvedValueOnce(fila(cheio))
