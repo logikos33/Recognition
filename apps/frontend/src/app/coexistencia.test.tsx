@@ -79,8 +79,20 @@ describe('front novo e front antigo convivem', () => {
     // erro, não quebra teste, não avisa nada — o usuário só vê, de repente, o
     // produto velho. Aconteceu em 10 lugares na primeira leva.
     //
-    // Todo link interno passa por `rotaNova()`. Este teste é quem cobra.
+    // F5-LEVE (identidade): achado de sonda pegou o MESMO bug em `navegar(...)`
+    // imperativo (`app/epi/Cameras.tsx`, botão "Operações") — `to="..."` só
+    // cobria `<Link>`/`<NavLink>` declarativos, não `useNavigate()` chamado na
+    // mão. A varredura abaixo cobre os dois: `to="/..."` / `to={`/...`}` E
+    // `navigate('/...')` / `navegar(`/...`)` (qualquer nome de variável do
+    // `useNavigate()` termina em "nav"/"navegar"/"navigate" neste código).
+    //
+    // Todo link/navegação interna passa por `rotaNova()`. Este teste é quem cobra.
     const infratores: string[] = []
+    // Exceção conhecida: `/login` é o portão deslogado, comum aos dois fronts
+    // — `App.tsx` troca a árvore INTEIRA pro Router sem Shell ao desautenticar
+    // (ver `aoSair` em `Shell.tsx`), então não é "cair no front antigo", é
+    // onde QUALQUER usuário deslogado cai, migrado ou não.
+    const EXCECOES = ['/login']
     const varre = (dir: string) => {
       for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
         const p = path.join(dir, e.name)
@@ -89,10 +101,14 @@ describe('front novo e front antigo convivem', () => {
         if (path.relative(SRC, p) === 'app/RotasNovas.tsx') continue
         fs.readFileSync(p, 'utf-8').split('\n').forEach((linha, i) => {
           // `to="/..."` ou to={`/...`} com caminho absoluto que não é o prefixo
-          const m = linha.match(/to=(?:"(\/[^"]*)"|\{`(\/[^`]*)`\})/)
-          const alvo = m?.[1] ?? m?.[2]
-          if (alvo && !alvo.startsWith('/novo')) {
-            infratores.push(`${path.relative(SRC, p)}:${i + 1}  to="${alvo}"`)
+          const mLink = linha.match(/to=(?:"(\/[^"]*)"|\{`(\/[^`]*)`\})/)
+          // `navigate('/...')` / `navegar('/...')` / `nav(`/...`)` imperativo
+          const mNav = linha.match(
+            /\b(?:navigate|navegar|nav)\(\s*(?:"(\/[^"]*)"|'(\/[^']*)'|`(\/[^`]*)`)/,
+          )
+          const alvo = mLink?.[1] ?? mLink?.[2] ?? mNav?.[1] ?? mNav?.[2] ?? mNav?.[3]
+          if (alvo && !alvo.startsWith('/novo') && !EXCECOES.includes(alvo)) {
+            infratores.push(`${path.relative(SRC, p)}:${i + 1}  ${alvo}`)
           }
         })
       }
@@ -100,7 +116,7 @@ describe('front novo e front antigo convivem', () => {
     varre(path.join(SRC, 'app'))
     expect(
       infratores,
-      'link absoluto sai do front novo e cai no antigo — use rotaNova():\n' +
+      'link/navigate absoluto sai do front novo e cai no antigo — use rotaNova():\n' +
         infratores.join('\n'),
     ).toEqual([])
   })

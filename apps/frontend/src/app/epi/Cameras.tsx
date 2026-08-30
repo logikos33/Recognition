@@ -112,6 +112,7 @@ import {
   type SiteHealth,
   type SiteStatus,
 } from '../../types/edge'
+import { rotaNova } from '../RotasNovas'
 import { lk } from '../tokens/lk.css'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import * as s from './Cameras.css'
@@ -1169,13 +1170,20 @@ export function Cameras() {
                 )}
                 <button
                   className={s.botaoSecundario}
-                  onClick={() => navegar(`/epi/cameras/${selecionada.id}/operations`)}
+                  onClick={() => navegar(rotaNova(`/epi/cameras/${selecionada.id}/operations`))}
                 >
                   <Settings2 size={13} strokeWidth={1.7} /> Operações
                 </button>
+                {/* Cenário ainda não foi migrado pro shell novo (não está em
+                    ROTAS_NOVAS) — navegação SPA com `rotaNova()` cairia num
+                    caminho sem rota nenhuma (nem novo, nem antigo). Sai do
+                    router com `window.location.href`, igual ao padrão
+                    `externo` de Modulos.tsx, até a tela ser migrada. */}
                 <button
                   className={s.botaoSecundario}
-                  onClick={() => navegar(`/epi/cameras/${selecionada.id}/scenario`)}
+                  onClick={() => {
+                    window.location.href = `/epi/cameras/${selecionada.id}/scenario`
+                  }}
                 >
                   <Frame size={13} strokeWidth={1.7} /> Cenário
                 </button>
