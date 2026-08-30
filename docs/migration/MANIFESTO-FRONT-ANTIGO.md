@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 386 arquivos, 64.895 linhas
+## Situação — 386 arquivos, 64.923 linhas
 
 | status | arquivos |
 |---|---:|
@@ -39,7 +39,7 @@ apagado não são a mesma coisa.
 
 | arquivo | status | migrado para | linhas |
 |---|---|---|---:|
-| `src/App.tsx` | `INFRA` | — | 112 |
+| `src/App.tsx` | `INFRA` | — | 140 |
 | `src/AppRoutes.tsx` | `INFRA` | — | 188 |
 | `src/components/annotation/AnnotationStudio.css.ts` | `INFRA` | — | 514 |
 | `src/components/annotation/AnnotationStudio.tsx` | `INFRA` | — | 1458 |

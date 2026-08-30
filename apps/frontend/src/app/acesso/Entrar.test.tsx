@@ -30,7 +30,7 @@ describe('Entrar — login do front novo', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Entrar' }))
     await waitFor(() =>
-      expect(login).toHaveBeenCalledWith('ana@rvb.com.br', 'segredo123', '/novo/'),
+      expect(login).toHaveBeenCalledWith('ana@rvb.com.br', 'segredo123', '/'),
     )
   })
 
@@ -65,6 +65,6 @@ describe('Entrar — login do front novo', () => {
   it('link "Esqueci minha senha" leva à tela nova de recuperação', () => {
     montar()
     const link = screen.getByText('Esqueci minha senha') as HTMLAnchorElement
-    expect(link.getAttribute('href')).toBe('/novo/esqueci-senha')
+    expect(link.getAttribute('href')).toBe('/esqueci-senha')
   })
 })

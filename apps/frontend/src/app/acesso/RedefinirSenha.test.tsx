@@ -70,7 +70,7 @@ describe('RedefinirSenha — redefinição do front novo', () => {
     preencher('abcdef', 'abcdef')
     fireEvent.click(botaoSalvar())
     const link = (await screen.findByText(/ir para o login/i)) as HTMLAnchorElement
-    expect(link.getAttribute('href')).toBe('/novo/entrar')
+    expect(link.getAttribute('href')).toBe('/entrar')
   })
 
   it('não exige "letras e números" — só o mínimo real de 6 chars é a barreira', () => {

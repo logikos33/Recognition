@@ -56,6 +56,6 @@ describe('EsqueciSenha — recuperação do front novo', () => {
   it('voltar ao login leva para a tela nova, não para a antiga', () => {
     montar()
     const link = screen.getByText(/voltar ao login/i) as HTMLAnchorElement
-    expect(link.getAttribute('href')).toBe('/novo/entrar')
+    expect(link.getAttribute('href')).toBe('/entrar')
   })
 })

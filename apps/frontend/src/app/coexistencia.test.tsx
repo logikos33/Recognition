@@ -86,17 +86,21 @@ describe('front novo e front antigo convivem', () => {
     expect(sombreadas, `sombreadas: ${[...sombreadas].join(', ')}`).toEqual(SOMBREADAS_DE_PROPOSITO)
   })
 
-  it('toda rota antiga que mudou de endereço no FLIP redireciona para a nova', () => {
-    // De-para do FLIP (29/08): a URL velha sai de circulação, mas quem tinha
-    // salva (favorito, link enviado) não pode cair em 404 — precisa de
-    // <Redireciona>/<RedirecionaAlerta> te levando para o endereço novo.
+  it('toda rota antiga demolida (PR-B) redireciona para a nova via rotaNova()', () => {
+    // PR-B (30/08) demoliu 6 telas antigas; AppRoutes.tsx virou
+    // <Redireciona para={rotaNova(...)}>/<AlertaRedirect> — quem tinha a URL
+    // salva (favorito, link enviado) não pode cair em 404. `rotaNova()` (não
+    // string crua) é o que faz o alvo acompanhar o flip sem editar esta rota
+    // de novo se o prefixo um dia voltar. `/epi/reports` fica de fora: não
+    // foi demolida nesta leva, `ReportsPage` continua viva ali.
     const appRoutes = leia('AppRoutes.tsx')
     const redirects = [
-      '<Route path="/epi/alerts" element={<Redireciona para="/epi/eventos" />} />',
-      '<Route path="/epi/alerts/:alertId" element={<RedirecionaAlerta />} />',
-      '<Route path="/epi/reports" element={<Redireciona para="/epi/relatorios" />} />',
-      '<Route path="/epi/verification" element={<Redireciona para="/epi/verificacao" />} />',
-      '<Route path="/epi/monitoring" element={<Redireciona para="/epi/live" />} />',
+      "<Route path=\"/epi/dashboard\" element={<Redireciona para={rotaNova('/epi/dashboard')} />} />",
+      "<Route path=\"/epi/cameras\" element={<Redireciona para={rotaNova('/epi/cameras')} />} />",
+      "<Route path=\"/epi/alerts\" element={<Redireciona para={rotaNova('/epi/eventos')} />} />",
+      '<Route path="/epi/alerts/:alertId" element={<AlertaRedirect />} />',
+      "<Route path=\"/epi/verification\" element={<Redireciona para={rotaNova('/epi/verificacao')} />} />",
+      "<Route path=\"/epi/monitoring\" element={<Redireciona para={rotaNova('/epi/live')} />} />",
     ]
     for (const linha of redirects) {
       expect(appRoutes, `esperado em AppRoutes.tsx: ${linha}`).toContain(linha)

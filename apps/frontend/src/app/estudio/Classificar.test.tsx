@@ -99,10 +99,10 @@ describe('Classificar (recorte a recorte do Estúdio)', () => {
     expect(screen.getByText('ajustar')).toBeTruthy()
   })
 
-  it('"Ajustar" → sair para propostas navega para /novo/estudio/dados?status=proposta_pendente', () => {
+  it('"Ajustar" → sair para propostas navega para /estudio/dados?status=proposta_pendente', () => {
     monta()
     fireEvent.click(screen.getByText('ajustar'))
     fireEvent.click(screen.getByText('sair-para-propostas'))
-    expect(navigateMock).toHaveBeenCalledWith('/novo/estudio/dados?status=proposta_pendente')
+    expect(navigateMock).toHaveBeenCalledWith('/estudio/dados?status=proposta_pendente')
   })
 })

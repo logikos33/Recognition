@@ -216,10 +216,10 @@ describe('Modelo — cenário e link de classes', () => {
     expect(wizard.props?.modelName).toBe('LGKV26m-epi-v12')
   })
 
-  it('link "Configurar Classes" vai para /novo/estudio/classes (rotaNova)', async () => {
+  it('link "Configurar Classes" vai para /estudio/classes (rotaNova)', async () => {
     responde([modelo()])
     monta()
     const link = (await screen.findByRole('link', { name: /configurar classes/i })) as HTMLAnchorElement
-    expect(link.getAttribute('href')).toBe('/novo/estudio/classes')
+    expect(link.getAttribute('href')).toBe('/estudio/classes')
   })
 })

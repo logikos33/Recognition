@@ -1,10 +1,10 @@
 /**
  * Regressão de COEXISTÊNCIA do ramo DESLOGADO (F5 SR2).
  *
- * As 3 rotas novas de acesso (`/novo/entrar`, `/novo/esqueci-senha`,
- * `/novo/redefinir-senha`) são ADITIVAS: precisam montar a tela nova, e
- * nenhuma rota desconhecida pode deixar de cair no Login antigo — ele
- * continua sendo o catch-all deslogado, intocado.
+ * As 3 rotas novas de acesso (`/entrar`, `/esqueci-senha`,
+ * `/redefinir-senha` — sem prefixo desde o FLIP, 29/08) são ADITIVAS:
+ * precisam montar a tela nova, e nenhuma rota desconhecida pode deixar de
+ * cair no Login antigo — ele continua sendo o catch-all deslogado, intocado.
  *
  * As telas em si (Entrar/EsqueciSenha/RedefinirSenha) já têm teste próprio;
  * aqui o alvo é só a FIAÇÃO de rota em App.tsx.
@@ -46,20 +46,20 @@ const App = (await import('./App')).default
 const irPara = (caminho: string) => window.history.pushState({}, '', caminho)
 
 describe('App — ramo deslogado (coexistência F5 SR2)', () => {
-  it('/novo/entrar monta a tela NOVA de login', async () => {
-    irPara('/novo/entrar')
+  it('/entrar monta a tela NOVA de login', async () => {
+    irPara('/entrar')
     render(<App />)
     expect(await screen.findByText('ENTRAR-NOVO')).toBeTruthy()
   })
 
-  it('/novo/esqueci-senha monta a tela NOVA de recuperação', async () => {
-    irPara('/novo/esqueci-senha')
+  it('/esqueci-senha monta a tela NOVA de recuperação', async () => {
+    irPara('/esqueci-senha')
     render(<App />)
     expect(await screen.findByText('ESQUECI-NOVO')).toBeTruthy()
   })
 
-  it('/novo/redefinir-senha monta a tela NOVA de redefinição', async () => {
-    irPara('/novo/redefinir-senha?token=abc')
+  it('/redefinir-senha monta a tela NOVA de redefinição', async () => {
+    irPara('/redefinir-senha?token=abc')
     render(<App />)
     expect(await screen.findByText('REDEFINIR-NOVO')).toBeTruthy()
   })
