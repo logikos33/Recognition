@@ -8,6 +8,7 @@
  *   GET  /api/verification/queue              → fila sem veredito do tenant (verdict IS NULL)
  *   POST /api/verification/<alert_id>/review  → veredito humano
  *   GET  /api/alerts/<alert_id>/snapshot      → URL assinada da evidência
+ *   PATCH /api/alerts/<alert_id>/violations   → correção de caixa (ver bloco abaixo)
  *
  * ─── A FILA — leia antes de mexer ────────────────────────────────────────────
  *
@@ -78,6 +79,34 @@
  * aplicada UMA VEZ, no servidor** — nunca de novo no cliente, nunca à fila
  * que já está na tela (regra 1).
  *
+ * ─── LUPA (pan+zoom) E CORREÇÃO DE CAIXA (contrato B1) ───────────────────────
+ *
+ * Duas peças reusadas, não reescritas:
+ *  · `pages/epi/lupaEvidencia.ts` — `proximoEstado()`, estado puro de
+ *    zoom+pan com clamp (roda, arrasto, pinça). Mesma origem de
+ *    `EventoDetalhe.tsx`.
+ *  · `components/annotation/boxGeometry.ts` — mover/redimensionar por 8
+ *    alças, mesma matemática do Estúdio de Anotação.
+ *
+ * `PATCH /alerts/<id>/violations` é o MESMO endpoint de `EventoDetalhe.tsx`:
+ * só o `bbox` (pixels do frame original) vai ao servidor — ele carimba
+ * `bbox_unidade` e preserva `class`/`confidence` (corrigir POSIÇÃO não é
+ * porta para reescrever CLASSE). A autoria (ADR-0066: "a caixa diz quem a
+ * desenhou") volta em `correcao_ultima` e é mostrada com NOME, nunca UUID cru
+ * — mesmo tratamento de `EventoDetalhe.tsx`.
+ *
+ * Enquanto uma caixa está em edição (`selecionada !== null`), os atalhos de
+ * fila (← → C R) ficam mudos — só Escape cancela. Editar é modo EXPLÍCITO
+ * (botão "Corrigir caixa"); um "C" digitado no meio de um arrasto não pode
+ * carimbar veredito e abandonar a correção em curso.
+ *
+ * ponytail: a cola de pan+zoom+correção-de-caixa (handlers de ponteiro, wheel,
+ * conversão px↔normalizado) é uma cópia physical de `EventoDetalhe.tsx` — as
+ * duas telas repetem ~80 linhas de glue porque cada uma tem seu próprio JSX/
+ * CSS de palco. Se uma TERCEIRA tela precisar do mesmo par lupa+caixa, vale
+ * extrair um hook (`useLupaECaixa`); com duas, extrair agora seria abstração
+ * para um caso que ainda não existe.
+ *
  * ─── PARA O DESIGN / PARA O BACKEND ─────────────────────────────────────────
  *
  *  · **"Enviar para anotação · Estúdio" (tecla A) não tem endpoint.** Varri as
@@ -94,16 +123,26 @@
  *  · A evidência precisa de uma segunda chamada (`/alerts/<id>/snapshot`): a
  *    fila devolve `evidence_key`, não URL assinada. Se o design quiser uma
  *    chamada só, o pedido ao backend é `evidence_url` no item da fila.
+ *  · **Correção de caixa** só cobre a detecção PRINCIPAL (`desenhaveis[0]`) —
+ *    o desenho desta tela não lista múltiplas detecções por item (diferente
+ *    de `EventoDetalhe.tsx`); se um alerta com várias violações precisar
+ *    corrigir mais de uma, o pedido ao design é uma lista igual à do detalhe.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle, ArrowLeft, ArrowRight, Check, ImageOff, Lock, Minus, PenLine, Plus,
-  ShieldCheck, X,
+  ShieldCheck, SquarePen, X,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { anexarSemRepetir } from '../../components/annotation/studioQueue'
+import { HANDLES, boxFromDrag, clamp, moveBox, resizeBox, type HandleId } from '../../components/annotation/boxGeometry'
+import type { Box } from '../../components/annotation/studioTypes'
 import { useAuth } from '../../hooks/useAuth'
+import {
+  ESCALA_MAX, ESCALA_MIN, LUPA_INICIAL, distanciaEntre, proximoEstado,
+  type EventoLupa, type Palco,
+} from '../../pages/epi/lupaEvidencia'
 import { api } from '../../services/api'
 import { useToast } from '../../components/ui/Toast/useToast'
 import { labelForClass, MOTIVOS_VERIFICACAO, type MotivoVerificacao } from '../../utils/labels'
@@ -115,13 +154,19 @@ import { rotaNova } from '../RotasNovas'
 const BBOX_PIXELS = 'pixels_xywh_frame_original'
 
 type Veredito = 'approve' | 'reject'
+type Bbox = [number, number, number, number]
 
 interface Violacao {
   class: string
   confidence?: number
-  bbox?: [number, number, number, number]
+  bbox?: Bbox
   bbox_unidade?: string
 }
+
+/** Última correção de caixa registrada no ledger append-only do alerta
+ *  (`violations_historico` no backend, ver `_ultima_correcao`) — mesmo
+ *  formato de `EventoDetalhe.tsx`. */
+interface Correcao { por: string | null; por_nome?: string | null; em: string | null }
 
 export interface ItemVerificacao {
   id: string
@@ -134,6 +179,7 @@ export interface ItemVerificacao {
   evidence_key?: string | null
   created_at?: string | null
   timestamp?: string | null
+  correcao_ultima?: Correcao | null
 }
 
 /** Envelope de `GET /verification/queue`. `total` é a contagem REAL do
@@ -173,7 +219,7 @@ export function ordenarPorIncerteza(itens: readonly ItemVerificacao[]): ItemVeri
 
 /** bbox = [x, y, w, h] em pixels do frame ORIGINAL → % sobre a <img>. */
 function caixaEmPorcento(
-  [x, y, w, h]: [number, number, number, number],
+  [x, y, w, h]: Bbox,
   natW: number,
   natH: number,
 ) {
@@ -181,9 +227,10 @@ function caixaEmPorcento(
   return { left: pct(x, natW), top: pct(y, natH), width: pct(w, natW), height: pct(h, natH) }
 }
 
-/** Recorte da detecção: a MESMA imagem, enquadrada na caixa por background. */
+/** Recorte da detecção: a MESMA imagem, enquadrada na caixa por background.
+ *  ⛔ NÃO MEXER na aparência — o cliente elogiou este bloco explicitamente. */
 function estiloRecorte(
-  [x, y, w, h]: [number, number, number, number],
+  [x, y, w, h]: Bbox,
   natW: number,
   natH: number,
   url: string,
@@ -208,9 +255,50 @@ function classeDe(item: ItemVerificacao): string {
   return item.class_name ?? item.violations?.[0]?.class ?? '—'
 }
 
-const ZOOM_MIN = 1
-const ZOOM_MAX = 3
-const ZOOM_PASSO = 0.5
+const dataHora = (iso?: string | null) => (iso ? new Date(iso).toLocaleString('pt-BR') : '—')
+
+/** bbox px (frame original) → caixa normalizada de `boxGeometry.ts` (mesma
+ *  matemática — centro + dimensões, 0–1 — do Estúdio de Anotação e de
+ *  `EventoDetalhe.tsx`). Mover e redimensionar por alça não são reescritos
+ *  aqui, só convertidos na fronteira do arrasto. */
+function bboxParaBox([x, y, w, h]: Bbox, natW: number, natH: number): Box {
+  return {
+    id: 'correcao', classId: 0,
+    xCenter: (x + w / 2) / natW, yCenter: (y + h / 2) / natH,
+    width: w / natW, height: h / natH,
+  }
+}
+
+/** Caminho de volta: caixa normalizada → bbox px (frame original), arredondado. */
+function boxParaBbox(b: Box, natW: number, natH: number): Bbox {
+  return [
+    Math.round((b.xCenter - b.width / 2) * natW),
+    Math.round((b.yCenter - b.height / 2) * natH),
+    Math.round(b.width * natW),
+    Math.round(b.height * natH),
+  ]
+}
+
+/** Modo do arrasto em curso sobre a caixa de correção — desenhar do zero,
+ *  mover a caixa inteira, ou redimensionar por uma das 8 alças. */
+type InteracaoCaixa =
+  | { modo: 'desenhar'; x0: number; y0: number }
+  | { modo: 'mover'; offX: number; offY: number }
+  | { modo: 'redimensionar'; alca: HandleId; inicio: Box }
+
+/** Posição de cada alça — mesmo layout de `EventoDetalhe.tsx`. Tamanho real
+ *  vem inline (contra-escala do zoom). */
+const ALCA_POS: Record<HandleId, React.CSSProperties> = {
+  nw: { left: '-6px', top: '-6px', cursor: 'nwse-resize' },
+  n: { left: 'calc(50% - 5.5px)', top: '-6px', cursor: 'ns-resize' },
+  ne: { right: '-6px', top: '-6px', cursor: 'nesw-resize' },
+  e: { right: '-6px', top: 'calc(50% - 5.5px)', cursor: 'ew-resize' },
+  se: { right: '-6px', bottom: '-6px', cursor: 'nwse-resize' },
+  s: { left: 'calc(50% - 5.5px)', bottom: '-6px', cursor: 'ns-resize' },
+  sw: { left: '-6px', bottom: '-6px', cursor: 'nesw-resize' },
+  w: { left: '-6px', top: 'calc(50% - 5.5px)', cursor: 'ew-resize' },
+}
+
 /** Mesmo intervalo do front antigo — é assim que alerta novo entra na fila. */
 const POLL_MS = 15_000
 const LIMITE = 50
@@ -220,6 +308,7 @@ export function Verificacao() {
   const toast = useToast()
   const podeLer = can('verification:read')
   const podeEscrever = can('verification:write')
+  const podeCorrigir = can('alerts:feedback')
 
   // Ver regra 1 do cabeçalho: item meu não sai; item de outro que sumiu do
   // servidor sai (sob a certeza da regra 2).
@@ -236,7 +325,6 @@ export function Verificacao() {
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
-  const [zoom, setZoom] = useState(ZOOM_MIN)
   // Motivo estruturado do veredito (contrato B2) — obrigatório pra rejeitar,
   // opcional pra confirmar. Reseta a cada item novo (ver efeito abaixo):
   // motivo escolhido para o item anterior não pode vazar pro próximo.
@@ -249,6 +337,28 @@ export function Verificacao() {
   // MESMO tick leem `false` nas duas — dois POST, dois carimbos. Veredito é
   // dado de treino; duplicar aqui suja o dataset em silêncio.
   const enviandoRef = useRef(false)
+
+  // ── lupa (pan + zoom) ────────────────────────────────────────────────────
+  // Estado puro em `lupaEvidencia.ts` — REUSADO, não reescrito (contrato B1).
+  const palcoRef = useRef<HTMLDivElement>(null)
+  const imgRef = useRef<HTMLImageElement>(null)
+  const [lupa, setLupa] = useState(LUPA_INICIAL)
+  // O listener de wheel é registrado uma vez (precisa ser não-passivo); o ref
+  // dá a ele o estado atual sem re-registrar.
+  const lupaRef = useRef(lupa)
+  lupaRef.current = lupa
+  const ponteiros = useRef(new Map<number, { x: number; y: number }>())
+  const distPinca = useRef(0)
+
+  // ── correção de caixa ────────────────────────────────────────────────────
+  // Mesmo contrato de `EventoDetalhe.tsx` (`PATCH /alerts/:id/violations`),
+  // migrado aqui para o alerta CORRENTE da fila.
+  const [selecionada, setSelecionada] = useState<number | null>(null)
+  const [rascunho, setRascunho] = useState<Bbox | null>(null)
+  const [salvandoCaixa, setSalvandoCaixa] = useState(false)
+  const [erroCaixa, setErroCaixa] = useState<string | null>(null)
+  /** Arrasto EM CURSO — não precisa de re-render, só de leitura no próximo pointermove. */
+  const interacaoCaixa = useRef<InteracaoCaixa | null>(null)
 
   // Espelhos para leitura fora do render, de dentro de `carregar`: é um
   // useCallback estável (deps `[]`, como sempre foi) e não pode fechar sobre
@@ -355,9 +465,20 @@ export function Verificacao() {
 
   // Evidência do item corrente. A fila entrega `evidence_key`; a URL assinada
   // vem de /alerts/<id>/snapshot. Cache por id: voltar com ← não repede.
+  // Item novo também reseta lupa e correção de caixa em curso — nenhum dos
+  // dois pode sobreviver para o próximo alerta da fila.
+  //
+  // ⚠️ Dep é `atual?.id`, NUNCA o objeto `atual` inteiro: `salvarCaixa` chama
+  // `setFila` com um NOVO objeto para o item corrigido (mesmo id, violations
+  // atualizadas) — se a dep fosse `atual`, esse `setNatural(null)` disparava
+  // de novo aqui, e como a <img> não recarrega (mesmo `src`), `onLoad` nunca
+  // mais dispara e a caixa recém-salva ficava invisível para sempre.
   useEffect(() => {
-    setZoom(ZOOM_MIN)
+    setLupa(LUPA_INICIAL)
     setNatural(null)
+    setSelecionada(null)
+    setRascunho(null)
+    setErroCaixa(null)
     if (!atual) {
       setUrlEvidencia(null)
       return
@@ -389,7 +510,8 @@ export function Verificacao() {
     return () => {
       vivo = false
     }
-  }, [atual])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ver comentário acima: dep é a IDENTIDADE, não o objeto.
+  }, [atual?.id])
 
   // Item novo na tela → motivo do item anterior não pode vazar (change-of-mind
   // num item já decidido é a única razão legítima de o motivo persistir, e aí
@@ -448,15 +570,46 @@ export function Verificacao() {
     [atual, avancar, podeEscrever, toast, motivo],
   )
 
+  // ── correção de caixa: handlers ──────────────────────────────────────────
+
+  const bboxDe = useCallback(
+    (i: number | null): Bbox | null => (i === null ? null : atual?.violations?.[i]?.bbox ?? null),
+    [atual],
+  )
+
+  const iniciarCorrecao = useCallback(
+    (i: number) => {
+      setSelecionada(i)
+      setRascunho(bboxDe(i))
+      setErroCaixa(null)
+    },
+    [bboxDe],
+  )
+
+  const cancelarCorrecao = useCallback(() => {
+    setSelecionada(null)
+    setRascunho(null)
+    setErroCaixa(null)
+  }, [])
+
   // ⚠️ Deps completas de propósito: o listener acompanha o item corrente. Um
   // handler preso ao primeiro render é o "ref atrasado" do PR 496 — a tecla C
-  // carimbaria veredito num alerta que já saiu da tela.
+  // carimbaria veredito num alerta que já saiu da tela. Em modo de correção
+  // de caixa (`selecionada !== null`) os atalhos de fila ficam mudos — só
+  // Escape cancela (ver docblock do topo: editar é modo explícito).
   useEffect(() => {
     if (!atual) return
     const aoTeclar = (e: KeyboardEvent) => {
       const alvo = e.target as HTMLElement | null
       if (alvo && /^(INPUT|TEXTAREA|SELECT)$/.test(alvo.tagName)) return
       if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (selecionada !== null) {
+        if (e.key === 'Escape') {
+          cancelarCorrecao()
+          e.preventDefault()
+        }
+        return
+      }
       const k = e.key.toLowerCase()
       if (e.key === 'ArrowRight') avancar()
       else if (e.key === 'ArrowLeft') voltar()
@@ -467,7 +620,195 @@ export function Verificacao() {
     }
     window.addEventListener('keydown', aoTeclar)
     return () => window.removeEventListener('keydown', aoTeclar)
-  }, [atual, avancar, voltar, decidir])
+  }, [atual, avancar, voltar, decidir, selecionada, cancelarCorrecao])
+
+  // ── lupa: medir, despachar, âncora ───────────────────────────────────────
+
+  const medir = useCallback((): { rect: DOMRect; palco: Palco } | null => {
+    const el = palcoRef.current
+    if (!el) return null
+    const rect = el.getBoundingClientRect()
+    return { rect, palco: { largura: rect.width, altura: rect.height } }
+  }, [])
+
+  const despachar = useCallback((ev: EventoLupa, palco: Palco) => {
+    setLupa((prev) => proximoEstado(prev, ev, palco))
+  }, [])
+
+  /** Âncora relativa ao CENTRO do palco — `transformOrigin: center` assume isso. */
+  const ancorar = (rect: DOMRect, clientX: number, clientY: number) => ({
+    ancoraX: clientX - (rect.left + rect.width / 2),
+    ancoraY: clientY - (rect.top + rect.height / 2),
+  })
+
+  useEffect(() => {
+    const el = palcoRef.current
+    if (!el) return
+    const onWheel = (ev: WheelEvent) => {
+      // Já no piso e afastando: NÃO sequestra a roda — a página rola normal.
+      if (lupaRef.current.escala === ESCALA_MIN && ev.deltaY > 0) return
+      ev.preventDefault() // exige passive:false; o onWheel do React é passivo.
+      const m = medir()
+      if (!m) return
+      despachar(
+        { tipo: 'zoom', fator: ev.deltaY < 0 ? 1.15 : 1 / 1.15, ...ancorar(m.rect, ev.clientX, ev.clientY) },
+        m.palco,
+      )
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [despachar, medir, urlEvidencia])
+
+  /**
+   * Ponto do cursor → coordenadas NORMALIZADAS (0–1) do frame, para a
+   * matemática de `boxGeometry.ts`. O rect vem da <img>, não do palco: a
+   * imagem está dentro da camada com `transform` da lupa — só o rect medido
+   * reflete escala e pan.
+   */
+  const pontoNormalizado = (clientX: number, clientY: number) => {
+    const img = imgRef.current
+    if (!img) return null
+    const r = img.getBoundingClientRect()
+    if (!r.width || !r.height) return null
+    return { x: clamp((clientX - r.left) / r.width, 0, 1), y: clamp((clientY - r.top) / r.height, 0, 1) }
+  }
+
+  const aoDescerPonteiro = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (selecionada !== null) {
+      // Alças e a caixa de correção têm o próprio onPointerDown (com
+      // stopPropagation) — só chega aqui quem começou fora delas, e isso
+      // sempre é DESENHAR uma caixa nova.
+      const pos = pontoNormalizado(e.clientX, e.clientY)
+      if (pos) interacaoCaixa.current = { modo: 'desenhar', x0: pos.x, y0: pos.y }
+      return
+    }
+    ponteiros.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (ponteiros.current.size === 2) distPinca.current = distanciaEntre([...ponteiros.current.values()])
+    // Opcional: jsdom (testes) não implementa `setPointerCapture` — sem a
+    // chamada, o navegador real perde só o "seguir o ponteiro fora do
+    // elemento" em arrastos muito rápidos, não a funcionalidade de pan.
+    e.currentTarget.setPointerCapture?.(e.pointerId)
+  }
+
+  const aoMoverPonteiro = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (selecionada !== null) {
+      const interacao = interacaoCaixa.current
+      if (!interacao || !natural) return
+      const pos = pontoNormalizado(e.clientX, e.clientY)
+      if (!pos) return
+      if (interacao.modo === 'desenhar') {
+        const caixa = boxFromDrag(interacao.x0, interacao.y0, pos.x, pos.y, 0, 'correcao')
+        // Arrasto pequeno demais (clique acidental) não sobrescreve o rascunho.
+        if (caixa) setRascunho(boxParaBbox(caixa, natural.w, natural.h))
+      } else if (interacao.modo === 'mover') {
+        setRascunho((atualR) => {
+          if (!atualR) return atualR
+          const caixa = moveBox(bboxParaBox(atualR, natural.w, natural.h), pos.x - interacao.offX, pos.y - interacao.offY)
+          return boxParaBbox(caixa, natural.w, natural.h)
+        })
+      } else {
+        setRascunho(boxParaBbox(resizeBox(interacao.inicio, interacao.alca, pos.x, pos.y), natural.w, natural.h))
+      }
+      return
+    }
+    const anterior = ponteiros.current.get(e.pointerId)
+    if (!anterior) return
+    ponteiros.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    const m = medir()
+    if (!m) return
+    const pontos = [...ponteiros.current.values()]
+    if (pontos.length >= 2) {
+      // Pinça: fator = variação da distância, âncora no ponto médio.
+      const nova = distanciaEntre(pontos)
+      if (distPinca.current > 0 && nova > 0) {
+        const meio = { x: (pontos[0].x + pontos[1].x) / 2, y: (pontos[0].y + pontos[1].y) / 2 }
+        despachar({ tipo: 'zoom', fator: nova / distPinca.current, ...ancorar(m.rect, meio.x, meio.y) }, m.palco)
+      }
+      distPinca.current = nova
+      return
+    }
+    // Em escala 1 o limite de pan é 0: arrastar já é inócuo, sem guarda extra.
+    despachar({ tipo: 'arrastar', dx: e.clientX - anterior.x, dy: e.clientY - anterior.y }, m.palco)
+  }
+
+  const aoSoltarPonteiro = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (selecionada !== null) {
+      interacaoCaixa.current = null
+      return
+    }
+    ponteiros.current.delete(e.pointerId)
+    distPinca.current = 0
+  }
+
+  const aoDuploClique = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (selecionada !== null) return
+    const m = medir()
+    if (!m) return
+    if (lupaRef.current.escala >= ESCALA_MAX) {
+      despachar({ tipo: 'reset' }, m.palco)
+      return
+    }
+    despachar({ tipo: 'zoom', fator: 2, ...ancorar(m.rect, e.clientX, e.clientY) }, m.palco)
+  }
+
+  const zoomBotao = (fator: number) => {
+    const m = medir()
+    if (m) despachar({ tipo: 'zoom', fator, ancoraX: 0, ancoraY: 0 }, m.palco)
+  }
+
+  /** Alça (redimensionar). `stopPropagation`: sem ele o pointerdown também
+   *  cairia no palco e reiniciaria um DESENHO por cima. */
+  const aoDescerAlca = (e: React.PointerEvent<HTMLSpanElement>, alca: HandleId) => {
+    e.stopPropagation()
+    if (!rascunho || !natural) return
+    interacaoCaixa.current = { modo: 'redimensionar', alca, inicio: bboxParaBox(rascunho, natural.w, natural.h) }
+  }
+
+  /** Corpo da caixa de correção: arrastar MOVE, não redesenha. */
+  const aoDescerCaixa = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.stopPropagation()
+    if (!rascunho || !natural) return
+    const pos = pontoNormalizado(e.clientX, e.clientY)
+    if (!pos) return
+    const caixa = bboxParaBox(rascunho, natural.w, natural.h)
+    interacaoCaixa.current = { modo: 'mover', offX: pos.x - caixa.xCenter, offY: pos.y - caixa.yCenter }
+  }
+
+  /**
+   * `PATCH /alerts/:id/violations` — mesmo contrato de `EventoDetalhe.tsx`. O
+   * servidor carimba a unidade (BBOX_PIXELS) e guarda o array anterior
+   * INTEIRO em `violations_historico` — nada se perde, só se acrescenta.
+   */
+  const salvarCaixa = async () => {
+    if (selecionada === null || !rascunho || !atual) return
+    setSalvandoCaixa(true)
+    setErroCaixa(null)
+    const alertaId = atual.id
+    try {
+      const res = await api.patch<{ data?: { violations: Violacao[]; correcao_ultima: Correcao | null } }>(
+        `/alerts/${alertaId}/violations`,
+        { correcoes: [{ index: selecionada, bbox: rascunho }] },
+      )
+      const d = res.data
+      if (d) {
+        // Por ID, nunca por posição crua: a fila pode reordenar (poll de 15s,
+        // outro revisor decidindo em paralelo) enquanto este PATCH está em
+        // voo — carimbar por índice congelado antes do await escreve a
+        // correção e a autoria no alerta ERRADO (achado do revisor cético,
+        // contrato B1 — mesma família de bug do PR 496, agora em `salvarCaixa`).
+        setFila((f) =>
+          f.map((it) =>
+            it.id === alertaId ? { ...it, violations: d.violations, correcao_ultima: d.correcao_ultima } : it,
+          ),
+        )
+      }
+      cancelarCorrecao()
+    } catch {
+      setErroCaixa('Não foi possível salvar a caixa.')
+    } finally {
+      setSalvandoCaixa(false)
+    }
+  }
 
   if (!podeLer) {
     return (
@@ -527,14 +868,18 @@ export function Verificacao() {
   const classe = classeDe(atual)
   const rotuloClasse = labelForClass(classe)
   const vereditoAtual = decididos[atual.id]
-  const desenhaveis = (atual.violations ?? []).filter(
-    (v) => v.bbox && v.bbox_unidade === BBOX_PIXELS,
-  )
-  const semUnidade = (atual.violations ?? []).filter(
-    (v) => v.bbox && v.bbox_unidade !== BBOX_PIXELS,
-  ).length
+  const violacoesTodas = atual.violations ?? []
+  const desenhaveis = violacoesTodas.filter((v) => v.bbox && v.bbox_unidade === BBOX_PIXELS)
+  const semUnidade = violacoesTodas.filter((v) => v.bbox && v.bbox_unidade !== BBOX_PIXELS).length
+  const indexPrincipal = violacoesTodas.findIndex((v) => v.bbox && v.bbox_unidade === BBOX_PIXELS)
   const principal = desenhaveis[0]?.bbox
   const confianca = atual.confidence ?? atual.violations?.[0]?.confidence
+
+  // Fora do modo de correção: caixas de leitura, `pointerEvents: none` (lei
+  // da casa) — nunca alvo de clique. Em modo de correção: a caixa "ONDE A IA
+  // MARCOU" (tracejada) + a caixa editável (sólida, com alças).
+  const emCorrecao = selecionada !== null
+  const iaBbox = emCorrecao && indexPrincipal >= 0 ? violacoesTodas[indexPrincipal]?.bbox ?? null : null
 
   return (
     <div className={s.pagina}>
@@ -566,11 +911,27 @@ export function Verificacao() {
       </div>
 
       <div className={s.palco}>
-        <div className={s.evidencia}>
+        <div
+          className={s.evidencia}
+          ref={palcoRef}
+          role="group"
+          aria-label="Frame da evidência. Roda do mouse para ampliar, arrastar para deslocar."
+          onPointerDown={aoDescerPonteiro}
+          onPointerMove={aoMoverPonteiro}
+          onPointerUp={aoSoltarPonteiro}
+          onPointerCancel={aoSoltarPonteiro}
+          onDoubleClick={aoDuploClique}
+          style={urlEvidencia ? { cursor: lupa.escala > ESCALA_MIN ? 'grab' : 'zoom-in' } : undefined}
+        >
           {urlEvidencia ? (
-            <div className={s.camadaZoom} style={{ transform: `scale(${zoom})` }}>
+            <div
+              className={s.camadaZoom}
+              data-testid="camada-zoom"
+              style={{ transform: `translate(${lupa.x}px, ${lupa.y}px) scale(${lupa.escala})` }}
+            >
               <span className={s.quadro}>
                 <img
+                  ref={imgRef}
                   className={s.imagem}
                   src={urlEvidencia}
                   alt={`Evidência de ${rotuloClasse}`}
@@ -582,23 +943,64 @@ export function Verificacao() {
                     }
                   }}
                 />
-                {natural &&
+                {natural && !emCorrecao &&
                   desenhaveis.map((v, i) => (
                     <span
                       key={i}
                       data-testid="caixa-violacao"
                       className={s.caixa}
-                      style={caixaEmPorcento(
-                        v.bbox as [number, number, number, number],
-                        natural.w,
-                        natural.h,
-                      )}
+                      style={caixaEmPorcento(v.bbox as Bbox, natural.w, natural.h)}
                     >
                       <span className={s.caixaRotulo}>
                         {labelForClass(v.class).toUpperCase()}
                       </span>
                     </span>
                   ))}
+
+                {natural && emCorrecao && (
+                  <>
+                    {iaBbox && (
+                      <div
+                        className={s.caixaIA}
+                        style={{
+                          ...caixaEmPorcento(iaBbox, natural.w, natural.h),
+                          borderWidth: `${2 / lupa.escala}px`,
+                        }}
+                      >
+                        <span className={s.rotuloCaixaIA} style={{ transform: `scale(${1 / lupa.escala})` }}>
+                          ONDE A IA MARCOU
+                        </span>
+                      </div>
+                    )}
+                    {rascunho && (
+                      <div
+                        data-testid="caixa-correcao"
+                        className={s.caixaCorrecao}
+                        style={{
+                          ...caixaEmPorcento(rascunho, natural.w, natural.h),
+                          borderWidth: `${2.5 / lupa.escala}px`,
+                        }}
+                        onPointerDown={aoDescerCaixa}
+                      >
+                        <span className={s.rotuloCaixaCorrecao} style={{ transform: `scale(${1 / lupa.escala})` }}>
+                          SUA CORREÇÃO
+                        </span>
+                        {HANDLES.map((alca) => (
+                          <span
+                            key={alca}
+                            className={s.alca}
+                            style={{
+                              ...ALCA_POS[alca],
+                              width: `${11 / lupa.escala}px`,
+                              height: `${11 / lupa.escala}px`,
+                            }}
+                            onPointerDown={(e) => aoDescerAlca(e, alca)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
               </span>
             </div>
           ) : (
@@ -610,23 +1012,27 @@ export function Verificacao() {
 
           <span className={s.selo}>{(atual.camera_name ?? atual.camera_id ?? '—').toUpperCase()}</span>
 
+          {emCorrecao && (
+            <p className={s.dicaCorrecao}>ARRASTE PARA DESENHAR · ALÇAS REDIMENSIONAM · ESC CANCELA</p>
+          )}
+
           <div className={s.zoomBarra}>
             <button
               type="button"
               className={s.zoomBotao}
               aria-label="Diminuir zoom"
-              disabled={!urlEvidencia || zoom <= ZOOM_MIN}
-              onClick={() => setZoom((z) => Math.max(ZOOM_MIN, z - ZOOM_PASSO))}
+              disabled={!urlEvidencia || lupa.escala <= ESCALA_MIN}
+              onClick={() => zoomBotao(1 / 1.5)}
             >
               <Minus size={15} strokeWidth={1.7} aria-hidden />
             </button>
-            <span className={s.zoomValor}>{zoom.toFixed(1)}×</span>
+            <span className={s.zoomValor}>{lupa.escala.toFixed(1)}×</span>
             <button
               type="button"
               className={s.zoomBotao}
               aria-label="Aumentar zoom"
-              disabled={!urlEvidencia || zoom >= ZOOM_MAX}
-              onClick={() => setZoom((z) => Math.min(ZOOM_MAX, z + ZOOM_PASSO))}
+              disabled={!urlEvidencia || lupa.escala >= ESCALA_MAX}
+              onClick={() => zoomBotao(1.5)}
             >
               <Plus size={15} strokeWidth={1.7} aria-hidden />
             </button>
@@ -658,6 +1064,27 @@ export function Verificacao() {
             )}
           </div>
 
+          {podeCorrigir && principal && urlEvidencia && !emCorrecao && (
+            <button
+              type="button"
+              className={s.botaoCorrigir}
+              onClick={() => iniciarCorrecao(indexPrincipal)}
+            >
+              <SquarePen size={13} strokeWidth={1.8} aria-hidden /> Corrigir caixa
+            </button>
+          )}
+
+          {atual.correcao_ultima && (
+            <div className={s.badgeAutoria}>
+              <SquarePen size={14} strokeWidth={1.7} aria-hidden />
+              <p className={s.badgeAutoriaTexto} data-testid="badge-autoria">
+                Caixa corrigida por <strong>{atual.correcao_ultima.por_nome ?? '—'}</strong>
+                {atual.correcao_ultima.em && <><br />{dataHora(atual.correcao_ultima.em)}</>}
+              </p>
+            </div>
+          )}
+
+          {/* Recorte da detecção — ⛔ NÃO MEXER na aparência (elogiado pelo cliente). */}
           {principal && natural && urlEvidencia && (
             <div
               className={s.recorte}
@@ -698,87 +1125,140 @@ export function Verificacao() {
             </button>
           </div>
 
-          <div className={s.veredito}>
-            <div className={s.motivoLinha}>
-              <label htmlFor="motivo-verificacao" className={s.motivoRotulo}>
-                Motivo (obrigatório para rejeitar)
-              </label>
-              <select
-                id="motivo-verificacao"
-                className={
-                  motivoFaltando ? `${s.motivoSelect} ${s.motivoSelectErro}` : s.motivoSelect
-                }
-                value={motivo}
-                disabled={!podeEscrever || enviando}
-                onChange={(e) => {
-                  setMotivo(e.target.value as MotivoVerificacao | '')
-                  setMotivoFaltando(false)
-                }}
-              >
-                <option value="">Selecione um motivo…</option>
-                {MOTIVOS_VERIFICACAO.map((m) => (
-                  <option key={m.valor} value={m.valor}>
-                    {m.rotulo}
-                  </option>
+          {emCorrecao ? (
+            <div className={s.veredito}>
+              <span className={s.overline}>Coordenadas</span>
+              <p className={s.nota}>
+                Pixels do frame original, a partir do canto superior esquerdo — o mesmo caminho
+                para quem não usa o mouse com precisão.
+              </p>
+              <div className={s.gradeCoordenadas}>
+                {(['X', 'Y', 'LARGURA', 'ALTURA'] as const).map((rotulo, eixo) => (
+                  <label key={rotulo} className={s.campoCoordenada}>
+                    <span className={s.rotuloCoordenada}>{rotulo}</span>
+                    <input
+                      type="number"
+                      min={0}
+                      className={s.inputCoordenada}
+                      value={rascunho ? rascunho[eixo] : ''}
+                      disabled={salvandoCaixa}
+                      onChange={(e) => {
+                        const n = Math.round(Number(e.target.value))
+                        if (!Number.isFinite(n)) return
+                        const base: Bbox = rascunho ?? [0, 0, 0, 0]
+                        const nova: Bbox = [base[0], base[1], base[2], base[3]]
+                        nova[eixo] = Math.max(0, n)
+                        setRascunho(nova)
+                      }}
+                    />
+                  </label>
                 ))}
-              </select>
-              {motivoFaltando && (
-                <span className={s.motivoErro}>Selecione um motivo para rejeitar.</span>
-              )}
+              </div>
+
+              <div className={s.navegacao}>
+                <button
+                  type="button"
+                  className={s.botaoSalvarCaixa}
+                  onClick={() => void salvarCaixa()}
+                  disabled={salvandoCaixa || !rascunho || rascunho[2] <= 0 || rascunho[3] <= 0}
+                >
+                  <Check size={16} strokeWidth={2.2} aria-hidden /> Salvar caixa
+                </button>
+                <button
+                  type="button"
+                  className={s.botaoCancelarCaixa}
+                  onClick={cancelarCorrecao}
+                  disabled={salvandoCaixa}
+                >
+                  Cancelar
+                </button>
+              </div>
+
+              {erroCaixa && <span className={s.nota}>{erroCaixa}</span>}
             </div>
-
-            {vereditoAtual ? (
-              <span
-                className={`${s.decidido} ${
-                  vereditoAtual === 'approve' ? s.decididoOk : s.decididoNc
-                }`}
-              >
-                {vereditoAtual === 'approve' ? (
-                  <Check size={14} strokeWidth={2.4} aria-hidden />
-                ) : (
-                  <X size={14} strokeWidth={2.4} aria-hidden />
+          ) : (
+            <div className={s.veredito}>
+              <div className={s.motivoLinha}>
+                <label htmlFor="motivo-verificacao" className={s.motivoRotulo}>
+                  Motivo (obrigatório para rejeitar)
+                </label>
+                <select
+                  id="motivo-verificacao"
+                  className={
+                    motivoFaltando ? `${s.motivoSelect} ${s.motivoSelectErro}` : s.motivoSelect
+                  }
+                  value={motivo}
+                  disabled={!podeEscrever || enviando}
+                  onChange={(e) => {
+                    setMotivo(e.target.value as MotivoVerificacao | '')
+                    setMotivoFaltando(false)
+                  }}
+                >
+                  <option value="">Selecione um motivo…</option>
+                  {MOTIVOS_VERIFICACAO.map((m) => (
+                    <option key={m.valor} value={m.valor}>
+                      {m.rotulo}
+                    </option>
+                  ))}
+                </select>
+                {motivoFaltando && (
+                  <span className={s.motivoErro}>Selecione um motivo para rejeitar.</span>
                 )}
-                {vereditoAtual === 'approve' ? 'Confirmado' : 'Rejeitado'}
+              </div>
+
+              {vereditoAtual ? (
+                <span
+                  className={`${s.decidido} ${
+                    vereditoAtual === 'approve' ? s.decididoOk : s.decididoNc
+                  }`}
+                >
+                  {vereditoAtual === 'approve' ? (
+                    <Check size={14} strokeWidth={2.4} aria-hidden />
+                  ) : (
+                    <X size={14} strokeWidth={2.4} aria-hidden />
+                  )}
+                  {vereditoAtual === 'approve' ? 'Confirmado' : 'Rejeitado'}
+                </span>
+              ) : null}
+
+              <button
+                type="button"
+                className={s.confirmar}
+                onClick={() => void decidir('approve')}
+                disabled={!podeEscrever || enviando}
+                title={podeEscrever ? undefined : 'Exige a permissão verification:write'}
+              >
+                <Check size={17} strokeWidth={2.4} aria-hidden />
+                Confirmar <span className={s.teclaBotao}>C</span>
+              </button>
+
+              <button
+                type="button"
+                className={s.rejeitar}
+                onClick={() => void decidir('reject')}
+                disabled={!podeEscrever || enviando}
+                title={podeEscrever ? undefined : 'Exige a permissão verification:write'}
+              >
+                <X size={16} strokeWidth={2.4} aria-hidden />
+                Rejeitar <span className={s.teclaBotao}>R</span>
+              </button>
+
+              <button
+                type="button"
+                className={s.anotar}
+                disabled
+                title="Sem endpoint que leve um alerta para a fila de anotação do Estúdio — registrado para o backend"
+              >
+                <PenLine size={14} strokeWidth={1.8} aria-hidden />
+                Enviar para anotação · Estúdio
+              </button>
+
+              <span className={s.nota}>
+                Cada decisão vira dado de treino. O envio para a fila de anotação do Estúdio
+                ainda não tem endpoint — registrado, e a verificação não trava por isso.
               </span>
-            ) : null}
-
-            <button
-              type="button"
-              className={s.confirmar}
-              onClick={() => void decidir('approve')}
-              disabled={!podeEscrever || enviando}
-              title={podeEscrever ? undefined : 'Exige a permissão verification:write'}
-            >
-              <Check size={17} strokeWidth={2.4} aria-hidden />
-              Confirmar <span className={s.teclaBotao}>C</span>
-            </button>
-
-            <button
-              type="button"
-              className={s.rejeitar}
-              onClick={() => void decidir('reject')}
-              disabled={!podeEscrever || enviando}
-              title={podeEscrever ? undefined : 'Exige a permissão verification:write'}
-            >
-              <X size={16} strokeWidth={2.4} aria-hidden />
-              Rejeitar <span className={s.teclaBotao}>R</span>
-            </button>
-
-            <button
-              type="button"
-              className={s.anotar}
-              disabled
-              title="Sem endpoint que leve um alerta para a fila de anotação do Estúdio — registrado para o backend"
-            >
-              <PenLine size={14} strokeWidth={1.8} aria-hidden />
-              Enviar para anotação · Estúdio
-            </button>
-
-            <span className={s.nota}>
-              Cada decisão vira dado de treino. O envio para a fila de anotação do Estúdio
-              ainda não tem endpoint — registrado, e a verificação não trava por isso.
-            </span>
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
