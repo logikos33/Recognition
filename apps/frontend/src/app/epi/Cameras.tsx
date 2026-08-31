@@ -1176,16 +1176,14 @@ export function Cameras() {
                 >
                   <Settings2 size={13} strokeWidth={1.7} /> Operações
                 </button>
-                {/* Cenário ainda não foi migrado pro shell novo (não está em
-                    ROTAS_NOVAS) — navegação SPA com `rotaNova()` cairia num
-                    caminho sem rota nenhuma (nem novo, nem antigo). Sai do
-                    router com `window.location.href`, igual ao padrão
-                    `externo` de Modulos.tsx, até a tela ser migrada. */}
+                {/* F5-LEVE: Cenário migrado pro shell novo — tela própria em
+                    `epi/cameras/:cameraId/cenario` (Cenario.tsx), registrada
+                    em ROTAS_NOVAS. Substitui o antigo `/scenario`, que quebra
+                    hoje com erro cru de JS (conserto emergencial fora deste
+                    desenho). */}
                 <button
                   className={s.botaoSecundario}
-                  onClick={() => {
-                    window.location.href = `/epi/cameras/${selecionada.id}/scenario`
-                  }}
+                  onClick={() => navegar(rotaNova(`/epi/cameras/${selecionada.id}/cenario`))}
                 >
                   <Frame size={13} strokeWidth={1.7} /> Cenário
                 </button>

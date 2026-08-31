@@ -34,6 +34,7 @@ import { Navigate, Route } from 'react-router-dom'
 const Acoes = lazy(() => import('./epi/Acoes').then((m) => ({ default: m.Acoes })))
 const AoVivo = lazy(() => import('./epi/AoVivo').then((m) => ({ default: m.AoVivo })))
 const Cameras = lazy(() => import('./epi/Cameras').then((m) => ({ default: m.Cameras })))
+const Cenario = lazy(() => import('./epi/Cenario').then((m) => ({ default: m.Cenario })))
 const Dashboard = lazy(() => import('./epi/Dashboard').then((m) => ({ default: m.Dashboard })))
 const EventoDetalhe = lazy(() => import('./epi/EventoDetalhe').then((m) => ({ default: m.EventoDetalhe })))
 const Eventos = lazy(() => import('./epi/Eventos').then((m) => ({ default: m.Eventos })))
@@ -102,6 +103,7 @@ export const ROTAS_NOVAS: ReactElement[] = [
   <Route key="a" path="epi/acoes" element={<Acoes />} />,
   <Route key="c" path="epi/cameras" element={<Cameras />} />,
   <Route key="op" path="epi/cameras/:cameraId/operations" element={<Operacoes />} />,
+  <Route key="cen" path="epi/cameras/:cameraId/cenario" element={<Cenario />} />,
   <Route key="r" path="epi/relatorios" element={<Relatorios />} />,
 
   // F4 — Qualidade e Carga. O de-para do delta manda `/quality/*` e `/carga/*`.
