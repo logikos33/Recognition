@@ -87,10 +87,45 @@ function Metricas({ modelo }: { modelo: TrainedModel }) {
   )
 }
 
+/** Linha de `GET /api/cameras/model-config` (só os campos usados aqui —
+ * `model_config_handlers.py::list_camera_model_configs`, tenant-escopado). */
+type DeploymentMinimo = {
+  model_id: string
+  status?: string
+  config?: { mode?: string } | null
+}
+
+/**
+ * Modelo em observação = maior contagem de câmeras com deployment
+ * `status='active'` e `config.mode==='shadow'` (dado real, não inferido —
+ * "shadow" e "mode" nunca aparecem em texto de tela, só aqui na leitura do
+ * campo). Só é chamado quando NÃO há modelo em produção (`ativo`).
+ */
+function modeloEmObservacao(
+  modelos: TrainedModel[],
+  deployments: DeploymentMinimo[],
+): { modelo: TrainedModel; cameras: number } | null {
+  const contagem = new Map<string, number>()
+  for (const d of deployments) {
+    if (d.status === 'active' && d.config?.mode === 'shadow') {
+      contagem.set(d.model_id, (contagem.get(d.model_id) ?? 0) + 1)
+    }
+  }
+  let melhor: { modelId: string; cameras: number } | null = null
+  for (const [modelId, cameras] of contagem) {
+    if (!melhor || cameras > melhor.cameras) melhor = { modelId, cameras }
+  }
+  if (!melhor) return null
+  const { modelId, cameras } = melhor
+  const modelo = modelos.find((m) => m.id === modelId)
+  return modelo ? { modelo, cameras } : null
+}
+
 export function Modelo() {
   const toast = useToast()
   const [modelos, setModelos] = useState<TrainedModel[] | null>(null)
   const [classes, setClasses] = useState<YoloClass[]>([])
+  const [deployments, setDeployments] = useState<DeploymentMinimo[]>([])
   const [erro, setErro] = useState<string | null>(null)
   const [ativando, setAtivando] = useState<string | null>(null)
   const [modeloCenario, setModeloCenario] = useState<TrainedModel | null>(null)
@@ -101,7 +136,10 @@ export function Modelo() {
     Promise.allSettled([
       api.get<ApiResponse<TrainedModel[]>>('/training/models'),
       api.get<ApiResponse<YoloClass[]>>('/classes'),
-    ]).then(([modRes, clsRes]) => {
+      api.get<ApiResponse<{ deployments: Record<string, DeploymentMinimo> }>>(
+        '/cameras/model-config',
+      ),
+    ]).then(([modRes, clsRes, depRes]) => {
       if (modRes.status === 'fulfilled') {
         setModelos(modRes.value?.data ?? [])
       } else {
@@ -109,6 +147,13 @@ export function Modelo() {
         setErro(modRes.reason instanceof Error ? modRes.reason.message : 'Erro ao carregar')
       }
       if (clsRes.status === 'fulfilled') setClasses(clsRes.value?.data ?? [])
+      // Câmeras em observação são um extra do card "modelo ativo" — se a
+      // rota falhar, a tela não quebra por isso, só não mostra o extra.
+      if (depRes.status === 'fulfilled') {
+        setDeployments(Object.values(depRes.value?.data?.deployments ?? {}))
+      } else {
+        setDeployments([])
+      }
     })
   }, [])
 
@@ -150,6 +195,7 @@ export function Modelo() {
   }
 
   const ativo = modelos.find((m) => m.is_active) ?? null
+  const observacao = ativo ? null : modeloEmObservacao(modelos, deployments)
 
   return (
     <div className={s.raiz}>
@@ -161,7 +207,9 @@ export function Modelo() {
         </Link>
       </div>
 
-      <div className={`${s.cartaoAtivo}${ativo ? ` ${s.cartaoAtivoComModelo}` : ''}`}>
+      <div
+        className={`${s.cartaoAtivo}${ativo ? ` ${s.cartaoAtivoComModelo}` : ''}${observacao ? ` ${s.cartaoAtivoEmObservacao}` : ''}`}
+      >
         <span className={s.secaoTitulo}>Modelo ativo</span>
         {ativo ? (
           <>
@@ -173,6 +221,15 @@ export function Modelo() {
               <OwnerInfo model={ativo} />
             </div>
             <span className={s.dataAtivo}>Criado em {dataFormatada(ativo.created_at)}</span>
+          </>
+        ) : observacao ? (
+          <>
+            <div className={s.nomeAtivo}>{nomeParaCliente(observacao.modelo)}</div>
+            <Metricas modelo={observacao.modelo} />
+            <p className={s.semAtivo}>
+              Em observação em {observacao.cameras} {observacao.cameras === 1 ? 'câmera' : 'câmeras'} —
+              ainda não gera aviso para a equipe.
+            </p>
           </>
         ) : (
           <p className={s.semAtivo}>Nenhum modelo ativo. Ative um modelo abaixo.</p>
