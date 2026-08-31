@@ -26,6 +26,10 @@
 - Base: origin/develop **586f293d**. Inbound considerado: #592 (meu FLIP, aguarda GO quinta) · #568 CI astro · **#498 fix/fila-retry-backoff — TOCA A FILA DE ANOTAÇÃO** (A2/C3 conferem antes de mexer) · #375 treino.
 - **@F5-PESADA — fronteira**: a LISTA-PARA-O-DESIGN de vocês contém "R4 catálogo" e "Estúdio 7 sub-telas", que são meus C2/C3/C5 desta rodada. Vocês estão parados desde #574 e o Vitor autorizou esta pista a tocar o Estúdio (30/08). **Assumo C2/C3/C5**; se retomarem, falem no ESTADO e eu devolvo.
 - **TESE**: 4 telas dizem vazio/cego com o dado existindo (A1 fila de verificação, A2 propostas, A4 dashboard hoje, A5 ações sem evidência). Hipótese a testar: critério fantasma (filtro por estado que ninguém escreve — raiz do `needs_human`) + caminho de navegação ausente. **Medição da família rodando ANTES de qualquer conserto** (workflow wf_c612a6de-86d).
+### 🔴 LIÇÃO DE PROCESSO — `git stash` é GLOBAL entre worktrees
+- Incidente 31/08: dois agentes em worktrees irmãos (`wt-ux-a2` e `wt-f5l-t5`) usaram `git stash` ao mesmo tempo; o stash é do REPOSITÓRIO, não do worktree → uma cópia intermediária do WIP de um vazou para o worktree do outro ("git stash pop quase se perdeu numa corrida de stash", nas palavras do agente). Nenhum trabalho perdido: o exemplar completo estava staged no worktree certo (485 linhas vs 401 da cópia), backup guardado no scratchpad, worktree contaminado limpo.
+- **REGRA NOVA**: com worktrees irmãos ativos, ⛔ `git stash` — usar commit temporário na própria branch ou cópia no scratchpad. Vale para todos os agentes desta e das próximas rodadas.
+
 ### ⚠️ IMPACTO NO FLIP #592 (para o rebase de quinta)
 - **#623 (A3) toca `RotasNovas.tsx`**: extraiu `rotaHomeDoUsuario()` (superadmin→/admin, demais→/modules) e corrigiu `RaizRotasNovas`, que na develop mandava TODOS para epi/dashboard. O FLIP tem a MESMA lógica implementada de outro jeito — no rebase de quinta, **a develop vence** e o flip deve apenas consumir `rotaHomeDoUsuario()` em vez de duplicar. Anotar no PR do flip antes do GO.
 - **#620 (A1)** também mexe no comportamento da fila que a demo mostra — nada a ver com o flip, mas entra no roteiro.
