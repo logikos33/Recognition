@@ -44,6 +44,18 @@ class TestListByCamera:
         assert "tenant-x" in params
         assert "cam-y" in params
 
+    def test_query_selects_template_id_and_last_event_at(self):
+        """B3 + B10: listagem devolve template_id e last_event_at (sem N+1)."""
+        cur = MagicMock()
+        cur.fetchall.return_value = []
+        repo, cur = _repo(cur)
+        repo.list_by_camera("t-1", "cam-1")
+        query = cur.execute.call_args[0][0]
+        assert "template_id" in query
+        assert "last_event_at" in query
+        assert "LATERAL" in query
+        assert "condition_satisfied" in query
+
 
 class TestListByCameraAndModule:
 
@@ -98,6 +110,25 @@ class TestCreate:
         repo, _ = _repo(cur)
         result = repo.create("t-1", "cam-1", "mod-1", "type-A", "count_people", {"threshold": 5})
         assert result["name"] == "count_people"
+
+    def test_template_id_passed_when_given(self):
+        """B3: template_id chega até o INSERT."""
+        cur = MagicMock()
+        cur.fetchone.return_value = {"id": 1, "template_id": "epi"}
+        repo, cur = _repo(cur)
+        repo.create("t-1", "cam-1", "mod-1", "type-A", "op", {}, template_id="epi")
+        params = cur.execute.call_args[0][1]
+        assert "epi" in params
+        assert "template_id" in cur.execute.call_args[0][0]
+
+    def test_template_id_defaults_to_none(self):
+        """Chamada antiga (sem template_id) continua funcionando."""
+        cur = MagicMock()
+        cur.fetchone.return_value = {"id": 1}
+        repo, cur = _repo(cur)
+        repo.create("t", "cam", "mod", "type", "op", {"x": 1})
+        params = cur.execute.call_args[0][1]
+        assert params[-1] is None
 
     def test_config_serialized_as_json(self):
         cur = MagicMock()
@@ -245,6 +276,40 @@ class TestUpdateLiveValue:
         repo.update_live_value(1, {})
         params = cur.execute.call_args[0][1]
         assert "active" in params
+
+
+class TestSetStatus:
+    """B1: pausar/retomar troca só o status (não mexe em version/config)."""
+
+    def test_returns_updated_operation(self):
+        cur = MagicMock()
+        cur.fetchone.return_value = {"id": 9, "status": "inactive"}
+        repo, _ = _repo(cur)
+        result = repo.set_status("t-1", 9, "inactive")
+        assert result["status"] == "inactive"
+
+    def test_params_include_status_tenant_and_id(self):
+        cur = MagicMock()
+        cur.fetchone.return_value = {"id": 9}
+        repo, cur = _repo(cur)
+        repo.set_status("tenant-z", 9, "active")
+        params = cur.execute.call_args[0][1]
+        assert params == ("active", "tenant-z", 9)
+
+    def test_query_does_not_touch_version_or_config(self):
+        cur = MagicMock()
+        cur.fetchone.return_value = {"id": 9}
+        repo, cur = _repo(cur)
+        repo.set_status("t-1", 9, "inactive")
+        query = cur.execute.call_args[0][0]
+        assert "version = version + 1" not in query
+        assert "config =" not in query
+
+    def test_returns_none_when_no_match(self):
+        cur = MagicMock()
+        cur.fetchone.return_value = None
+        repo, _ = _repo(cur)
+        assert repo.set_status("t-1", 999, "active") is None
 
 
 class TestInsertResult:

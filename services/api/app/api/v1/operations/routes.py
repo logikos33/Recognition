@@ -94,6 +94,7 @@ def create_operation(camera_id: str):
     type_id = body.get("type_id", "")
     name = (body.get("name") or "").strip()
     config = body.get("config", {})
+    template_id = (body.get("template_id") or "").strip() or None
 
     if not type_id:
         return error("type_id é obrigatório", 422)
@@ -116,7 +117,7 @@ def create_operation(camera_id: str):
         return error(f"Configuração inválida: {'; '.join(validation_errors)}", 422)
 
     repo = _get_repo()
-    row = repo.create(tenant_id, camera_id, module_id, type_id, name, config)
+    row = repo.create(tenant_id, camera_id, module_id, type_id, name, config, template_id)
     if not row:
         return error("Erro ao criar operação", 500)
 
@@ -161,6 +162,48 @@ def update_operation(operation_id: int):
     _publish_operation_reload(operation_id, {"version": updated["version"]})
 
     logger.info("operation_updated: id=%s version=%s", operation_id, updated.get("version"))
+    return success({"operation": updated})
+
+
+@operations_bp.route("/operations/<int:operation_id>/pause", methods=["POST"])
+@jwt_required()
+def pause_operation(operation_id: int):
+    """Pausa uma operação (B1): sai da avaliação sem apagar histórico/config.
+
+    Reusa o status 'inactive' já aceito pela tabela (migration 038) e já
+    ignorado pelo motor (OperationsEngine.list_all_active/reload_operation).
+    """
+    tenant_id = str(get_tenant_id())
+    repo = _get_repo()
+    existing = repo.get_by_id(tenant_id, operation_id)
+    if not existing:
+        return error("Operação não encontrada", 404)
+
+    updated = repo.set_status(tenant_id, operation_id, "inactive")
+    if not updated:
+        return error("Erro ao pausar operação", 500)
+
+    _publish_operation_reload(operation_id, {"status": "inactive"})
+    logger.info("operation_paused: id=%s", operation_id)
+    return success({"operation": updated})
+
+
+@operations_bp.route("/operations/<int:operation_id>/resume", methods=["POST"])
+@jwt_required()
+def resume_operation(operation_id: int):
+    """Retoma uma operação pausada (B1): volta a valer no próximo ciclo."""
+    tenant_id = str(get_tenant_id())
+    repo = _get_repo()
+    existing = repo.get_by_id(tenant_id, operation_id)
+    if not existing:
+        return error("Operação não encontrada", 404)
+
+    updated = repo.set_status(tenant_id, operation_id, "active")
+    if not updated:
+        return error("Erro ao retomar operação", 500)
+
+    _publish_operation_reload(operation_id, {"status": "active"})
+    logger.info("operation_resumed: id=%s", operation_id)
     return success({"operation": updated})
 
 
