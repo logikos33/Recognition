@@ -111,6 +111,13 @@ export const lista = style({
   display: 'flex',
   flexDirection: 'column',
   gap: '6px',
+  // F5-LEVE (tema não pode estourar): sem isto a lista cresce com a
+  // contagem de câmeras (RVB ~28) e empurra a página inteira — rola por si
+  // só. O cálculo não desconta a altura do `cabecalho` (variável, quebra
+  // linha em telas estreitas): sobra uma folga pequena e CONSTANTE, não
+  // proporcional ao nº de câmeras — é essa proporcionalidade que era o bug.
+  maxHeight: `calc(100vh - ${lk.medida.topbar} - ${lk.medida.padding} * 2 - var(--global-banner-offset, 0px))`,
+  overflowY: 'auto',
 })
 
 const itemBase = style({

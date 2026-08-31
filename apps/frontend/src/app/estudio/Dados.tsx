@@ -173,16 +173,18 @@ export function Dados() {
           />
         </div>
       )}
-      <TrainingGallery
-        reloadKey={galleryReloadKey}
-        onTotalChange={setImgTotal}
-        onOpenStudio={(frames, index, continuacao) => {
-          refillRef.current = { pagina: 1, buscando: false, esgotado: !continuacao, secas: 0 }
-          setStudio({ frames, index, continuacao })
-        }}
-        statusFilterRequest={galleryFilterRequest}
-        cameraFocusRequest={galleryCameraFocus}
-      />
+      <div className={s.galeriaRolavel}>
+        <TrainingGallery
+          reloadKey={galleryReloadKey}
+          onTotalChange={setImgTotal}
+          onOpenStudio={(frames, index, continuacao) => {
+            refillRef.current = { pagina: 1, buscando: false, esgotado: !continuacao, secas: 0 }
+            setStudio({ frames, index, continuacao })
+          }}
+          statusFilterRequest={galleryFilterRequest}
+          cameraFocusRequest={galleryCameraFocus}
+        />
+      </div>
     </div>
   )
 }

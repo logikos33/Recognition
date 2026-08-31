@@ -16,16 +16,33 @@
  * causou o vazamento original (10 links absolutos que só um teste no
  * produto real pegou, ver `coexistencia.test.tsx`).
  *
+ * F5-LEVE (tema não pode estourar): três capturas do Vitor mostraram uma
+ * FAIXA BRANCA (não roxa) em `/novo/epi/cameras`, em ações/eventos e no
+ * Estúdio — causa raiz era o `body` sem fundo em `styles/global.css.ts` (o
+ * arquivo REALMENTE importado por `main.tsx`; um `index.css` solto no
+ * mesmo diretório nunca chegou a ser importado — código morto, não a causa).
+ * A régua original só amostrava o centro/quadrantes sem rolar e sem viewport
+ * grande, e por isso não pegou. Reforçada abaixo (itens a–c).
+ *
  * O QUE É MEDIDO, POR ROTA (`ROTAS_NOVAS` + `ROTAS_NOVAS_SEM_SHELL`, a
  * MESMA lista que roteia o produto — se uma tela nova entrar lá, entra aqui
- * de graça):
+ * de graça), em duas passadas de viewport (padrão e 1440×2200):
  *
- *   (a) o fundo EFETIVO em 5 pontos do viewport (centro + 4 quadrantes) é
+ *   (a) `getComputedStyle(document.body).backgroundColor` não é branco nem
+ *       transparente — pega a regressão DIRETO na fonte, mesmo em rota cujo
+ *       próprio conteúdo já cobre o viewport inteiro (onde os pontos abaixo
+ *       não veriam diferença nenhuma).
+ *   (a2) o fundo EFETIVO em 5 pontos do viewport (centro + 4 quadrantes) é
  *       ESCURO. `document.elementFromPoint` + andar pelos `parentElement`
- *       até achar um `background-color` opaco — o `body` é transparente
- *       (`index.css` não pinta), então achar "nenhum bg opaco em lugar
- *       nenhum" É a falha (luminância relativa < 0.25 é o piso).
- *   (b) nenhum elemento VISÍVEL (área > 0 dentro do viewport) tem
+ *       até achar um `background-color` opaco — achar "nenhum bg opaco em
+ *       lugar nenhum" É a falha (luminância relativa < 0.25 é o piso).
+ *   (b) depois de `window.scrollTo(0, document.body.scrollHeight)`, os
+ *       mesmos 5 pontos MAIS 3 no rodapé (fy=0.97) são reamostrados — é a
+ *       faixa de overscroll/fim de página que rolar até o fim revela.
+ *   (c) tudo acima roda de novo com viewport 1440×2200 (`test.use`, describe
+ *       separado) — conteúdo curto numa tela grande é o caso que mais
+ *       revela o branco, já que sobra área abaixo do conteúdo real.
+ *   (d) nenhum elemento VISÍVEL (área > 0 dentro do viewport) tem
  *       `background-color` computado na faixa roxa do tema legado
  *       (heurística: r 80–180, b>150, g<100 — cobre `#8b5cf6`/`#a78bfa`/
  *       `#7c3aed`, longe de qualquer token `lk` real).
@@ -179,8 +196,21 @@ interface Amostra {
   escuro: boolean
 }
 
-/** Roda NO BROWSER (page.evaluate) — não dá pra reusar função Node aqui. */
-function medir() {
+interface Medicao {
+  amostras: Amostra[]
+  roxos: string[]
+  /** F5-LEVE (tema não pode estourar): fundo EFETIVO de `document.body`, não
+   * o walk-up por `elementFromPoint` — pega direto a regressão de
+   * `styles/global.css.ts` mesmo em rota cujo próprio conteúdo já cobre
+   * 100% do viewport (onde os `amostras` acima não veriam diferença). */
+  bodyBg: string
+  bodyEscuro: boolean
+}
+
+/** Roda NO BROWSER (page.evaluate) — não dá pra reusar função Node aqui.
+ * `extras`: pontos normalizados (fx,fy) adicionais, além dos 5 padrão —
+ * usado pro rodapé, depois de rolar até o fim. */
+function medir(extras: Array<[number, number]> = []): Medicao {
   const parseRgb = (c: string) => {
     const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?/.exec(c)
     if (!m) return null
@@ -212,6 +242,7 @@ function medir() {
     [0.75, 0.25],
     [0.25, 0.75],
     [0.75, 0.75],
+    ...extras,
   ]
   const amostras = pontos.map(([fx, fy]) => {
     const x = Math.round(W * fx)
@@ -237,8 +268,36 @@ function medir() {
     }
   }
 
-  return { amostras, roxos }
+  const bodyBg = getComputedStyle(document.body).backgroundColor
+  const corBody = parseRgb(bodyBg)
+  const bodyEscuro = corBody !== null && corBody.a > 0.5 && luminancia(corBody) < 0.25
+
+  return { amostras, roxos, bodyBg, bodyEscuro }
 }
+
+/** Node-side: falha com a rota, a fase (sem rolar / rolado / viewport alta) e
+ * o dado bruto na mensagem — é o que aparece no CI quando a régua trava. */
+function afirmarMedicao(rota: string, fase: string, m: Medicao) {
+  expect(
+    m.bodyEscuro,
+    `${rota} (${fase}): body background-color é "${m.bodyBg}" — nem escuro nem opaco (branco padrão do navegador vazando)`,
+  ).toBe(true)
+  for (const a of m.amostras) {
+    expect(
+      a.escuro,
+      `${rota} (${fase}): ponto (${a.x},${a.y}) NÃO está escuro — cor efetiva ${JSON.stringify(a.cor)}`,
+    ).toBe(true)
+  }
+  expect(m.roxos, `${rota} (${fase}): roxo do tema legado encontrado —\n${m.roxos.join('\n')}`).toEqual([])
+}
+
+/** Os 3 pontos extras do rodapé, amostrados DEPOIS de rolar até o fim —
+ * fy=0.97 fica colado na borda inferior do viewport sem cair fora dele. */
+const PONTOS_RODAPE: Array<[number, number]> = [
+  [0.25, 0.97],
+  [0.5, 0.97],
+  [0.75, 0.97],
+]
 
 test.describe('identidade — fundo escuro e zero roxo do tema legado', () => {
   for (const rota of ROTAS) {
@@ -250,15 +309,31 @@ test.describe('identidade — fundo escuro e zero roxo do tema legado', () => {
       // montar (Suspense do lazy() + primeiro efeito de cada tela).
       await page.waitForTimeout(700)
 
-      const { amostras, roxos } = await page.evaluate(medir)
+      afirmarMedicao(rota, 'sem rolar', await page.evaluate(medir))
 
-      for (const a of amostras as Amostra[]) {
-        expect(
-          a.escuro,
-          `${rota}: ponto (${a.x},${a.y}) NÃO está escuro — cor efetiva ${JSON.stringify(a.cor)}`,
-        ).toBe(true)
-      }
-      expect(roxos, `${rota}: roxo do tema legado encontrado —\n${roxos.join('\n')}`).toEqual([])
+      // (b) rola até o fim e reamostra os 5 pontos padrão + 3 no rodapé —
+      // é a faixa branca do overscroll/fim de página que o teste original
+      // (sem rolar, sem rodapé) nunca alcançava.
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+      await page.waitForTimeout(100)
+      afirmarMedicao(rota, 'rolado até o fim', await page.evaluate(medir, PONTOS_RODAPE))
+    })
+  }
+})
+
+test.describe('identidade — viewport alta (1440×2200, conteúdo curto revela o branco)', () => {
+  // Tela grande + conteúdo curto = a área que sobra abaixo do conteúdo é
+  // exatamente onde o branco padrão do navegador aparecia — o caso mais
+  // direto pra pegar uma regressão em `styles/global.css.ts`.
+  test.use({ viewport: { width: 1440, height: 2200 } })
+
+  for (const rota of ROTAS) {
+    test(`${rota}`, async ({ page }) => {
+      await entrarComoSuperadmin(page)
+      await registrarMocksExtras(page, rota)
+      await page.goto(rota)
+      await page.waitForTimeout(700)
+      afirmarMedicao(rota, 'viewport alta', await page.evaluate(medir))
     })
   }
 })
