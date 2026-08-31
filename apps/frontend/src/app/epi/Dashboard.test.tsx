@@ -292,6 +292,92 @@ describe('EPI Dashboard — painéis', () => {
     expect(within(painel).getByText('Sem nome')).toBeTruthy()
   })
 
+  it('barra de eventos por hora leva pra lista filtrada naquela hora exata', async () => {
+    // Hora corrente truncada em UTC: sempre cai dentro do turno padrão
+    // ("dia", 00h–24h local), sem depender de fuso ou de quando o teste roda.
+    const inicioHora = new Date()
+    inicioHora.setUTCMinutes(0, 0, 0)
+    const bucketIso = inicioHora.toISOString()
+    getTimeline.mockResolvedValue({ bucket: 'hour', timeline: [{ bucket: bucketIso, count: 4 }] })
+    montar()
+    const painel = await screen.findByLabelText('Eventos por hora')
+    const barra = within(painel).getByTitle(/4 evento/)
+    expect(barra.tagName).toBe('A')
+    const href = barra.getAttribute('href') ?? ''
+    expect(href).toContain('/novo/epi/eventos?')
+    const params = new URLSearchParams(href.split('?')[1])
+    expect(params.get('start_date')).toBe(bucketIso)
+    expect(new Date(params.get('end_date') ?? '').getTime() - inicioHora.getTime()).toBe(3_600_000)
+  })
+
+  it('linha de violações por classe leva pra lista filtrada pela classe', async () => {
+    getSummary.mockResolvedValue({
+      total: 12,
+      by_class: [{ class: 'no_helmet', count: 12 }],
+      by_camera: [],
+    })
+    montar()
+    const painel = await screen.findByLabelText('Violações por classe')
+    const linha = within(painel).getByRole('link', { name: /Sem capacete/ })
+    const href = linha.getAttribute('href') ?? ''
+    expect(href).toContain('/novo/epi/eventos?')
+    expect(href).toContain('violation_type=no_helmet')
+  })
+
+  it('linha do ranking de câmeras leva pra lista filtrada por câmera, na janela de 30 dias', async () => {
+    getSummary.mockResolvedValue({
+      total: 5,
+      by_class: [],
+      by_camera: [{ camera_id: 'c1', camera_name: 'Entrada Expedição', count: 5 }],
+    })
+    montar()
+    const painel = await screen.findByLabelText('Câmeras com mais eventos')
+    const linha = within(painel).getByRole('link', { name: /Entrada Expedição/ })
+    const href = linha.getAttribute('href') ?? ''
+    expect(href).toContain('/novo/epi/eventos?')
+    expect(href).toContain('camera_id=c1')
+    // Ranking é sempre 30 dias — não é o recorte do turno selecionado.
+    expect(href).toContain('start_date=')
+  })
+
+  it('câmera sem camera_id fica de pé mas sem link — filtro vazio mostraria tudo', async () => {
+    getSummary.mockResolvedValue({
+      total: 5,
+      by_class: [],
+      by_camera: [{ camera_id: null, camera_name: 'Sem nome', count: 5 }],
+    })
+    montar()
+    const painel = await screen.findByLabelText('Câmeras com mais eventos')
+    expect(within(painel).getByText('Sem nome')).toBeTruthy()
+    expect(within(painel).queryByRole('link', { name: /Sem nome/ })).toBeNull()
+  })
+
+  it('KPI de eventos hoje leva pra lista da janela de hoje', async () => {
+    montar()
+    const cartao = await screen.findByLabelText('Eventos hoje')
+    const link = within(cartao).getByRole('link', { name: /Eventos hoje: 23/ })
+    const href = link.getAttribute('href') ?? ''
+    expect(href).toContain('/novo/epi/eventos?')
+    expect(href).toContain('start_date=')
+    expect(href).toContain('end_date=')
+  })
+
+  it('vazio de eventos por hora oferece o caminho pros últimos 30 dias', async () => {
+    montar()
+    const painel = await screen.findByLabelText('Eventos por hora')
+    expect(within(painel).getByText('Sem eventos no período.')).toBeTruthy()
+    const cta = within(painel).getByRole('link', { name: /últimos 30 dias/ })
+    expect((cta.getAttribute('href') ?? '')).toContain('/novo/epi/eventos?')
+  })
+
+  it('vazio de violações por classe oferece o caminho pros últimos 30 dias', async () => {
+    montar()
+    const painel = await screen.findByLabelText('Violações por classe')
+    expect(within(painel).getByText('Sem violações no período.')).toBeTruthy()
+    const cta = within(painel).getByRole('link', { name: /últimos 30 dias/ })
+    expect((cta.getAttribute('href') ?? '')).toContain('/novo/epi/eventos?')
+  })
+
   it('esconder um widget o tira da tela e a preferência sobrevive à remontagem', async () => {
     // `region` = o <section> do painel. O checkbox do popover carrega o mesmo
     // rótulo, e por nome só a busca pegaria os dois.

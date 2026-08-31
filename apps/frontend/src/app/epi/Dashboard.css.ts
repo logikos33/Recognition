@@ -548,6 +548,17 @@ export const painelVazio = style({
   color: lk.cor.cinzaNevoa,
 })
 
+/** Bars/linhas/KPI viram <Link>: reset de âncora (sem sublinhado azul do
+ * browser), cursor e foco visíveis — o layout flex de quem usa isto (barra,
+ * linha) já vem de outra classe, concatenada no uso. */
+export const linkLimpo = style({
+  textDecoration: 'none',
+  color: 'inherit',
+  cursor: 'pointer',
+  ':hover': { opacity: 0.8 },
+  ':focus-visible': { outline: `2px solid ${lk.cor.cianoVisao}`, outlineOffset: '2px' },
+})
+
 export const botaoRetentar = style({
   height: '30px',
   padding: '0 12px',
