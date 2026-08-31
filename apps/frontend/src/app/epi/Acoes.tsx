@@ -10,30 +10,54 @@
  * batendo com a API real) não tem UMA linha para esta tela. O estado de erro
  * do desenho cita `GET /api/epi/acoes`, que não existe no `url_map`.
  *
- * O ÚNICO registro de ação que o backend guarda hoje contra um evento é o
- * RECONHECIMENTO: `alerts.acknowledged` + `POST /api/alerts/<id>/acknowledge`.
- * É esse ledger que esta tela mostra, com a forma do desenho:
+ * O backend guarda DUAS coisas reais contra um evento, e este cartão mostra
+ * as duas — cada uma na sua própria ação, seu próprio botão, sua própria cor:
  *
- *   coluna "aguardando"  ← GET /api/alerts?acknowledged=false
- *   coluna "reconhecidas"← GET /api/alerts?acknowledged=true
- *   botão do cartão      ← POST /api/alerts/<id>/acknowledge
- *   faixa de taxa        ← os dois `total` do envelope, mesma janela de 30 dias
+ *   RECONHECIMENTO ← `alerts.acknowledged` + POST /api/alerts/<id>/acknowledge
+ *     "alguém viu o evento". Rótulo/cor verde·âmbar (era o único par de
+ *     estados desta tela até esta rodada — segue sendo o mesmo).
+ *   VEREDITO        ← `alerts.verification_verdict` + POST /api/verification/<id>/review
+ *     "a detecção é procedente ou o modelo errou". Rótulo/cor cinza (mesma
+ *     regra de `EventoDetalhe.tsx`/`VereditoHumano.tsx`: veredito NUNCA usa a
+ *     paleta de reconhecimento nem a de polaridade — são três eixos, três
+ *     paletas. Confirmar/Descartar reaproveitam o mesmo endpoint e o mesmo
+ *     `verdict` que a tela de evidência, só sem o campo `reason` — este é um
+ *     atalho da lista, quem quer motivar o veredito abre o cartão).
  *
- * O que o desenho pede e o backend NÃO serve não é renderizado com dado
- * inventado — simplesmente não existe aqui, e a nota no topo diz isso na cara
- * do usuário. Campos ausentes: título livre, responsável, prazo, "Nova ação",
- * filtros "Minhas"/"Vencidas", contagem de vencidas.
+ * Abrir o cartão (clique em qualquer área fora dos botões) só NAVEGA para
+ * `/epi/eventos/<id>` — nunca chama `/acknowledge` nem `/review` sozinho.
+ *
+ * A EVIDÊNCIA da miniatura é a MESMA fonte que `EventoDetalhe.tsx` usa
+ * (`evidence_key` → URL assinada), só pelo endpoint leve
+ * `GET /alerts/<id>/snapshot` (o mesmo que `Verificacao.tsx` já usa para o
+ * mesmo propósito) em vez do alerta inteiro — a lista de `/alerts` não devolve
+ * `evidence_url` (só o detalhe assina), e com até 100 cartões na tela pedir a
+ * evidência de todos ao montar seria o N+1 que `Eventos.tsx` documenta como o
+ * motivo de não ter miniatura na lista de eventos. Por isso cada miniatura só
+ * pede a própria URL quando entra na viewport — mesmo padrão de
+ * `CameraSnapshotThumbnail.tsx` (IntersectionObserver; ausente em jsdom nos
+ * testes, que então carregam direto).
+ *
+ * TRATATIVA (título/responsável/prazo) continua sem backend. Em vez de sumir
+ * em silêncio, o cartão desenha o controle que o desenho pede — desabilitado,
+ * com selo — mesmo padrão de dependência de `Cenario.tsx`
+ * (`botaoDependente` + `seloAguarda`): controle visível, zero ação falsa.
  *
  * `kind=violation` (ADR-0065): evento de CONFORMIDADE é telemetria de EPI em
  * uso — não é coisa sobre a qual se age. Uma tela de AGIR que listasse
  * conformidade estaria pedindo ação sobre quem está certo.
  */
-import { useCallback, useEffect, useState } from 'react'
-import { Check, Clock, ClipboardCheck, LayoutGrid, List, TriangleAlert } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import {
+  Check, Clock, ClipboardCheck, ImageOff, LayoutGrid, List, TriangleAlert, X,
+} from 'lucide-react'
 
+import { vereditoHumano } from '../../components/shared/VereditoHumano'
 import { useAuth } from '../../hooks/useAuth'
 import { api } from '../../services/api'
 import { labelForClass } from '../../utils/labels'
+import { rotaNova } from '../RotasNovas'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import * as s from './Acoes.css'
 
@@ -56,7 +80,18 @@ interface Evento {
   violations?: Violacao[]
   acknowledged: boolean
   created_at: string
+  /** Presença (não o valor) decide se vale a pena pedir a miniatura. */
+  evidence_key?: string | null
+  /** `list_with_filters` devolve a linha crua (`SELECT a.*`) — os dois campos
+   *  do veredito já vêm de graça, sem chamada extra. */
+  verification_verdict?: string | null
+  verified_by?: string | null
 }
+
+/** `POST /verification/<id>/review` — mesmo verbo do backend, sem `reason`
+ *  (a lista é atalho; motivar o veredito é coisa do cartão inteiro, em
+ *  `EventoDetalhe.tsx`). */
+type VeredictoAcao = 'approve' | 'reject'
 
 interface Envelope {
   data?: { alerts: Evento[]; total: number }
@@ -87,9 +122,65 @@ function desde(dias: number): string {
   return new Date(Date.now() - dias * 86_400_000).toISOString()
 }
 
+/**
+ * Miniatura da evidência — mesma fonte que `EventoDetalhe.tsx` usa
+ * (`evidence_key` → URL assinada), pelo endpoint leve de UM alerta
+ * (`GET /alerts/<id>/snapshot`, já usado por `Verificacao.tsx` para o mesmo
+ * fim). Só pede quando o cartão entra na viewport — com dezenas de cartões na
+ * tela, pedir todas ao montar seria o N+1 que `Eventos.tsx` documenta como o
+ * motivo de a lista de eventos não ter miniatura.
+ */
+function EvidenciaCartao({ id, temEvidencia }: { id: string; temEvidencia: boolean }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [emVista, setEmVista] = useState(false)
+  const [url, setUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    if (typeof IntersectionObserver === 'undefined') {
+      // jsdom (teste) não implementa — carrega direto em vez de nunca carregar.
+      setEmVista(true)
+      return
+    }
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) { setEmVista(true); obs.disconnect() }
+      },
+      { rootMargin: '200px' },
+    )
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (!emVista || !temEvidencia) return
+    let vivo = true
+    api.get<{ data?: { snapshot_url?: string } }>(`/alerts/${id}/snapshot`)
+      .then((r) => { if (vivo) setUrl(r?.data?.snapshot_url ?? null) })
+      .catch(() => { if (vivo) setUrl(null) })
+    return () => { vivo = false }
+  }, [emVista, temEvidencia, id])
+
+  return (
+    <div ref={ref} className={s.miniatura}>
+      {url ? (
+        <img src={url} alt="Frame da evidência" className={s.miniaturaImagem} />
+      ) : (
+        <span className={s.miniaturaVazia}>
+          <ImageOff size={14} {...ICONE} aria-hidden />
+          {temEvidencia ? 'sem prévia' : 'sem evidência'}
+        </span>
+      )}
+    </div>
+  )
+}
+
 export function Acoes() {
   const { can } = useAuth()
+  const navegar = useNavigate()
   const podeReconhecer = can('alerts:feedback')
+  const podeJulgar = can('verification:write')
 
   const [vista, setVista] = useState<Vista>('kanban')
   const [fase, setFase] = useState<Fase>('carregando')
@@ -99,6 +190,7 @@ export function Acoes() {
   const [totalAbertas, setTotalAbertas] = useState(0)
   const [totalFeitas, setTotalFeitas] = useState(0)
   const [reconhecendo, setReconhecendo] = useState<string | null>(null)
+  const [julgando, setJulgando] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     setFase('carregando')
@@ -133,6 +225,25 @@ export function Acoes() {
       setReconhecendo(null)
     }
   }
+
+  /** Mesmo endpoint/verbo de `EventoDetalhe.tsx` (`darVeredito`), sem `reason`
+   *  — atalho da lista. NÃO toca `acknowledged`: veredito é verdade sobre a
+   *  detecção, reconhecer é ciência do operador — eixos independentes. */
+  const julgar = async (id: string, verdict: VeredictoAcao) => {
+    setJulgando(id)
+    try {
+      await api.post(`/verification/${id}/review`, { verdict })
+      await carregar()
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'falha desconhecida')
+      setFase('erro')
+    } finally {
+      setJulgando(null)
+    }
+  }
+
+  /** Só NAVEGA. Nunca chama `/acknowledge` — abrir não é reconhecer. */
+  const abrir = (id: string) => navegar(rotaNova(`/epi/eventos/${id}`))
 
   if (fase === 'carregando') {
     return <LogikosLoader estado="waiting" variante="fullscreen" rotulo="CARREGANDO AÇÕES" />
@@ -169,32 +280,94 @@ export function Acoes() {
 
   const taxa = Math.round((totalFeitas / total) * 100)
 
-  const cartao = (e: Evento, concluida: boolean) => (
-    <div key={e.id} className={concluida ? s.cartao.concluida : s.cartao.aberta}>
-      <span className={s.cartaoTitulo}>{descrever(e)}</span>
-      <span className={s.origem}>EVENTO {e.id.slice(0, 8)} · {referencia(e)}</span>
-      <div className={s.cartaoRodape}>
-        <span className={concluida ? s.estado.reconhecida : s.estado.aguardando}>
-          {concluida ? <Check size={13} {...ICONE} aria-hidden /> : <Clock size={13} {...ICONE} aria-hidden />}
-          {concluida ? 'Reconhecida' : 'Aguardando'}
-        </span>
-        <span className={s.quando}>
-          <Clock size={12} {...ICONE} aria-hidden />
-          {horario(e.created_at)}
-        </span>
+  const cartao = (e: Evento, concluida: boolean) => {
+    // Veredito é eixo independente de reconhecimento — não some quando o
+    // filtro de coluna é `acknowledged`, então checa nos dois grupos.
+    const veredito = vereditoHumano(e.verification_verdict, e.verified_by)
+    const abrirEvento = () => abrir(e.id)
+    return (
+      <div
+        key={e.id}
+        className={concluida ? s.cartao.concluida : s.cartao.aberta}
+        role="button"
+        tabIndex={0}
+        aria-label={`Abrir evento ${e.id.slice(0, 8)}`}
+        onClick={abrirEvento}
+        onKeyDown={(ev) => {
+          if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); abrirEvento() }
+        }}
+      >
+        <EvidenciaCartao id={e.id} temEvidencia={Boolean(e.evidence_key)} />
+        <span className={s.cartaoTitulo}>{descrever(e)}</span>
+        <span className={s.origem}>EVENTO {e.id.slice(0, 8)} · {referencia(e)}</span>
+        <div className={s.cartaoRodape}>
+          <span className={concluida ? s.estado.reconhecida : s.estado.aguardando}>
+            {concluida ? <Check size={13} {...ICONE} aria-hidden /> : <Clock size={13} {...ICONE} aria-hidden />}
+            {concluida ? 'Reconhecida' : 'Aguardando'}
+          </span>
+          {veredito !== 'nao-revisado' && (
+            <span className={s.veredito}>
+              {veredito === 'procedente' ? <Check size={13} {...ICONE} aria-hidden /> : <X size={13} {...ICONE} aria-hidden />}
+              {veredito === 'procedente' ? 'Procedente' : 'Falso positivo'}
+            </span>
+          )}
+          <span className={s.quando}>
+            <Clock size={12} {...ICONE} aria-hidden />
+            {horario(e.created_at)}
+          </span>
+        </div>
+
+        {/* Tratativa (título/responsável/prazo) do desenho: sem tabela, sem
+         *  endpoint (ver cabeçalho do arquivo). Controle desenhado e
+         *  desabilitado, com selo — nunca some em silêncio, nunca finge dado. */}
+        <div className={s.acoesCartao} onClick={(ev) => ev.stopPropagation()}>
+          <button
+            type="button"
+            className={s.botaoTratativa}
+            disabled
+            title="Tratativa (título, responsável e prazo): não existe tabela nem endpoint para isso no backend ainda."
+          >
+            <ClipboardCheck size={13} {...ICONE} aria-hidden /> Tratativa
+          </button>
+          <span className={s.seloAguarda}>AGUARDA BACKEND</span>
+
+          {podeJulgar && (
+            <>
+              <button
+                type="button"
+                className={s.botaoVeredito.confirmar}
+                disabled={julgando === e.id}
+                onClick={() => void julgar(e.id, 'approve')}
+                title="A detecção está correta (procedente)"
+              >
+                <Check size={13} {...ICONE} aria-hidden /> Confirmar
+              </button>
+              <button
+                type="button"
+                className={s.botaoVeredito.descartar}
+                disabled={julgando === e.id}
+                onClick={() => void julgar(e.id, 'reject')}
+                title="A detecção está errada (falso positivo)"
+              >
+                <X size={13} {...ICONE} aria-hidden /> Descartar
+              </button>
+            </>
+          )}
+
+          {!concluida && podeReconhecer && (
+            <button
+              type="button"
+              className={s.botaoCartao}
+              disabled={reconhecendo === e.id}
+              onClick={() => void reconhecer(e.id)}
+            >
+              {reconhecendo === e.id ? 'Reconhecendo…' : 'Marcar reconhecida'}
+            </button>
+          )}
+        </div>
       </div>
-      {!concluida && podeReconhecer && (
-        <button
-          type="button"
-          className={s.botaoCartao}
-          disabled={reconhecendo === e.id}
-          onClick={() => void reconhecer(e.id)}
-        >
-          {reconhecendo === e.id ? 'Reconhecendo…' : 'Marcar reconhecida'}
-        </button>
-      )}
-    </div>
-  )
+    )
+  }
 
   const todos = [...abertas, ...feitas]
 
@@ -224,9 +397,10 @@ export function Acoes() {
       </div>
 
       <p className={s.nota}>
-        Esta tela mostra o reconhecimento de eventos — o único registro de ação que o
-        sistema guarda hoje. Ação corretiva com título, responsável e prazo ainda não
-        existe no backend, e por isso não aparece aqui.
+        Esta tela mostra o reconhecimento de eventos e o veredito humano sobre a
+        detecção — os dois registros de ação que o sistema guarda hoje. Ação
+        corretiva com título, responsável e prazo ainda não existe no backend, e
+        por isso não aparece aqui — o selo “Tratativa” em cada cartão avisa disso.
       </p>
 
       <div className={s.faixaTaxa}>
