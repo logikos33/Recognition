@@ -849,7 +849,9 @@ class FrameRepository(BaseRepository):
         Faceta de status: partição MECE de curation_status × is_annotated —
         'duvida' e 'excluida' são o próprio curation_status; frames 'active'
         se dividem em 'nao_anotado'/'anotado' pela contagem já usada na
-        galeria (is_annotated).
+        galeria (is_annotated). `status['proposta_pendente']` é uma quinta
+        chave FORA dessa partição (não soma com as outras quatro — a mesma
+        proposta pode estar num frame de qualquer status/anotação).
         """
         base_conditions = ["tf.tenant_id = %s"]
         base_params: "list[Any]" = [str(tenant_id)]
@@ -915,6 +917,28 @@ class FrameRepository(BaseRepository):
                 status_counts["anotado"] += n
             else:
                 status_counts["nao_anotado"] += n
+
+        # Chip "Propostas pendentes" (migration 111) ficava sem número —
+        # dimensão à parte de curation_status, por isso nunca entrava na
+        # GROUP BY acima. Mesmo predicado único de list_images_filtered
+        # (_PENDING_PROPOSAL_CONDITION) e mesmo default "exclui excluída"
+        # que o filtro ?pending_review=true aplica quando curation_status
+        # vem omitido — para o número do chip bater com o `total` de
+        # clicar nele. COUNT(*), não SUM(jsonb_array_length): é a MESMA
+        # conta barata do `total` de list_images_filtered, não o agregado
+        # de propostas (esse sim paga parse de JSONB, só na fila ativa).
+        # Nunca filtra pelo próprio curation_status (mesma regra da faceta
+        # de status acima) nem por status_conditions.append de curation —
+        # só herda source/câmera de status_where.
+        pending_rows = self._execute(
+            "SELECT COUNT(*) AS count FROM training_frames tf "
+            f"WHERE {status_where} AND tf.curation_status != 'excluida' "
+            f"AND {self._PENDING_PROPOSAL_CONDITION}",
+            tuple(status_params),
+        )
+        status_counts["proposta_pendente"] = (
+            int(pending_rows[0]["count"]) if pending_rows else 0
+        )
 
         return {"cameras": cameras, "status": status_counts}
 

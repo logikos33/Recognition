@@ -59,6 +59,21 @@ export const chipCount = style({
   opacity: 0.75,
 })
 
+// Combinação de filtros que nunca dá resultado (ex.: Origem: Upload +
+// Propostas pendentes) — mesmo par cor/borda do selo "Proposta" (aviso,
+// nunca erro: a escolha não é bloqueada).
+export const filterWarning = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '6px',
+  padding: '6px 12px',
+  borderRadius: vars.radius.md,
+  fontSize: '12px',
+  color: vars.color.warning,
+  background: vars.color.warningMuted,
+  border: `1px solid ${vars.color.warning}`,
+})
+
 export const resultLine = style({
   fontSize: '13px',
   fontFamily: vars.font.mono,
