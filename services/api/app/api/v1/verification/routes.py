@@ -2,7 +2,7 @@
 Recognition — Verification Queue API.
 
 Routes:
-  GET  /api/verification/queue          — alertas needs_human para revisão
+  GET  /api/verification/queue          — alertas sem veredito (verdict IS NULL) para revisão
   GET  /api/verification/queue/count    — contagem (badge na nav)
   POST /api/verification/<id>/review    — operador aprova ou rejeita
 """

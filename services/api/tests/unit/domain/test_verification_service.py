@@ -187,6 +187,117 @@ class TestGetHumanQueue:
 
 
 # ---------------------------------------------------------------------------
+# Teste de mutação: critério fantasma `needs_human` não pode voltar
+#
+# get_human_queue e get_queue_count filtravam por `verification_status =
+# 'needs_human'`, mas essa coluna é escrita SÓ pela task Celery `verify_alert`
+# (triagem por IA), que nunca conclui no worker atual. Medido no DEV, tenant
+# RVB: 423 alerts, 416 `pending`, 6 `human_rejected`, 1 `human_approved`,
+# 0 `needs_human`. A fila filtrava por um conjunto vazio por construção — 0
+# resultados sempre, não importa quantos alertas reais existam.
+#
+# `_FakeDbCursor` simula o WHERE de verdade contra um fixture de alertas
+# (não é MagicMock com retorno fixo): ela lê a query que o código realmente
+# emitiu e aplica o filtro correspondente aos dados. Assim o teste falha de
+# verdade se o WHERE regredir para `needs_human` — não é comparação de string.
+# ---------------------------------------------------------------------------
+
+class _FakeDbCursor:
+    """Aplica o WHERE emitido pelo código a um fixture de alertas, como o
+    Postgres faria. Não reconhece um WHERE fora dos dois esperados aqui —
+    preferimos falhar alto a filtrar silenciosamente errado."""
+
+    def __init__(self, alerts: list[dict]):
+        self._alerts = alerts
+        self.last_query = ""
+        self.last_params = ()
+        self._result: list[dict] = []
+
+    def execute(self, query: str, params=()):
+        self.last_query = query
+        self.last_params = params
+        if "verification_verdict IS NULL" in query:
+            matches = [a for a in self._alerts if a.get("verification_verdict") is None]
+        elif "verification_status = 'needs_human'" in query:
+            matches = [a for a in self._alerts if a.get("verification_status") == "needs_human"]
+        else:
+            raise AssertionError(f"WHERE inesperado no fixture do teste: {query!r}")
+        self._result = matches
+
+    def fetchall(self):
+        return [dict(a) for a in self._result]
+
+    def fetchone(self):
+        return {"total": len(self._result)}
+
+
+def _rvb_like_alerts(tenant_id: str) -> list[dict]:
+    """Amostra proporcional ao medido no DEV (416 pending / 6 rejected /
+    1 approved / 0 needs_human), reduzida para o teste ficar legível."""
+    alerts = []
+    for i in range(5):
+        alerts.append({
+            "id": f"pending-{i}", "tenant_id": tenant_id,
+            "verification_status": "pending", "verification_verdict": None,
+        })
+    alerts.append({
+        "id": "rejected-1", "tenant_id": tenant_id,
+        "verification_status": "human_rejected", "verification_verdict": "reject",
+    })
+    alerts.append({
+        "id": "approved-1", "tenant_id": tenant_id,
+        "verification_status": "human_approved", "verification_verdict": "approve",
+    })
+    # 0 needs_human de propósito — nunca escrito no banco real (verify_alert
+    # não conclui no worker atual).
+    return alerts
+
+
+class TestFilaCriterioHonestoNaoENeedsHumanFantasma:
+
+    def test_fila_devolve_alertas_pending_com_veredito_nulo(self):
+        """A régua desta rodada: alertas `pending`/verdict NULL — o estado
+        real de 100% dos alertas do tenant RVB hoje — têm que aparecer na
+        fila. Com o critério `needs_human` antigo, este teste falha (0
+        resultados) porque nenhum alerta chega a esse status."""
+        cursor = _FakeDbCursor(_rvb_like_alerts("tenant-1"))
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(cursor)
+            result = _make_service().get_human_queue(tenant_id="tenant-1")
+        assert len(result) == 5
+        assert {a["id"] for a in result} == {f"pending-{i}" for i in range(5)}
+        assert all(a["verification_verdict"] is None for a in result)
+
+    def test_fila_nao_devolve_alertas_ja_julgados(self):
+        cursor = _FakeDbCursor(_rvb_like_alerts("tenant-1"))
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(cursor)
+            result = _make_service().get_human_queue(tenant_id="tenant-1")
+        ids = {a["id"] for a in result}
+        assert "rejected-1" not in ids
+        assert "approved-1" not in ids
+
+    def test_contagem_bate_com_pending_nao_com_needs_human_vazio(self):
+        cursor = _FakeDbCursor(_rvb_like_alerts("tenant-1"))
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(cursor)
+            count = _make_service().get_queue_count(tenant_id="tenant-1")
+        assert count == 5
+
+    def test_query_nao_usa_mais_verification_status_needs_human(self):
+        """Assinatura textual do gate: se alguém reintroduzir
+        `verification_status = 'needs_human'` no WHERE, este teste falha
+        mesmo sem rodar o fixture acima."""
+        cursor = _FakeDbCursor(_rvb_like_alerts("tenant-1"))
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(cursor)
+            _make_service().get_human_queue(tenant_id="tenant-1")
+            _make_service().get_queue_count(tenant_id="tenant-1")
+        assert "needs_human" not in cursor.last_query
+        assert "verification_verdict IS NULL" in cursor.last_query
+
+
+# ---------------------------------------------------------------------------
 # human_review
 # ---------------------------------------------------------------------------
 

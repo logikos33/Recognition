@@ -1,12 +1,15 @@
 """
 DOMAIN verification_service.py — Fila de verificação humana de alertas.
 
-Fluxo automatizado:
+Fluxo desenhado (triagem por IA — atualmente NÃO roda no worker, ver
+get_human_queue):
   1. Claude pré-analisa alertas de baixa confiança
   2. "approve" e "reject" resolvem automaticamente
   3. "needs_human" vai para a fila visível ao operador
   4. Operador confirma ou rejeita o que a IA deixou pendente
 
+Fluxo real hoje: a triagem por IA nunca conclui, então a fila mostra todo
+alerta ainda sem veredito (`verification_verdict IS NULL`) — humano ou IA.
 O operador NUNCA vê os aprovados/rejeitados automaticamente.
 """
 import logging
@@ -50,10 +53,26 @@ class VerificationService:
         limit: int = 50,
         camera_id: str | None = None,
     ) -> list[dict]:
-        """Lista alertas needs_human do tenant, mais recentes primeiro (C-01).
+        """Lista alertas aguardando revisão do tenant, mais recentes primeiro (C-01).
 
-        tenant_id é obrigatório — sem ele a fila vazaria alertas needs_human
-        de todos os tenants (achado #14 do API_CONTRACT_MAP.md).
+        tenant_id é obrigatório — sem ele a fila vazaria alertas de todos os
+        tenants (achado #14 do API_CONTRACT_MAP.md).
+
+        Critério é `verification_verdict IS NULL`, não `verification_status =
+        'needs_human'`. `needs_human` é escrito só pela task Celery
+        `verify_alert` (infrastructure/queue/tasks/verification.py) — a
+        triagem por IA que decide approve/reject/needs_human. Essa task nunca
+        conclui no worker atual: medido no DEV, 0 linhas em needs_human/
+        auto_approved/auto_rejected e 0 com verified_by='claude-haiku' no
+        banco inteiro. Todo alerta nasce e fica em `pending` (DEFAULT da
+        migration 016). Com o filtro antigo a fila filtrava por um conjunto
+        vazio por construção — o operador nunca via nada, mesmo com centenas
+        de alertas reais esperando (tenant RVB: 416 pending, 0 needs_human).
+        `verdict IS NULL` é o estado honesto de "ninguém decidiu ainda",
+        humano ou IA. Quando a triagem por IA voltar a rodar, `pending` volta
+        a ser um estado transitório de verdade e a distinção fina
+        (needs_human vs. auto-resolvido) pode ser reintroduzida — até lá,
+        NULL é o único jeito de a fila achar os alertas reais.
         """
         pool = _get_pool()
         if pool is None:
@@ -63,7 +82,7 @@ class VerificationService:
             "SELECT a.*, c.name AS camera_name "
             "FROM alerts a "
             "LEFT JOIN cameras c ON c.id = a.camera_id "
-            "WHERE a.verification_status = 'needs_human' AND a.tenant_id = %s "
+            "WHERE a.verification_verdict IS NULL AND a.tenant_id = %s "
         )
         params: list = [tenant_id]
         if camera_id:
@@ -149,11 +168,16 @@ class VerificationService:
         # `except: return 0` engolia, então o badge nunca contou nada — mostrava
         # 0 pela via da exceção desde o primeiro dia. Só apareceu quando o
         # fallback silencioso saiu e a rota passou a devolver 500.
+        #
+        # Mesmo critério honesto de get_human_queue: `verification_verdict IS
+        # NULL`, não `verification_status = 'needs_human'`. needs_human só é
+        # escrito pela triagem por IA (verify_alert), que não conclui no
+        # worker atual — ver comentário completo em get_human_queue.
         with pool.get_connection() as conn:
             cur = conn.cursor()
             cur.execute(
                 "SELECT COUNT(*) AS total FROM alerts "
-                "WHERE verification_status = 'needs_human' AND tenant_id = %s",
+                "WHERE verification_verdict IS NULL AND tenant_id = %s",
                 (tenant_id,),
             )
             row = cur.fetchone()
