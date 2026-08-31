@@ -530,8 +530,8 @@ export function Carga() {
           />
           <span>
             <strong>Três números do desenho não têm produtor.</strong> &quot;Itens
-            contados&quot; depende de <code>counting_events</code>, e nada no edge, na
-            inferência ou no worker escreve nessa tabela. &quot;Divergências aguardando
+            contados&quot; depende de <code>counting_events</code>, e nada no edge, no
+            reconhecimento ou no worker escreve nessa tabela. &quot;Divergências aguardando
             validação&quot; e &quot;baias ativas&quot; dependem, respectivamente, de uma
             fila de pendentes e de um cadastro de baias — nenhum dos dois existe. Estão
             registrados como pedido ao backend.
