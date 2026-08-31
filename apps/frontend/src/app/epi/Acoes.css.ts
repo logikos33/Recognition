@@ -206,11 +206,45 @@ const cartaoBase = style({
   background: lk.cor.grafite,
   border: `1px solid ${lk.cor.borda}`,
   borderRadius: lk.raio.m,
+  // O cartão inteiro abre o evento — só os botões (stopPropagation) escapam.
+  cursor: 'pointer',
+  ':focus-visible': { outline: `2px solid ${lk.cor.cianoVisao}`, outlineOffset: '2px' },
 })
 
 export const cartao = styleVariants({
   aberta: [cartaoBase],
   concluida: [cartaoBase, { opacity: 0.65 }],
+})
+
+// ── Miniatura da evidência ──────────────────────────────────────────────────
+
+export const miniatura = style({
+  aspectRatio: '16 / 9',
+  width: '100%',
+  boxSizing: 'border-box',
+  borderRadius: lk.raio.s,
+  overflow: 'hidden',
+  background: lk.cor.preto,
+  border: `1px solid ${lk.cor.borda}`,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+})
+
+export const miniaturaImagem = style({
+  width: '100%',
+  height: '100%',
+  objectFit: 'cover',
+  display: 'block',
+})
+
+export const miniaturaVazia = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '5px',
+  fontFamily: lk.fonte.mono,
+  fontSize: '10px',
+  color: lk.cor.cinzaNevoa,
 })
 
 export const cartaoTitulo = style({
@@ -258,6 +292,84 @@ const estadoBase = style({
 export const estado = styleVariants({
   aguardando: [estadoBase, { color: lk.estado.atencao }],
   reconhecida: [estadoBase, { color: lk.estado.ok }],
+})
+
+/**
+ * Veredito é um TERCEIRO eixo — nem reconhecimento (verde/âmbar acima), nem
+ * polaridade (verde/vermelho, nem mostrada aqui: a tela já filtra
+ * `kind=violation`). `lk.css.ts` reserva ciano para SÓ interativo — então
+ * veredito, que aqui é leitura, fica em cinza. `vereditoHumano()` (mesma
+ * função pura de `VereditoHumano.tsx`/`EventoDetalhe.tsx`) decide o texto;
+ * a cor não muda entre procedente/falso-positivo — ícone e palavra distinguem.
+ */
+export const veredito = style([estadoBase, { color: lk.cor.cinzaNevoa }])
+
+export const acoesCartao = style({
+  display: 'flex',
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  gap: '6px',
+})
+
+const botaoVereditoBase = style({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '5px',
+  height: '34px',
+  padding: '0 12px',
+  border: `1px solid ${lk.cor.borda}`,
+  borderRadius: '7px',
+  background: 'transparent',
+  color: lk.cor.brancoSinal,
+  fontFamily: lk.fonte.ui,
+  fontSize: '12.5px',
+  fontWeight: 600,
+  cursor: 'pointer',
+  selectors: {
+    // Ciano no hover, não no repouso — é a regra do token (`lk.css.ts`):
+    // "CIANO É SÓ INTERATIVO... NUNCA como fundo".
+    '&:hover:not(:disabled)': { borderColor: lk.cor.cianoVisao, color: lk.cor.cianoVisao },
+    '&:disabled': { cursor: 'not-allowed', opacity: 0.5 },
+  },
+  '@media': { [TELA_ESTREITA]: { height: '44px' } },
+})
+
+/** Confirmar/Descartar têm a MESMA cor — ícone (Check/X) e palavra
+ *  distinguem, nunca só a cor (mesma regra de `estado` acima). */
+export const botaoVeredito = styleVariants({
+  confirmar: [botaoVereditoBase],
+  descartar: [botaoVereditoBase],
+})
+
+/** Tratativa (título/responsável/prazo do desenho): controle DESENHADO e
+ *  desabilitado — mesma forma de `botaoDependente` em `Cenario.css.ts`. */
+export const botaoTratativa = style({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '5px',
+  height: '34px',
+  padding: '0 12px',
+  border: `1px dashed ${lk.cor.bordaForte}`,
+  borderRadius: '7px',
+  background: 'transparent',
+  color: lk.cor.cinzaNevoa,
+  fontFamily: lk.fonte.ui,
+  fontSize: '12.5px',
+  fontWeight: 600,
+  cursor: 'not-allowed',
+  '@media': { [TELA_ESTREITA]: { height: '44px' } },
+})
+
+/** Mesmo `seloAguarda` de `Cenario.css.ts` — não é enfeite, é a honestidade
+ *  do "controle desenhado + selo, sem ação falsa". */
+export const seloAguarda = style({
+  fontFamily: lk.fonte.mono,
+  fontSize: '9px',
+  letterSpacing: '.08em',
+  color: lk.estado.atencao,
+  border: `1px solid rgba(232,161,60,.4)`,
+  borderRadius: '4px',
+  padding: '2px 7px',
 })
 
 export const botaoCartao = style({
