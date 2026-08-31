@@ -215,3 +215,38 @@ export function statusToLabel(status: string, overrides?: Record<string, string>
 export function roleLabel(role: string): string {
   return ROLE_LABELS[role] ?? humanize(role)
 }
+
+// ── Motivo do veredito de verificação (contrato B2) ──────────────────────────
+
+/**
+ * Motivos ESTRUTURADOS de rejeição/confirmação de alerta na fila de
+ * verificação. Chave estável gravada em `alerts.verification_reason` — o
+ * texto muda, o dado (chave) fica, mesma regra de `CLASS_LABELS`.
+ *
+ *  - `epi_presente` é o MAIS IMPORTANTE: falso positivo de AUSÊNCIA (o modelo
+ *    disse "sem EPI" e o EPI está lá) — é o sinal que mais alimenta a
+ *    recalibração.
+ *  - `nao_da_pra_ver` é ABSTENÇÃO (ADR-0067): pessoa de costas ou fora de
+ *    quadro NÃO é acerto nem violação — tem nome próprio para não virar
+ *    "outro" e se perder.
+ */
+export const MOTIVOS_VERIFICACAO = [
+  { valor: 'epi_presente', rotulo: 'O EPI está presente' },
+  { valor: 'nao_da_pra_ver', rotulo: 'Não dá para ver a pessoa (de costas ou fora de quadro)' },
+  { valor: 'deteccao_errada', rotulo: 'O sistema confundiu com outra coisa' },
+  { valor: 'outro', rotulo: 'Outro motivo' },
+] as const
+
+export type MotivoVerificacao = (typeof MOTIVOS_VERIFICACAO)[number]['valor']
+
+const MOTIVO_VERIFICACAO_LABELS: Record<string, string> = Object.fromEntries(
+  MOTIVOS_VERIFICACAO.map((m) => [m.valor, m.rotulo]),
+)
+
+/** Traduz a chave estável de `verification_reason` para o texto da tela.
+ *  Valor que não bate nenhuma chave (motivo livre anterior a este contrato,
+ *  ou registro legado) volta como veio — nunca some: é a única testemunha do
+ *  porquê daquele veredito. */
+export function labelForVerificationReason(motivo: string): string {
+  return MOTIVO_VERIFICACAO_LABELS[motivo] ?? motivo
+}

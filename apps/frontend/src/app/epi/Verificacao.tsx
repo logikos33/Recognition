@@ -106,7 +106,7 @@ import { anexarSemRepetir } from '../../components/annotation/studioQueue'
 import { useAuth } from '../../hooks/useAuth'
 import { api } from '../../services/api'
 import { useToast } from '../../components/ui/Toast/useToast'
-import { labelForClass } from '../../utils/labels'
+import { labelForClass, MOTIVOS_VERIFICACAO, type MotivoVerificacao } from '../../utils/labels'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import * as s from './Verificacao.css'
 import { rotaNova } from '../RotasNovas'
@@ -237,6 +237,11 @@ export function Verificacao() {
   const [erro, setErro] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
   const [zoom, setZoom] = useState(ZOOM_MIN)
+  // Motivo estruturado do veredito (contrato B2) — obrigatório pra rejeitar,
+  // opcional pra confirmar. Reseta a cada item novo (ver efeito abaixo):
+  // motivo escolhido para o item anterior não pode vazar pro próximo.
+  const [motivo, setMotivo] = useState<MotivoVerificacao | ''>('')
+  const [motivoFaltando, setMotivoFaltando] = useState(false)
   const [urlEvidencia, setUrlEvidencia] = useState<string | null>(null)
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null)
   const cacheUrl = useRef(new Map<string, string | null>())
@@ -386,6 +391,14 @@ export function Verificacao() {
     }
   }, [atual])
 
+  // Item novo na tela → motivo do item anterior não pode vazar (change-of-mind
+  // num item já decidido é a única razão legítima de o motivo persistir, e aí
+  // `atual.id` não muda).
+  useEffect(() => {
+    setMotivo('')
+    setMotivoFaltando(false)
+  }, [atual?.id])
+
   const avancar = useCallback(() => {
     setIndice((i) => Math.min(i + 1, Math.max(0, fila.length - 1)))
   }, [fila.length])
@@ -401,13 +414,29 @@ export function Verificacao() {
       // mesmo assim ele recusar (corrida rara: revisão chegou entre o último
       // poll e este clique) — nunca engolir em silêncio.
       if (!atual || !podeEscrever || enviandoRef.current) return
+      // Motivo é obrigatório pra REJEITAR — é o que ensina a calibração (o
+      // "EPI está presente" mais que qualquer outro). Pra confirmar é
+      // opcional: não bloqueia, só viaja se foi escolhido.
+      if (verdict === 'reject' && !motivo) {
+        setMotivoFaltando(true)
+        toast.error(
+          'Selecione um motivo para rejeitar',
+          'O motivo é o que alimenta a recalibração do modelo.',
+        )
+        return
+      }
       enviandoRef.current = true
       setEnviando(true)
       try {
-        await api.post(`/verification/${atual.id}/review`, { verdict })
+        await api.post(`/verification/${atual.id}/review`, {
+          verdict,
+          ...(motivo ? { reason: motivo } : {}),
+        })
         // Carimba NA POSIÇÃO. Não remove: ver regra 1 do cabeçalho.
         setDecididos((d) => ({ ...d, [atual.id]: verdict }))
         toast.success(verdict === 'approve' ? 'Alerta confirmado' : 'Alerta rejeitado')
+        setMotivo('')
+        setMotivoFaltando(false)
         avancar()
       } catch (e) {
         toast.error(e instanceof Error ? e.message : 'Erro ao registrar o veredito')
@@ -416,7 +445,7 @@ export function Verificacao() {
         setEnviando(false)
       }
     },
-    [atual, avancar, podeEscrever, toast],
+    [atual, avancar, podeEscrever, toast, motivo],
   )
 
   // ⚠️ Deps completas de propósito: o listener acompanha o item corrente. Um
@@ -670,6 +699,34 @@ export function Verificacao() {
           </div>
 
           <div className={s.veredito}>
+            <div className={s.motivoLinha}>
+              <label htmlFor="motivo-verificacao" className={s.motivoRotulo}>
+                Motivo (obrigatório para rejeitar)
+              </label>
+              <select
+                id="motivo-verificacao"
+                className={
+                  motivoFaltando ? `${s.motivoSelect} ${s.motivoSelectErro}` : s.motivoSelect
+                }
+                value={motivo}
+                disabled={!podeEscrever || enviando}
+                onChange={(e) => {
+                  setMotivo(e.target.value as MotivoVerificacao | '')
+                  setMotivoFaltando(false)
+                }}
+              >
+                <option value="">Selecione um motivo…</option>
+                {MOTIVOS_VERIFICACAO.map((m) => (
+                  <option key={m.valor} value={m.valor}>
+                    {m.rotulo}
+                  </option>
+                ))}
+              </select>
+              {motivoFaltando && (
+                <span className={s.motivoErro}>Selecione um motivo para rejeitar.</span>
+              )}
+            </div>
+
             {vereditoAtual ? (
               <span
                 className={`${s.decidido} ${

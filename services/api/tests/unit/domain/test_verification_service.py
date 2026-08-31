@@ -896,7 +896,7 @@ class TestRazaoDoVeredito:
             )
 
         sql, params = cur.execute.call_args[0]
-        assert "verification_reason = %s" in sql
+        assert "verification_reason = COALESCE(%s, verification_reason)" in sql
         assert "a caixa pegou a luva do colega ao lado" in params
 
     def test_sem_razao_grava_nulo_nao_string_vazia(self):
@@ -916,3 +916,30 @@ class TestRazaoDoVeredito:
 
         _, params = cur.execute.call_args[0]
         assert None in params
+
+    def test_sem_razao_nao_apaga_razao_ja_gravada(self):
+        """Achado do cético: 3 chamadores do MESMO endpoint (Eventos.tsx,
+        Acoes.tsx, AlertsHistoryPage.tsx) re-julgam pelo atalho da lista e
+        NUNCA mandam `reason` — só a tela de Verificação manda. Re-julgar é
+        permitido de propósito (mudança de ideia, ver docstring de
+        `human_review`), mas sem COALESCE o UPDATE gravava NULL por cima de
+        um motivo estruturado já registrado, todo re-julgamento pelo atalho.
+        Sem a fix: `verification_reason = %s` (sobrescreve sempre). Com a
+        fix: `COALESCE(%s, verification_reason)` (preserva quando não vem).
+        """
+        from unittest.mock import MagicMock, patch
+
+        from app.domain.services.verification_service import VerificationService
+
+        cur = MagicMock()
+        cur.rowcount = 1
+        pool = MagicMock()
+        pool.get_connection.return_value.__enter__.return_value.cursor.return_value = cur
+
+        with patch("app.domain.services.verification_service._get_pool", return_value=pool):
+            VerificationService().human_review(
+                alert_id="a1", verdict="approve", user_id="u1", tenant_id="t1",
+            )
+
+        sql, _ = cur.execute.call_args[0]
+        assert "verification_reason = COALESCE(%s, verification_reason)" in sql

@@ -276,6 +276,43 @@ export const veredito = style({
   marginTop: 'auto',
 })
 
+/** Motivo estruturado do veredito (contrato B2) — select nativo, sem
+ *  componente próprio: é escolha fechada de poucas opções, o caso exato que
+ *  `<select>` resolve sem biblioteca. */
+export const motivoLinha = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '4px',
+})
+
+export const motivoRotulo = style({
+  fontSize: '11px',
+  color: lk.cor.cinzaNevoa,
+})
+
+export const motivoSelect = style({
+  height: '38px',
+  border: `1px solid ${lk.cor.borda}`,
+  borderRadius: lk.raio.s,
+  background: lk.cor.grafite,
+  color: lk.cor.brancoSinal,
+  fontFamily: lk.fonte.ui,
+  fontSize: '12.5px',
+  padding: `0 ${lk.espaco.x1}`,
+  selectors: {
+    '&:disabled': { opacity: 0.5, cursor: 'not-allowed' },
+  },
+})
+
+export const motivoSelectErro = style({
+  borderColor: lk.estado.nc,
+})
+
+export const motivoErro = style({
+  fontSize: '11px',
+  color: lk.estado.nc,
+})
+
 /** ≥56px — o piso que o README sobe SÓ nesta tela. */
 const botaoVeredito = {
   height: lk.medida.vereditoVerificacao,
