@@ -951,11 +951,22 @@ export function Cenario() {
         <div className={s.centro}>
           <Frame size={32} strokeWidth={1.5} color={lk.cor.cinzaNevoa} aria-hidden="true" />
           <span className={s.centroTitulo}>Esta câmera ainda não vigia nada</span>
-          <span className={s.centroTexto}>
-            Ela está gravando, mas ninguém disse o que observar. Desenhe a primeira zona sobre a imagem — leva um minuto.
-          </span>
-          {podeConfigurar && (
-            <button className={s.botaoPrimario} onClick={abrirNovaRegra}>Desenhe sua primeira zona</button>
+          {podeConfigurar ? (
+            <>
+              <span className={s.centroTexto}>
+                Ela está gravando, mas ninguém disse o que observar. Desenhe a primeira zona sobre a imagem — leva
+                um minuto.
+              </span>
+              <button className={s.botaoPrimario} onClick={abrirNovaRegra}>Desenhe sua primeira zona</button>
+            </>
+          ) : (
+            // Sem `cameras:configure` não há botão pra oferecer — a tela não manda
+            // fazer o que a pessoa não pode fazer. Frases da própria prancha: a
+            // primeira é do card vazio-com-CTA, a segunda é do card SEM PERMISSÃO.
+            <span className={s.centroTexto}>
+              Ela está gravando, mas ninguém disse o que observar. Alterar o que a câmera vigia é do administrador
+              do site.
+            </span>
           )}
         </div>
       ) : (
@@ -998,19 +1009,25 @@ export function Cenario() {
                     {ultimo && <span className={s.ultimoAviso}>{ultimo}</span>}
                   </div>
                   <div className={s.acoesRegra}>
-                    {podeConfigurar && t && (
-                      <button className={s.botaoAcao} onClick={() => abrirEdicao(op)}>Editar</button>
-                    )}
-                    {podeConfigurar && (
-                      capacidadePausa === 'indisponivel' ? (
-                        <button className={s.botaoDependente} disabled title="Depende do pedido B1 — pausar/retomar ainda não existe no servidor.">
-                          {ativa ? 'Pausar' : 'Retomar'}
-                        </button>
-                      ) : (
-                        <button className={s.botaoAcao} disabled={alternando === op.id} onClick={() => void alternarPausa(op)}>
-                          {alternando === op.id ? '…' : ativa ? 'Pausar' : 'Retomar'}
-                        </button>
-                      )
+                    {podeConfigurar ? (
+                      <>
+                        {t && <button className={s.botaoAcao} onClick={() => abrirEdicao(op)}>Editar</button>}
+                        {capacidadePausa === 'indisponivel' ? (
+                          <button className={s.botaoDependente} disabled title="Depende do pedido B1 — pausar/retomar ainda não existe no servidor.">
+                            {ativa ? 'Pausar' : 'Retomar'}
+                          </button>
+                        ) : (
+                          <button className={s.botaoAcao} disabled={alternando === op.id} onClick={() => void alternarPausa(op)}>
+                            {alternando === op.id ? '…' : ativa ? 'Pausar' : 'Retomar'}
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      // Nunca some com tudo em silêncio: quem não pode editar vê
+                      // por quê, no lugar onde os botões estariam.
+                      <span className={s.badgeTemplate} title="Alterar o que a câmera vigia é do administrador do site.">
+                        SOMENTE LEITURA
+                      </span>
                     )}
                   </div>
                 </div>
