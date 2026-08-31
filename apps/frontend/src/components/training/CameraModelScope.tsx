@@ -119,7 +119,7 @@ export function montarConfig(base: DeploymentConfig | null | undefined, classes:
   return config
 }
 
-function mesmoConjunto(a: string[], b: string[]): boolean {
+export function mesmoConjunto(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every(x => b.includes(x))
 }
 
@@ -129,10 +129,98 @@ function mesmoConjunto(a: string[], b: string[]): boolean {
  * o mesmo fallback, `mudou` ficava false e nem dava para corrigir. O POST
  * daqui sempre grava `classes` (geometry_validation exige ≥1), então um
  * deployment sem a chave veio de fora da API (script ad-hoc). */
-function draftDoDeployment(dep: ModelDeployment | undefined): Draft {
+export function draftDoDeployment(dep: ModelDeployment | undefined): Draft {
   if (!dep) return { modelId: '', classes: [] }
   const classes = dep.config?.classes
   return { modelId: dep.model_id, classes: Array.isArray(classes) ? classes : [] }
+}
+
+/** Botão-chip para (des)marcar UMA classe no escopo — substitui o
+ * `<input type=checkbox>` nativo (achado B2, rodada UX 2026-08): tokenizado
+ * (usa `vars`, branco-rotulado por tenant), altura de 1 linha, sem o
+ * quadradinho do navegador que não segue tema nenhum. */
+export interface ChipDeClasseProps {
+  rotulo: string
+  marcada: boolean
+  podeEditar: boolean
+  ariaLabel: string
+  onAlternar: () => void
+}
+
+export function ChipDeClasse({ rotulo, marcada, podeEditar, ariaLabel, onAlternar }: ChipDeClasseProps) {
+  return (
+    <button
+      type="button"
+      aria-pressed={marcada}
+      aria-label={ariaLabel}
+      disabled={!podeEditar}
+      onClick={onAlternar}
+      style={{
+        display: 'inline-flex', alignItems: 'center', height: 26, padding: '0 11px',
+        borderRadius: vars.radius.full,
+        border: `1px solid ${marcada ? vars.color.primary : vars.color.borderDefault}`,
+        background: marcada ? vars.color.primaryAlpha : 'transparent',
+        color: marcada ? vars.color.primary : vars.color.textSecondary,
+        fontSize: 12, fontWeight: marcada ? 600 : 400,
+        cursor: podeEditar ? 'pointer' : 'default',
+        opacity: podeEditar ? 1 : 0.65,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {rotulo}
+    </button>
+  )
+}
+
+/** Linha de chips de classe — NÚCLEO COMPARTILHADO entre esta tela e
+ * `app/epi/Cameras.tsx` (aba Escopo): antes duas cópias quase idênticas do
+ * mesmo `<input type=checkbox>` (uma com estilo inline) — foi nessa mesma
+ * duplicação que um dropdown de 3ª cópia vazou jargão nesta rodada.
+ * `maxHeight` + scroll interno mantém a LINHA DA CÂMERA compacta mesmo com
+ * módulos de mais classes: sem isto uma tabela de 14 câmeras crescia sem
+ * limite (achado B2). Cada chamador decide o que fazer quando `classes`
+ * chega vazio (`CameraModelScope` cai no catálogo-fallback; `Cameras.tsx`
+ * não tem fallback e mostra "modelo não declara classes") — por isso este
+ * componente só cuida da lista que já chegou pronta. */
+export interface ClasseChipsProps {
+  classes: string[]
+  selecionadas: string[]
+  podeEditar: boolean
+  nomeCamera: string
+  onAlternar: (cls: string) => void
+}
+
+export function ClasseChips({ classes, selecionadas, podeEditar, nomeCamera, onAlternar }: ClasseChipsProps) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px 8px', maxHeight: 62, overflowY: 'auto' }}>
+      {classes.map(cls => (
+        <ChipDeClasse
+          key={cls}
+          rotulo={cls}
+          marcada={selecionadas.includes(cls)}
+          podeEditar={podeEditar}
+          ariaLabel={`Classe ${cls} em ${nomeCamera}`}
+          onAlternar={() => onAlternar(cls)}
+        />
+      ))}
+      {classes.length > 0 && selecionadas.length === 0 && (
+        <span style={{ fontSize: 11, color: vars.color.warning }}>marque ≥1 classe</span>
+      )}
+    </div>
+  )
+}
+
+/** Por que o Salvar está desabilitado — texto ao lado do botão em vez de um
+ * cinza mudo sem explicação (achado B2). `null` = liberado (ou é problema
+ * de permissão, que a tela já explica em outro lugar — não repete aqui). */
+export function motivoBloqueioSalvar(
+  podeEditar: boolean, modelId: string, classes: string[], mudou: boolean,
+): string | null {
+  if (!podeEditar) return null
+  if (!modelId) return 'escolha um modelo'
+  if (classes.length === 0) return 'marque ao menos 1 classe'
+  if (!mudou) return 'sem alterações para salvar'
+  return null
 }
 
 export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloClass[] }) {
@@ -276,17 +364,26 @@ export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloCla
       <Banner variant="warning">
         O escopo abaixo é uma <strong>sugestão derivada de evidência</strong> (classe com ≥10 anotações
         humanas naquela câmera + protetor auditivo universal): é a CAPACIDADE do modelo ali, não a
-        EXIGÊNCIA do cliente. Será substituído pela matriz de exigência da RVB (issue #535) — uma área
-        sem nenhuma luva anotada hoje fica sem escopo de luvas, e nenhuma violação de luva seria vista
-        nela. Onde este escopo vale hoje: no shadow sobre os frames que o box envia E no worker de
-        inferência da nuvem, que passou a descartar detecção fora do escopo antes de virar violação
-        (tasks/inference.py::_no_escopo_da_camera). O box edge ainda NÃO recebe classe por câmera —
-        essa ponta segue aberta na issue #519.
+        EXIGÊNCIA do cliente. Será substituído pela matriz de exigência da RVB assim que ela ficar
+        pronta — até lá, uma área sem nenhuma luva anotada hoje fica sem escopo de luvas, e nenhuma
+        violação de luva seria vista nela. Se uma classe que devia estar marcada não aparece aqui, é
+        porque falta anotação dela nesta câmera — fale com quem cuida do treinamento. Onde este
+        escopo já vale: no shadow sobre os frames que o equipamento envia e no reconhecimento que
+        roda na nuvem, que já descarta detecção fora do escopo antes de virar violação. O
+        equipamento instalado no site ainda NÃO aplica esse recorte por câmera — essa parte segue
+        pendente.
+        {isSuperAdmin && (
+          <>
+            {' '}
+            {/* jargao-ok: modo avançado (superadmin) — referência de implementação, só quem mexe no código precisa disto */}
+            <span style={{ opacity: 0.72 }}>{'Detalhe técnico: aplica em tasks/inference.py::_no_escopo_da_camera · pendências nas issues #519 (equipamento do site) e #535 (matriz de exigência).'}</span>
+          </>
+        )}
       </Banner>
       <div style={{ padding: '10px 12px', fontSize: 12, color: vars.color.textMuted, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <span>Modelo + classes que valem em cada câmera (escopo). Sem deployment = detector padrão do ambiente (não há como desativar por aqui — só trocar).</span>
         {!podeEditar && <span style={{ color: vars.color.warning }}>(somente leitura — requer permissão de aprovação)</span>}
-        {models.length === 0 && <span style={{ color: vars.color.warning }}>Nenhum modelo com artefato ONNX no tenant.</span>}
+        {models.length === 0 && <span style={{ color: vars.color.warning }}>Nenhum modelo pronto para uso neste tenant.</span>}
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
@@ -338,28 +435,17 @@ export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloCla
                 </td>
                 <td style={cell}>
                   {draft.modelId ? (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
-                      {todas.map(cls => {
-                        const marcada = draft.classes.includes(cls)
-                        return (
-                          <label key={cls} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: podeEditar ? 'pointer' : 'default' }}>
-                            <input
-                              type="checkbox"
-                              aria-label={`Classe ${cls} em ${cam.name}`}
-                              checked={marcada}
-                              disabled={!podeEditar || saving === cam.id}
-                              onChange={() => setDraft(cam.id, {
-                                classes: marcada ? draft.classes.filter(c => c !== cls) : [...draft.classes, cls],
-                              })}
-                            />
-                            {cls}
-                          </label>
-                        )
+                    <ClasseChips
+                      classes={todas}
+                      selecionadas={draft.classes}
+                      podeEditar={podeEditar && saving !== cam.id}
+                      nomeCamera={cam.name}
+                      onAlternar={cls => setDraft(cam.id, {
+                        classes: draft.classes.includes(cls)
+                          ? draft.classes.filter(c => c !== cls)
+                          : [...draft.classes, cls],
                       })}
-                      {draft.classes.length === 0 && (
-                        <span style={{ fontSize: 11, color: vars.color.warning }}>marque ≥1 classe</span>
-                      )}
-                    </div>
+                    />
                   ) : (
                     <span style={{ color: vars.color.textMuted }}>—</span>
                   )}
@@ -368,16 +454,23 @@ export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloCla
                   {dep ? new Date(dep.created_at).toLocaleString('pt-BR') : '—'}
                 </td>
                 <td style={cell}>
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    aria-label={`Salvar escopo de ${cam.name}`}
-                    disabled={!podeSalvar}
-                    loading={saving === cam.id}
-                    onClick={() => salvar(cam)}
-                  >
-                    Salvar
-                  </Button>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-start' }}>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      aria-label={`Salvar escopo de ${cam.name}`}
+                      disabled={!podeSalvar}
+                      loading={saving === cam.id}
+                      onClick={() => salvar(cam)}
+                    >
+                      Salvar
+                    </Button>
+                    {motivoBloqueioSalvar(podeEditar, draft.modelId, draft.classes, mudou) && (
+                      <span style={{ fontSize: 10.5, color: vars.color.textMuted }}>
+                        {motivoBloqueioSalvar(podeEditar, draft.modelId, draft.classes, mudou)}
+                      </span>
+                    )}
+                  </div>
                 </td>
               </tr>
             )

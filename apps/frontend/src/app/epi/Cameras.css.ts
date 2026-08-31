@@ -435,16 +435,9 @@ export const seletor = style({
   ':disabled': { opacity: 0.6 },
 })
 
-export const classes = style({ display: 'flex', flexWrap: 'wrap', gap: '4px 12px' })
-
-export const classe = style({
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: '4px',
-  fontFamily: lk.fonte.ui,
-  fontSize: '12.5px',
-  cursor: 'pointer',
-})
+// `classes`/`classe` (checkbox nativo de classe) foram removidos daqui —
+// consolidados em `ClasseChips`/`ChipDeClasse`
+// (`components/training/CameraModelScope.tsx`), a mesma UI usada por lá.
 
 export const nota = style({
   padding: '12px 14px',

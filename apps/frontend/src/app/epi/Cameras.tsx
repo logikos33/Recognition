@@ -92,9 +92,13 @@ import { ConfirmDialog } from '../../components/ui/ConfirmDialog/ConfirmDialog'
 import { CameraOnboardingWizard } from '../../components/cameras/CameraOnboardingWizard'
 import { CameraWizard } from '../../components/cameras/CameraWizard'
 import {
+  ClasseChips,
   classesDoModelo,
+  draftDoDeployment as rascunhoDo,
+  mesmoConjunto,
   moduloDaCamera,
   montarConfig,
+  motivoBloqueioSalvar,
   type ModelDeployment,
   type RegistryModel,
 } from '../../components/training/CameraModelScope'
@@ -222,17 +226,11 @@ interface ModelDetail {
   model: RegistryModel
   lineage: { dataset_version: { class_distribution?: Record<string, unknown> } | null }
 }
-interface Rascunho { modelId: string; classes: string[] }
-
-function rascunhoDo(dep: ModelDeployment | undefined): Rascunho {
-  if (!dep) return { modelId: '', classes: [] }
-  const classes = dep.config?.classes
-  return { modelId: dep.model_id, classes: Array.isArray(classes) ? classes : [] }
-}
-
-function mesmoConjunto(a: string[], b: string[]): boolean {
-  return a.length === b.length && a.every((x) => b.includes(x))
-}
+// `Rascunho`/`rascunhoDo`/`mesmoConjunto` viviam duplicados aqui (cópia
+// quase idêntica de `CameraModelScope.tsx`) — agora importados de lá
+// (`draftDoDeployment as rascunhoDo`, `mesmoConjunto`). A forma continua
+// igual: {modelId, classes}.
+type Rascunho = { modelId: string; classes: string[] }
 
 interface EscopoProps {
   cameras: Camera[]
@@ -394,35 +392,23 @@ function AbaEscopo({ cameras, podeEditar }: EscopoProps) {
                 </td>
                 <td className={s.td}>
                   {rascunho.modelId ? (
-                    <div className={s.classes}>
-                      {todas.map((cls) => {
-                        const marcada = rascunho.classes.includes(cls)
-                        return (
-                          <label key={cls} className={s.classe}>
-                            <input
-                              type="checkbox"
-                              aria-label={`Classe ${cls} em ${cam.name}`}
-                              checked={marcada}
-                              disabled={!podeEditar || salvando === cam.id}
-                              onChange={() =>
-                                mudar(cam.id, {
-                                  classes: marcada
-                                    ? rascunho.classes.filter((c) => c !== cls)
-                                    : [...rascunho.classes, cls],
-                                })
-                              }
-                            />
-                            {cls}
-                          </label>
-                        )
-                      })}
-                      {todas.length === 0 && (
-                        <span className={s.tom.atencao}>Este modelo não declara classes.</span>
-                      )}
-                      {todas.length > 0 && rascunho.classes.length === 0 && (
-                        <span className={s.tom.atencao}>marque ≥1 classe</span>
-                      )}
-                    </div>
+                    todas.length === 0 ? (
+                      <span className={s.tom.atencao}>Este modelo não declara classes.</span>
+                    ) : (
+                      <ClasseChips
+                        classes={todas}
+                        selecionadas={rascunho.classes}
+                        podeEditar={podeEditar && salvando !== cam.id}
+                        nomeCamera={cam.name}
+                        onAlternar={(cls) =>
+                          mudar(cam.id, {
+                            classes: rascunho.classes.includes(cls)
+                              ? rascunho.classes.filter((c) => c !== cls)
+                              : [...rascunho.classes, cls],
+                          })
+                        }
+                      />
+                    )
                   ) : (
                     <span className={s.rotulo}>—</span>
                   )}
@@ -431,14 +417,21 @@ function AbaEscopo({ cameras, podeEditar }: EscopoProps) {
                   {dep ? new Date(dep.created_at).toLocaleString('pt-BR') : '—'}
                 </td>
                 <td className={s.td}>
-                  <button
-                    className={s.botaoSecundario}
-                    aria-label={`Salvar escopo de ${cam.name}`}
-                    disabled={!podeSalvar}
-                    onClick={() => { void salvar(cam) }}
-                  >
-                    {salvando === cam.id ? 'Salvando…' : 'Salvar'}
-                  </button>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-start' }}>
+                    <button
+                      className={s.botaoSecundario}
+                      aria-label={`Salvar escopo de ${cam.name}`}
+                      disabled={!podeSalvar}
+                      onClick={() => { void salvar(cam) }}
+                    >
+                      {salvando === cam.id ? 'Salvando…' : 'Salvar'}
+                    </button>
+                    {motivoBloqueioSalvar(podeEditar, rascunho.modelId, rascunho.classes, mudou) && (
+                      <span className={s.rotulo} style={{ fontSize: 10.5 }}>
+                        {motivoBloqueioSalvar(podeEditar, rascunho.modelId, rascunho.classes, mudou)}
+                      </span>
+                    )}
+                  </div>
                 </td>
               </tr>
             )

@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 387 arquivos, 65.202 linhas
+## Situação — 387 arquivos, 65.295 linhas
 
 | status | arquivos |
 |---|---:|
@@ -137,7 +137,7 @@ apagado não são a mesma coisa.
 | `src/components/TenantContextBanner.tsx` | `INFRA` | — | 172 |
 | `src/components/training/CameraFilterSelector.css.ts` | `INFRA` | — | 148 |
 | `src/components/training/CameraFilterSelector.tsx` | `INFRA` | — | 131 |
-| `src/components/training/CameraModelScope.tsx` | `INFRA` | — | 393 |
+| `src/components/training/CameraModelScope.tsx` | `INFRA` | — | 486 |
 | `src/components/training/canvas/LiveVideoWithOperations.tsx` | `INFRA` | — | 189 |
 | `src/components/training/canvas/RoiDrawer.tsx` | `INFRA` | — | 241 |
 | `src/components/training/CoverageMatrix.css.ts` | `INFRA` | — | 160 |
