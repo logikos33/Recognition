@@ -11,12 +11,24 @@
  * Só entra item cuja rota EXISTE — as áreas restantes da prancha (Ferramentas
  * IA, Dataset) chegam nas próximas PRs da F5.
  * Item apontando para rota inexistente é tela inventada.
+ *
+ * F5-LEVE (item 2): a lateral própria SUBSTITUI a nav principal do Shell —
+ * quem entra aqui perde o menu do EPI/Admin de vista, e o logo do topbar
+ * (F5-LEVE item 1) é pequeno demais para contar como o caminho de volta que
+ * a pessoa vai procurar. Por isso "Voltar" no topo da lateral, explícito, não
+ * dependente do logo. Vai para o Dashboard EPI — é de lá que a nav do Shell
+ * leva ao Estúdio, e é para lá que faz sentido devolver quem entrou pelo
+ * menu (`/modules` daria um passo a mais: tenant de módulo único, como a
+ * RVB, cairia de novo no dashboard EPI de qualquer jeito).
  */
 import { Suspense } from 'react'
-import { Activity, Box, Cctv, Grid3x3, Images, SquareMousePointer, Tags } from 'lucide-react'
-import { NavLink, Outlet } from 'react-router-dom'
+import {
+  Activity, ArrowLeft, Box, Cctv, Grid3x3, Images, SquareMousePointer, Tags,
+} from 'lucide-react'
+import { Link, NavLink, Outlet } from 'react-router-dom'
 
 import { useAuth } from '../../hooks/useAuth'
+import { rotaNova } from '../RotasNovas'
 import { SemPermissao } from '../shell/SemPermissao'
 import * as s from './Estudio.css'
 
@@ -38,6 +50,10 @@ export function Estudio() {
   return (
     <div className={s.raiz}>
       <nav className={s.lateral} aria-label="Seções do Estúdio">
+        <Link to={rotaNova('/epi/dashboard')} className={s.voltar}>
+          <ArrowLeft size={16} strokeWidth={1.7} aria-hidden="true" />
+          Voltar
+        </Link>
         <span className={s.lateralTitulo}>Estúdio</span>
         {ITENS.map(({ rota, rotulo, Icone }) => (
           <NavLink

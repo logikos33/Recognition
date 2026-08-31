@@ -25,6 +25,8 @@
 import { lazy, type ReactElement } from 'react'
 import { Navigate, Route } from 'react-router-dom'
 
+import { useAuth } from '../hooks/useAuth'
+
 /**
  * Cada tela em seu próprio pedaço, como o front antigo já faz. Importadas de
  * forma estática, as 8 telas EPI entram no bundle de entrada e são baixadas por
@@ -87,12 +89,36 @@ export const PREFIXO_NOVO = '/novo'
 export const rotaNova = (caminho: string) => PREFIXO_NOVO + caminho
 
 /**
+ * Home do usuário no front novo — MESMA regra do `RootRedirect` do front
+ * ANTIGO (`AppRoutes.tsx`: superadmin → painel da plataforma, demais →
+ * escolha de módulo), só que apontando para as telas NOVAS (`admin`,
+ * `modules`, já sob o prefixo). Função pura de propósito: o logo do Shell
+ * (`Marca`, F5-LEVE) e a raiz do prefixo (`RaizRotasNovas`, abaixo) chamam
+ * esta MESMA função — duplicar a regra nos dois lugares é como ela divergiria
+ * um dia sem ninguém perceber.
+ */
+export function rotaHomeDoUsuario(isSuperAdmin: boolean): string {
+  return rotaNova(isSuperAdmin ? '/admin' : '/modules')
+}
+
+/**
+ * Raiz do prefixo (`/novo` exato — quem clica no logo do Shell cai aqui).
+ * Antes mandava todo mundo para `epi/dashboard`, sem olhar o papel: um
+ * superadmin caía numa tela do EPI, não na home dele. Agora usa a mesma regra
+ * do `rotaHomeDoUsuario`.
+ */
+function RaizRotasNovas() {
+  const { isSuperAdmin } = useAuth()
+  return <Navigate to={rotaHomeDoUsuario(isSuperAdmin)} replace />
+}
+
+/**
  * As telas entram aqui conforme forem migradas E PROVADAS, uma por uma.
  * Lista vazia = o front novo ainda não serve rota nenhuma, e o antigo atende
  * tudo. É o estado honesto até a primeira tela ficar de pé.
  */
 export const ROTAS_NOVAS: ReactElement[] = [
-  <Route key="i" index element={<Navigate to="epi/dashboard" replace />} />,
+  <Route key="i" index element={<RaizRotasNovas />} />,
 
   // EPI, na ordem da jornada mestra: DETECTAR → TRIAR → AGIR → PROVAR.
   <Route key="d" path="epi/dashboard" element={<Dashboard />} />,

@@ -62,11 +62,20 @@ describe('Shell', () => {
   it('sem permissão nenhuma, sobra só o que não exige permissão', () => {
     // Dashboard é a tela de pouso e não exige permissão (permissao: null);
     // todo o resto some. Se este número subir, alguém pôs uma tela sensível
-    // com permissao: null.
+    // com permissao: null. LOGIKOS é o logo do topbar (F5-LEVE item 1): link
+    // para a home, sempre presente, independente de permissão.
     auth.can.mockReturnValue(false)
     montar()
     const nomes = screen.queryAllByRole('link').map((a) => a.textContent?.trim())
-    expect(nomes).toEqual(['Dashboard'])
+    expect(nomes).toEqual(['LOGIKOS', 'Dashboard'])
+  })
+
+  it('o logo é um link para a home do usuário', () => {
+    // isSuperAdmin: false no dublê → home é a escolha de módulo.
+    montar()
+    expect(screen.getByRole('link', { name: 'LOGIKOS' }).getAttribute('href')).toBe(
+      '/novo/modules',
+    )
   })
 
   it('o menu do front novo aponta para DENTRO do prefixo', () => {

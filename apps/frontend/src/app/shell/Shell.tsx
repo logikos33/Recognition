@@ -24,7 +24,7 @@
  */
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { Menu, Search } from 'lucide-react'
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { useAuth } from '../../hooks/useAuth'
 import { getSessionTokenExpMs } from '../../services/tenantContext'
@@ -32,20 +32,23 @@ import { LogikosLoader } from './LogikosLoader'
 import { PaletaComandos, type GrupoPaleta } from './PaletaComandos'
 import { SeletorTenant } from './SeletorTenant'
 import { SessaoExpirando } from './SessaoExpirando'
-import { PREFIXO_NOVO } from '../RotasNovas'
+import { PREFIXO_NOVO, rotaHomeDoUsuario } from '../RotasNovas'
 import { useMarcaDoTenant } from '../tokens/MarcaDoTenant'
 import { NAV_ADMIN, NAV_EPI, NAV_ESTUDIO, navVisivel } from './navPorPerfil'
 import * as s from './Shell.css'
 
-/** Marca: monograma + wordmark. Geometria canônica — nunca distorcer. */
-function Marca() {
+/**
+ * Marca: monograma + wordmark, link para a home do usuário (F5-LEVE item 1).
+ * Geometria do monograma é canônica — nunca distorcer.
+ */
+function Marca({ para }: { para: string }) {
   return (
-    <span className={s.marca}>
+    <Link to={para} className={s.marca}>
       <svg width="22" height="22" viewBox="0 0 100 100" aria-hidden="true">
         <path d="M40 55.3 A20 20 0 1 1 60 55.3 L67 88 L33 88 Z" fill="currentColor" />
       </svg>
       <span>LOGIKOS</span>
-    </span>
+    </Link>
   )
 }
 
@@ -62,7 +65,7 @@ export interface ShellProps {
  * dentro da tela. Impor o menu do EPI ali mostra "Eventos" e "Verificação" para
  * quem está inspecionando peça, e some com a navegação que a tela realmente tem.
  */
-const SEM_BARRA_LATERAL = [
+export const SEM_BARRA_LATERAL = [
   `${PREFIXO_NOVO}/quality`,
   `${PREFIXO_NOVO}/carga`,
   `${PREFIXO_NOVO}/estudio`,
@@ -70,7 +73,7 @@ const SEM_BARRA_LATERAL = [
 ]
 
 export function Shell({ carregando }: ShellProps) {
-  const { can } = useAuth()
+  const { can, isSuperAdmin } = useAuth()
   const { pathname } = useLocation()
   const comBarraLateral = !SEM_BARRA_LATERAL.some((r) => pathname.startsWith(r))
   // Publica --lk-marca clampada; os tokens leem dela. Ver DECISÃO v2 item 3.
@@ -139,7 +142,7 @@ export function Shell({ carregando }: ShellProps) {
             <Menu size={18} strokeWidth={1.7} />
           </button>
         )}
-        <Marca />
+        <Marca para={rotaHomeDoUsuario(isSuperAdmin)} />
         <span className={s.espacador} />
         <SeletorTenant />
         <button
