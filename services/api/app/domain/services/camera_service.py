@@ -546,10 +546,13 @@ class CameraService:
         contagem e operações por CASCADE, e trava por FK quando a câmera já
         tem frames de treino.
 
-        Arquivar também RETIRA os frames dela do treino — ver
-        versioning_v2._snapshot_labeled_frames e a fila de anotação: material
-        de câmera descartada deixa de alimentar o modelo, senão arquivar
-        seria só cosmético.
+        NÃO apaga nem tira frame algum do treino (task B4, corrige claim
+        falsa deste docstring): a fila de Classificar e o export de dataset
+        (versioning_v2._snapshot_labeled_frames/_fetch_annotations) servem
+        e exportam normalmente o material já minerado/anotado de câmera
+        arquivada — descartar veredito humano já dado não protege o modelo
+        de nada, só desperdiça o trabalho. Arquivar só impede CAPTURA NOVA
+        dessa câmera (ela para de aparecer como fonte ativa de coleta).
         """
         camera = self._camera_repo.get_by_id(camera_id)
         if not camera or str(camera["tenant_id"]) != str(tenant_id):

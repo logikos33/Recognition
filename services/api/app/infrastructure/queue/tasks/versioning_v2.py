@@ -79,11 +79,18 @@ def _snapshot_labeled_frames(
     AI_NOTE (ajuste #4): LEFT JOIN training_videos — frames com video_id
     NULL (upload/auto/nvr) ENTRAM no snapshot; INNER JOIN os excluiria.
 
-    Câmera arquivada (is_active=FALSE) NÃO alimenta mais o treino: arquivar
-    uma câmera que não faz parte do reconhecimento precisa tirar o material
-    dela do modelo, senão o arquivamento é só cosmético e o modelo continua
-    aprendendo de cena descartada. LEFT JOIN + `camera_id IS NULL OR
-    is_active` preserva frame de upload/vídeo, que não tem câmera.
+    NÃO filtra por câmera ativa (task B4, corrige regressão do commit
+    0e3d83ea): o recorte já foi MINERADO e ANOTADO por um humano antes de
+    a câmera arquivar (ou nunca ter sido ativada — 6 das 8 câmeras
+    is_active=false do RVB são rascunho de import em lote, nunca
+    arquivadas de verdade, medido no DEV) — descartar esse trabalho no
+    export depois de a fila de Classificar passar a servi-lo (ver
+    frame_repository.list_images_filtered, only_crops) é pior que a fila
+    vazia: gasta tempo humano e o veredito não chega a lugar nenhum.
+    `archive_camera` (camera_service.py) só marca is_active=FALSE — não
+    apaga nem desanota frame algum; parar de alimentar o modelo com câmera
+    arquivada é responsabilidade da INGESTÃO (parar de capturar), não do
+    export retroativo sobre material que já existe e já foi revisado.
 
     camera_id + captured_at (fallback created_at) incluídos para o split
     por câmera/dia de frames soltos de NVR (video_id NULL) — ver
@@ -103,12 +110,10 @@ def _snapshot_labeled_frames(
                (tf.validated_at IS NOT NULL) AS is_reviewed
           FROM training_frames tf
           LEFT JOIN training_videos tv ON tv.id = tf.video_id
-          LEFT JOIN public.cameras cam ON cam.id = tf.camera_id
          WHERE tf.tenant_id = %s
            AND tf.module_code = %s
            AND tf.is_annotated = TRUE
            AND tf.curation_status != 'excluida'
-           AND (tf.camera_id IS NULL OR cam.is_active = TRUE)
          ORDER BY (tf.validated_at IS NOT NULL) DESC,
                   tf.video_id, tf.frame_number
         """,
@@ -157,7 +162,10 @@ def _fetch_annotations(
     curation_status != 'excluida': mesmo filtro do pool de frames (ver
     _snapshot_labeled_frames) — sem efeito prático isolado (o frame já
     não estaria em `frames`), mas mantém as duas queries com o mesmo
-    universo e evita trabalho desperdiçado.
+    universo e evita trabalho desperdiçado. Mesma razão: SEM filtro de
+    câmera ativa (ver _snapshot_labeled_frames) — as duas queries do pool
+    têm de concordar, senão uma anotação sobrevive no snapshot e some
+    aqui (ou vice-versa), quebrando o COCO por baixo do frame.
     """
     rows = annotation_repo._execute(
         """
@@ -166,7 +174,6 @@ def _fetch_annotations(
                a.source, a.reviewed_by
           FROM frame_annotations a
           JOIN training_frames tf ON tf.id = a.frame_id
-          LEFT JOIN public.cameras cam ON cam.id = tf.camera_id
           LEFT JOIN yolo_classes c
             ON a.class_id >= 100000
            AND c.id = a.class_id - 100000
@@ -175,7 +182,6 @@ def _fetch_annotations(
            AND tf.module_code = %s
            AND tf.is_annotated = TRUE
            AND tf.curation_status != 'excluida'
-           AND (tf.camera_id IS NULL OR cam.is_active = TRUE)
            AND (a.class_id < 100000
                 OR (c.id IS NOT NULL AND c.archived_at IS NULL))
          ORDER BY a.frame_id, a.id

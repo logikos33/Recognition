@@ -130,6 +130,66 @@ def seeded_annotations(pg_raw, frames: dict[str, str], classes: dict[str, int]) 
         )
 
 
+@pytest.fixture
+def inactive_camera_frame(pg_raw, tenant_id: str, user_id: str) -> str:
+    """Frame anotado de câmera is_active=FALSE (task B4).
+
+    Reproduz o achado do cético: a fila de Classificar (frame_repository.
+    list_images_filtered, only_crops) passou a servir recorte de câmera
+    is_active=false — mas o export continuava jogando esse trabalho fora
+    (filtro `cam.is_active = TRUE` nas duas queries do pool). Falha-antes:
+    com o filtro, este frame/anotação não aparecem em nenhuma das duas
+    funções. Passa-depois: aparecem — o veredito humano já dado não é
+    descartado.
+    """
+    camera_id = str(uuid4())
+    frame_id = str(uuid4())
+    with pg_raw.cursor() as cur:
+        cur.execute(
+            "INSERT INTO public.cameras (id, tenant_id, user_id, name, host, is_active) "
+            "VALUES (%s, %s, %s, %s, %s, FALSE)",
+            (camera_id, tenant_id, user_id, "Câmera Arquivada IntTest", "10.0.0.9"),
+        )
+        cur.execute(
+            "INSERT INTO public.training_frames "
+            "(id, frame_number, filename, tenant_id, module_code, is_annotated, "
+            " source, curation_status, camera_id) "
+            "VALUES (%s, 1, %s, %s, 'epi', TRUE, 'nvr', 'active', %s)",
+            (frame_id, "frames/vfilters/inactive_cam.jpg", tenant_id, camera_id),
+        )
+        cur.execute(
+            "INSERT INTO public.frame_annotations "
+            "(frame_id, class_id, x_center, y_center, width, height, class_name) "
+            "VALUES (%s, 0, 0.5, 0.5, 0.2, 0.2, 'helmet')",
+            (frame_id,),
+        )
+    yield frame_id
+    with pg_raw.cursor() as cur:
+        cur.execute("DELETE FROM public.training_frames WHERE id = %s", (frame_id,))
+        cur.execute("DELETE FROM public.cameras WHERE id = %s", (camera_id,))
+
+
+class TestInactiveCameraNotExcludedFromExport:
+    """QUEBRA 1 do veredito B4: export não pode jogar fora o que a fila
+    de Classificar agora serve (recorte de câmera is_active=false)."""
+
+    def test_frame_from_inactive_camera_enters_pool(
+        self, pg_pool, tenant_id: str, inactive_camera_frame: str
+    ) -> None:
+        repo = AnnotationRepository(pg_pool)
+        rows = _snapshot_labeled_frames(repo, tenant_id, "epi")
+        ids = {str(r["id"]) for r in rows}
+        assert inactive_camera_frame in ids
+
+    def test_annotation_from_inactive_camera_enters_dataset(
+        self, pg_pool, tenant_id: str, inactive_camera_frame: str
+    ) -> None:
+        repo = AnnotationRepository(pg_pool)
+        rows, _universo = _fetch_annotations(repo, tenant_id, "epi")
+        frame_ids = {str(r["frame_id"]) for r in rows}
+        assert inactive_camera_frame in frame_ids
+
+
 class TestFramePoolCurationFilter:
     """_snapshot_labeled_frames exclui frames curation_status='excluida'."""
 

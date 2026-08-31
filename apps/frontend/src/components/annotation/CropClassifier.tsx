@@ -368,6 +368,32 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
     [allCameras],
   )
 
+  // ── vazio honesto: revela QUAL filtro esvaziou a fila (task B4) ─────────
+  // Mesmo padrão da fila de Propostas (TrainingGallery.tsx, daab1d8d): 0 com
+  // filtro ativo mostra QUAIS filtros estão de pé e oferece "Limpar
+  // filtros" em 1 clique — a tela nunca mais mente "nada para classificar"
+  // sem revelar câmera/classe escondida que zerou tudo.
+  const cameraFilterLabel = useMemo(() => {
+    if (cameraIds.size === 0) return null
+    return cameraIds.size === 1 ? cameraLabel(Array.from(cameraIds)[0]) : `${cameraIds.size} câmeras`
+  }, [cameraIds, cameraLabel])
+  const tipoFilterLabel = useMemo(() => {
+    if (tiposSel.size === 0) return null
+    return Array.from(tiposSel).map(k => EPI_TYPES.find(t => t.key === k)?.label ?? k).join(', ')
+  }, [tiposSel])
+  const activeFilterLabels = useMemo(
+    () =>
+      [
+        cameraFilterLabel ? `Câmera: ${cameraFilterLabel}` : null,
+        tipoFilterLabel ? `Classe: ${tipoFilterLabel}` : null,
+      ].filter((label): label is string => label != null),
+    [cameraFilterLabel, tipoFilterLabel],
+  )
+  const clearFilters = useCallback(() => {
+    setCameraIds(new Set())
+    setTiposSel(new Set())
+  }, [])
+
   const loadClasses = useCallback(async () => {
     setClassesLoading(true)
     try {
@@ -1032,11 +1058,25 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
           icon={<CheckCircle2 size={32} />}
           title={queue.length === 0 ? 'Nada para classificar com esse filtro' : 'Fila concluída nesta sessão'}
           description={
-            tiposSel.size > 0
-              ? 'Só recortes com proposta pendente das classes marcadas em "anotar" entram na fila — desmarque o filtro, troque a câmera ou recarregue.'
+            // Vazio honesto (task B4): NUNCA "nada para classificar" sem
+            // dizer QUAL filtro esvaziou — mesmo padrão da fila de
+            // Propostas (TrainingGallery.tsx, daab1d8d).
+            queue.length === 0
+              ? activeFilterLabels.length > 0
+                ? `Nenhum recorte com estes filtros: ${activeFilterLabels.join(' + ')}.`
+                : 'Nenhum recorte não anotado disponível — recarregue para buscar mais.'
               : 'Troque a câmera ou recarregue para buscar mais recortes não anotados.'
           }
-          action={<Button size="sm" variant="secondary" onClick={() => void loadQueue()}>Recarregar fila</Button>}
+          action={
+            <div style={{ display: 'flex', gap: 8 }}>
+              {queue.length === 0 && activeFilterLabels.length > 0 && (
+                <Button size="sm" variant="secondary" onClick={clearFilters}>
+                  Limpar filtros
+                </Button>
+              )}
+              <Button size="sm" variant="secondary" onClick={() => void loadQueue()}>Recarregar fila</Button>
+            </div>
+          }
         />
       ) : (
         <div className={s.main}>

@@ -579,17 +579,28 @@ class FrameRepository(BaseRepository):
         """
         offset = (max(1, page) - 1) * page_size
 
-        # Câmera arquivada some da galeria/fila junto com o export: material
-        # de câmera que saiu do reconhecimento não deve mais consumir tempo de
-        # anotação nem alimentar o modelo. Frame sem camera_id (upload/vídeo)
-        # não é afetado.
-        conditions = [
-            "tf.tenant_id = %s",
-            "(tf.camera_id IS NULL OR EXISTS ("
-            "  SELECT 1 FROM public.cameras cam"
-            "   WHERE cam.id = tf.camera_id AND cam.is_active = TRUE))",
-        ]
+        conditions = ["tf.tenant_id = %s"]
         params: "list[Any]" = [str(tenant_id)]
+
+        # Câmera arquivada some da galeria/export: material de câmera que saiu
+        # do reconhecimento não deve mais consumir tempo de anotação nem
+        # alimentar o modelo. Frame sem camera_id (upload/vídeo) não é afetado.
+        #
+        # A fila de CLASSIFICAÇÃO (only_crops=True) fica DE FORA desta
+        # condição: o recorte já existe e já foi MINERADO antes de a câmera
+        # ser arquivada ou ficar inativa — negar o veredito humano sobre um
+        # recorte que já está no banco não protege o modelo de nada, só
+        # descarta trabalho feito. Medido no DEV (task B4): das 8 câmeras
+        # is_active=false do tenant RVB, 100% (159/159) dos recortes com
+        # proposta pendente pertenciam a elas — a interseção com câmera ativa
+        # era ZERO, fila vazia por construção assim que qualquer filtro de
+        # classe entrava (proposal_classes exige proposta pendente).
+        if not only_crops:
+            conditions.append(
+                "(tf.camera_id IS NULL OR EXISTS ("
+                "  SELECT 1 FROM public.cameras cam"
+                "   WHERE cam.id = tf.camera_id AND cam.is_active = TRUE))"
+            )
 
         if source is not None:
             conditions.append("tf.source = %s")
