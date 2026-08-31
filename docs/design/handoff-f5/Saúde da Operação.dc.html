@@ -293,7 +293,7 @@
               <span style="font-size:12.5px;color:#8A8F98">o que a tela precisa · o que existe hoje · o delta</span>
             </div>
             <div style="display:flex;flex-direction:column;background:#14141C;border:1px solid #23242F;border-radius:11px;overflow:hidden">
-              <sc-for list="{{ pedidos }}" as="p" hint-placeholder-count="3">
+              <sc-for list="{{ pedidos }}" as="p" hint-placeholder-count="4">
                 <div style="display:flex;gap:14px;padding:14px 16px;border-bottom:1px solid rgba(138,143,152,.07);flex-wrap:wrap">
                   <div style="display:flex;flex-direction:column;gap:5px;flex:none;width:78px">
                     <span style="font-family:'JetBrains Mono';font-size:11px;font-weight:700;color:#00E5FF">{{ p.id }}</span>
@@ -308,11 +308,6 @@
                   <span style="flex:none;width:170px;font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98;line-height:1.5">{{ p.bloqueia }}</span>
                 </div>
               </sc-for>
-            </div>
-
-            <div style="display:flex;flex-direction:column;gap:10px;padding:16px;background:#14141C;border:1px solid rgba(0,229,255,.3);border-radius:11px">
-              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#00E5FF">ACHADO NO FRONT — NÃO É PEDIDO AO BACKEND</span>
-              <span style="font-size:13px;line-height:1.7">O backend de <span style="font-family:'JetBrains Mono';font-size:12px">GET /v1/edge/sites/health</span> já devolve <span style="font-family:'JetBrains Mono';font-size:12px">gpu_pct</span>, <span style="font-family:'JetBrains Mono';font-size:12px">gpu_mem_pct</span>, <span style="font-family:'JetBrains Mono';font-size:12px">queue_depth</span> e <span style="font-family:'JetBrains Mono';font-size:12px">decode_pct</span> por site. O adaptador do front (<span style="font-family:'JetBrains Mono';font-size:12px">edgeService.ts</span>, função <span style="font-family:'JetBrains Mono';font-size:12px">adaptSiteHealth</span>) descarta os quatro — só repassa <span style="font-family:'JetBrains Mono';font-size:12px">gpu_temp_c</span> e <span style="font-family:'JetBrains Mono';font-size:12px">decode_fps</span> adiante. Colunas GPU e FILA desta tela dependem de ajustar o adaptador, não de pedir nada novo ao backend.</span>
             </div>
           </div>
         </sc-if>
@@ -407,7 +402,7 @@ class Component extends DCLogic {
     const num = (v, unidade) => v == null ? '—' : v + (unidade || '');
     const st = { EXISTE: ['#3ECF8E', 'rgba(62,207,142,.4)'], 'INSUFICIENTE': ['#E8A13C', 'rgba(232,161,60,.4)'], 'NÃO EXISTE': ['#E5484D', 'rgba(229,72,77,.4)'] };
     const MP = (ui, ep, estado, nota) => ({ ui, ep, st: estado, nota, cor: st[estado][0], borda: st[estado][1] });
-    const sev = { 'BLOQUEIA': ['#E5484D', 'rgba(229,72,77,.5)'], 'DEFEITO': ['#E8A13C', 'rgba(232,161,60,.5)'], 'FALTA': ['#00E5FF', 'rgba(0,229,255,.5)'] };
+    const sev = { 'BLOQUEIA': ['#E5484D', 'rgba(229,72,77,.5)'], 'DEFEITO': ['#E8A13C', 'rgba(232,161,60,.5)'], 'FALTA': ['#00E5FF', 'rgba(0,229,255,.5)'], 'NOTA': ['#8A8F98', 'rgba(138,143,152,.5)'] };
     const PD = (id, sv, o, precisa, hoje, delta, bloqueia) => ({ id, sev: sv, o, precisa, hoje, delta, bloqueia, sevCor: sev[sv][0], sevBorda: sev[sv][1] });
     const totalCamOn = this.SITES.reduce((a, x) => a + x.camOnline, 0);
     const totalCamTot = this.SITES.reduce((a, x) => a + x.camTotal, 0);
@@ -418,13 +413,13 @@ class Component extends DCLogic {
     const MAPA = [
       MP('KPI · sites de pé + tabela de sites', 'GET /v1/edge/sites/health', 'EXISTE', 'Liga direto — front já usa (edgeService.getSitesHealth, com teste de contrato).'),
       MP('KPI · dispositivos online/revogados', 'GET /v1/edge/overview', 'EXISTE', 'Liga direto — front já usa (edgeService.getOverview). sites_por_status do overview é status ADMINISTRATIVO (ativo/manutenção), não saúde — não usar para os badges de cor.'),
-      MP('Colunas GPU/fila/decodificação na tabela', 'GET /v1/edge/sites/health (campos gpu_pct, gpu_mem_pct, queue_depth, decode_pct)', 'EXISTE', 'Backend já serve; ver nota "achado no front" na aba Pedidos — o adaptador atual descarta esses 4 campos.'),
+      MP('Colunas GPU/fila/decodificação na tabela', 'GET /v1/edge/sites/health (campos gpu_pct, gpu_mem_pct, queue_depth, decode_pct)', 'EXISTE', 'Backend já serve; o adaptador atual do front descarta esses 4 campos — ver pedido S4 (front-only).'),
       MP('Painel do site · local, modo, nº de dispositivos', 'GET /v1/edge/sites/<id>', 'EXISTE', 'Rota pronta (task-017). Sem cliente no front ainda — implementação, não desenho.'),
       MP('Painel do site · janela 1h/24h/7d + métricas', 'GET /v1/edge/sites/<id>/heartbeat-summary?window=', 'EXISTE', 'Front já usa (getHeartbeatSummary), mas fixo — falta expor o parâmetro window e avg_inference_latency_ms na UI.'),
       MP('Sparkline de FPS recente', 'GET /v1/edge/sites/<id>/heartbeats', 'EXISTE', 'Front já usa (getSiteHeartbeats). Paginação por cursor (before) existe no backend e não é usada ainda.'),
       MP('Lista de dispositivos do site', 'GET /v1/edge/sites/<id>/devices', 'EXISTE', 'Retorna nome, revogado, último visto — sem chave pública (C-05). Sem cliente no front ainda.'),
       MP('Botão Revogar dispositivo', 'POST /v1/edge/devices/<id>/revoke', 'EXISTE', 'Idempotente; cross-tenant → 404. Sem cliente no front ainda.'),
-      MP('Card motor de detecção', 'GET /api/streams/status', 'INSUFICIENTE', 'Fora do envelope {status,data} (jsonify cru) e devolve 200 mesmo em erro real — ver pedido S1. Também não filtra por tenant — ver pedido S2.'),
+      MP('Card motor de detecção', 'GET /api/streams/status', 'INSUFICIENTE', 'Fora do envelope {status,data} (jsonify cru) e devolve 200 mesmo em erro real — ver pedido S1. Já exige admin/superadmin e só devolve metadado de infraestrutura (nome de processo, contagem de tasks, pool) sem filtro de tenant — ver nota S2.'),
       MP('Botão "Reiniciar agente deste site"', 'POST /v1/edge/commands (command_type genérico)', 'INSUFICIENTE', 'A fila de comando existe (migration 056) mas nenhum command_type de reinício é validado hoje — ver pedido S3.'),
     ];
     const conta = (k) => String(MAPA.filter(m => m.st === k).length);
@@ -524,8 +519,9 @@ class Component extends DCLogic {
 
       pedidos: [
         PD('S1', 'DEFEITO', 'Envelope e erro real em /api/streams/status', 'Distinguir "motor sem workers" de "erro ao consultar", com o mesmo envelope {status,data} do resto da API.', 'jsonify cru fora do envelope; qualquer exceção (Redis fora, timeout) devolve 200 com {"workers":[],"status":"error"} — indistinguível de zero workers de verdade.', 'Migrar para success()/error(); devolver um código != 200 quando a inspeção falhar de fato.', 'Card "Motor de detecção"'),
-        PD('S2', 'BLOQUEIA', 'Escopo de tenant em /api/streams/status', 'Um admin de tenant ver só o motor do PRÓPRIO tenant — ou um agregado sem topologia, se o dado for mesmo de plataforma inteira.', 'Qualquer admin (não só superadmin) recebe a lista completa de workers Celery da plataforma — nomes, pool, tarefas ativas — sem filtro de tenant.', 'Decidir: ou o card fica superadmin-only (como /admin/observability?tab=streams já é), ou ganha um agregado tenant-safe.', 'Card "Motor de detecção"'),
+        PD('S2', 'NOTA', 'Metadado de infraestrutura em /api/streams/status', 'Nenhuma — registrado para revisão, não bloqueia a tela.', 'A rota devolve por worker apenas worker_id (nome do processo Celery), status, active_tasks (contagem) e pool — sem tenant, sem argumentos de task, sem nome de fila por cliente. Já exige admin/superadmin desde uma rodada de segurança anterior (era pública antes). Não há dado de cliente ali.', 'Se esta tela de frota for aberta a admin de tenant (hoje já é, via edge:manage), avaliar se o card do motor fica só para superadmin — decisão de produto, não correção de bug.', 'Card "Motor de detecção"'),
         PD('S3', 'FALTA', 'Comando de reinício de agente por site', 'Um botão de ação quando um site está travado/degradado, sem precisar ir ao box.', 'A fila de comandos existe (POST /v1/edge/commands, migration 056) e aceita command_type livre, mas nenhum tipo de reinício é validado ou tratado hoje.', 'Definir um command_type de reinício e confirmar que o edge-sync-agent sabe executá-lo.', 'Botão "Reiniciar agente deste site"'),
+        PD('S4', 'FALTA', 'Front descarta métricas que o backend já serve', 'Mostrar GPU %, memória de GPU, fila e % de decodificação por site na tabela.', 'GET /v1/edge/sites/health já devolve gpu_pct, gpu_mem_pct, queue_depth e decode_pct. O adaptador do front (edgeService.ts, adaptSiteHealth) descarta os quatro — só repassa gpu_temp_c e decode_fps.', 'Ajuste de client — NÃO é pedido novo ao backend; adaptar edgeService.ts para repassar os campos.', 'FRONT-ONLY · sem pedido ao backend'),
       ],
 
       copyBlocos: [
