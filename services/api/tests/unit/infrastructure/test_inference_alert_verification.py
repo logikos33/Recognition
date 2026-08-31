@@ -59,6 +59,11 @@ class TestQueueVerificationIfLowConfidence:
             camera_id=_CAMERA_ID,
             class_name="no_helmet",
             confidence=0.60,
+            # tenant_id vem de `_polaridade_da_camera` — None aqui porque o
+            # pool não está inicializado neste teste (sem mock de
+            # `_camera_tenant_module`, ver TestSaveAlertEnfileiraVerificacao
+            # pro caminho com tenant real).
+            tenant_id=None,
             module_code="epi",
         )
 
@@ -189,3 +194,8 @@ class TestSaveAlertEnfileiraVerificacao:
         mock_alert_repo.create.assert_called_once()
         _mock_verify_task.delay.assert_called_once()
         assert _mock_verify_task.delay.call_args.kwargs["alert_id"] == str(_ALERT_ID)
+        # Achado do cético (rodada 2, item a): `_polaridade_da_camera` já
+        # resolvia o tenant (`_t`), mas o valor era descartado — a task
+        # gravava sem escopo de tenant no UPDATE. Prova que o tenant
+        # resolvido chega de verdade até o `.delay()`.
+        assert _mock_verify_task.delay.call_args.kwargs["tenant_id"] == _TENANT_ID

@@ -2,7 +2,7 @@
 Recognition — Verification Queue API.
 
 Routes:
-  GET  /api/verification/queue          — alertas needs_human para revisão
+  GET  /api/verification/queue          — alertas sem veredito (verdict IS NULL) para revisão
   GET  /api/verification/queue/count    — contagem (badge na nav)
   POST /api/verification/<id>/review    — operador aprova ou rejeita
 """
@@ -25,13 +25,24 @@ _svc = VerificationService()
 @verification_bp.route("/api/verification/queue", methods=["GET"])
 @jwt_required()
 def get_queue():  # type: ignore[no-untyped-def]
-    """Lista alertas aguardando revisão humana do tenant autenticado (C-01)."""
+    """Lista alertas aguardando revisão humana do tenant autenticado (C-01).
+
+    `total` vem de `get_queue_count` — o MESMO WHERE do `items` (verdict
+    nulo + exclusão de conformidade + dedup de rajada), escopado pelo mesmo
+    `camera_id`. É embutido aqui (não uma segunda chamada da tela a
+    `/queue/count`) de propósito: um único request garante que lista e total
+    são a MESMA leitura do banco — duas chamadas separadas no poll de 15s
+    podiam divergir por uma escrita no meio (outro operador revisando). A
+    tela usa `total`, não `count` (`count` é só `len(items)`, capado no
+    `limit` — não é "quantos faltam", é "quantos vieram nesta página").
+    """
     camera_id = request.args.get("camera_id")
     limit = min(int(request.args.get("limit", 50)), 100)
     try:
         tenant_id = str(get_tenant_id())
         items = _svc.get_human_queue(tenant_id=tenant_id, limit=limit, camera_id=camera_id)
-        return success({"items": items, "count": len(items)})
+        total = _svc.get_queue_count(tenant_id=tenant_id, camera_id=camera_id)
+        return success({"items": items, "count": len(items), "total": total})
     except EpiMonitorError:
         raise
     except Exception as exc:
@@ -42,10 +53,16 @@ def get_queue():  # type: ignore[no-untyped-def]
 @verification_bp.route("/api/verification/queue/count", methods=["GET"])
 @jwt_required()
 def queue_count():  # type: ignore[no-untyped-def]
-    """Contagem rápida para badge na navegação, escopada ao tenant (C-01)."""
+    """Contagem rápida para badge na navegação, escopada ao tenant (C-01).
+
+    `camera_id` opcional, mesma semântica de `/queue` — alinhado de propósito
+    (achado do cético: contagem e lista podiam divergir por não aceitarem os
+    mesmos filtros).
+    """
+    camera_id = request.args.get("camera_id")
     try:
         tenant_id = str(get_tenant_id())
-        count = _svc.get_queue_count(tenant_id=tenant_id)
+        count = _svc.get_queue_count(tenant_id=tenant_id, camera_id=camera_id)
         return success({"count": count})
     except EpiMonitorError:
         raise
