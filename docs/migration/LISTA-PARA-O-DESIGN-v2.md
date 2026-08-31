@@ -204,11 +204,50 @@ mais vê quando tudo está bem. E note: "nenhum evento" pode significar *nada
 aconteceu* ou *o filtro está apertado demais* — a diferença importa para quem
 opera.
 
+## 10. Modelos por câmera (escopo de detecção)
+
+**O que aconteceu, medido:** `CameraModelScope.tsx` — e a cópia dele em
+`app/epi/Cameras.tsx` (aba "Escopo") — nasceram sem desenho: é `<table>` com um
+`<tr>` por câmera e checkbox **nativo** por classe em `flex-wrap`. Com as 14+
+câmeras de um tenant real (28 no RVB) a tabela vira scroll infinito, e não há
+como aplicar o mesmo modelo/escopo em várias câmeras de uma vez — hoje é um
+salvamento manual por câmera.
+
+**Como está:** proposta em
+`docs/design/handoff-f5/Modelos por Câmera.dc.html` — chips em grade fluida
+agrupados por par presença↔ausência (Capacete/Sem Capacete etc., confirmado em
+`public.module_classes`: EPI tem 8 classes, não 13), linha de câmera
+colapsável, seletor de modelo com alias + data + métrica curta (`— (ainda não
+medido)` quando o número não existe, nunca `0,0%`), razão escrita ao lado do
+Salvar quando ele está desabilitado, e o fluxo completo de **aplicar em massa**
+(escolher origem → destinos → pré-visualizar o que muda, com badge por câmera
+de "sem mudança"/"muda escopo"/"muda modelo"/"muda os dois" → aplicar, câmera
+por câmera, com o que acontece se uma falhar). **É proposta da pista aguardando
+refino oficial do design** — a régua desta lista manda propor em vez de
+implementar no vácuo quando não veio desenho oficial no lote.
+
+**Backend pronto:** `GET /api/cameras/model-config?module=<m>` (deployments
+ativos, tenant-escopado, 1 chamada por módulo) · `GET /api/v1/models` (alias
+legado `GET /api/training/models`, já devolve `map50` — a tela é a primeira a
+mostrar esse número, não é dado novo) · `GET /api/v1/models/<id>` (classes que
+o modelo de fato reconhece) · `POST /api/cameras/<id>/model-config` (salva
+modelo + escopo de **uma** câmera; upsert, sempre grava histórico) ·
+`GET/POST .../model-config/history` e `/rollback` (existem, fora do desenho
+desta prancha).
+
+**O que falta no backend:** aplicar em massa **não existe** — é o Pedido 1 da
+prancha (`POST /api/cameras/model-config/bulk`, sucesso/erro por câmera).
+Também não existe um jeito de "desligar" sem trocar de modelo, e a tela não
+tem como confirmar que o equipamento do site aplicou o recorte por câmera
+(vale hoje só na nuvem — issue #519). De-para completo na aba "Mapa de
+conexões" do próprio arquivo; os 3 pedidos numerados estão na aba "Pedidos ao
+backend".
+
 ---
 
 # ⚪ POLIMENTO — não bloqueia fase nenhuma
 
-## 10. Chat flutuante
+## 11. Chat flutuante
 
 Existe um botão de chat flutuante vindo do produto atual. Aparece por cima das
 telas novas, não está em nenhum desenho — e, medido, ele sozinho põe 3.136px² de
@@ -216,7 +255,7 @@ ciano em **todas** as telas novas.
 
 **O que precisamos:** ele fica? Onde, e com que aparência no shell novo?
 
-## 11. Relatórios — o que o backend não serve
+## 12. Relatórios — o que o backend não serve
 
 O desenho prevê quatro coisas que **não existem na API**: digest diário por
 e-mail, seleção de conteúdo do export, ações corretivas vencidas, e taxa de
@@ -226,7 +265,7 @@ Nenhuma foi para a tela.
 **O que precisamos:** confirmar se são requisito (viram trabalho de backend) ou se
 saem do desenho.
 
-## 12. Perfis: o desenho supõe 4, o produto tem 6
+## 13. Perfis: o desenho supõe 4, o produto tem 6
 
 O backend tem `superadmin`, `admin`, `operator`, `analyst`, `trainer`, `viewer`.
 A navegação é derivada de **permissão**, não de nome de perfil, e há teste que
@@ -250,10 +289,12 @@ matriz de permissões.
    precisa de endpoint novo.
 3. No white-label do shell escuro (§6): o cliente troca só a cor de marca, ou
    superfície também? Se também, qual o piso de contraste?
-4. O chat flutuante (§10) fica?
-5. Os quatro itens de Relatórios (§11) são requisito ou saem do desenho?
-6. `trainer` (§12): navegação filtrada por permissão como está, ou merece recorte
+4. O chat flutuante (§11) fica?
+5. Os quatro itens de Relatórios (§12) são requisito ou saem do desenho?
+6. `trainer` (§13): navegação filtrada por permissão como está, ou merece recorte
    próprio?
+7. Modelos por câmera (§10): a proposta de ação em massa serve de base, ou você
+   prefere desenhar o gesto do zero?
 
 ---
 
