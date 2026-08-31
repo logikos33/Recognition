@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:#23242F;border-radius:5px}</style>
+</helmet>
+<div style="width:100%;height:100vh;display:flex;flex-direction:column;background:#0A0A0F" data-screen-label="Modelos por Câmera">
+  <dc-import name="EPI Topbar" crumb2="Câmeras & Sites" crumb3="Modelos por câmera" style="flex:none" hint-size="100%,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <dc-import name="EPI Sidebar" ativa="Câmeras & Sites" style="flex:none;align-self:stretch" hint-size="237px,100%"></dc-import>
+    <main style="flex:1;min-width:0;overflow:auto;position:relative">
+      <div style="max-width:1400px;margin:0 auto;padding:22px 24px 60px;box-sizing:border-box;display:flex;flex-direction:column;gap:14px">
+
+        <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+          <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:24px">Modelos por câmera</h1>
+          <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">{{ contagem }}</span>
+        </div>
+        <span style="font-size:13px;color:#8A8F98;line-height:1.5;max-width:760px;margin-top:-8px">Qual modelo cada câmera usa e o que ele deve reconhecer nela. Sem modelo escolhido, a câmera usa o detector padrão do ambiente.</span>
+
+        <nav style="display:flex;gap:2px;flex-wrap:wrap;padding-top:4px">
+          <sc-for list="{{ abas }}" as="a" hint-placeholder-count="6">
+            <button onClick="{{ a.go }}" style="height:34px;padding:0 14px;border:1px solid {{ a.borda }};border-radius:8px;background:{{ a.bg }};color:{{ a.cor }};font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">{{ a.t }}</button>
+          </sc-for>
+        </nav>
+
+        <sc-if value="{{ vLista }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:14px">
+
+            <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:#14141C;border:1px solid #23242F;border-radius:10px;flex-wrap:wrap">
+              <svg viewBox="0 0 24 24" style="width:15px;height:15px;flex:none" fill="none" stroke="#E8A13C" stroke-width="1.8" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+              <span style="font-size:12.5px;line-height:1.5">Este escopo veio do que já foi visto em cada câmera, não de uma exigência oficial ainda.</span>
+              <a href="#" onClick="{{ toggleAviso }}" style="font-size:12.5px;font-weight:600">{{ avisoTxt }}</a>
+              <sc-if value="{{ avisoAberto }}" hint-placeholder-val="{{ false }}">
+                <span style="flex-basis:100%;font-size:12.5px;color:#8A8F98;line-height:1.6;padding-top:4px">Uma câmera sem nenhuma luva vista até hoje fica sem escopo de luvas — nenhuma falta de luva seria percebida nela. Isso já vale na conferência que roda hoje; o equipamento instalado no site ainda não aplica este recorte por câmera.</span>
+              </sc-if>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <sc-for list="{{ cameras }}" as="c" hint-placeholder-count="14">
+                <div style="display:flex;flex-direction:column;background:#14141C;border:1px solid {{ c.cardBorda }};border-radius:10px;overflow:hidden">
+                  <div onClick="{{ c.toggle }}" style="display:flex;align-items:center;gap:12px;padding:11px 14px;cursor:pointer">
+                    <span style="width:8px;height:8px;border-radius:50%;background:{{ c.statusCor }};flex:none"></span>
+                    <div style="display:flex;flex-direction:column;gap:1px;min-width:0;width:190px;flex:none">
+                      <span style="font-family:'JetBrains Mono';font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.nome }}</span>
+                      <span style="font-size:11px;color:#8A8F98;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.area }}</span>
+                    </div>
+                    <span style="font-size:12.5px;font-weight:600;width:170px;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:{{ c.modeloCor }}">{{ c.modeloResumo }}</span>
+                    <sc-if value="{{ c.moduloDiferente }}" hint-placeholder-val="{{ false }}">
+                      <span style="font-family:'JetBrains Mono';font-size:9px;letter-spacing:.08em;color:#8A8F98;border:1px solid #23242F;border-radius:4px;padding:2px 6px;flex:none">{{ c.modulo }}</span>
+                    </sc-if>
+                    <span style="font-family:'JetBrains Mono';font-size:10.5px;color:{{ c.escopoCor }};flex:1;min-width:0">{{ c.escopoResumo }}</span>
+                    <span style="font-family:'JetBrains Mono';font-size:10px;color:#8A8F98;flex:none">{{ c.deployResumo }}</span>
+                    <svg viewBox="0 0 24 24" style="width:15px;height:15px;flex:none;transform:{{ c.chevron }}" fill="none" stroke="#8A8F98" stroke-width="2"><path d="M6 9l6 6 6-6"></path></svg>
+                  </div>
+
+                  <sc-if value="{{ c.aberta }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;flex-direction:column;gap:14px;padding:4px 16px 16px;border-top:1px solid #23242F">
+
+                      <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+                        <div style="flex:1;min-width:280px;display:flex;flex-direction:column;gap:8px;padding:12px 14px;background:#0A0A0F;border:1px solid #23242F;border-radius:9px">
+                          <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.14em;color:#8A8F98">MODELO DESTA CÂMERA</span>
+                          <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+                            <span style="font-family:'Space Grotesk';font-weight:700;font-size:16px">{{ c.modeloNomeAtual }}</span>
+                            <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">{{ c.modeloMetrica }}</span>
+                          </div>
+                          <span style="font-size:11.5px;color:#8A8F98">{{ c.modeloRodape }}</span>
+                          <button onClick="{{ c.togglePicker }}" disabled="{{ c.travada }}" style="align-self:flex-start;height:30px;padding:0 12px;background:transparent;border:1px solid #23242F;border-radius:7px;color:{{ c.travada ? '#3A3D4A' : '#F4F6F8' }};font-family:'Inter';font-size:12px;font-weight:600;cursor:{{ c.travada ? 'default' : 'pointer' }}">Trocar modelo</button>
+                          <sc-if value="{{ c.pickerAberto }}" hint-placeholder-val="{{ false }}">
+                            <div style="display:flex;flex-direction:column;gap:4px;padding-top:4px;border-top:1px solid #23242F;margin-top:2px">
+                              <sc-for list="{{ c.opcoesModelo }}" as="m" hint-placeholder-count="3">
+                                <button onClick="{{ m.go }}" style="display:flex;align-items:baseline;gap:10px;padding:8px 9px;border-radius:7px;border:1px solid {{ m.borda }};background:{{ m.bg }};text-align:left;cursor:pointer">
+                                  <span style="font-size:13px;font-weight:600;color:#F4F6F8">{{ m.nome }}</span>
+                                  <span style="font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98;margin-left:auto">{{ m.metrica }}</span>
+                                </button>
+                              </sc-for>
+                            </div>
+                          </sc-if>
+                        </div>
+
+                        <div style="flex:2;min-width:420px;display:flex;flex-direction:column;gap:10px">
+                          <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.14em;color:#8A8F98">O QUE ESTA CÂMERA DEVE RECONHECER</span>
+                          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:9px">
+                            <sc-for list="{{ c.grupos }}" as="g" hint-placeholder-count="4">
+                              <div style="display:flex;flex-direction:column;gap:7px;padding:10px 11px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px">
+                                <div style="display:flex;align-items:center;gap:8px">
+                                  <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.1em;color:#8A8F98">{{ g.nome }}</span>
+                                  <div style="flex:1"></div>
+                                  <a href="#" onClick="{{ g.marcarTodos }}" style="font-size:10.5px;font-weight:600">marcar os 2</a>
+                                  <a href="#" onClick="{{ g.limpar }}" style="font-size:10.5px;font-weight:600;color:#8A8F98">limpar</a>
+                                </div>
+                                <div style="display:flex;flex-wrap:wrap;gap:6px">
+                                  <sc-for list="{{ g.chips }}" as="ch" hint-placeholder-count="2">
+                                    <button onClick="{{ ch.go }}" disabled="{{ c.travada }}" style="height:30px;display:flex;align-items:center;gap:7px;padding:0 11px;border-radius:15px;border:1.5px solid {{ ch.borda }};background:{{ ch.bg }};color:{{ ch.cor }};font-family:'Inter';font-size:12px;font-weight:600;cursor:{{ c.travada ? 'default' : 'pointer' }};white-space:nowrap">
+                                      <span style="width:8px;height:8px;border-radius:50%;background:{{ ch.ponto }};flex:none"></span>
+                                      {{ ch.nome }}
+                                    </button>
+                                  </sc-for>
+                                </div>
+                              </div>
+                            </sc-for>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style="display:flex;align-items:center;gap:12px;padding-top:2px;flex-wrap:wrap">
+                        <button onClick="{{ c.salvar }}" disabled="{{ c.salvarDesabilitado }}" style="height:38px;padding:0 16px;border:none;border-radius:8px;background:{{ c.salvarBg }};color:{{ c.salvarTxtCor }};font-family:'Inter';font-size:13px;font-weight:700;cursor:{{ c.salvarDesabilitado ? 'default' : 'pointer' }}">{{ c.salvarLabel }}</button>
+                        <span style="font-size:12px;color:{{ c.motivoCor }}">{{ c.motivo }}</span>
+                        <div style="flex:1"></div>
+                        <a href="#" onClick="{{ c.usarComoOrigem }}" style="font-size:12px;font-weight:600">Usar este escopo em outras câmeras →</a>
+                      </div>
+
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ vMassa }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+              <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:19px">Aplicar o mesmo escopo em várias câmeras</h2>
+              <div style="flex:1"></div>
+              <sc-for list="{{ passosMassa }}" as="p" hint-placeholder-count="4">
+                <button onClick="{{ p.go }}" disabled="{{ p.travado }}" style="height:34px;display:flex;align-items:center;gap:9px;padding:0 13px;background:{{ p.bg }};border:1px solid {{ p.borda }};border-radius:8px;color:{{ p.cor }};font-family:'Inter';font-size:12.5px;font-weight:600;cursor:{{ p.travado ? 'default' : 'pointer' }}">
+                  <span style="width:19px;height:19px;border-radius:50%;background:{{ p.numBg }};color:{{ p.numCor }};font-family:'JetBrains Mono';font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ p.n }}</span>
+                  {{ p.t }}
+                </button>
+              </sc-for>
+            </div>
+
+            <sc-if value="{{ pOrigem }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <span style="font-size:13px;color:#8A8F98;line-height:1.5">De qual câmera copiar? Só entram câmeras que já têm modelo e escopo definidos.</span>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:9px">
+                  <sc-for list="{{ candidatosOrigem }}" as="o" hint-placeholder-count="10">
+                    <button onClick="{{ o.go }}" style="display:flex;flex-direction:column;gap:5px;padding:13px 14px;background:#14141C;border:1px solid {{ o.borda }};border-radius:10px;cursor:pointer;text-align:left">
+                      <span style="font-family:'JetBrains Mono';font-size:12.5px;font-weight:700">{{ o.nome }}</span>
+                      <span style="font-size:11.5px;color:#8A8F98">{{ o.modelo }}</span>
+                      <span style="font-family:'JetBrains Mono';font-size:10.5px;color:#00E5FF">{{ o.escopo }}</span>
+                    </button>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ pDestinos }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:#14141C;border:1px solid rgba(0,229,255,.3);border-radius:9px;flex-wrap:wrap">
+                  <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.12em;color:#00E5FF">COPIANDO DE</span>
+                  <span style="font-family:'JetBrains Mono';font-size:12.5px;font-weight:700">{{ origemNome }}</span>
+                  <span style="font-size:12px;color:#8A8F98">{{ origemModelo }} · {{ origemEscopo }}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                  <span style="font-size:13px;color:#8A8F98">Para quais câmeras?</span>
+                  <a href="#" onClick="{{ selecionarTodas }}" style="font-size:12.5px;font-weight:600">selecionar todas</a>
+                  <a href="#" onClick="{{ limparSelecao }}" style="font-size:12.5px;font-weight:600;color:#8A8F98">limpar</a>
+                  <div style="flex:1"></div>
+                  <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">{{ contagemDestinos }}</span>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px">
+                  <sc-for list="{{ destinosDisponiveis }}" as="d" hint-placeholder-count="12">
+                    <button onClick="{{ d.go }}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#14141C;border:1.5px solid {{ d.borda }};border-radius:9px;cursor:pointer;text-align:left">
+                      <span style="width:16px;height:16px;flex:none;border-radius:4px;border:1.5px solid {{ d.checkBorda }};background:{{ d.checkBg }};display:flex;align-items:center;justify-content:center">
+                        <sc-if value="{{ d.sel }}" hint-placeholder-val="{{ false }}"><svg viewBox="0 0 24 24" style="width:11px;height:11px" fill="none" stroke="#0A0A0F" stroke-width="3" stroke-linecap="square"><path d="M4 12l5 5L20 6"></path></svg></sc-if>
+                      </span>
+                      <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+                        <span style="font-family:'JetBrains Mono';font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ d.nome }}</span>
+                        <span style="font-size:10.5px;color:#8A8F98;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ d.hoje }}</span>
+                      </div>
+                    </button>
+                  </sc-for>
+                </div>
+                <span style="font-size:11.5px;color:#8A8F98">{{ notaModuloForaDoDesenho }}</span>
+                <div style="display:flex;gap:8px">
+                  <button onClick="{{ voltarOrigem }}" style="height:38px;padding:0 15px;background:transparent;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">← De novo</button>
+                  <button onClick="{{ irPreview }}" disabled="{{ destinosVazio }}" style="height:38px;padding:0 16px;border:none;border-radius:8px;background:{{ destinosVazio ? '#23242F' : '#00E5FF' }};color:{{ destinosVazio ? '#8A8F98' : '#0A0A0F' }};font-family:'Inter';font-size:13px;font-weight:700;cursor:{{ destinosVazio ? 'default' : 'pointer' }}">Ver o que muda</button>
+                  <sc-if value="{{ destinosVazio }}" hint-placeholder-val="{{ false }}"><span style="align-self:center;font-size:12px;color:#8A8F98">Selecione ao menos uma câmera de destino.</span></sc-if>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ pPreview }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <span style="font-size:13px;color:#8A8F98;line-height:1.5">As que mudam vão sobrescrever o que estava salvo — o que tinha antes fica guardado no histórico, não se perde.</span>
+                <div style="display:flex;flex-direction:column;background:#14141C;border:1px solid #23242F;border-radius:10px;overflow:hidden">
+                  <sc-for list="{{ previewLinhas }}" as="l" hint-placeholder-count="6">
+                    <div style="display:flex;align-items:center;gap:14px;padding:11px 14px;border-bottom:1px solid rgba(138,143,152,.08);flex-wrap:wrap">
+                      <span style="width:16px;height:16px;flex:none;border-radius:4px;border:1.5px solid {{ l.checkBorda }};background:{{ l.checkBg }};cursor:pointer;display:flex;align-items:center;justify-content:center" onClick="{{ l.toggle }}">
+                        <sc-if value="{{ l.incluida }}" hint-placeholder-val="{{ true }}"><svg viewBox="0 0 24 24" style="width:11px;height:11px" fill="none" stroke="#0A0A0F" stroke-width="3" stroke-linecap="square"><path d="M4 12l5 5L20 6"></path></svg></sc-if>
+                      </span>
+                      <span style="font-family:'JetBrains Mono';font-size:12px;font-weight:700;width:160px;flex:none">{{ l.nome }}</span>
+                      <span style="font-size:11.5px;color:#8A8F98;flex:1;min-width:160px">{{ l.hoje }}</span>
+                      <svg viewBox="0 0 24 24" style="width:13px;height:13px;flex:none" fill="none" stroke="#8A8F98" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+                      <span style="font-size:11.5px;color:#F4F6F8;flex:1;min-width:160px">{{ l.depois }}</span>
+                      <span style="font-family:'JetBrains Mono';font-size:9px;font-weight:700;letter-spacing:.06em;color:{{ l.sitCor }};border:1px solid {{ l.sitBorda }};border-radius:4px;padding:3px 7px;white-space:nowrap;flex:none">{{ l.situacao }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="display:flex;gap:8px">
+                  <button onClick="{{ voltarDestinos }}" style="height:38px;padding:0 15px;background:transparent;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">← Ajustar destinos</button>
+                  <button onClick="{{ irAplicar }}" disabled="{{ incluidasVazio }}" style="height:38px;padding:0 16px;border:none;border-radius:8px;background:{{ incluidasVazio ? '#23242F' : '#00E5FF' }};color:{{ incluidasVazio ? '#8A8F98' : '#0A0A0F' }};font-family:'Inter';font-size:13px;font-weight:700;cursor:{{ incluidasVazio ? 'default' : 'pointer' }}">Continuar</button>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ pAplicar }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:14px">
+                <sc-if value="{{ naoConcluido }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;flex-direction:column;gap:10px;padding:16px;background:#14141C;border:1px solid rgba(0,229,255,.35);border-radius:12px">
+                    <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#00E5FF">O QUE VAI ACONTECER</span>
+                    <span style="font-size:14px;line-height:1.6">{{ resumoAplicar }}</span>
+                    <span style="font-family:'JetBrains Mono';font-size:10px;color:#8A8F98">AGUARDA BACKEND · PEDIDO 1 · POST /api/cameras/model-config/bulk</span>
+                    <button onClick="{{ aplicar }}" disabled="{{ aplicando }}" style="align-self:flex-start;height:44px;padding:0 18px;border:none;border-radius:9px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">{{ aplicarLabel }}</button>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ aplicando }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:8px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+                    <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">APLICANDO · CÂMERA POR CÂMERA</span>
+                    <sc-for list="{{ progresso }}" as="pr" hint-placeholder-count="6">
+                      <div style="display:flex;align-items:center;gap:10px">
+                        <span style="width:20px;height:20px;flex:none;border-radius:50%;border:1px solid {{ pr.borda }};color:{{ pr.cor }};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">{{ pr.mark }}</span>
+                        <span style="font-size:13px;color:{{ pr.txtCor }}">{{ pr.nome }}</span>
+                        <span style="margin-left:auto;font-size:11.5px;color:#8A8F98">{{ pr.nota }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ concluido }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:10px;padding:16px;background:#14141C;border:1px solid rgba(62,207,142,.35);border-radius:12px">
+                    <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#3ECF8E">CONCLUÍDO</span>
+                    <span style="font-size:14px;line-height:1.6">{{ resultadoTxt }}</span>
+                    <button onClick="{{ concluir }}" style="align-self:flex-start;height:40px;padding:0 16px;background:transparent;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:13px;font-weight:600;cursor:pointer">Voltar para Modelos por câmera</button>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ vEstados }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:19px">Estados da tela</h2>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px">
+
+              <div style="display:flex;flex-direction:column;gap:8px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:12px;min-height:150px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">CARREGADO</span>
+                <span style="font-size:12.5px;color:#8A8F98;line-height:1.55">É a tela que já está nas abas "Modelos por câmera" e "Ação em massa" acima — em uso normal.</span>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px;min-height:220px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">CARREGANDO</span>
+                <div style="flex:1;position:relative;border-radius:9px;overflow:hidden;border:1px solid #23242F;min-height:150px">
+                  <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="fullscreen" state="waiting" label="CARREGANDO MODELOS" size="64" style="position:absolute;inset:0" hint-size="100%,100%"></x-import>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px;min-height:220px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">VAZIO · COM CTA</span>
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center">
+                  <svg viewBox="0 0 24 24" style="width:30px;height:30px" fill="none" stroke="#8A8F98" stroke-width="1.5" stroke-linecap="square"><path d="M3 7h12v10H3zM15 10l6-3v10l-6-3"></path></svg>
+                  <span style="font-family:'Space Grotesk';font-weight:700;font-size:16px">Nenhuma câmera ativa neste módulo</span>
+                  <span style="font-size:12px;color:#8A8F98;line-height:1.5;max-width:250px">Cadastre a primeira câmera para escolher modelo e escopo nela.</span>
+                  <button style="height:38px;padding:0 16px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:12.5px;font-weight:700;cursor:pointer">Cadastrar câmera</button>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px;min-height:220px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">ERRO · COM RETRY</span>
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center">
+                  <svg viewBox="0 0 24 24" style="width:30px;height:30px" fill="none" stroke="#E5484D" stroke-width="1.5" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+                  <span style="font-family:'Space Grotesk';font-weight:700;font-size:16px">Não foi possível carregar os modelos</span>
+                  <span style="font-size:12px;color:#8A8F98;line-height:1.5;max-width:260px">Isto não quer dizer "nenhuma câmera" — a lista simplesmente não chegou.</span>
+                  <span style="font-family:'JetBrains Mono';font-size:10px;color:#8A8F98">GET /api/cameras/model-config · TEMPO ESGOTADO</span>
+                  <div style="display:flex;gap:8px">
+                    <button style="height:36px;padding:0 14px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:12.5px;font-weight:700;cursor:pointer">Tentar de novo</button>
+                  </div>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px;min-height:220px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">SEM PERMISSÃO</span>
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center">
+                  <svg viewBox="0 0 24 24" style="width:30px;height:30px" fill="none" stroke="#E8A13C" stroke-width="1.5" stroke-linecap="square"><path d="M6 11V8a6 6 0 0 1 12 0v3M4 11h16v10H4zM12 15v3"></path></svg>
+                  <span style="font-family:'Space Grotesk';font-weight:700;font-size:16px">Você pode ver, mas não mudar</span>
+                  <span style="font-size:12px;color:#8A8F98;line-height:1.5;max-width:270px">Escolher o modelo e o escopo de cada câmera é do administrador do site. A lista abaixo fica em leitura, com o motivo escrito ao lado do botão Salvar.</span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ vMapa }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+              <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:19px">Mapa de conexões — UI × endpoint × estado</h2>
+              <span style="font-size:12px;color:#8A8F98">medido no backend real em 31/08/2026; é daqui que sai a lista de pedidos</span>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <sc-for list="{{ mapaKpis }}" as="k" hint-placeholder-count="3">
+                <div style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:4px;padding:13px 15px;background:#14141C;border:1px solid #23242F;border-radius:11px;border-top:2px solid {{ k.cor }}">
+                  <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.16em;color:#8A8F98">{{ k.label }}</span>
+                  <span style="font-family:'JetBrains Mono';font-weight:700;font-size:22px;line-height:1;color:{{ k.cor }}">{{ k.v }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="overflow-x:auto;border:1px solid #23242F;border-radius:11px;background:#14141C">
+              <div style="display:grid;grid-template-columns:minmax(200px,1.1fr) minmax(240px,1.3fr) 150px minmax(260px,1.6fr);min-width:960px">
+                <sc-for list="{{ mapaHead }}" as="h" hint-placeholder-count="4">
+                  <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">{{ h.t }}</div>
+                </sc-for>
+                <sc-for list="{{ mapa }}" as="m" hint-placeholder-count="11">
+                  <div style="display:contents">
+                    <span style="padding:11px 14px;font-size:12px;font-weight:600;border-bottom:1px solid rgba(138,143,152,.07)">{{ m.ui }}</span>
+                    <span style="padding:11px 14px;font-family:'JetBrains Mono';font-size:10.5px;color:#F4F6F8;border-bottom:1px solid rgba(138,143,152,.07);word-break:break-all">{{ m.ep }}</span>
+                    <span style="padding:11px 14px;border-bottom:1px solid rgba(138,143,152,.07)"><span style="font-family:'JetBrains Mono';font-size:9px;font-weight:700;letter-spacing:.06em;color:{{ m.cor }};border:1px solid {{ m.borda }};border-radius:4px;padding:2px 7px;white-space:nowrap">{{ m.st }}</span></span>
+                    <span style="padding:11px 14px;font-size:11.5px;color:#8A8F98;line-height:1.5;border-bottom:1px solid rgba(138,143,152,.07)">{{ m.nota }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:11px">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">COMO OS PARENTES CONVERSAM</span>
+              <sc-for list="{{ parentes }}" as="p" hint-placeholder-count="4">
+                <div style="display:flex;gap:11px;align-items:flex-start">
+                  <span style="width:7px;height:7px;border-radius:50%;background:{{ p.cor }};margin-top:6px;flex:none"></span>
+                  <span style="font-size:12.5px;line-height:1.6"><b>{{ p.t }}</b> — <span style="color:#8A8F98">{{ p.d }}</span></span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ vPedidos }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+              <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:19px">Pedidos ao backend — derivados deste desenho</h2>
+              <span style="font-size:12px;color:#8A8F98">o que a tela precisa · o que existe hoje · o delta</span>
+            </div>
+            <div style="display:flex;flex-direction:column;background:#14141C;border:1px solid #23242F;border-radius:11px;overflow:hidden">
+              <sc-for list="{{ pedidos }}" as="p" hint-placeholder-count="3">
+                <div style="display:flex;gap:14px;padding:14px 16px;border-bottom:1px solid rgba(138,143,152,.07);flex-wrap:wrap">
+                  <div style="display:flex;flex-direction:column;gap:5px;flex:none;width:78px">
+                    <span style="font-family:'JetBrains Mono';font-size:11px;font-weight:700;color:#00E5FF">{{ p.id }}</span>
+                    <span style="font-family:'JetBrains Mono';font-size:9px;font-weight:700;color:{{ p.sevCor }};border:1px solid {{ p.sevBorda }};border-radius:4px;padding:2px 5px;text-align:center">{{ p.sev }}</span>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:5px;flex:1;min-width:260px">
+                    <span style="font-size:13.5px;font-weight:600">{{ p.o }}</span>
+                    <span style="font-size:12px;color:#8A8F98;line-height:1.5"><b style="color:#F4F6F8">A tela precisa:</b> {{ p.precisa }}</span>
+                    <span style="font-size:12px;color:#8A8F98;line-height:1.5"><b style="color:#F4F6F8">Hoje existe:</b> {{ p.hoje }}</span>
+                    <span style="font-size:12px;color:#8A8F98;line-height:1.5"><b style="color:#E8A13C">Delta:</b> {{ p.delta }}</span>
+                  </div>
+                  <span style="flex:none;width:170px;font-family:'JetBrains Mono';font-size:10px;color:#8A8F98;line-height:1.5">{{ p.bloqueia }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;padding:16px;background:#14141C;border:1px solid rgba(232,161,60,.35);border-radius:11px">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#E8A13C">DEPENDÊNCIAS JÁ EM CURSO</span>
+              <sc-for list="{{ deps }}" as="d" hint-placeholder-count="2">
+                <div style="display:flex;gap:11px;align-items:flex-start">
+                  <span style="font-family:'JetBrains Mono';font-size:10.5px;font-weight:700;color:#E8A13C;flex:none;width:44px">{{ d.id }}</span>
+                  <span style="font-size:12.5px;line-height:1.6"><b>{{ d.t }}</b> — <span style="color:#8A8F98">{{ d.d }}</span></span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:9px;padding:16px;background:#14141C;border:1px solid rgba(0,229,255,.3);border-radius:11px">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#00E5FF">O QUE ESTE DESENHO DECIDE (E O BACKEND SEGUE)</span>
+              <span style="font-size:13px;line-height:1.7">A prévia da ação em massa roda inteira no navegador, comparando o que já foi carregado — ela não chama o backend a mais nenhuma vez além do carregamento inicial da tela. Consequência: o Pedido 1 (aplicar em massa) precisa devolver sucesso ou erro <b>por câmera</b> num único retorno, porque é a única chamada nova que este desenho introduz no fluxo de salvar.</span>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ vCopy }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+              <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:19px">Microcopy — o que a tela diz</h2>
+              <span style="font-size:12px;color:#8A8F98">nenhuma frase inventada na implementação: use estas</span>
+            </div>
+            <sc-for list="{{ copyBlocos }}" as="b" hint-placeholder-count="7">
+              <div style="display:flex;flex-direction:column;gap:9px;padding:15px 17px;background:#14141C;border:1px solid #23242F;border-radius:11px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">{{ b.tag }}</span>
+                <sc-for list="{{ b.itens }}" as="i" hint-placeholder-count="4">
+                  <div style="display:grid;grid-template-columns:190px 1fr;gap:6px 16px;padding:8px 0;border-bottom:1px solid rgba(138,143,152,.07)">
+                    <span style="font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98">{{ i.k }}</span>
+                    <span style="font-size:12.5px;line-height:1.55">{{ i.v }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-for>
+            <div style="display:flex;flex-direction:column;gap:9px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:11px">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">PALAVRAS PROIBIDAS NESTA TELA</span>
+              <span style="font-size:12.5px;color:#8A8F98;line-height:1.7">threshold · class_distribution · model_id · config.classes · r2_onnx_key · deployment · framework · YOLOX · RF-DETR · mAP cru sem explicar · JSON · payload · endpoint · schema · tenant · caminho de arquivo .py · número de issue ou PR. Cada uma tem tradução na coluna acima; se não tiver, é sinal de que a informação não deveria estar na tela do cliente. Números de issue (#519, #535) só existem nas abas Mapa e Pedidos — documentação para quem constrói, nunca para quem opera.</span>
+            </div>
+          </div>
+        </sc-if>
+
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:1000}}">
+class Component extends DCLogic {
+  CLASSES = { helmet: 'Capacete', no_helmet: 'Sem Capacete', vest: 'Colete', no_vest: 'Sem Colete', glasses: 'Óculos', no_glasses: 'Sem Óculos', gloves: 'Luvas', no_gloves: 'Sem Luvas' };
+  PARES = [
+    { grupo: 'CAPACETE', on: 'helmet', off: 'no_helmet' },
+    { grupo: 'COLETE', on: 'vest', off: 'no_vest' },
+    { grupo: 'ÓCULOS', on: 'glasses', off: 'no_glasses' },
+    { grupo: 'LUVAS', on: 'gloves', off: 'no_gloves' },
+  ];
+  TODAS_CLASSES = ['helmet', 'no_helmet', 'vest', 'no_vest', 'glasses', 'no_glasses', 'gloves', 'no_gloves'];
+  MODELOS = {
+    epi: [
+      { id: 'm1', nome: 'Visão RVB v3', metrica: '71% de acerto medido', criadoEm: '20/08/2026' },
+      { id: 'm2', nome: 'Logikos', metrica: '', criadoEm: '01/06/2026' },
+      { id: 'm3', nome: 'Visão RVB v2 (anterior)', metrica: '64% de acerto medido', criadoEm: '10/05/2026' },
+    ],
+    quality: [
+      { id: 'q1', nome: 'Inspeção RVB', metrica: '58% de acerto medido', criadoEm: '02/07/2026' },
+    ],
+  };
+  CAMERAS = [
+    { id: 'c1', nome: 'CAM-01 Portaria Principal', area: 'Portaria', modulo: 'epi', status: 'online', modeloId: 'm1', classes: ['helmet', 'no_helmet', 'vest', 'no_vest'], deploy: '28/08 09:12' },
+    { id: 'c2', nome: 'CAM-02 Doca Norte', area: 'Doca Norte', modulo: 'epi', status: 'online', modeloId: 'm1', classes: ['helmet', 'no_helmet', 'vest', 'no_vest', 'glasses', 'no_glasses', 'gloves', 'no_gloves'], deploy: '28/08 09:12' },
+    { id: 'c3', nome: 'CAM-03 Doca Sul', area: 'Doca Sul', modulo: 'epi', status: 'instavel', modeloId: 'm2', classes: ['helmet', 'no_helmet'], deploy: '12/07 14:40' },
+    { id: 'c4', nome: 'CAM-04 Expedição', area: 'Expedição', modulo: 'epi', status: 'online', modeloId: 'm1', classes: ['helmet', 'no_helmet', 'vest', 'no_vest', 'glasses', 'no_glasses', 'gloves', 'no_gloves'], deploy: '28/08 09:12' },
+    { id: 'c5', nome: 'CAM-05 Linha 1', area: 'Produção — Linha 1', modulo: 'epi', status: 'online', modeloId: null, classes: [], deploy: null },
+    { id: 'c6', nome: 'CAM-06 Linha 2', area: 'Produção — Linha 2', modulo: 'epi', status: 'online', modeloId: null, classes: [], deploy: null },
+    { id: 'c7', nome: 'CAM-07 Linha 3', area: 'Produção — Linha 3', modulo: 'epi', status: 'online', modeloId: 'm1', classes: ['helmet', 'no_helmet', 'vest', 'no_vest', 'gloves', 'no_gloves'], deploy: '15/08 10:02' },
+    { id: 'c8', nome: 'CAM-08 Linha 4', area: 'Produção — Linha 4', modulo: 'epi', status: 'offline', modeloId: 'm2', classes: ['helmet', 'no_helmet', 'vest', 'no_vest'], deploy: '03/06 08:15' },
+    { id: 'c9', nome: 'CAM-09 Corredor Central', area: 'Corredor', modulo: 'epi', status: 'online', modeloId: 'm1', classes: ['helmet', 'no_helmet', 'vest', 'no_vest', 'glasses', 'no_glasses', 'gloves', 'no_gloves'], deploy: '28/08 09:12' },
+    { id: 'c10', nome: 'CAM-10 Estoque A', area: 'Estoque', modulo: 'epi', status: 'online', modeloId: 'm1', classes: ['helmet', 'no_helmet', 'vest', 'no_vest', 'glasses', 'no_glasses', 'gloves', 'no_gloves'], deploy: '28/08 09:12' },
+    { id: 'c11', nome: 'CAM-11 Estoque B', area: 'Estoque', modulo: 'epi', status: 'online', modeloId: null, classes: [], deploy: null },
+    { id: 'c12', nome: 'CAM-12 Refeitório', area: 'Refeitório', modulo: 'epi', status: 'online', modeloId: 'm2', classes: ['vest', 'no_vest'], deploy: '01/06 07:50' },
+    { id: 'c13', nome: 'CAM-13 Pátio de Cargas', area: 'Pátio', modulo: 'epi', status: 'online', modeloId: 'm1', classes: ['helmet', 'no_helmet', 'vest', 'no_vest', 'glasses', 'no_glasses', 'gloves', 'no_gloves'], deploy: '28/08 09:12' },
+    { id: 'c14', nome: 'CAM-14 Linha de Corte', area: 'Qualidade — Linha de Corte', modulo: 'quality', status: 'online', modeloId: 'q1', classes: [], deploy: '20/08 11:00' },
+  ];
+  state = {
+    aba: 'lista',
+    expandida: {},
+    drafts: {},
+    bases: {},
+    salvando: null,
+    salvo: {},
+    picker: null,
+    avisoAberto: false,
+    massaPasso: 'origem',
+    origemId: null,
+    destinoIds: [],
+    excluidos: [],
+    aplicando: false,
+    concluido: false,
+    progresso: [],
+  };
+
+  _cam(id) { return this.CAMERAS.find(c => c.id === id); }
+  _modelosDoModulo(modulo) { return this.MODELOS[modulo] || []; }
+  _modelo(modulo, id) { return this._modelosDoModulo(modulo).find(m => m.id === id); }
+  _base(cam) {
+    const b = this.state.bases[cam.id];
+    return b || { modeloId: cam.modeloId || '', classes: [...cam.classes] };
+  }
+  _draft(cam) {
+    return this.state.drafts[cam.id] || this._base(cam);
+  }
+  _setDraft(camId, patch) {
+    this.setState(s => ({ drafts: { ...s.drafts, [camId]: { ...(s.drafts[camId] || this._base(this._cam(camId))), ...patch } } }));
+  }
+  _mesmoConjunto(a, b) { return a.length === b.length && a.every(x => b.includes(x)); }
+
+  renderVals() {
+    const s = this.state;
+    const tab = (t, k) => ({ t, go: () => this.setState({ aba: k }), bg: s.aba === k ? 'rgba(0,229,255,.08)' : '#14141C', cor: s.aba === k ? '#00E5FF' : '#8A8F98', borda: s.aba === k ? 'rgba(0,229,255,.45)' : '#23242F' });
+    const statusCores = { online: '#3ECF8E', instavel: '#E8A13C', offline: '#E5484D' };
+    const semModelo = this.CAMERAS.filter(c => !c.modeloId).length;
+    const comModelo = this.CAMERAS.length - semModelo;
+
+    // ---- aba Lista ----
+    const cameras = this.CAMERAS.map(cam => {
+      const draft = this._draft(cam);
+      const base = this._base(cam);
+      const aberta = !!s.expandida[cam.id];
+      const modelo = draft.modeloId ? this._modelo(cam.modulo, draft.modeloId) : null;
+      const mudouModelo = draft.modeloId !== base.modeloId;
+      const mudouClasses = !this._mesmoConjunto(draft.classes, base.classes);
+      const mudou = mudouModelo || mudouClasses;
+      const salvandoEsta = s.salvando === cam.id;
+      let motivo = null;
+      if (!draft.modeloId) motivo = 'Escolha um modelo antes de salvar.';
+      else if (draft.classes.length === 0) motivo = 'Marque ao menos 1 classe para salvar.';
+      else if (salvandoEsta) motivo = 'Salvando…';
+      else if (!mudou) motivo = s.salvo[cam.id] ? 'Salvo — vale a partir de agora nesta câmera.' : 'Nada para salvar — o escopo já é este.';
+      const podeSalvar = !!draft.modeloId && draft.classes.length > 0 && mudou && !salvandoEsta;
+      const grupos = this.PARES.map(par => {
+        const chip = (key) => {
+          const marcada = draft.classes.includes(key);
+          const ausencia = key.startsWith('no_');
+          return {
+            nome: this.CLASSES[key],
+            go: () => this._setDraft(cam.id, { classes: marcada ? draft.classes.filter(c => c !== key) : [...draft.classes, key] }),
+            borda: marcada ? '#00E5FF' : '#23242F',
+            bg: marcada ? 'rgba(0,229,255,.08)' : 'transparent',
+            cor: marcada ? '#F4F6F8' : '#8A8F98',
+            ponto: marcada ? (ausencia ? '#E8A13C' : '#3ECF8E') : '#3A3D4A',
+          };
+        };
+        return {
+          nome: par.grupo,
+          chips: draft.modeloId ? [chip(par.on), chip(par.off)] : [],
+          marcarTodos: () => this._setDraft(cam.id, { classes: [...new Set([...draft.classes, par.on, par.off])] }),
+          limpar: () => this._setDraft(cam.id, { classes: draft.classes.filter(c => c !== par.on && c !== par.off) }),
+        };
+      });
+      const opcoesModelo = this._modelosDoModulo(cam.modulo).map(m => ({
+        nome: m.nome,
+        metrica: m.metrica || '— (ainda não medido)',
+        go: () => { this._setDraft(cam.id, { modeloId: m.id, classes: [...this.TODAS_CLASSES] }); this.setState({ picker: null }); },
+        borda: draft.modeloId === m.id ? '#00E5FF' : '#23242F',
+        bg: draft.modeloId === m.id ? 'rgba(0,229,255,.06)' : 'transparent',
+      }));
+      return {
+        nome: cam.nome, area: cam.area, statusCor: statusCores[cam.status],
+        modulo: cam.modulo, moduloDiferente: cam.modulo !== 'epi',
+        modeloResumo: modelo ? modelo.nome : (draft.modeloId ? '…' : 'sem modelo'),
+        modeloCor: modelo ? '#F4F6F8' : '#8A8F98',
+        escopoResumo: draft.classes.length ? draft.classes.length + ' classes ativas' : (draft.modeloId ? 'escopo não definido' : ''),
+        escopoCor: draft.classes.length ? '#8A8F98' : '#E8A13C',
+        deployResumo: cam.deploy || '—',
+        chevron: aberta ? 'rotate(180deg)' : 'rotate(0deg)',
+        toggle: () => this.setState(st => ({ expandida: { ...st.expandida, [cam.id]: !st.expandida[cam.id] } })),
+        aberta,
+        cardBorda: aberta ? 'rgba(0,229,255,.3)' : '#23242F',
+        modeloNomeAtual: modelo ? modelo.nome : 'sem modelo — usa o detector padrão do ambiente',
+        modeloMetrica: modelo ? (modelo.metrica || '— (ainda não medido)') : '',
+        modeloRodape: cam.deploy ? ('aplicado em ' + cam.deploy) : 'nunca configurado nesta câmera',
+        togglePicker: () => this.setState(st => ({ picker: st.picker === cam.id ? null : cam.id })),
+        pickerAberto: s.picker === cam.id,
+        opcoesModelo,
+        travada: false,
+        grupos,
+        salvar: () => {
+          if (!podeSalvar) return;
+          this.setState({ salvando: cam.id });
+          setTimeout(() => {
+            this.setState(st => ({
+              salvando: null,
+              bases: { ...st.bases, [cam.id]: { modeloId: draft.modeloId, classes: [...draft.classes] } },
+              salvo: { ...st.salvo, [cam.id]: true },
+            }));
+          }, 800);
+        },
+        salvarDesabilitado: !podeSalvar,
+        salvarBg: podeSalvar ? '#00E5FF' : '#23242F',
+        salvarTxtCor: podeSalvar ? '#0A0A0F' : '#5A5D68',
+        salvarLabel: salvandoEsta ? 'Salvando…' : 'Salvar',
+        motivo,
+        usarComoOrigem: () => this.setState({ aba: 'massa', massaPasso: 'origem', origemId: cam.modeloId ? cam.id : null }),
+      };
+    }).map(c => ({ ...c, motivoCor: c.motivo === 'Salvo — vale a partir de agora nesta câmera.' ? '#3ECF8E' : (c.motivo === 'Marque ao menos 1 classe para salvar.' || c.motivo === 'Escolha um modelo antes de salvar.' ? '#E8A13C' : '#8A8F98') }));
+
+    // ---- aba Ação em massa ----
+    const origem = s.origemId ? this._cam(s.origemId) : null;
+    const candidatosOrigem = this.CAMERAS.filter(c => c.modeloId && c.classes.length > 0).map(c => {
+      const m = this._modelo(c.modulo, c.modeloId);
+      return {
+        nome: c.nome,
+        modelo: m ? m.nome : c.modeloId,
+        escopo: c.classes.length + ' classes ativas',
+        go: () => this.setState({ origemId: c.id, massaPasso: 'destinos', destinoIds: [], excluidos: [], concluido: false, progresso: [] }),
+        borda: s.origemId === c.id ? '#00E5FF' : '#23242F',
+      };
+    });
+    const destinosCandidatos = origem ? this.CAMERAS.filter(c => c.modulo === origem.modulo && c.id !== origem.id) : [];
+    const foraDoModulo = origem ? this.CAMERAS.filter(c => c.modulo !== origem.modulo).length : 0;
+    const destinosDisponiveis = destinosCandidatos.map(c => {
+      const sel = s.destinoIds.includes(c.id);
+      const m = c.modeloId ? this._modelo(c.modulo, c.modeloId) : null;
+      return {
+        nome: c.nome,
+        hoje: m ? (m.nome + ' · ' + c.classes.length + ' classes') : 'sem modelo',
+        sel,
+        go: () => this.setState(st => ({ destinoIds: sel ? st.destinoIds.filter(i => i !== c.id) : [...st.destinoIds, c.id] })),
+        borda: sel ? 'rgba(0,229,255,.5)' : '#23242F',
+        checkBorda: sel ? '#00E5FF' : '#3A3D4A',
+        checkBg: sel ? '#00E5FF' : 'transparent',
+      };
+    });
+    const destinosVazio = s.destinoIds.length === 0;
+    const origemModelo = origem ? (this._modelo(origem.modulo, origem.modeloId) || {}).nome : '';
+    const origemEscopo = origem ? (origem.classes.length + ' classes ativas') : '';
+
+    const situacaoDe = (destino) => {
+      if (!destino.modeloId) return 'GANHA MODELO';
+      const mesmoModelo = destino.modeloId === origem.modeloId;
+      const mesmoEscopo = this._mesmoConjunto(destino.classes, origem.classes);
+      if (mesmoModelo && mesmoEscopo) return 'SEM MUDANÇA';
+      if (mesmoModelo) return 'MUDA ESCOPO';
+      if (mesmoEscopo) return 'MUDA MODELO';
+      return 'MUDA OS DOIS';
+    };
+    const sitCores = {
+      'SEM MUDANÇA': ['#8A8F98', '#3A3D4A'], 'GANHA MODELO': ['#00E5FF', 'rgba(0,229,255,.5)'],
+      'MUDA ESCOPO': ['#E8A13C', 'rgba(232,161,60,.5)'], 'MUDA MODELO': ['#E8A13C', 'rgba(232,161,60,.5)'],
+      'MUDA OS DOIS': ['#E5484D', 'rgba(229,72,77,.5)'],
+    };
+    const previewLinhas = origem ? s.destinoIds.map(id => {
+      const d = this._cam(id);
+      const m = d.modeloId ? this._modelo(d.modulo, d.modeloId) : null;
+      const sit = situacaoDe(d);
+      const incluida = !s.excluidos.includes(id);
+      const [cor, borda] = sitCores[sit];
+      return {
+        nome: d.nome,
+        hoje: m ? (m.nome + ' · ' + d.classes.length + ' classes') : 'sem modelo',
+        depois: origemModelo + ' · ' + origemEscopo,
+        situacao: sit, sitCor: cor, sitBorda: borda,
+        incluida,
+        toggle: () => this.setState(st => ({ excluidos: incluida ? [...st.excluidos, id] : st.excluidos.filter(i => i !== id) })),
+        checkBorda: incluida ? '#00E5FF' : '#3A3D4A', checkBg: incluida ? '#00E5FF' : 'transparent',
+      };
+    }) : [];
+    const incluidasIds = s.destinoIds.filter(id => !s.excluidos.includes(id));
+    const incluidasVazio = incluidasIds.length === 0;
+
+    const passosMassa = [
+      { n: 1, t: 'Origem', go: () => this.setState({ massaPasso: 'origem' }), travado: false },
+      { n: 2, t: 'Destinos', go: () => this.setState({ massaPasso: 'destinos' }), travado: !origem },
+      { n: 3, t: 'O que muda', go: () => this.setState({ massaPasso: 'preview' }), travado: destinosVazio },
+      { n: 4, t: 'Aplicar', go: () => this.setState({ massaPasso: 'aplicar' }), travado: incluidasVazio },
+    ].map(p => ({
+      ...p,
+      bg: s.massaPasso === p.t.toLowerCase() || (s.massaPasso === 'origem' && p.n === 1) || (s.massaPasso === 'destinos' && p.n === 2) || (s.massaPasso === 'preview' && p.n === 3) || (s.massaPasso === 'aplicar' && p.n === 4) ? 'rgba(0,229,255,.08)' : '#14141C',
+      borda: (s.massaPasso === 'origem' && p.n === 1) || (s.massaPasso === 'destinos' && p.n === 2) || (s.massaPasso === 'preview' && p.n === 3) || (s.massaPasso === 'aplicar' && p.n === 4) ? 'rgba(0,229,255,.45)' : '#23242F',
+      cor: (s.massaPasso === 'origem' && p.n === 1) || (s.massaPasso === 'destinos' && p.n === 2) || (s.massaPasso === 'preview' && p.n === 3) || (s.massaPasso === 'aplicar' && p.n === 4) ? '#00E5FF' : '#8A8F98',
+      numBg: '#23242F', numCor: '#F4F6F8',
+    }));
+
+    const resumoAplicar = origem ? ('Você está prestes a aplicar ' + origemModelo + ' com ' + origemEscopo + ' em ' + incluidasIds.length + ' câmera' + (incluidasIds.length === 1 ? '' : 's') + '. As que já eram diferentes vão ser sobrescritas.') : '';
+    const progresso = s.progresso;
+    const falhouAlguma = progresso.some(p => p.falhou);
+    const concluidasOk = progresso.filter(p => !p.falhou).length;
+
+    return {
+      contagem: this.CAMERAS.length + ' câmeras · ' + comModelo + ' com modelo · ' + semModelo + ' sem deployment',
+      abas: [tab('Modelos por câmera', 'lista'), tab('Ação em massa', 'massa'), tab('Estados', 'estados'), tab('Mapa de conexões', 'mapa'), tab('Pedidos ao backend', 'pedidos'), tab('Microcopy', 'copy')],
+      vLista: s.aba === 'lista', vMassa: s.aba === 'massa', vEstados: s.aba === 'estados', vMapa: s.aba === 'mapa', vPedidos: s.aba === 'pedidos', vCopy: s.aba === 'copy',
+      avisoAberto: s.avisoAberto, avisoTxt: s.avisoAberto ? 'recolher' : 'saiba mais',
+      toggleAviso: () => this.setState({ avisoAberto: !s.avisoAberto }),
+      cameras,
+
+      passosMassa,
+      pOrigem: s.massaPasso === 'origem', pDestinos: s.massaPasso === 'destinos', pPreview: s.massaPasso === 'preview', pAplicar: s.massaPasso === 'aplicar',
+      candidatosOrigem,
+      origemNome: origem ? origem.nome : '', origemModelo, origemEscopo,
+      destinosDisponiveis, destinosVazio,
+      contagemDestinos: s.destinoIds.length + ' de ' + destinosCandidatos.length + ' selecionadas',
+      selecionarTodas: () => this.setState({ destinoIds: destinosCandidatos.map(c => c.id) }),
+      limparSelecao: () => this.setState({ destinoIds: [] }),
+      notaModuloForaDoDesenho: foraDoModulo ? (foraDoModulo + ' câmera não aparece aqui — é de outro módulo e o escopo não se aplica entre módulos diferentes.') : '',
+      voltarOrigem: () => this.setState({ massaPasso: 'origem' }),
+      irPreview: () => { if (!destinosVazio) this.setState({ massaPasso: 'preview', excluidos: [] }); },
+
+      previewLinhas, incluidasVazio,
+      voltarDestinos: () => this.setState({ massaPasso: 'destinos' }),
+      irAplicar: () => { if (!incluidasVazio) this.setState({ massaPasso: 'aplicar' }); },
+
+      naoConcluido: !s.aplicando && !s.concluido,
+      aplicando: s.aplicando, concluido: s.concluido,
+      resumoAplicar,
+      aplicarLabel: 'Aplicar a ' + incluidasIds.length + ' câmeras',
+      aplicar: () => {
+        this.setState({ aplicando: true, progresso: incluidasIds.map(id => ({ id, feito: false })) });
+        incluidasIds.forEach((id, i) => {
+          setTimeout(() => {
+            this.setState(st => ({
+              progresso: st.progresso.map(p => p.id === id ? { ...p, feito: true, falhou: this._cam(id).status === 'offline' } : p),
+            }));
+            if (i === incluidasIds.length - 1) {
+              setTimeout(() => this.setState({ aplicando: false, concluido: true }), 400);
+            }
+          }, (i + 1) * 500);
+        });
+      },
+      progresso: progresso.map(p => {
+        const cam = this._cam(p.id);
+        const falhou = p.feito && p.falhou;
+        return {
+          nome: cam.nome,
+          mark: !p.feito ? '…' : (falhou ? '✕' : '✓'),
+          cor: !p.feito ? '#8A8F98' : (falhou ? '#E5484D' : '#3ECF8E'),
+          borda: !p.feito ? '#3A3D4A' : (falhou ? 'rgba(229,72,77,.5)' : 'rgba(62,207,142,.5)'),
+          txtCor: '#F4F6F8',
+          nota: !p.feito ? '' : (falhou ? 'câmera sem conexão agora — tentaremos de novo quando ela voltar' : 'aplicado'),
+        };
+      }),
+      resultadoTxt: concluidasOk + ' de ' + incluidasIds.length + ' aplicadas.' + (falhouAlguma ? ' 1 pulada: câmera sem conexão agora.' : ''),
+      concluir: () => this.setState({ aba: 'lista', massaPasso: 'origem', origemId: null, destinoIds: [], excluidos: [], concluido: false, progresso: [] }),
+
+      mapaKpis: [
+        { label: 'EXISTE', v: '7', cor: '#3ECF8E' },
+        { label: 'INSUFICIENTE', v: '1', cor: '#E8A13C' },
+        { label: 'NÃO EXISTE', v: '3', cor: '#E5484D' },
+      ],
+      mapaHead: ['ELEMENTO DA TELA', 'ENDPOINT', 'ESTADO', 'O QUE IMPLICA'].map(t => ({ t })),
+      mapa: (() => {
+        const st = { EXISTE: ['#3ECF8E', 'rgba(62,207,142,.4)'], INSUFICIENTE: ['#E8A13C', 'rgba(232,161,60,.4)'], 'NÃO EXISTE': ['#E5484D', 'rgba(229,72,77,.4)'] };
+        const MP = (ui, ep, estado, nota) => ({ ui, ep, st: estado, nota, cor: st[estado][0], borda: st[estado][1] });
+        return [
+          MP('Lista de câmeras + deployment ativo', 'GET /api/cameras/model-config?module=<m>', 'EXISTE', 'Uma chamada por módulo (hoje 1, RVB é só EPI); é a fonte de verdade do que está gravado.'),
+          MP('Câmera sem deployment (linha "sem modelo")', '(ausente na resposta acima)', 'EXISTE', 'Ausência = detector padrão do ambiente. Não existe um "desativado" gravado — é o mesmo estado de nunca ter configurado.'),
+          MP('Catálogo de modelos do módulo', 'GET /api/v1/models?module=<m> (alias legado GET /api/training/models)', 'EXISTE', 'O front filtra pelos que já têm artefato pronto; os outros ainda não têm o que servir.'),
+          MP('Classes que o modelo de fato reconhece', 'GET /api/v1/models/<id>', 'EXISTE', 'Grupos sem anotação suficiente não aparecem aqui — é sobre isso que o aviso da tela fala.'),
+          MP('Métrica curta do modelo', 'campo map50 na mesma resposta do catálogo', 'EXISTE', 'O backend já manda o número; esta tela é a primeira a mostrá-lo — não é pedido novo, é uso novo de dado existente.'),
+          MP('Nome comercial (alias) do modelo', 'campo display_name no mesmo registro', 'EXISTE', 'Vazio cai em "Logikos"; o nome interno do motor só aparece pra superadmin, em telas superadmin.'),
+          MP('Salvar modelo + escopo de UMA câmera', 'POST /api/cameras/<id>/model-config', 'EXISTE', 'Sempre cria um registro novo (nunca sobrescreve); exige ao menos 1 classe marcada.'),
+          MP('Desfazer o último salvamento', 'GET/POST /api/cameras/<id>/model-config/history · /rollback', 'EXISTE', 'Existe e funciona; esta prancha não desenha o botão — fica para outra tela.'),
+          MP('Aplicar o escopo de uma câmera nas demais', '—', 'NÃO EXISTE', 'Sem isso, aplicar em 14 câmeras são 14 salvamentos manuais — é o Pedido 1 desta prancha.'),
+          MP('Pré-visualizar o que muda antes de aplicar em massa', '—', 'NÃO EXISTE', 'Calculada no navegador comparando o que já foi carregado; não chama o backend de novo.'),
+          MP('O equipamento do site aplicar este recorte de classe', '—', 'NÃO EXISTE', 'O escopo hoje vale no que já roda na nuvem; o equipamento do cliente ainda não recebe recorte por câmera.'),
+        ];
+      })(),
+      parentes: [
+        { cor: '#00E5FF', t: 'Quem lê este escopo em produção', d: 'o motor que decide o que é violação, na nuvem — filtra a detecção fora do escopo antes dela virar evento.' },
+        { cor: '#E8A13C', t: 'Quem ainda não lê', d: 'o equipamento instalado no site do cliente — recebe outras configurações da câmera, mas não este recorte por classe ainda.' },
+        { cor: '#3ECF8E', t: 'De onde vêm os modelos', d: 'o Estúdio de treinamento — treina, mede e publica; esta tela só escolhe entre os já publicados.' },
+        { cor: '#8A8F98', t: 'Quem decide a exigência oficial', d: 'a matriz de exigência por área, ainda não pronta — até lá, o escopo aqui é o que já foi observado, não uma regra da empresa.' },
+      ],
+
+      pedidos: [
+        (() => { const sv = { BLOQUEIA: ['#E5484D', 'rgba(229,72,77,.5)'], DEFEITO: ['#E8A13C', 'rgba(232,161,60,.5)'], FALTA: ['#00E5FF', 'rgba(0,229,255,.5)'] };
+          const PD = (id, sev, o, precisa, hoje, delta, bloqueia) => ({ id, sev, o, precisa, hoje, delta, bloqueia, sevCor: sv[sev][0], sevBorda: sv[sev][1] });
+          return [
+            PD('P1', 'BLOQUEIA', 'Aplicar escopo em massa', 'Uma chamada que recebe {model_id, config, camera_ids: [...]} e devolve sucesso ou erro por câmera — mesma validação de ≥1 classe que já existe para uma câmera só.', 'Só o salvar de UMA câmera por vez (POST /api/cameras/<id>/model-config).', 'É o pedido inteiro desta prancha: sem ele, o gesto de massa vira 14 cliques manuais escondidos atrás de um botão bonito.', 'Bloqueia a aba Ação em massa'),
+            PD('P2', 'FALTA', 'Um jeito de "desligar" sem trocar de modelo', 'A câmera voltar ao detector padrão do ambiente sem precisar escolher outro modelo só pra depois trocar de novo.', 'Só existe trocar; não existe "nenhum".', 'Pedido pequeno, mas evita o gambiarra de escolher qualquer coisa só pra desativar.', 'Não bloqueia; incomoda quem administra'),
+            PD('P3', 'DEFEITO', 'Confirmar que o site aplicou de verdade', 'Um jeito de saber que o equipamento do cliente recebeu e aplicou o novo escopo — não só que o backend gravou.', 'O escopo vale na nuvem hoje; o equipamento do site ainda não recebe recorte por câmera (issue #519).', 'Sem isso, "aplicado" na tela é sobre o banco, não sobre o que a câmera realmente está vigiando no local.', 'Não bloqueia; é honestidade de rótulo'),
+          ];
+        })(),
+      ],
+      deps: [
+        { id: '#519', t: 'Recorte por câmera no equipamento do site', d: 'o box do cliente ainda não recebe classe por câmera — segue aberta, referenciada no Mapa acima.' },
+        { id: '#535', t: 'Matriz de exigência oficial da RVB', d: 'quando pronta, substitui este escopo-por-evidência por uma exigência definida pela empresa, área por área.' },
+      ],
+
+      copyBlocos: [
+        { tag: 'CABEÇALHO', itens: [
+          { k: 'Título', v: 'Modelos por câmera' },
+          { k: 'Subtítulo', v: 'Qual modelo cada câmera usa e o que ele deve reconhecer nela. Sem modelo escolhido, a câmera usa o detector padrão do ambiente.' },
+          { k: 'Contagem', v: '{N} câmeras · {M} com modelo · {K} sem deployment' },
+        ]},
+        { tag: 'LINHA DA CÂMERA', itens: [
+          { k: 'Sem modelo', v: 'sem modelo' },
+          { k: 'Sem escopo (com modelo)', v: 'escopo não definido' },
+          { k: 'Resumo do escopo', v: '{N} classes ativas' },
+          { k: 'Atalho pra massa', v: 'Usar este escopo em outras câmeras →' },
+        ]},
+        { tag: 'SELETOR DE MODELO', itens: [
+          { k: 'Botão', v: 'Trocar modelo' },
+          { k: 'Métrica presente', v: '71% de acerto medido' },
+          { k: 'Métrica ausente', v: '— (ainda não medido)' },
+          { k: 'Rodapé do card', v: 'aplicado em {data}' },
+          { k: 'Nunca sido configurada', v: 'nunca configurado nesta câmera' },
+        ]},
+        { tag: 'BOTÃO SALVAR — RAZÕES', itens: [
+          { k: 'Sem modelo escolhido', v: 'Escolha um modelo antes de salvar.' },
+          { k: 'Sem nenhuma classe', v: 'Marque ao menos 1 classe para salvar.' },
+          { k: 'Nada mudou', v: 'Nada para salvar — o escopo já é este.' },
+          { k: 'Enviando', v: 'Salvando…' },
+          { k: 'Acabou de salvar', v: 'Salvo — vale a partir de agora nesta câmera.' },
+        ]},
+        { tag: 'AVISO DE ESCOPO', itens: [
+          { k: 'Linha curta', v: 'Este escopo veio do que já foi visto em cada câmera, não de uma exigência oficial ainda.' },
+          { k: 'Saiba mais (expandido)', v: 'Uma câmera sem nenhuma luva vista até hoje fica sem escopo de luvas — nenhuma falta de luva seria percebida nela. Isso já vale na conferência que roda hoje; o equipamento instalado no site ainda não aplica este recorte por câmera.' },
+        ]},
+        { tag: 'AÇÃO EM MASSA', itens: [
+          { k: 'Passo 1', v: 'De qual câmera copiar? Só entram câmeras que já têm modelo e escopo definidos.' },
+          { k: 'Passo 2', v: 'Para quais câmeras?' },
+          { k: 'Módulo diferente', v: '{N} câmera não aparece aqui — é de outro módulo e o escopo não se aplica entre módulos diferentes.' },
+          { k: 'Situações no preview', v: 'sem mudança · ganha modelo · muda escopo · muda modelo · muda os dois' },
+          { k: 'Aviso de sobrescrita', v: 'As que mudam vão sobrescrever o que estava salvo — o que tinha antes fica guardado no histórico, não se perde.' },
+          { k: 'Confirmar', v: 'Aplicar a {X} câmeras' },
+          { k: 'Resultado', v: '{X} de {Y} aplicadas.' },
+          { k: 'Falha de uma câmera', v: 'câmera sem conexão agora — tentaremos de novo quando ela voltar' },
+        ]},
+        { tag: 'ESTADOS DA TELA', itens: [
+          { k: 'Vazio', v: 'Nenhuma câmera ativa neste módulo' },
+          { k: 'Erro', v: 'Não foi possível carregar os modelos' },
+          { k: 'Sem permissão', v: 'Você pode ver, mas não mudar' },
+        ]},
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

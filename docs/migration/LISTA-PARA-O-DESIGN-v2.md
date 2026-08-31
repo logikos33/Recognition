@@ -204,11 +204,50 @@ mais vê quando tudo está bem. E note: "nenhum evento" pode significar *nada
 aconteceu* ou *o filtro está apertado demais* — a diferença importa para quem
 opera.
 
+## 10. Modelos por câmera (escopo de detecção)
+
+**O que aconteceu, medido:** `CameraModelScope.tsx` — e a cópia dele em
+`app/epi/Cameras.tsx` (aba "Escopo") — nasceram sem desenho: é `<table>` com um
+`<tr>` por câmera e checkbox **nativo** por classe em `flex-wrap`. Com as 14+
+câmeras de um tenant real (28 no RVB) a tabela vira scroll infinito, e não há
+como aplicar o mesmo modelo/escopo em várias câmeras de uma vez — hoje é um
+salvamento manual por câmera.
+
+**Como está:** proposta em
+`docs/design/handoff-f5/Modelos por Câmera.dc.html` — chips em grade fluida
+agrupados por par presença↔ausência (Capacete/Sem Capacete etc., confirmado em
+`public.module_classes`: EPI tem 8 classes, não 13), linha de câmera
+colapsável, seletor de modelo com alias + data + métrica curta (`— (ainda não
+medido)` quando o número não existe, nunca `0,0%`), razão escrita ao lado do
+Salvar quando ele está desabilitado, e o fluxo completo de **aplicar em massa**
+(escolher origem → destinos → pré-visualizar o que muda, com badge por câmera
+de "sem mudança"/"muda escopo"/"muda modelo"/"muda os dois" → aplicar, câmera
+por câmera, com o que acontece se uma falhar). **É proposta da pista aguardando
+refino oficial do design** — a régua desta lista manda propor em vez de
+implementar no vácuo quando não veio desenho oficial no lote.
+
+**Backend pronto:** `GET /api/cameras/model-config?module=<m>` (deployments
+ativos, tenant-escopado, 1 chamada por módulo) · `GET /api/v1/models` (alias
+legado `GET /api/training/models`, já devolve `map50` — a tela é a primeira a
+mostrar esse número, não é dado novo) · `GET /api/v1/models/<id>` (classes que
+o modelo de fato reconhece) · `POST /api/cameras/<id>/model-config` (salva
+modelo + escopo de **uma** câmera; upsert, sempre grava histórico) ·
+`GET/POST .../model-config/history` e `/rollback` (existem, fora do desenho
+desta prancha).
+
+**O que falta no backend:** aplicar em massa **não existe** — é o Pedido 1 da
+prancha (`POST /api/cameras/model-config/bulk`, sucesso/erro por câmera).
+Também não existe um jeito de "desligar" sem trocar de modelo, e a tela não
+tem como confirmar que o equipamento do site aplicou o recorte por câmera
+(vale hoje só na nuvem — issue #519). De-para completo na aba "Mapa de
+conexões" do próprio arquivo; os 3 pedidos numerados estão na aba "Pedidos ao
+backend".
+
 ---
 
 # ⚪ POLIMENTO — não bloqueia fase nenhuma
 
-## 10. Chat flutuante
+## 11. Chat flutuante
 
 Existe um botão de chat flutuante vindo do produto atual. Aparece por cima das
 telas novas, não está em nenhum desenho — e, medido, ele sozinho põe 3.136px² de
@@ -216,7 +255,7 @@ ciano em **todas** as telas novas.
 
 **O que precisamos:** ele fica? Onde, e com que aparência no shell novo?
 
-## 11. Relatórios — o que o backend não serve
+## 12. Relatórios — o que o backend não serve
 
 O desenho prevê quatro coisas que **não existem na API**: digest diário por
 e-mail, seleção de conteúdo do export, ações corretivas vencidas, e taxa de
@@ -226,7 +265,7 @@ Nenhuma foi para a tela.
 **O que precisamos:** confirmar se são requisito (viram trabalho de backend) ou se
 saem do desenho.
 
-## 12. Perfis: o desenho supõe 4, o produto tem 6
+## 13. Perfis: o desenho supõe 4, o produto tem 6
 
 O backend tem `superadmin`, `admin`, `operator`, `analyst`, `trainer`, `viewer`.
 A navegação é derivada de **permissão**, não de nome de perfil, e há teste que
@@ -241,6 +280,45 @@ nem relatório tem pouco o que fazer no módulo EPI. Pode estar certo (o trabalh
 dele é no Estúdio), mas **ninguém tomou essa decisão de propósito** — ela caiu da
 matriz de permissões.
 
+## 14. Fila de Propostas — sugestões da IA como caminho principal
+
+**O que aconteceu, medido:** `TrainingGallery.tsx` trata as propostas do modelo
+como só mais um chip de status ("Propostas pendentes", sem contador — a faceta
+não conta essa dimensão). Medido hoje: `GET /api/training/images?
+pending_review=true` devolve **281 imagens / 349 propostas** para o tenant RVB
+— o dado existe e é grande, mas a tela não trata isso como o passo "sugestões
+do modelo" da demo. Bug medido junto: combinar `source=upload` +
+`pending_review=true` zera a grade em silêncio (proposta de IA nasce só de
+`nvr`/`auto`, nunca de upload manual) — esse estado-vazio-que-revela-o-filtro
+já está sendo corrigido em paralelo, fora deste desenho.
+
+**Como está:** proposta em
+`docs/design/handoff-f5/Fila de Propostas.dc.html` — chip de propostas
+promovido a banner com contador (não mais um filtro qualquer), CTA "Confirmar
+sugestões" em lote com preview de consequência, selo de proposta + % de
+confiança por card, contagem separada de caixas humanas × sugestões da IA,
+ordenação leiga "onde a IA tem mais dúvida" (o motor já ordena por incerteza —
+o cliente nunca vê o número cru), um modo "Revisar em sequência" com barra de
+progresso honesta (nunca promete total fechado — a coleta do NVR não para) e o
+gesto do Enter explicado a quem chega novo. **É proposta da pista aguardando
+refino oficial do design**, mesma régua do item 10.
+
+**Backend pronto:** `GET /api/training/images?pending_review=true` (grade +
+total) · `GET /api/training/images?ordenar=incerteza` (o motor já ordena pela
+proposta mais perto do ponto de maior dúvida — a galeria hoje não manda esse
+parâmetro, é fiação de front) · `POST /api/training/frames/<id>/accept-
+suggestions` (confirmar 1 frame) · `POST /api/training/frames/<id>/pre-
+annotation-review` (rejeitar 1 frame) · `POST /api/training/frames/curation`
+(dúvida/excluída em lote, já batched).
+
+**O que falta no backend:** confirmar/rejeitar **em lote** (N frames de uma
+vez) não existe — só por frame, um de cada vez — e é o que bloqueia o CTA
+"Confirmar sugestões (N)" da barra de seleção. Confiança agregada por card
+também não existe na listagem (só por anotação, uma chamada por frame) — sem
+ela o selo "IA XX%" da grade não tem de onde vir. Os 3 pedidos numerados
+(P1–P3) estão na aba "Pedidos ao backend" do próprio arquivo, com o de-para
+completo na aba "Mapa de conexões".
+
 ---
 
 ## Perguntas curtas, de responder por mensagem
@@ -250,10 +328,12 @@ matriz de permissões.
    precisa de endpoint novo.
 3. No white-label do shell escuro (§6): o cliente troca só a cor de marca, ou
    superfície também? Se também, qual o piso de contraste?
-4. O chat flutuante (§10) fica?
-5. Os quatro itens de Relatórios (§11) são requisito ou saem do desenho?
-6. `trainer` (§12): navegação filtrada por permissão como está, ou merece recorte
+4. O chat flutuante (§11) fica?
+5. Os quatro itens de Relatórios (§12) são requisito ou saem do desenho?
+6. `trainer` (§13): navegação filtrada por permissão como está, ou merece recorte
    próprio?
+7. Modelos por câmera (§10): a proposta de ação em massa serve de base, ou você
+   prefere desenhar o gesto do zero?
 
 ---
 
