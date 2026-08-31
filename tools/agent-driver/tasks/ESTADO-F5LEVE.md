@@ -6,6 +6,10 @@
 - Prova-DEV SR-A: 5 provas × 2 perfis, screenshots novo-*.png. Relatórios: docs/RELATORIO-VARREDURA-F5LEVE.md · docs/RELATORIO-SEGUNDA-F5LEVE.md · docs/ROTEIRO-DEMO-QUALIDADE.md.
 - Aberto p/ segunda: SR-C família de saúde (prancha até domingo, senão proposta) · adiados §6/§7/§10/§12 + LOTE 2 (semana 07/09) · GO do flip (quinta).
 
+## Decisões do Vitor (30/08 noite)
+- **FLIP #592 = quinta 03/09, pós-onboarding** (confirmado). Condições na hora: **re-rebase no dia** + rodar os 4 gates na árvore final + **congelamento de App.tsx / RotasNovas.tsx / AppRoutes.tsx / ROTAS_NOVAS** entre o rebase e o merge (coordenar com F5-PESADA) + aviso do endereço aos usuários.
+- **#603 (risk:security)**: aguardando decisão A/B do Vitor. Estado em 30/08 noite: OPEN, **MERGEABLE/CLEAN** contra a develop atual, 23 checks verdes, zero conflito mesmo após 8 PRs mergeados depois dele.
+
 ## Leis vigentes
 - Plano aprovado: `~/.claude/plans/prompt-sess-o-merry-waffle.md` (fonte da missão; NÃO recontextualizar aqui).
 - 🔴 ECONOMIA v3 (30/08): haiku default p/ mecânico/leitura/medição; sonnet só não-trivial; opus SÓ cético crítico (security·demolição·flip·paridade-veredito). ⛔ Read inteiro >200 linhas · ⛔ código colado em relatório · saída de agente = tabela ≤20 linhas · suíte da área 1×/PR · screenshots só aceite final · ESTADO em delta · MODO-RESERVA se orçamento >85%.
