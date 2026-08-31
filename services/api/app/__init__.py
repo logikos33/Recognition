@@ -34,6 +34,7 @@ from app.core.middleware import (
     register_request_logging,
     register_security_headers,
 )
+from app.core.responses import error
 from app.extensions import jwt, limiter, socketio
 
 try:
@@ -597,6 +598,11 @@ def _register_frontend_serving(app: Flask) -> None:
     @app.route("/", defaults={"path": ""})
     @app.route("/<path:path>")
     def serve_frontend(path: str):  # type: ignore[no-untyped-def]
+        # Path de API que não casou nenhuma rota (ex.: prefixo /v1 esquecido
+        # num hook) NUNCA pode cair no 200 "API online" — isso mascara o erro
+        # e derruba o frontend num crash de render em vez de um erro tratável.
+        if path.startswith("api/"):
+            return error("Rota não encontrada", 404)
         if dist is None:
             return jsonify({"status": "API online", "frontend": "separate service"}), 200
         if path and os.path.exists(os.path.join(dist, path)):

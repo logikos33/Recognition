@@ -2,6 +2,13 @@
  * Playwright e2e — editor visual de cenário.
  * Usa page.route() para interceptar todas as chamadas de API (sem backend real).
  * Cobre: renderização, seleção de módulo/tipo, desenho de zona/linha, salvar, persistência.
+ *
+ * Linhagem (PR #606): os mocks de cenário/operation-types abaixo apontavam
+ * pro path SEM `/v1` (`**\/api/cameras/*\/scenario`), que só "passava" porque
+ * useScenario.ts tinha o mesmo bug — cristalizando o crash em vez de pegá-lo.
+ * O path real é `/api/v1/...` (scenarios/routes.py). Se alguém reverter o
+ * prefixo `/v1` do hook, este spec deve voltar a falhar — é o comportamento
+ * desejado.
  */
 import { test, expect, type Page } from '@playwright/test'
 
@@ -104,7 +111,7 @@ async function setupRoutes(page: Page, withSavedOp = false) {
   )
 
   // Cenário
-  await page.route('**/api/cameras/42/scenario', route =>
+  await page.route('**/api/v1/cameras/42/scenario', route =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -113,7 +120,7 @@ async function setupRoutes(page: Page, withSavedOp = false) {
   )
 
   // Tipos de operação
-  await page.route('**/api/scenarios/operation-types**', route =>
+  await page.route('**/api/v1/scenarios/operation-types**', route =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
