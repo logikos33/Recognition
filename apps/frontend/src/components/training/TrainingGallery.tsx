@@ -66,7 +66,15 @@ interface GalleryResponse {
 
 interface Facets {
   cameras: Array<{ camera_id: string | null; camera_name: string | null; count: number }>
-  status: { nao_anotado: number; anotado: number; duvida: number; excluida: number }
+  status: {
+    nao_anotado: number
+    anotado: number
+    duvida: number
+    excluida: number
+    /** Chip "Propostas pendentes" (migration 111) — dimensão à parte das
+     * quatro acima, não soma com elas (get_facets, aditivo). */
+    proposta_pendente: number
+  }
 }
 
 // 'proposta_pendente' (migration 111): não é curation_status — filtra por
@@ -573,10 +581,6 @@ export function TrainingGallery({
       const st = facets.status
       return st.nao_anotado + st.anotado + st.duvida
     }
-    // 'proposta_pendente' (migration 111) não é uma faceta de curation_status
-    // — get_facets não conta essa dimensão (MVP sem lote); o chip fica sem
-    // número, mesmo padrão visual de qualquer filtro sem faceta carregada.
-    if (f === 'proposta_pendente') return null
     return facets.status[f]
   }
 
@@ -586,6 +590,31 @@ export function TrainingGallery({
       : cameraIds.size === 1
         ? cameraLabel(Array.from(cameraIds)[0])
         : `${cameraIds.size} câmeras`
+
+  // ── vazio honesto: revela QUAL filtro esvaziou o resultado ────────────────
+  // O bug real (05-propostas-pendentes-passo3c-origem-residual.png): trocar
+  // o chip de status não reseta câmera/origem — "Propostas pendentes" com
+  // "Origem: Upload" ainda ativo de uma seleção anterior vira 0 SEMPRE
+  // (proposta de IA nasce de nvr/auto, nunca de upload manual), e a tela
+  // mentia "fila vazia" sem revelar o filtro escondido que zerou tudo.
+  const activeFilterLabels = [
+    cameraResultLabel ? `Câmera: ${cameraResultLabel}` : null,
+    statusFilter !== 'todos' ? STATUS_LABELS[statusFilter] : null,
+    source !== 'all' ? `Origem: ${SOURCE_LABELS[source]}` : null,
+  ].filter((label): label is string => label != null)
+
+  const clearFilters = useCallback(() => {
+    resetPageAnd(() => {
+      setStatusFilter('todos')
+      setCameraIds(new Set())
+      setSource('all')
+    })
+  }, [resetPageAnd])
+
+  // Combinação que NUNCA tem resultado: proposta de IA só nasce de nvr/auto
+  // (_PENDING_PROPOSAL_CONDITION no backend), nunca de upload manual — não é
+  // "0 desta vez", é estrutural. Avisa sem bloquear a escolha.
+  const impossibleCombo = statusFilter === 'proposta_pendente' && source === 'upload'
 
   // Na fila de aprovação o rótulo carrega TAMBÉM o total de propostas —
   // é o número que precisa bater com o toast da propagação e com a soma
@@ -710,6 +739,14 @@ export function TrainingGallery({
             </button>
           ))}
         </div>
+        {impossibleCombo && (
+          <div className={s.filterWarning}>
+            <AlertTriangle size={13} />
+            Proposta de IA nasce da câmera/NVR ou da detecção — nunca de
+            upload manual. Com Origem: Upload, a fila de propostas
+            pendentes fica sempre vazia.
+          </div>
+        )}
         <div className={s.filterRow}>
           <span className={s.resultLine}>{resultLabel}</span>
           <div style={{ flex: 1 }} />
@@ -738,15 +775,21 @@ export function TrainingGallery({
           ))}
         </div>
       ) : images.length === 0 ? (
-        <p style={{ color: vars.color.textMuted }}>
-          {statusFilter === 'excluida'
-            ? 'Nenhuma imagem excluída da coleta.'
-            : statusFilter === 'nao_anotado'
-              ? 'Nada a anotar com esses filtros — troque a câmera ou o status.'
-              : statusFilter === 'proposta_pendente'
-                ? 'Fila de aprovação vazia — nenhuma proposta de IA pendente.'
-                : 'Nenhuma imagem com esses filtros. Faça upload ou colete frames das câmeras.'}
-        </p>
+        activeFilterLabels.length > 0 ? (
+          // Vazio honesto: NUNCA "fila vazia" quando é filtro escondido
+          // esvaziando — diz exatamente quais filtros estão de pé e como
+          // sair deles com 1 clique (ver comentário em activeFilterLabels).
+          <p style={{ color: vars.color.textMuted }}>
+            Nenhuma imagem com estes filtros: {activeFilterLabels.join(' + ')}.{' '}
+            <button className={s.selectionLink} onClick={clearFilters}>
+              Limpar filtros
+            </button>
+          </p>
+        ) : (
+          <p style={{ color: vars.color.textMuted }}>
+            Nenhuma imagem ainda. Faça upload ou colete frames das câmeras.
+          </p>
+        )
       ) : (
         <div className={s.grid}>
           {images.map((img, index) => {

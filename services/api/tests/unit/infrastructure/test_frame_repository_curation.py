@@ -131,9 +131,9 @@ class TestListImagesFilteredCuration:
 
 
 class TestGetFacets:
-    def _repo_with_rows(self, camera_rows, status_rows):
+    def _repo_with_rows(self, camera_rows, status_rows, pending_count=0):
         cur = MagicMock()
-        cur.fetchall.side_effect = [camera_rows, status_rows]
+        cur.fetchall.side_effect = [camera_rows, status_rows, [{"count": pending_count}]]
         return _repo(cur)
 
     def test_camera_facet_shape(self):
@@ -179,6 +179,7 @@ class TestGetFacets:
                 {"curation_status": "duvida", "is_annotated": False, "count": 2},
                 {"curation_status": "excluida", "is_annotated": True, "count": 1},
             ],
+            pending_count=3,
         )
         result = repo.get_facets(TENANT_ID)
         assert result["status"] == {
@@ -186,6 +187,7 @@ class TestGetFacets:
             "anotado": 4,
             "duvida": 2,
             "excluida": 1,
+            "proposta_pendente": 3,
         }
 
     def test_status_facet_does_not_filter_by_curation_status(self):
@@ -237,7 +239,55 @@ class TestGetFacets:
         result = repo.get_facets(TENANT_ID)
         assert result["status"] == {
             "nao_anotado": 0, "anotado": 0, "duvida": 0, "excluida": 0,
+            "proposta_pendente": 0,
         }
+
+    def test_pending_facet_uses_pending_proposal_condition(self):
+        """Chip 'Propostas pendentes' ganha contador (era None — MVP sem
+        lote deixava o chip cego). Mesmo predicado único da fila real."""
+        repo, cur = self._repo_with_rows(
+            camera_rows=[], status_rows=[], pending_count=349,
+        )
+        result = repo.get_facets(TENANT_ID)
+        assert result["status"]["proposta_pendente"] == 349
+        pending_sql = cur.execute.call_args_list[2][0][0]
+        assert "pre_annotation_review_status IS NULL" in pending_sql
+        assert "pre_annotations IS NOT NULL" in pending_sql
+
+    def test_pending_facet_excludes_excluida_by_default(self):
+        repo, cur = self._repo_with_rows(camera_rows=[], status_rows=[])
+        repo.get_facets(TENANT_ID)
+        pending_sql = cur.execute.call_args_list[2][0][0]
+        assert "tf.curation_status != 'excluida'" in pending_sql
+
+    def test_pending_facet_is_count_not_jsonb_sum(self):
+        """Facet é barata de propósito — COUNT(*), não SUM(jsonb_array_
+        length) (esse agregado só se paga na fila ativa, list_images_
+        filtered com pending_review=True)."""
+        repo, cur = self._repo_with_rows(camera_rows=[], status_rows=[])
+        repo.get_facets(TENANT_ID)
+        pending_sql = cur.execute.call_args_list[2][0][0]
+        assert "jsonb_array_length" not in pending_sql
+        assert "COUNT(*)" in pending_sql
+
+    def test_pending_facet_respects_source_and_camera_ids(self):
+        repo, cur = self._repo_with_rows(camera_rows=[], status_rows=[])
+        cams = [str(uuid4())]
+        repo.get_facets(TENANT_ID, source="nvr", camera_ids=cams)
+        pending_sql, pending_params = cur.execute.call_args_list[2][0]
+        assert "tf.source = %s" in pending_sql
+        assert "tf.camera_id = ANY(%s::uuid[])" in pending_sql
+        assert pending_params == (TENANT_ID, "nvr", cams)
+
+    def test_pending_facet_never_filters_by_curation_status_arg(self):
+        """Mesma regra da faceta de status: 'proposta_pendente' não pode
+        ser restringida pelo curation_status escolhido — senão a soma das
+        outras facetas por trás do chip mentiria sobre o resto da fila."""
+        repo, cur = self._repo_with_rows(camera_rows=[], status_rows=[])
+        repo.get_facets(TENANT_ID, curation_status="duvida")
+        pending_sql, pending_params = cur.execute.call_args_list[2][0]
+        assert "tf.curation_status = %s" not in pending_sql
+        assert "duvida" not in pending_params
 
 
 class TestUpdateCurationStatus:
