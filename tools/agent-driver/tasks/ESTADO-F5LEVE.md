@@ -22,6 +22,31 @@
 - **#616 — "o tema não estoura"** (capturas do Vitor com faixa branca): causa = `html/body` sem fundo → branco do navegador aparece no overscroll e além do conteúdo. ⚠️ **Meu diagnóstico inicial estava errado**: `apps/frontend/src/index.css` é **CÓDIGO MORTO** (ninguém importa); o real é `styles/global.css.ts` (provado lendo o CSS empacotado em dist/). Fix: fundo no token + `color-scheme: dark` + scroll contido em Cameras/Acoes/Dados + régua reforçada (rodapé, scroll-to-bottom, viewport 1440×2200) — prova: revertendo a camada 1, **62 testes falham**.
 - **Follow-ups desta rodada**: apagar `index.css` morto (PR de limpeza) · S1/S3/S4 da saúde · vitrine mostra produção OU sombra, não ambos (refinamento).
 
+## RODADA CORREÇÃO UX (31/08) — abertura
+- Base: origin/develop **586f293d**. Inbound considerado: #592 (meu FLIP, aguarda GO quinta) · #568 CI astro · **#498 fix/fila-retry-backoff — TOCA A FILA DE ANOTAÇÃO** (A2/C3 conferem antes de mexer) · #375 treino.
+- **@F5-PESADA — fronteira**: a LISTA-PARA-O-DESIGN de vocês contém "R4 catálogo" e "Estúdio 7 sub-telas", que são meus C2/C3/C5 desta rodada. Vocês estão parados desde #574 e o Vitor autorizou esta pista a tocar o Estúdio (30/08). **Assumo C2/C3/C5**; se retomarem, falem no ESTADO e eu devolvo.
+- **TESE**: 4 telas dizem vazio/cego com o dado existindo (A1 fila de verificação, A2 propostas, A4 dashboard hoje, A5 ações sem evidência). Hipótese a testar: critério fantasma (filtro por estado que ninguém escreve — raiz do `needs_human`) + caminho de navegação ausente. **Medição da família rodando ANTES de qualquer conserto** (workflow wf_c612a6de-86d).
+### 🔴 LIÇÃO — `with pool.get_connection()` faz COMMIT implícito, não é no-op
+- Incidente 31/08 (reportado pelo próprio agente, contido em minutos): simulação contra o **DEV real** com `with pool.get_connection() as conn:` dentro do que se pretendia ser rollback — o `__exit__` do psycopg2 **commita**. 40 alertas do RVB ficaram `human_approved` por alguns minutos. Revertido pelo agente e **verificado por mim no banco**: 416 pending / 6 human_rejected / 1 human_approved = 423, zero `verified_at` recente. Estado idêntico ao anterior.
+- **REGRA**: simulação contra banco vivo = transação manual + rollback **confirmado em conexão separada** antes de reportar. E em dado de auditoria, quem reporta o incidente não é quem verifica — o orquestrador confere no banco.
+
+### 🔴 LIÇÃO DE PROCESSO — `git stash` é GLOBAL entre worktrees
+- Incidente 31/08: dois agentes em worktrees irmãos (`wt-ux-a2` e `wt-f5l-t5`) usaram `git stash` ao mesmo tempo; o stash é do REPOSITÓRIO, não do worktree → uma cópia intermediária do WIP de um vazou para o worktree do outro ("git stash pop quase se perdeu numa corrida de stash", nas palavras do agente). Nenhum trabalho perdido: o exemplar completo estava staged no worktree certo (485 linhas vs 401 da cópia), backup guardado no scratchpad, worktree contaminado limpo.
+- **REGRA NOVA**: com worktrees irmãos ativos, ⛔ `git stash` — usar commit temporário na própria branch ou cópia no scratchpad. Vale para todos os agentes desta e das próximas rodadas.
+
+### ⚠️ IMPACTO NO FLIP #592 (para o rebase de quinta)
+- **#623 (A3) toca `RotasNovas.tsx`**: extraiu `rotaHomeDoUsuario()` (superadmin→/admin, demais→/modules) e corrigiu `RaizRotasNovas`, que na develop mandava TODOS para epi/dashboard. O FLIP tem a MESMA lógica implementada de outro jeito — no rebase de quinta, **a develop vence** e o flip deve apenas consumir `rotaHomeDoUsuario()` em vez de duplicar. Anotar no PR do flip antes do GO.
+- **#620 (A1)** também mexe no comportamento da fila que a demo mostra — nada a ver com o flip, mas entra no roteiro.
+
+### Medição da família (wf_c612a6de-86d) — VEREDITO
+- **A1 = tese CONFIRMADA (critério fantasma)**: fila filtra `verification_status='needs_human'`; **0 linhas em TODO o banco, todos os tenants** — o writer (task Celery `verify_alert`) nunca conclui. RVB: 423 alerts = 416 pending/verdict NULL + 6 human_rejected + 1 human_approved. Conserto = `verification_verdict IS NULL` (PR #620, teste de mutação 3 failed→37 passed). **Pedido à SEMANA-CLIENTE: por que `verify_alert` nunca conclui no worker.**
+- **A4 = tese REFUTADA — janela HONESTA, não bug**: último alert do RVB é **2026-08-25 13:41 UTC**; hoje 31/08 → 6 dias sem evento novo; hoje/24h/turno = 0, 30 dias = 423. 🔴 **RISCO DE QUARTA: se ninguém gerar evento novo até lá, o dashboard abre vazio na frente do cliente.** Ou a coleta liga antes (SEMANA-CLIENTE), ou o roteiro começa pela janela de 30 dias. Defeito real do A4 = widgets sem clique (nenhum passa `acao` ao Painel).
+- **A2 = NÃO REPRODUZIDO**: pelo código a consulta devolveria **281 frames**; o contador ausente é gap deliberado documentado (get_facets só tem cameras+status). Reprodução no navegador em curso ANTES de tocar em SQL. #498 (fila retry) conferido: não colide.
+- **A5**: verbos já existem (review approve/reject, PATCH violations, acknowledge); **tratativa (título/dono/prazo) NÃO EXISTE no backend** — selo honesto + pedido.
+- **B1**: métricas são **zero literal, não NULL** (por isso "0,0%" passa o guard `!= null`); **`ap_do_log.py` NÃO existe no repo** — backfill bloqueado por falta do extrator (pergunta ao Vitor). Honestidade "—" sai já.
+- **B3 = achado mais valioso**: a régua de linguagem tem **2 furos** — varre só `src/app/**` (o texto ofensor está em `src/components/training/`) e é denylist fechada de 12 termos (não pega `tasks/inference.py`, `#519`). Consertando escopo + detecção estrutural.
+- Cascata desta rodada: eu (opus) abro e fecho; haiku varre; sonnet executa; opus só nos céticos críticos.
+
 ## Leis vigentes
 - Plano aprovado: `~/.claude/plans/prompt-sess-o-merry-waffle.md` (fonte da missão; NÃO recontextualizar aqui).
 - 🔴 ECONOMIA v3 (30/08): haiku default p/ mecânico/leitura/medição; sonnet só não-trivial; opus SÓ cético crítico (security·demolição·flip·paridade-veredito). ⛔ Read inteiro >200 linhas · ⛔ código colado em relatório · saída de agente = tabela ≤20 linhas · suíte da área 1×/PR · screenshots só aceite final · ESTADO em delta · MODO-RESERVA se orçamento >85%.
