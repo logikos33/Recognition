@@ -51,6 +51,10 @@ export const cartaoAtivoComModelo = style({
   borderColor: lk.estado.ok,
 })
 
+export const cartaoAtivoEmObservacao = style({
+  borderColor: lk.estado.atencao,
+})
+
 export const secaoTitulo = style({
   margin: 0,
   fontFamily: lk.fonte.mono,

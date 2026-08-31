@@ -56,13 +56,24 @@ const classe = (extra: Record<string, unknown> = {}) => ({
   ...extra,
 })
 
-const responde = (modelos: unknown[], classes: unknown[] = []) =>
+/** `deployments` no shape cru de `GET /api/cameras/model-config`: mapa
+ * camera_id → deployment (`model_config_handlers.py::list_camera_model_configs`). */
+const responde = (
+  modelos: unknown[],
+  classes: unknown[] = [],
+  deployments: Record<string, unknown> = {},
+) =>
   get.mockImplementation((rota: string) => {
     const r = String(rota)
     if (r.includes('/training/models')) return Promise.resolve({ data: modelos })
     if (r.includes('/classes')) return Promise.resolve({ data: classes })
+    if (r.includes('/cameras/model-config')) return Promise.resolve({ data: { deployments } })
     return Promise.reject(new Error(`rota não mockada: ${r}`))
   })
+
+/** Deployment mínimo em observação (sombra): `status='active'` +
+ * `config.mode='shadow'` — mesmo shape do backend real. */
+const deploySombra = (modelId: string) => ({ model_id: modelId, status: 'active', config: { mode: 'shadow' } })
 
 function monta() {
   return render(
@@ -126,6 +137,46 @@ describe('Modelo — lista e destaque do ativo', () => {
 
   it('sem modelo ativo, diz isso em vez de inventar um destaque', async () => {
     responde([modelo({ is_active: false })])
+    monta()
+    expect(await screen.findByText(/nenhum modelo ativo/i)).toBeTruthy()
+  })
+
+  it('sem modelo em produção mas com câmeras rodando em sombra: mostra "em observação em N câmeras", NÃO "nenhum modelo ativo"', async () => {
+    responde(
+      [modelo({ id: 'm-sombra', is_active: false, display_name: 'Logikos V1' })],
+      [],
+      {
+        'cam-1': deploySombra('m-sombra'),
+        'cam-2': deploySombra('m-sombra'),
+        'cam-3': deploySombra('m-sombra'),
+      },
+    )
+    monta()
+    expect(await screen.findByText(/em observação em 3 câmeras/i)).toBeTruthy()
+    expect(screen.queryByText(/nenhum modelo ativo/i)).toBeNull()
+  })
+
+  it('com modelo em produção, o card mostra produção mesmo havendo outro modelo em sombra', async () => {
+    responde(
+      [
+        modelo({ id: 'm-prod', is_active: true, display_name: 'Produção' }),
+        modelo({ id: 'm-sombra', is_active: false }),
+      ],
+      [],
+      { 'cam-1': deploySombra('m-sombra') },
+    )
+    monta()
+    expect(await screen.findByText('Modelo ativo')).toBeTruthy()
+    // "Produção" aparece 2x — card de destaque E card da lista (mesmo padrão
+    // já usado pelo teste "modelo ativo aparece destacado" acima).
+    expect((await screen.findAllByText(/Produção/)).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/em observação/i)).toBeNull()
+  })
+
+  it('sem produção e sem sombra ativa (deployment inativo não conta): "nenhum modelo ativo"', async () => {
+    responde([modelo({ id: 'm-1', is_active: false })], [], {
+      'cam-1': { model_id: 'm-1', status: 'inactive', config: { mode: 'shadow' } },
+    })
     monta()
     expect(await screen.findByText(/nenhum modelo ativo/i)).toBeTruthy()
   })
