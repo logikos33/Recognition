@@ -22,6 +22,12 @@
 - **#616 — "o tema não estoura"** (capturas do Vitor com faixa branca): causa = `html/body` sem fundo → branco do navegador aparece no overscroll e além do conteúdo. ⚠️ **Meu diagnóstico inicial estava errado**: `apps/frontend/src/index.css` é **CÓDIGO MORTO** (ninguém importa); o real é `styles/global.css.ts` (provado lendo o CSS empacotado em dist/). Fix: fundo no token + `color-scheme: dark` + scroll contido em Cameras/Acoes/Dados + régua reforçada (rodapé, scroll-to-bottom, viewport 1440×2200) — prova: revertendo a camada 1, **62 testes falham**.
 - **Follow-ups desta rodada**: apagar `index.css` morto (PR de limpeza) · S1/S3/S4 da saúde · vitrine mostra produção OU sombra, não ambos (refinamento).
 
+## RODADA CORREÇÃO UX (31/08) — abertura
+- Base: origin/develop **586f293d**. Inbound considerado: #592 (meu FLIP, aguarda GO quinta) · #568 CI astro · **#498 fix/fila-retry-backoff — TOCA A FILA DE ANOTAÇÃO** (A2/C3 conferem antes de mexer) · #375 treino.
+- **@F5-PESADA — fronteira**: a LISTA-PARA-O-DESIGN de vocês contém "R4 catálogo" e "Estúdio 7 sub-telas", que são meus C2/C3/C5 desta rodada. Vocês estão parados desde #574 e o Vitor autorizou esta pista a tocar o Estúdio (30/08). **Assumo C2/C3/C5**; se retomarem, falem no ESTADO e eu devolvo.
+- **TESE**: 4 telas dizem vazio/cego com o dado existindo (A1 fila de verificação, A2 propostas, A4 dashboard hoje, A5 ações sem evidência). Hipótese a testar: critério fantasma (filtro por estado que ninguém escreve — raiz do `needs_human`) + caminho de navegação ausente. **Medição da família rodando ANTES de qualquer conserto** (workflow wf_c612a6de-86d).
+- Cascata desta rodada: eu (opus) abro e fecho; haiku varre; sonnet executa; opus só nos céticos críticos.
+
 ## Leis vigentes
 - Plano aprovado: `~/.claude/plans/prompt-sess-o-merry-waffle.md` (fonte da missão; NÃO recontextualizar aqui).
 - 🔴 ECONOMIA v3 (30/08): haiku default p/ mecânico/leitura/medição; sonnet só não-trivial; opus SÓ cético crítico (security·demolição·flip·paridade-veredito). ⛔ Read inteiro >200 linhas · ⛔ código colado em relatório · saída de agente = tabela ≤20 linhas · suíte da área 1×/PR · screenshots só aceite final · ESTADO em delta · MODO-RESERVA se orçamento >85%.
