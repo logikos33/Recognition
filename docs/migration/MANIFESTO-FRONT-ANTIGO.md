@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 387 arquivos, 65.173 linhas
+## Situação — 387 arquivos, 65.202 linhas
 
 | status | arquivos |
 |---|---:|
@@ -74,7 +74,7 @@ apagado não são a mesma coisa.
 | `src/components/cameras/CameraCard.tsx` | `INFRA` | — | 191 |
 | `src/components/cameras/CameraFpsConfig.css.ts` | `INFRA` | — | 119 |
 | `src/components/cameras/CameraFpsConfig.tsx` | `INFRA` | — | 453 |
-| `src/components/cameras/CameraModelAssignment.tsx` | `INFRA` | — | 174 |
+| `src/components/cameras/CameraModelAssignment.tsx` | `INFRA` | — | 176 |
 | `src/components/cameras/CameraOnboardingWizard.tsx` | `INFRA` | — | 375 |
 | `src/components/cameras/CameraWizard.css.ts` | `INFRA` | — | 284 |
 | `src/components/cameras/CameraWizard.tsx` | `INFRA` | — | 161 |
@@ -264,13 +264,13 @@ apagado não são a mesma coisa.
 | `src/utils/classImbalance.ts` | `INFRA` | — | 65 |
 | `src/utils/concurrencyQueue.ts` | `INFRA` | — | 39 |
 | `src/utils/errorTranslator.ts` | `INFRA` | — | 76 |
-| `src/utils/labels.ts` | `INFRA` | — | 195 |
+| `src/utils/labels.ts` | `INFRA` | — | 218 |
 | `src/utils/statusColors.ts` | `INFRA` | — | 18 |
 | `src/utils/timeBuckets.ts` | `INFRA` | — | 106 |
 | `src/pages/ModuleClassesPage.tsx` | `MIGRADO` | src/app/estudio/Classes.tsx | 765 |
 | `src/pages/ReportsPage.tsx` | `MIGRADO` | src/app/epi/Relatorios.tsx | 31 |
 | `src/pages/TrainingPage.css.ts` | `MIGRADO` | src/app/estudio/*.css.ts | 361 |
-| `src/pages/TrainingPage.tsx` | `MIGRADO` | src/app/estudio/* | 1072 |
+| `src/pages/TrainingPage.tsx` | `MIGRADO` | src/app/estudio/* | 1075 |
 | `src/modules/admin/AdminLayout.css.ts` | `PENDENTE` | — | 249 |
 | `src/modules/admin/AdminLayout.tsx` | `PENDENTE` | — | 278 |
 | `src/modules/admin/components/admin.css.ts` | `PENDENTE` | — | 275 |
@@ -289,7 +289,7 @@ apagado não são a mesma coisa.
 | `src/modules/admin/components/TenantBrandingEditor.tsx` | `PENDENTE` | — | 139 |
 | `src/modules/admin/components/TenantCard.tsx` | `PENDENTE` | — | 28 |
 | `src/modules/admin/components/TicketRow.tsx` | `PENDENTE` | — | 30 |
-| `src/modules/admin/components/TrainingApprovalCard.tsx` | `PENDENTE` | — | 48 |
+| `src/modules/admin/components/TrainingApprovalCard.tsx` | `PENDENTE` | — | 49 |
 | `src/modules/admin/components/UserPermissionsDrawer.tsx` | `PENDENTE` | — | 334 |
 | `src/modules/admin/components/UserRoleBadge.tsx` | `PENDENTE` | — | 16 |
 | `src/modules/admin/components/WorkerStatusBadge.tsx` | `PENDENTE` | — | 25 |

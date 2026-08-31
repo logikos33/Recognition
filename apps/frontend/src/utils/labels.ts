@@ -157,6 +157,29 @@ export const FIELD_HELP: Record<string, string> = {
   dataset: 'Quantidade de imagens usadas para treinar o modelo',
 }
 
+// ── Métricas de modelo (mAP50/precisão/cobertura) ─────────────────────────────
+
+/** LEI DA CASA: zero é uma afirmação. Métrica ausente é "—", nunca "0,0%". */
+export const METRICA_AUSENTE = '—'
+export const METRICA_AUSENTE_ROTULO = 'métrica não registrada'
+
+/**
+ * mAP50/precisão/cobertura tratam 0, null e undefined como NÃO REGISTRADA.
+ * ponytail: o job de treino grava 0.0 (não NULL) quando a métrica não roda,
+ * então 0 é indistinguível de "não medido" hoje — um modelo com 0.0
+ * legitimamente medido também cairia aqui e apareceria como "—". Corrigir
+ * de verdade exige o backend gravar NULL (pedido registrado, não feito
+ * nesta mudança).
+ */
+export function metricaAusente(v: number | null | undefined): boolean {
+  return v == null || v === 0
+}
+
+/** Formata métrica de modelo como percentual, ou METRICA_AUSENTE quando ausente. */
+export function formatarMetricaModelo(v: number | null | undefined, casas = 1): string {
+  return metricaAusente(v) ? METRICA_AUSENTE : `${((v as number) * 100).toFixed(casas)}%`
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /** Fallback universal: snake_case/kebab-case → 'Frase capitalizada'. */

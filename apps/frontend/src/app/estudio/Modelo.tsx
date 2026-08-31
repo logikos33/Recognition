@@ -37,6 +37,7 @@ import { AlertTriangle, CheckCircle2, Settings } from 'lucide-react'
 
 import { api } from '../../services/api'
 import { nomeParaCliente } from '../../services/modelDisplay'
+import { formatarMetricaModelo, metricaAusente, METRICA_AUSENTE_ROTULO } from '../../utils/labels'
 import { useToast } from '../../components/ui/Toast/useToast'
 import { EmptyState } from '../../components/ui/EmptyState/EmptyState'
 import { Tooltip } from '../../components/ui/Tooltip/Tooltip'
@@ -63,16 +64,20 @@ function dataFormatada(iso: string): string {
   }
 }
 
-const PORCENTAGEM = (v: number) => `${(v * 100).toFixed(1)}%`
-
-function Metrica({ rotulo, valor }: { rotulo: string; valor: string }) {
+function Metrica({ rotulo, valor, ausente }: { rotulo: string; valor: string; ausente: boolean }) {
   const pilula = (
-    <div className={s.metrica}>
+    // aria-label sobrepõe a leitura "mAP@50 —" (confusa em leitor de tela)
+    // por "mAP@50: métrica não registrada" — não depende de hover, ao
+    // contrário do Tooltip abaixo.
+    <div className={s.metrica} aria-label={ausente ? `${rotulo}: ${METRICA_AUSENTE_ROTULO}` : undefined}>
       <span className={s.metricaRotulo}>{rotulo}</span>
       <span className={s.metricaValor}>{valor}</span>
     </div>
   )
-  const ajuda = METRIC_HELP[rotulo]
+  // Ausente ganha seu próprio rótulo de ajuda ("métrica não registrada") em
+  // vez da explicação normal da métrica — a explicação não faz sentido para
+  // um valor que não existe.
+  const ajuda = ausente ? METRICA_AUSENTE_ROTULO : METRIC_HELP[rotulo]
   if (!ajuda) return pilula
   return <Tooltip label={ajuda}>{pilula}</Tooltip>
 }
@@ -80,9 +85,9 @@ function Metrica({ rotulo, valor }: { rotulo: string; valor: string }) {
 function Metricas({ modelo }: { modelo: TrainedModel }) {
   return (
     <div className={s.metricas}>
-      {modelo.map50 != null && <Metrica rotulo="mAP@50" valor={PORCENTAGEM(modelo.map50)} />}
-      {modelo.precision != null && <Metrica rotulo="Precisão" valor={PORCENTAGEM(modelo.precision)} />}
-      {modelo.recall != null && <Metrica rotulo="Cobertura" valor={PORCENTAGEM(modelo.recall)} />}
+      <Metrica rotulo="mAP@50" valor={formatarMetricaModelo(modelo.map50)} ausente={metricaAusente(modelo.map50)} />
+      <Metrica rotulo="Precisão" valor={formatarMetricaModelo(modelo.precision)} ausente={metricaAusente(modelo.precision)} />
+      <Metrica rotulo="Cobertura" valor={formatarMetricaModelo(modelo.recall)} ausente={metricaAusente(modelo.recall)} />
     </div>
   )
 }
