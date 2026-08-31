@@ -106,6 +106,21 @@ duas caras** para quem navega entre elas.
 **O que precisamos:** sua priorização entre as 10 — quais valem desenho próprio e
 quais podem ser variação de telas que você já desenhou.
 
+**Atualização 31/08 — proposta da pista F5-LEVE:** 4 destas 10 rotas
+(`/epi/health`, `/epi/sites-health`, `/epi/edge-observability` — parte de
+telemetria — e `/monitoring` — parte de leitura) têm rascunho em
+`docs/design/handoff-f5/Saúde da Operação.dc.html`. É **proposta aguardando
+refino oficial do design**, não prancha aprovada — a pista gerou porque não
+veio desenho oficial no lote e a regra manda propor em vez de implementar no
+vácuo. Medido contra `services/api/app/api/v1/edge/routes.py` (sites/health,
+overview, heartbeats, heartbeat-summary, devices) + `streams/routes.py`
+(`/api/streams/status`, fora do envelope padrão) — de-para completo das 4
+rotas na aba "Mapa de conexões" do próprio arquivo. As 4 viram **uma tela**
+("Saúde da Operação", visão de frota tenant-scoped), não 4 telas separadas.
+Achado: `/epi/edge-observability` e `/monitoring` hoje cobrem mais coisa do
+que saúde de frota (curvas de treino do Estúdio; console de comando ao vivo)
+— só a fatia de saúde se sobrepõe à proposta, o resto fica onde está.
+
 ---
 
 # 🟡 NASCEU SEGUINDO SÓ A IDENTIDADE — merece desenho oficial
