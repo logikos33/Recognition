@@ -284,13 +284,37 @@ describe('avaliação e simulação — nunca fingem', () => {
 })
 
 describe('sem permissão', () => {
-  it('a lista continua visível, mas editar/desenhar somem', async () => {
+  it('com regras, a lista continua visível e os botões viram um selo explicando — não somem em silêncio', async () => {
     h.permissoes = []
     servir([opEpi()])
     montar()
     await screen.findByText('Doca 3')
     expect(screen.queryByRole('button', { name: /desenhar nova regra/i })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Editar' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Pausar' })).toBeNull()
+    expect(screen.getByText('SOMENTE LEITURA')).toBeTruthy()
   })
 
+  it('vazio sem permissão explica a falta de permissão — nunca manda desenhar sem dar um botão', async () => {
+    h.permissoes = []
+    servir([])
+    montar()
+    await screen.findByText(/esta câmera ainda não vigia nada/i)
+    // texto exato da prancha — card "SEM PERMISSÃO"
+    expect(screen.getByText(/alterar o que a câmera vigia é do administrador do site/i)).toBeTruthy()
+    // nunca manda fazer o que a pessoa não pode: nem o texto, nem o botão
+    expect(screen.queryByText(/desenhe a primeira zona sobre a imagem/i)).toBeNull()
+    expect(screen.queryByRole('button', { name: /desenhe sua primeira zona/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /desenhar nova regra/i })).toBeNull()
+  })
+
+  it('vazio com permissão continua mostrando o CTA de sempre (texto exato da prancha)', async () => {
+    h.permissoes = ['cameras:configure']
+    servir([])
+    montar()
+    expect(await screen.findByRole('button', { name: /desenhe sua primeira zona/i })).toBeTruthy()
+    expect(
+      screen.getByText(/ela está gravando, mas ninguém disse o que observar\. desenhe a primeira zona/i),
+    ).toBeTruthy()
+  })
 })
