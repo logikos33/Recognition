@@ -222,8 +222,17 @@ class TrainingRepository(BaseRepository):
             tuple(values),
         )  # type: ignore[return-value]
 
-    def get_models_by_user(self, user_id: UUID) -> list[dict[str, Any]]:
-        """Lista modelos do usuário, com dono (owner_name/owner_email).
+    def get_models_by_tenant(self, tenant_id: "UUID | str") -> list[dict[str, Any]]:
+        """Lista modelos treinados do TENANT (não do usuário), com dono
+        (owner_name/owner_email).
+
+        Achado de segurança do ESTADO-F5 (mutirão risk:security): a versão
+        anterior filtrava `WHERE tm.user_id = %s` — cada usuário só via os
+        modelos que ELE PRÓPRIO treinou, mesmo dentro do mesmo tenant (a aba
+        Escopo, que usa ModelRegistryRepository.list_for_tenant, já mostrava
+        os ~11 modelos do tenant — as duas fontes divergiam). Mesmo padrão
+        COALESCE(tm.tenant_id, u.tenant_id) de ModelRegistryRepository.list_for_tenant
+        (cobre linhas legadas pré-090 com tm.tenant_id NULL).
 
         SELECT explícito (todas as colunas da 003 + 052 + 090 + 098 + 129) —
         o JOIN com users deriva o nome/email do dono via created_by (fallback
@@ -249,10 +258,10 @@ class TrainingRepository(BaseRepository):
                    u.email AS owner_email
             FROM trained_models tm
             LEFT JOIN users u ON u.id = COALESCE(tm.created_by, tm.user_id)
-            WHERE tm.user_id = %s
+            WHERE COALESCE(tm.tenant_id, u.tenant_id) = %s
             ORDER BY tm.created_at DESC
             """,
-            (str(user_id),),
+            (str(tenant_id),),
         )
 
     def get_model_for_tenant(

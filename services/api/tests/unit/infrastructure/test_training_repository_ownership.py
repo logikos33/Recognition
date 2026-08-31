@@ -4,8 +4,8 @@ Recognition — Tests: TrainingRepository (dono/origem — migration 090, WS5).
 Cobre:
   1. create_model grava created_by (default = user_id), origin e tenant_id
   2. create_model respeita created_by/origin explícitos
-  3. get_models_by_user usa SELECT explícito com JOIN em users
-     (owner_name/owner_email) — sem SELECT *
+  3. get_models_by_tenant usa SELECT explícito com JOIN em users
+     (owner_name/owner_email) — sem SELECT *, escopado por tenant (C-01)
 
 Isolamento: sem SQL real — o método _execute*/mutation é mockado.
 """
@@ -70,24 +70,33 @@ class TestCreateModelOwnership:
         assert params[8] == "vast_ai"
 
 
-class TestGetModelsByUserOwnerJoin:
-    """SELECT explícito com JOIN users — retorna owner_name/owner_email."""
+class TestGetModelsByTenantOwnerJoin:
+    """SELECT explícito com JOIN users — retorna owner_name/owner_email.
+
+    Escopo por TENANT (não por user_id) — achado de segurança do mutirão:
+    a versão anterior (get_models_by_user) escondia modelos de colegas do
+    mesmo tenant. Ver tests/integration/test_training_models_tenant_scope.py
+    para a prova end-to-end contra banco real.
+    """
 
     def test_query_selects_owner_fields_without_select_star(self):
         repo = _make_repo()
-        user_id = uuid4()
+        tenant_id = uuid4()
         with patch.object(repo, "_execute", return_value=[]) as mock_exec:
-            repo.get_models_by_user(user_id)
+            repo.get_models_by_tenant(tenant_id)
 
         query, params = mock_exec.call_args[0]
         assert "SELECT *" not in query
         assert "owner_name" in query
         assert "owner_email" in query
         assert "COALESCE(tm.created_by, tm.user_id)" in query
+        # Escopo é do TENANT, não do usuário que treinou (C-01)
+        assert "COALESCE(tm.tenant_id, u.tenant_id) = %s" in query
+        assert "tm.user_id = %s" not in query
         # Colunas da 003 + 052 + 090 explícitas
         for col in (
             "tm.scenario_config", "tm.created_by", "tm.origin", "tm.tenant_id",
             "tm.map50", "tm.is_active",
         ):
             assert col in query, f"coluna {col} ausente no SELECT explícito"
-        assert params == (str(user_id),)
+        assert params == (str(tenant_id),)

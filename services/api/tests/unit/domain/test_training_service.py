@@ -114,11 +114,13 @@ class TestTrainingService:
         assert result["progress"] == 50
 
     def test_list_models(self) -> None:
-        self.training_repo.get_models_by_user.return_value = [
+        """Escopo por tenant (C-01) — ver get_models_by_tenant."""
+        self.training_repo.get_models_by_tenant.return_value = [
             {"id": uuid4(), "name": "Model v1"},
         ]
-        result = self.service.list_models(uuid4())
+        result = self.service.list_models(str(uuid4()))
         assert len(result) == 1
+        self.training_repo.get_models_by_tenant.assert_called_once()
 
 
 class TestLinhagemBaseModel:

@@ -94,6 +94,52 @@ class TestJobStatusTenantIsolation:
         assert args[1] == TENANT_A
 
 
+class TestListJobsCallbackTokenLeak:
+    """(iii) GET /api/training/jobs — achado de segurança do mutirão
+    (ESTADO-F5): a listagem usa `SELECT *` (get_jobs_by_user) e devolvia o
+    callback_token de CADA job na resposta — get_job_status_handler/
+    stop_job_handler já filtravam, list_jobs_handler não.
+
+    Protocolo falha-antes/passa-depois: FALHA-ANTES = 200 com
+    "segredo-da-gpu" no corpo; PASSA-DEPOIS = 200 sem o token.
+    """
+
+    def test_list_jobs_response_never_contains_callback_token(self, app, client):
+        repo = MagicMock()
+        repo.get_jobs_by_user.return_value = [
+            _job_row(), _job_row(tenant_id=TENANT_A),
+        ]
+        with patch(_SVC_PATH, return_value=TrainingService(repo)):
+            resp = client.get(
+                "/api/training/jobs", headers=_auth(app, "operator", TENANT_A)
+            )
+        assert resp.status_code == 200, resp.get_json()
+        body_text = resp.get_data(as_text=True)
+        assert "segredo-da-gpu" not in body_text
+        for job in resp.get_json()["data"]:
+            assert "callback_token" not in job
+
+
+class TestCurrentJobStatusCallbackTokenLeak:
+    """Mesmo achado, rota GET /api/training/jobs/current/status
+    (get_current_running_job também usa SELECT * — mesmo vazamento)."""
+
+    def test_current_job_status_response_never_contains_callback_token(
+        self, app, client
+    ):
+        repo = MagicMock()
+        repo.get_current_running_job.return_value = _job_row()
+        with patch(_SVC_PATH, return_value=TrainingService(repo)):
+            resp = client.get(
+                "/api/training/jobs/current/status",
+                headers=_auth(app, "operator", TENANT_A),
+            )
+        assert resp.status_code == 200, resp.get_json()
+        body_text = resp.get_data(as_text=True)
+        assert "segredo-da-gpu" not in body_text
+        assert "callback_token" not in resp.get_json()["data"]["job"]
+
+
 class TestJobProgressTenantIsolation:
     @pytest.fixture()
     def redis_from_url(self):
