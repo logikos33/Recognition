@@ -280,6 +280,45 @@ nem relatório tem pouco o que fazer no módulo EPI. Pode estar certo (o trabalh
 dele é no Estúdio), mas **ninguém tomou essa decisão de propósito** — ela caiu da
 matriz de permissões.
 
+## 14. Fila de Propostas — sugestões da IA como caminho principal
+
+**O que aconteceu, medido:** `TrainingGallery.tsx` trata as propostas do modelo
+como só mais um chip de status ("Propostas pendentes", sem contador — a faceta
+não conta essa dimensão). Medido hoje: `GET /api/training/images?
+pending_review=true` devolve **281 imagens / 349 propostas** para o tenant RVB
+— o dado existe e é grande, mas a tela não trata isso como o passo "sugestões
+do modelo" da demo. Bug medido junto: combinar `source=upload` +
+`pending_review=true` zera a grade em silêncio (proposta de IA nasce só de
+`nvr`/`auto`, nunca de upload manual) — esse estado-vazio-que-revela-o-filtro
+já está sendo corrigido em paralelo, fora deste desenho.
+
+**Como está:** proposta em
+`docs/design/handoff-f5/Fila de Propostas.dc.html` — chip de propostas
+promovido a banner com contador (não mais um filtro qualquer), CTA "Confirmar
+sugestões" em lote com preview de consequência, selo de proposta + % de
+confiança por card, contagem separada de caixas humanas × sugestões da IA,
+ordenação leiga "onde a IA tem mais dúvida" (o motor já ordena por incerteza —
+o cliente nunca vê o número cru), um modo "Revisar em sequência" com barra de
+progresso honesta (nunca promete total fechado — a coleta do NVR não para) e o
+gesto do Enter explicado a quem chega novo. **É proposta da pista aguardando
+refino oficial do design**, mesma régua do item 10.
+
+**Backend pronto:** `GET /api/training/images?pending_review=true` (grade +
+total) · `GET /api/training/images?ordenar=incerteza` (o motor já ordena pela
+proposta mais perto do ponto de maior dúvida — a galeria hoje não manda esse
+parâmetro, é fiação de front) · `POST /api/training/frames/<id>/accept-
+suggestions` (confirmar 1 frame) · `POST /api/training/frames/<id>/pre-
+annotation-review` (rejeitar 1 frame) · `POST /api/training/frames/curation`
+(dúvida/excluída em lote, já batched).
+
+**O que falta no backend:** confirmar/rejeitar **em lote** (N frames de uma
+vez) não existe — só por frame, um de cada vez — e é o que bloqueia o CTA
+"Confirmar sugestões (N)" da barra de seleção. Confiança agregada por card
+também não existe na listagem (só por anotação, uma chamada por frame) — sem
+ela o selo "IA XX%" da grade não tem de onde vir. Os 3 pedidos numerados
+(P1–P3) estão na aba "Pedidos ao backend" do próprio arquivo, com o de-para
+completo na aba "Mapa de conexões".
+
 ---
 
 ## Perguntas curtas, de responder por mensagem

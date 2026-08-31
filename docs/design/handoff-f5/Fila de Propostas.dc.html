@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:#23242F;border-radius:5px}input::placeholder{color:#3A3D4A}</style>
+</helmet>
+<div style="width:100%;min-height:100vh;background:#0A0A0F;display:flex;flex-direction:column" data-screen-label="Fila de Propostas">
+
+  <header style="position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:14px;padding:12px 24px;background:#14141C;border-bottom:1px solid #23242F">
+    <svg viewBox="0 0 100 100" style="width:25px;height:25px;flex:none"><defs><mask id="khFP"><rect width="100" height="100" fill="white"></rect><g transform="translate(24,22.4) scale(0.52)"><path d="M40 55.3 A20 20 0 1 1 60 55.3 L67 88 L33 88 Z" fill="black"></path></g></mask></defs><circle cx="50" cy="50" r="44" fill="#F4F6F8" mask="url(#khFP)"></circle></svg>
+    <div style="display:flex;flex-direction:column">
+      <span style="font-family:'Space Grotesk';font-weight:700;font-size:15.5px">Fila de Propostas — sugestões do modelo</span>
+      <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.12em;color:#8A8F98">ESTÚDIO · ABA IMAGENS · RVB ISOLANTES — BLUMENAU · 31/08/2026</span>
+    </div>
+    <div style="flex:1"></div>
+    <span style="font-size:12px;color:#8A8F98;max-width:340px;line-height:1.45;text-align:right">A sugestão da IA é o primeiro passo do treino, não um filtro escondido. Onde o backend ainda não chega, a tela marca a dependência em vez de mentir.</span>
+  </header>
+
+  <nav style="position:sticky;top:54px;z-index:39;display:flex;gap:2px;padding:10px 24px;background:#0A0A0F;border-bottom:1px solid #23242F;flex-wrap:wrap">
+    <sc-for list="{{ abas }}" as="a" hint-placeholder-count="5">
+      <button onClick="{{ a.go }}" style="height:34px;padding:0 14px;border:1px solid {{ a.borda }};border-radius:8px;background:{{ a.bg }};color:{{ a.cor }};font-family:'Inter';font-size:13px;font-weight:600;cursor:pointer">{{ a.t }}</button>
+    </sc-for>
+  </nav>
+
+  <main style="flex:1;padding:20px 24px 60px;max-width:1500px;width:100%;margin:0 auto;box-sizing:border-box">
+
+    <sc-if value="{{ vFila }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+
+        <!-- Hero: a fila de propostas como PASSO, não filtro escondido -->
+        <div style="display:flex;align-items:center;gap:16px;padding:18px 20px;background:rgba(232,161,60,.06);border:1px solid rgba(232,161,60,.4);border-radius:14px;flex-wrap:wrap">
+          <svg viewBox="0 0 24 24" style="width:26px;height:26px;flex:none" fill="none" stroke="#E8A13C" stroke-width="1.7" stroke-linecap="square"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" stroke-dasharray="3 2"></path><path d="M12 8v5M12 16v.5"></path></svg>
+          <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:260px">
+            <span style="font-family:'Space Grotesk';font-weight:700;font-size:18px">349 sugestões da IA esperando revisão em 281 imagens</span>
+            <span style="font-size:12.5px;color:#8A8F98;line-height:1.5">Cada uma é uma caixa que o modelo desenhou sozinho. Confirmada, ela entra no treino como aprovada pela equipe — nunca como se alguém tivesse desenhado do zero.</span>
+          </div>
+          <button onClick="{{ irRajada }}" style="height:44px;padding:0 18px;border:none;border-radius:10px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer;flex:none">Revisar em sequência →</button>
+        </div>
+
+        <sc-if value="{{ vGrade }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:12px">
+
+            <!-- Filtros -->
+            <div style="display:flex;flex-direction:column;gap:8px;padding:12px 14px;background:#14141C;border:1px solid #23242F;border-radius:11px">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <span style="font-size:11.5px;color:#8A8F98;flex:none">Status:</span>
+                <sc-for list="{{ statusChips }}" as="c" hint-placeholder-count="6">
+                  <button onClick="{{ c.go }}" style="height:30px;display:flex;align-items:center;gap:6px;padding:0 11px;border-radius:15px;border:1.5px solid {{ c.borda }};background:{{ c.bg }};color:{{ c.cor }};font-family:'Inter';font-size:12px;font-weight:600;cursor:pointer">{{ c.t }}<sc-if value="{{ c.temN }}" hint-placeholder-val="{{ true }}"><span style="font-family:'JetBrains Mono';font-size:10px;opacity:.8">{{ c.n }}</span></sc-if></button>
+                </sc-for>
+                <span style="font-size:11.5px;color:#8A8F98;margin-left:8px">Origem:</span>
+                <sc-for list="{{ origemChips }}" as="o" hint-placeholder-count="4">
+                  <button onClick="{{ o.go }}" style="height:30px;padding:0 11px;border-radius:15px;border:1.5px solid {{ o.borda }};background:{{ o.bg }};color:{{ o.cor }};font-family:'Inter';font-size:12px;font-weight:600;cursor:pointer">{{ o.t }}</button>
+                </sc-for>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span style="font-size:11.5px;color:#8A8F98">Ordem:</span>
+                <div style="display:flex;background:#0A0A0F;border-radius:8px;padding:3px;gap:2px">
+                  <button onClick="{{ setOrdRecente }}" style="height:32px;padding:0 13px;border:none;border-radius:6px;background:{{ ordRecenteBg }};color:{{ ordRecenteCor }};font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">Mais recentes</button>
+                  <button onClick="{{ setOrdIncerteza }}" style="height:32px;display:flex;align-items:center;gap:7px;padding:0 13px;border:none;border-radius:6px;background:{{ ordIncertezaBg }};color:{{ ordIncertezaCor }};font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">Onde a IA tem mais dúvida<span style="font-family:'JetBrains Mono';font-size:8.5px;letter-spacing:.06em;background:rgba(0,229,255,.15);color:#00E5FF;border-radius:4px;padding:1px 5px">RECOMENDADO</span></button>
+                </div>
+                <span style="font-size:11.5px;color:#8A8F98;line-height:1.4">{{ dicaOrdenacao }}</span>
+                <div style="flex:1"></div>
+                <span style="font-size:12px;color:#8A8F98">{{ resultLabel }}</span>
+              </div>
+            </div>
+
+            <!-- Grade -->
+            <sc-if value="{{ vazio }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:60px 20px;background:#14141C;border:1px solid #23242F;border-radius:12px;text-align:center">
+                <svg viewBox="0 0 24 24" style="width:30px;height:30px" fill="none" stroke="#8A8F98" stroke-width="1.5" stroke-linecap="square"><path d="M9 12l2 2 4-4M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"></path></svg>
+                <span style="font-family:'Space Grotesk';font-weight:700;font-size:16px">Fila de aprovação vazia — nenhuma proposta de IA pendente.</span>
+                <span style="font-size:12.5px;color:#8A8F98;max-width:360px;line-height:1.5">Toda sugestão do modelo já foi confirmada ou rejeitada. Novas chegam conforme as câmeras coletam.</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{ vazio }}" hint-placeholder-val="{{ true }}">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;padding-bottom:70px">
+                <sc-for list="{{ cartoes }}" as="k" hint-placeholder-count="6">
+                  <div style="display:flex;flex-direction:column;background:#14141C;border:1px solid {{ k.borda }};border-radius:11px;overflow:hidden;cursor:pointer;position:relative" onClick="{{ k.abrir }}">
+                    <input type="checkbox" checked="{{ k.marcado }}" onClick="{{ k.toggle }}" style="position:absolute;top:8px;left:8px;z-index:3;width:17px;height:17px;cursor:pointer" />
+                    <span style="position:absolute;top:6px;right:6px;z-index:3;display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;background:rgba(232,161,60,.12);color:#E8A13C;border:2px dashed #E8A13C">⚠ Proposta · IA {{ k.conf }}%</span>
+                    <div style="position:relative;aspect-ratio:16/9;background:{{ k.grad }};overflow:hidden">
+                      <div style="position:absolute;top:{{ k.boxT }};left:{{ k.boxL }};width:{{ k.boxW }};height:{{ k.boxH }};border:2px dashed #E8A13C;border-radius:3px">
+                        <span style="position:absolute;bottom:-19px;left:-2px;background:#E8A13C;color:#0A0A0F;font-family:'JetBrains Mono';font-size:9px;font-weight:700;padding:2px 6px;border-radius:2px;white-space:nowrap">{{ k.classe }}</span>
+                      </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:5px;padding:10px 11px">
+                      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+                        <span style="font-size:12.5px;font-weight:600">{{ k.cam }}</span>
+                        <span style="font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98">{{ k.hora }}</span>
+                      </div>
+                      <span style="font-size:11.5px;color:#8A8F98">{{ k.contagem }}</span>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <!-- Barra de seleção fixa -->
+            <sc-if value="{{ temSelecao }}" hint-placeholder-val="{{ false }}">
+              <div style="position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:50;display:flex;align-items:center;gap:10px;padding:11px 16px;background:#14141C;border:1px solid #23242F;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.5);flex-wrap:wrap;max-width:calc(100% - 40px)">
+                <span style="font-family:'JetBrains Mono';font-size:11.5px;font-weight:700;color:#00E5FF">{{ nSelecionados }} selecionada(s)</span>
+                <button onClick="{{ abrirConfirmar }}" style="height:36px;padding:0 15px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:12.5px;font-weight:700;cursor:pointer">Confirmar sugestões ({{ nSelecionados }})</button>
+                <button onClick="{{ rejeitarSelecao }}" style="height:36px;padding:0 13px;background:transparent;border:1px solid rgba(229,72,77,.5);border-radius:8px;color:#E5484D;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">Rejeitar</button>
+                <span style="width:1px;height:22px;background:#23242F"></span>
+                <button onClick="{{ marcarDuvidaSelecao }}" style="height:36px;padding:0 13px;background:transparent;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">Marcar em dúvida</button>
+                <button onClick="{{ excluirSelecao }}" style="height:36px;padding:0 13px;background:transparent;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">Excluir da coleta</button>
+                <button onClick="{{ limparSelecao }}" style="background:transparent;border:none;color:#8A8F98;font-size:12px;font-weight:600;cursor:pointer">Limpar</button>
+              </div>
+            </sc-if>
+
+            <!-- Preview de consequência ao confirmar -->
+            <sc-if value="{{ confirmando }}" hint-placeholder-val="{{ false }}">
+              <div style="position:fixed;inset:0;z-index:60;background:rgba(10,10,15,.7);display:flex;align-items:center;justify-content:center;padding:20px" onClick="{{ fecharConfirmar }}">
+                <div style="display:flex;flex-direction:column;gap:12px;max-width:460px;width:100%;padding:20px;background:#14141C;border:1px solid rgba(0,229,255,.35);border-radius:14px" onClick="{{ pararPropagacao }}">
+                  <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#00E5FF">O QUE VAI ACONTECER</span>
+                  <span style="font-size:14px;line-height:1.6">{{ nSelecionados }} imagem(ns) saem da fila de propostas. As caixas da IA viram anotação <b>aprovada pela equipe</b> — continuam marcadas como vieram do modelo, nunca como se alguém tivesse desenhado do zero.</span>
+                  <span style="font-size:12.5px;color:#8A8F98;line-height:1.55">Sugestão errada nesta leva? Cancele e ajuste antes de confirmar — depois de aceita ela já conta como revisada.</span>
+                  <div style="display:flex;align-items:center;gap:9px;padding:10px 12px;background:rgba(232,161,60,.07);border:1px solid rgba(232,161,60,.4);border-radius:9px">
+                    <svg viewBox="0 0 24 24" style="width:14px;height:14px;flex:none" fill="none" stroke="#E8A13C" stroke-width="2" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+                    <span style="font-size:12px;color:#E8A13C;font-weight:600">Depende do pedido P1 — confirmar em lote ainda não tem rota. Nesta prancha o botão dispara N confirmações, uma por imagem.</span>
+                  </div>
+                  <div style="display:flex;gap:8px">
+                    <button onClick="{{ confirmarDeVerdade }}" style="flex:1;height:44px;border:none;border-radius:10px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Confirmar sugestões</button>
+                    <button onClick="{{ fecharConfirmar }}" style="height:44px;padding:0 15px;background:transparent;border:1px solid #23242F;border-radius:10px;color:#F4F6F8;font-family:'Inter';font-size:13px;font-weight:600;cursor:pointer">Cancelar</button>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ vRajada }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+              <button onClick="{{ voltarGrade }}" style="height:34px;padding:0 13px;background:transparent;border:1px solid #23242F;border-radius:7px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">← Voltar para a grade</button>
+              <div style="flex:1"></div>
+              <span style="font-family:'JetBrains Mono';font-size:11.5px;color:#8A8F98"><b style="color:#F4F6F8">{{ revisadas }}</b> revisada(s) nesta sessão · <b style="color:#F4F6F8">{{ restam }}+</b> restante(s) na fila</span>
+            </div>
+            <div style="height:5px;background:#23242F;border-radius:3px;overflow:hidden">
+              <div style="height:100%;width:{{ progressoPct }};background:#00E5FF"></div>
+            </div>
+
+            <sc-if value="{{ tipEnter }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:rgba(0,229,255,.06);border:1px solid rgba(0,229,255,.35);border-radius:10px">
+                <span style="font-size:12.5px;line-height:1.5;flex:1"><b>Aperte Enter</b> para aceitar a sugestão exatamente como veio — é o caminho mais rápido quando o modelo acertou. Errou? Clique em "Ajustar antes de aceitar".</span>
+                <button onClick="{{ fecharTip }}" style="background:transparent;border:none;color:#8A8F98;font-size:16px;cursor:pointer;line-height:1">×</button>
+              </div>
+            </sc-if>
+
+            <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
+              <div style="flex:1;min-width:420px;position:relative;aspect-ratio:16/9;border-radius:12px;overflow:hidden;border:1px solid #23242F;background:linear-gradient(200deg,#191822 0%,#0F0F16 60%,#0B0B12 100%)">
+                <span style="position:absolute;top:10px;left:10px;z-index:6;background:rgba(10,10,15,.78);border-radius:5px;padding:4px 9px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.1em">{{ rajCam }} · {{ rajHora }}</span>
+                <sc-for list="{{ rajBoxes }}" as="b" hint-placeholder-count="2">
+                  <div style="position:absolute;top:{{ b.t }};left:{{ b.l }};width:{{ b.w }};height:{{ b.h }};border:2px dashed #E8A13C;border-radius:3px">
+                    <span style="position:absolute;bottom:-19px;left:-2px;background:#E8A13C;color:#0A0A0F;font-family:'JetBrains Mono';font-size:9px;font-weight:700;padding:2px 6px;border-radius:2px;white-space:nowrap">{{ b.label }}</span>
+                  </div>
+                </sc-for>
+              </div>
+
+              <div style="width:340px;max-width:100%;flex:none;display:flex;flex-direction:column;gap:12px">
+                <div style="display:flex;flex-direction:column;gap:9px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+                  <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">O QUE A IA VIU</span>
+                  <sc-for list="{{ rajBoxes }}" as="b" hint-placeholder-count="2">
+                    <span style="font-size:13px;line-height:1.6">{{ b.label }} <span style="font-family:'JetBrains Mono';font-size:11px;color:#E8A13C">IA {{ b.conf }}%</span></span>
+                  </sc-for>
+                  <span style="font-size:11.5px;color:#8A8F98;line-height:1.5">0 caixa(s) humana(s) neste frame — ainda ninguém confirmou nada aqui.</span>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <button onClick="{{ aceitarComoEsta }}" style="height:46px;display:flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:10px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:14px;font-weight:700;cursor:pointer">Aceitar como está <span style="font-family:'JetBrains Mono';font-size:10px;background:rgba(10,10,15,.25);border-radius:4px;padding:2px 6px">ENTER</span></button>
+                  <button onClick="{{ ajustarAntes }}" style="height:42px;background:transparent;border:1px solid #23242F;border-radius:10px;color:#F4F6F8;font-family:'Inter';font-size:13px;font-weight:600;cursor:pointer">Ajustar antes de aceitar</button>
+                  <button onClick="{{ rejeitarAtual }}" style="height:42px;background:transparent;border:1px solid rgba(229,72,77,.5);border-radius:10px;color:#E5484D;font-family:'Inter';font-size:13px;font-weight:600;cursor:pointer">Rejeitar — a IA errou</button>
+                  <button onClick="{{ pularAtual }}" style="height:38px;background:transparent;border:none;color:#8A8F98;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">Pular por agora</button>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:6px;padding:12px 14px;background:#0A0A0F;border:1px solid #23242F;border-radius:10px">
+                  <span style="font-size:11.5px;color:#8A8F98;line-height:1.6"><span style="font-family:'JetBrains Mono';font-size:10.5px;color:#F4F6F8;background:#23242F;border-radius:4px;padding:1px 6px">Enter</span> aceitar · <span style="font-family:'JetBrains Mono';font-size:10.5px;color:#F4F6F8;background:#23242F;border-radius:4px;padding:1px 6px">R</span> rejeitar · <span style="font-family:'JetBrains Mono';font-size:10.5px;color:#F4F6F8;background:#23242F;border-radius:4px;padding:1px 6px">Espaço</span> pular</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ vEstados }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:20px">Estados da tela</h2>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:12px">
+
+          <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px;min-height:230px">
+            <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">CARREGADO</span>
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(232,161,60,.06);border:1px solid rgba(232,161,60,.4);border-radius:9px">
+              <span style="font-size:12px;line-height:1.5"><b>349</b> sugestões da IA em <b>281</b> imagens</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div style="aspect-ratio:16/9;border-radius:7px;background:linear-gradient(200deg,#191822,#0F0F16);border:1px dashed #E8A13C"></div>
+              <div style="aspect-ratio:16/9;border-radius:7px;background:linear-gradient(155deg,#1A1B26,#101018);border:1px dashed #E8A13C"></div>
+            </div>
+            <span style="font-size:11.5px;color:#8A8F98;line-height:1.5">Grade normal — ver aba "Fila" deste arquivo.</span>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px;min-height:230px">
+            <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">CARREGANDO</span>
+            <div style="flex:1;position:relative;border-radius:10px;overflow:hidden;border:1px solid #23242F">
+              <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="fullscreen" state="waiting" label="ABRINDO A FILA" size="64" style="position:absolute;inset:0" hint-size="100%,100%"></x-import>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px;min-height:230px">
+            <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">VAZIO · FILTRO ATIVO REVELADO</span>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center">
+              <svg viewBox="0 0 24 24" style="width:30px;height:30px" fill="none" stroke="#E8A13C" stroke-width="1.5" stroke-linecap="square"><path d="M4 4h7v7H4zM13 13h7v7h-7zM13 4h7M4 15h5"></path></svg>
+              <span style="font-family:'Space Grotesk';font-weight:700;font-size:16px">0 imagens — mas 2 filtros estão apertando</span>
+              <span style="font-size:12px;color:#8A8F98;line-height:1.55;max-width:280px">Origem = <b>Upload</b> + Propostas pendentes. Proposta de IA nunca nasce de upload manual — é por isso que zerou.</span>
+              <button style="height:38px;padding:0 15px;border:none;border-radius:9px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:12.5px;font-weight:700;cursor:pointer">Limpar filtro de origem</button>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px;min-height:230px">
+            <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">VAZIO · DE VERDADE</span>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center">
+              <svg viewBox="0 0 24 24" style="width:30px;height:30px" fill="none" stroke="#3ECF8E" stroke-width="1.5" stroke-linecap="square"><path d="M9 12l2 2 4-4M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"></path></svg>
+              <span style="font-family:'Space Grotesk';font-weight:700;font-size:16px">Fila de aprovação vazia — nenhuma proposta de IA pendente.</span>
+              <span style="font-size:12px;color:#8A8F98;line-height:1.55;max-width:280px">Sem filtro nenhum ativo. Boa notícia: está tudo revisado. Novas chegam com a próxima coleta.</span>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px;min-height:230px">
+            <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">ERRO · COM RETRY</span>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center">
+              <svg viewBox="0 0 24 24" style="width:30px;height:30px" fill="none" stroke="#E5484D" stroke-width="1.5" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+              <span style="font-family:'Space Grotesk';font-weight:700;font-size:16px">Não conseguimos abrir a fila de propostas</span>
+              <span style="font-size:12px;color:#8A8F98;line-height:1.55;max-width:280px">Nada foi perdido — as sugestões continuam guardadas. Só a lista não carregou agora.</span>
+              <span style="font-family:'JetBrains Mono';font-size:10px;color:#8A8F98">GET /api/training/images?pending_review=true · TEMPO ESGOTADO (10 S)</span>
+              <div style="display:flex;gap:8px">
+                <button style="height:38px;padding:0 15px;border:none;border-radius:9px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:12.5px;font-weight:700;cursor:pointer">Tentar de novo</button>
+                <button style="height:38px;padding:0 13px;background:transparent;border:1px solid #23242F;border-radius:9px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">Avisar o suporte</button>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px;min-height:230px">
+            <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">SEM PERMISSÃO</span>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center">
+              <svg viewBox="0 0 24 24" style="width:30px;height:30px" fill="none" stroke="#E8A13C" stroke-width="1.5" stroke-linecap="square"><path d="M6 11V8a6 6 0 0 1 12 0v3M4 11h16v10H4zM12 15v3"></path></svg>
+              <span style="font-family:'Space Grotesk';font-weight:700;font-size:16px">Você pode ver, mas não confirmar</span>
+              <span style="font-size:12px;color:#8A8F98;line-height:1.55;max-width:280px">Aceitar ou rejeitar sugestão é do time de treinamento. As caixas abaixo estão em leitura.</span>
+              <button style="height:38px;padding:0 15px;background:transparent;border:1px solid #23242F;border-radius:9px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">Pedir acesso ao time de treinamento</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ vMapa }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+          <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:20px">Mapa de conexões — UI × endpoint × estado</h2>
+          <span style="font-size:12.5px;color:#8A8F98">medido no backend real; é daqui que sai a lista de pedidos</span>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <sc-for list="{{ mapaKpis }}" as="k" hint-placeholder-count="3">
+            <div style="flex:1;min-width:210px;display:flex;flex-direction:column;gap:4px;padding:14px 16px;background:#14141C;border:1px solid #23242F;border-radius:11px;border-top:2px solid {{ k.cor }}">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">{{ k.label }}</span>
+              <span style="font-family:'JetBrains Mono';font-weight:700;font-size:24px;line-height:1;color:{{ k.cor }}">{{ k.v }}</span>
+              <span style="font-size:11.5px;color:#8A8F98;line-height:1.45">{{ k.sub }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="overflow-x:auto;border:1px solid #23242F;border-radius:11px;background:#14141C">
+          <div style="display:grid;grid-template-columns:minmax(220px,1.2fr) minmax(260px,1.4fr) 160px minmax(280px,1.6fr);min-width:980px">
+            <sc-for list="{{ mapaHead }}" as="h" hint-placeholder-count="4">
+              <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">{{ h.t }}</div>
+            </sc-for>
+            <sc-for list="{{ mapa }}" as="m" hint-placeholder-count="14">
+              <div style="display:contents">
+                <span style="padding:11px 14px;font-size:12.5px;font-weight:600;border-bottom:1px solid rgba(138,143,152,.07)">{{ m.ui }}</span>
+                <span style="padding:11px 14px;font-family:'JetBrains Mono';font-size:11px;color:#F4F6F8;border-bottom:1px solid rgba(138,143,152,.07);word-break:break-all">{{ m.ep }}</span>
+                <span style="padding:11px 14px;border-bottom:1px solid rgba(138,143,152,.07)"><span style="font-family:'JetBrains Mono';font-size:9px;font-weight:700;letter-spacing:.06em;color:{{ m.cor }};border:1px solid {{ m.borda }};border-radius:4px;padding:2px 7px;white-space:nowrap">{{ m.st }}</span></span>
+                <span style="padding:11px 14px;font-size:12px;color:#8A8F98;line-height:1.5;border-bottom:1px solid rgba(138,143,152,.07)">{{ m.nota }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:11px">
+          <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">COMO OS PARENTES CONVERSAM</span>
+          <sc-for list="{{ parentes }}" as="p" hint-placeholder-count="4">
+            <div style="display:flex;gap:11px;align-items:flex-start">
+              <span style="width:7px;height:7px;border-radius:50%;background:{{ p.cor }};margin-top:6px;flex:none"></span>
+              <span style="font-size:12.5px;line-height:1.6"><b>{{ p.t }}</b> — <span style="color:#8A8F98">{{ p.d }}</span></span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ vPedidos }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+          <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:20px">Pedidos ao backend — derivados deste desenho</h2>
+          <span style="font-size:12.5px;color:#8A8F98">o que a tela precisa · o que existe hoje · o delta</span>
+        </div>
+        <div style="display:flex;flex-direction:column;background:#14141C;border:1px solid #23242F;border-radius:11px;overflow:hidden">
+          <sc-for list="{{ pedidos }}" as="p" hint-placeholder-count="3">
+            <div style="display:flex;gap:14px;padding:14px 16px;border-bottom:1px solid rgba(138,143,152,.07);flex-wrap:wrap">
+              <div style="display:flex;flex-direction:column;gap:5px;flex:none;width:78px">
+                <span style="font-family:'JetBrains Mono';font-size:11px;font-weight:700;color:#00E5FF">{{ p.id }}</span>
+                <span style="font-family:'JetBrains Mono';font-size:9px;font-weight:700;color:{{ p.sevCor }};border:1px solid {{ p.sevBorda }};border-radius:4px;padding:2px 5px;text-align:center">{{ p.sev }}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:5px;flex:1;min-width:260px">
+                <span style="font-size:13.5px;font-weight:600">{{ p.o }}</span>
+                <span style="font-size:12.5px;color:#8A8F98;line-height:1.5"><b style="color:#F4F6F8">A tela precisa:</b> {{ p.precisa }}</span>
+                <span style="font-size:12.5px;color:#8A8F98;line-height:1.5"><b style="color:#F4F6F8">Hoje existe:</b> {{ p.hoje }}</span>
+                <span style="font-size:12.5px;color:#8A8F98;line-height:1.5"><b style="color:#E8A13C">Delta:</b> {{ p.delta }}</span>
+              </div>
+              <span style="flex:none;width:170px;font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98;line-height:1.5">{{ p.bloqueia }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;padding:16px;background:#14141C;border:1px solid rgba(232,161,60,.35);border-radius:11px">
+          <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#E8A13C">DEPENDÊNCIAS JÁ EM CURSO (fora deste desenho)</span>
+          <sc-for list="{{ deps }}" as="d" hint-placeholder-count="2">
+            <div style="display:flex;gap:11px;align-items:flex-start">
+              <span style="font-family:'JetBrains Mono';font-size:10.5px;font-weight:700;color:#E8A13C;flex:none;width:34px">{{ d.id }}</span>
+              <span style="font-size:12.5px;line-height:1.6"><b>{{ d.t }}</b> — <span style="color:#8A8F98">{{ d.d }}</span></span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:9px;padding:16px;background:#14141C;border:1px solid rgba(0,229,255,.3);border-radius:11px">
+          <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#00E5FF">O QUE ESTE DESENHO DECIDE (E O BACKEND SEGUE)</span>
+          <span style="font-size:13px;line-height:1.7">O modo "Revisar em sequência" não pede rota nova nenhuma além do P3 (confiança por card): aceitar/rejeitar UM frame por vez já roda hoje em cima de <span style="font-family:'JetBrains Mono';font-size:12px">accept-suggestions</span> e <span style="font-family:'JetBrains Mono';font-size:12px">pre-annotation-review</span>. Só a AÇÃO EM LOTE da grade (P1/P2) depende de rota nova — por isso o botão "Confirmar sugestões (N)" nasce já avisando a dependência, em vez de fingir que despacha uma chamada só.</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ vCopy }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+          <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:20px">Microcopy — português de chão de fábrica</h2>
+          <span style="font-size:12.5px;color:#8A8F98">nenhuma frase inventada na implementação: use estas</span>
+        </div>
+        <sc-for list="{{ copyBlocos }}" as="b" hint-placeholder-count="5">
+          <div style="display:flex;flex-direction:column;gap:10px;padding:16px 18px;background:#14141C;border:1px solid #23242F;border-radius:11px">
+            <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">{{ b.tag }}</span>
+            <sc-for list="{{ b.itens }}" as="i" hint-placeholder-count="4">
+              <div style="display:grid;grid-template-columns:190px 1fr;gap:6px 16px;padding:9px 0;border-bottom:1px solid rgba(138,143,152,.07)">
+                <span style="font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98">{{ i.k }}</span>
+                <span style="font-size:12.5px;line-height:1.55">{{ i.v }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-for>
+        <div style="display:flex;flex-direction:column;gap:9px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:11px">
+          <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">PALAVRAS PROIBIDAS NESTA TELA</span>
+          <span style="font-size:12.5px;color:#8A8F98;line-height:1.7">threshold · IoU · condition_satisfied · bounding box · overlap · polygon · payload · JSON · confidence score · inferência · YOLO · tracker · e nomes de framework. "% de confiança" no selo do card é humano e fica; "confidence score" e a faixa 0,4–0,6 são jargão de motor e nunca aparecem — a ordenação leiga chama-se só "onde a IA tem mais dúvida".</span>
+        </div>
+      </div>
+    </sc-if>
+
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1500,&quot;height&quot;:960}}">
+class Component extends DCLogic {
+  CARTOES_BASE = [
+    { id: 'f1', cam: 'Doca 3', hora: '14:32', conf: 82, classe: 'capacete', humanas: 0, propostas: 2, grad: 'linear-gradient(200deg,#191822,#0F0F16)', boxT: '30%', boxL: '24%', boxW: '26%', boxH: '42%' },
+    { id: 'f2', cam: 'Portaria', hora: '14:29', conf: 58, classe: 'colete', humanas: 1, propostas: 1, grad: 'linear-gradient(155deg,#1A1B26,#101018)', boxT: '18%', boxL: '48%', boxW: '30%', boxH: '48%' },
+    { id: 'f3', cam: 'Pátio Externo', hora: '14:21', conf: 47, classe: 'óculos', humanas: 0, propostas: 3, grad: 'linear-gradient(175deg,#181926,#0E0E15)', boxT: '40%', boxL: '10%', boxW: '22%', boxH: '34%' },
+    { id: 'f4', cam: 'Linha de Produção', hora: '14:15', conf: 91, classe: 'luva', humanas: 2, propostas: 1, grad: 'linear-gradient(210deg,#1C1B24,#0F0F17)', boxT: '26%', boxL: '30%', boxW: '28%', boxH: '38%' },
+    { id: 'f5', cam: 'Expedição', hora: '14:02', conf: 63, classe: 'capacete', humanas: 0, propostas: 1, grad: 'linear-gradient(190deg,#191822,#101018)', boxT: '22%', boxL: '38%', boxW: '24%', boxH: '40%' },
+    { id: 'f6', cam: 'Corredor Central', hora: '13:58', conf: 51, classe: 'colete', humanas: 0, propostas: 4, grad: 'linear-gradient(165deg,#1A1926,#0E0E14)', boxT: '34%', boxL: '20%', boxW: '30%', boxH: '40%' },
+  ];
+  state = {
+    aba: 'fila', modo: 'grade', ordenar: 'incerteza',
+    statusFiltro: 'proposta_pendente', origemFiltro: 'all',
+    selecionados: [], confirmando: false,
+    revisadas: 12, restam: 337, tipEnter: true,
+  };
+  renderVals() {
+    const s = this.state;
+    const tab = (t, k) => ({ t, go: () => this.setState({ aba: k }), bg: s.aba === k ? 'rgba(0,229,255,.08)' : '#14141C', cor: s.aba === k ? '#00E5FF' : '#8A8F98', borda: s.aba === k ? 'rgba(0,229,255,.45)' : '#23242F' });
+    const st = { EXISTE: ['#3ECF8E', 'rgba(62,207,142,.4)'], 'INSUFICIENTE': ['#E8A13C', 'rgba(232,161,60,.4)'], 'NÃO EXISTE': ['#E5484D', 'rgba(229,72,77,.4)'] };
+    const MP = (ui, ep, estado, nota) => ({ ui, ep, st: estado, nota, cor: st[estado][0], borda: st[estado][1] });
+    const sev = { 'BLOQUEIA': ['#E5484D', 'rgba(229,72,77,.5)'], 'DEFEITO': ['#E8A13C', 'rgba(232,161,60,.5)'], 'FALTA': ['#00E5FF', 'rgba(0,229,255,.5)'] };
+    const PD = (id, sv, o, precisa, hoje, delta, bloqueia) => ({ id, sev: sv, o, precisa, hoje, delta, bloqueia, sevCor: sev[sv][0], sevBorda: sev[sv][1] });
+
+    const MAPA = [
+      MP('Chip "Propostas pendentes" com contador total', 'GET /api/training/images?pending_review=true (total_pending_proposals)', 'EXISTE', 'Devolve o total certo (349 medidas hoje) — fonte única de verdade da fila.'),
+      MP('Grade de imagens da fila', 'GET /api/training/images?pending_review=true&page=&page_size=', 'EXISTE', 'Mesma rota da galeria de Imagens, filtrada; presigned URL de 1h por card.'),
+      MP('Contador do chip quando outro filtro já está ativo', 'GET /api/training/images/facets', 'INSUFICIENTE', 'get_facets não tem a dimensão pending_review — o chip fica sem número. Correção já em curso em paralelo (ver Dependências).'),
+      MP('Ordenar "onde a IA tem mais dúvida"', 'GET .../images?ordenar=incerteza', 'EXISTE', 'O motor já ordena pela proposta mais perto do ponto de maior dúvida do modelo. A galeria hoje nunca manda esse parâmetro — é fiação de front, não pedido de backend.'),
+      MP('Selo de proposta + % de confiança no card', '—', 'NÃO EXISTE', 'A listagem não devolve confiança agregada por frame — só existe por anotação, numa chamada separada (GET .../frames/<id>/annotations). Mostrar % em 349 cards custaria 349 chamadas — pedido P3.'),
+      MP('Confirmar 1 sugestão como veio', 'POST /api/training/frames/<id>/accept-suggestions', 'EXISTE', 'Aceita tudo ou só os índices informados. Vira anotação com selo "Aprovada", nunca "Humana".'),
+      MP('Confirmar sugestões em lote (N imagens)', '—', 'NÃO EXISTE', 'O botão da barra de seleção não tem rota — hoje precisaria de N chamadas sequenciais na tela, sem contrato de falha parcial. Pedido P1.'),
+      MP('Rejeitar 1 proposta', 'POST /api/training/frames/<id>/pre-annotation-review', 'EXISTE', 'Nunca grava caixa; só tira o frame da fila. Idempotente.'),
+      MP('Rejeitar em lote', '—', 'NÃO EXISTE', 'Mesma lacuna do item acima, do outro lado. Pedido P2.'),
+      MP('Ajustar antes de aceitar (abre o Estúdio)', 'GET/POST /api/training/frames/<id>/annotations + pre-annotation-review', 'EXISTE', 'Dois passos client-side: salva a correção como anotação humana, depois estampa a revisão — ordem importa.'),
+      MP('Barra de progresso da rajada', 'total / total_pending_proposals na própria listagem', 'EXISTE', 'O número pode SUBIR durante a sessão — a coleta do NVR não para. Por isso o desenho nunca promete total fechado (usa "+").'),
+      MP('Origem das propostas (nvr/auto, nunca upload)', 'source= combinado com pending_review=true', 'EXISTE, sem aviso', 'Bug medido hoje: Origem=Upload + Propostas pendentes zera a grade em silêncio. Correção do estado-vazio-que-revela-o-filtro já em curso em paralelo.'),
+      MP('Filtro por câmera na fila', 'camera_ids=', 'EXISTE', 'Mesmo seletor multi-câmera da galeria de Imagens.'),
+      MP('Próxima leva automática (sem clicar "Próxima")', 'paginação por before_id (cursor)', 'INSUFICIENTE', 'A aba Classificar já pagina sozinha por cursor quando a fila está acabando; a grade de Imagens ainda usa Anterior/Próxima manual.'),
+    ];
+    const conta = (k) => String(MAPA.filter(m => m.st.startsWith(k)).length);
+
+    // ── grade ──
+    const marcado = (id) => s.selecionados.includes(id);
+    const toggleSel = (id) => this.setState(p => ({ selecionados: marcado(id) ? p.selecionados.filter(x => x !== id) : [...p.selecionados, id] }));
+    const cartoes = this.CARTOES_BASE.map(k => ({
+      ...k, marcado: marcado(k.id), borda: marcado(k.id) ? 'rgba(0,229,255,.5)' : '#23242F',
+      contagem: `${k.humanas} caixa${k.humanas === 1 ? '' : 's'} humana${k.humanas === 1 ? '' : 's'} · ${k.propostas} sugestão${k.propostas === 1 ? '' : 'ões'} da IA`,
+      toggle: (e) => { if (e && e.stopPropagation) e.stopPropagation(); toggleSel(k.id); },
+      abrir: () => this.setState({ modo: 'rajada' }),
+    }));
+
+    const statusDefs = [['todos', 'Todas', 8862], ['nao_anotado', 'Não anotadas', 3458], ['anotado', 'Anotadas', 5404], ['duvida', 'Em dúvida', 0], ['excluida', 'Excluídas', 3470], ['proposta_pendente', 'Propostas pendentes', 349]];
+    const origemDefs = [['all', 'Todas'], ['nvr', 'Câmera/NVR'], ['upload', 'Upload'], ['auto', 'Detecção']];
+
+    return {
+      abas: [tab('Fila', 'fila'), tab('Estados', 'estados'), tab('Mapa de conexões', 'mapa'), tab('Pedidos ao backend', 'pedidos'), tab('Microcopy', 'copy')],
+      vFila: s.aba === 'fila', vEstados: s.aba === 'estados', vMapa: s.aba === 'mapa', vPedidos: s.aba === 'pedidos', vCopy: s.aba === 'copy',
+      vGrade: s.modo === 'grade', vRajada: s.modo === 'rajada',
+      irRajada: () => this.setState({ modo: 'rajada' }),
+      voltarGrade: () => this.setState({ modo: 'grade' }),
+
+      statusChips: statusDefs.map(([k, t, n]) => ({
+        t, n, temN: k !== 'proposta_pendente', go: () => this.setState({ statusFiltro: k }),
+        bg: s.statusFiltro === k ? (k === 'proposta_pendente' ? 'rgba(232,161,60,.1)' : 'rgba(0,229,255,.06)') : 'transparent',
+        cor: s.statusFiltro === k ? (k === 'proposta_pendente' ? '#E8A13C' : '#00E5FF') : '#8A8F98',
+        borda: s.statusFiltro === k ? (k === 'proposta_pendente' ? '#E8A13C' : 'rgba(0,229,255,.5)') : '#3A3D4A',
+      })),
+      origemChips: origemDefs.map(([k, t]) => ({ t, go: () => this.setState({ origemFiltro: k }), bg: s.origemFiltro === k ? 'rgba(0,229,255,.06)' : 'transparent', cor: s.origemFiltro === k ? '#00E5FF' : '#8A8F98', borda: s.origemFiltro === k ? 'rgba(0,229,255,.5)' : '#3A3D4A' })),
+
+      setOrdRecente: () => this.setState({ ordenar: 'recente' }),
+      setOrdIncerteza: () => this.setState({ ordenar: 'incerteza' }),
+      ordRecenteBg: s.ordenar === 'recente' ? '#14141C' : 'transparent', ordRecenteCor: s.ordenar === 'recente' ? '#00E5FF' : '#8A8F98',
+      ordIncertezaBg: s.ordenar === 'incerteza' ? '#14141C' : 'transparent', ordIncertezaCor: s.ordenar === 'incerteza' ? '#00E5FF' : '#8A8F98',
+      dicaOrdenacao: s.ordenar === 'incerteza' ? 'Mostra primeiro onde o seu clique ensina mais ao modelo.' : 'Mostra primeiro o que a câmera coletou por último.',
+      resultLabel: '349 propostas · 281 imagens',
+
+      vazio: cartoes.length === 0,
+      cartoes,
+      nSelecionados: s.selecionados.length,
+      temSelecao: s.selecionados.length > 0,
+      abrirConfirmar: () => this.setState({ confirmando: true }),
+      fecharConfirmar: () => this.setState({ confirmando: false }),
+      pararPropagacao: (e) => { if (e && e.stopPropagation) e.stopPropagation(); },
+      confirmarDeVerdade: () => this.setState({ confirmando: false, selecionados: [] }),
+      rejeitarSelecao: () => this.setState({ selecionados: [] }),
+      marcarDuvidaSelecao: () => this.setState({ selecionados: [] }),
+      excluirSelecao: () => this.setState({ selecionados: [] }),
+      limparSelecao: () => this.setState({ selecionados: [] }),
+      confirmando: s.confirmando,
+
+      // ── rajada ──
+      revisadas: s.revisadas, restam: s.restam,
+      progressoPct: Math.min(100, Math.round((s.revisadas / (s.revisadas + s.restam)) * 100)) + '%',
+      tipEnter: s.tipEnter, fecharTip: () => this.setState({ tipEnter: false }),
+      rajCam: 'Doca 3', rajHora: '14:32',
+      rajBoxes: [
+        { t: '30%', l: '22%', w: '24%', h: '42%', label: 'Capacete', conf: 82 },
+        { t: '48%', l: '52%', w: '20%', h: '30%', label: 'Colete', conf: 58 },
+      ],
+      avancar: () => this.setState(p => ({ revisadas: p.revisadas + 1, restam: Math.max(0, p.restam - 1) })),
+      aceitarComoEsta: () => this.setState(p => ({ revisadas: p.revisadas + 1, restam: Math.max(0, p.restam - 1) })),
+      ajustarAntes: () => {},
+      rejeitarAtual: () => this.setState(p => ({ revisadas: p.revisadas + 1, restam: Math.max(0, p.restam - 1) })),
+      pularAtual: () => {},
+
+      mapaKpis: [
+        { label: 'EXISTE E SERVE', v: conta('EXISTE'), sub: 'ligação direta na migração', cor: '#3ECF8E' },
+        { label: 'EXISTE, INSUFICIENTE', v: conta('INSUFICIENTE'), sub: 'contrato precisa de campo ou verbo', cor: '#E8A13C' },
+        { label: 'NÃO EXISTE', v: conta('NÃO EXISTE'), sub: 'rota nova — sai daqui a lista de pedidos', cor: '#E5484D' },
+      ],
+      mapaHead: [{ t: 'ELEMENTO DE UI' }, { t: 'ENDPOINT REAL' }, { t: 'ESTADO' }, { t: 'O QUE ISSO IMPLICA' }],
+      mapa: MAPA,
+      parentes: [
+        { t: 'Estúdio → aba Imagens (esta tela)', d: 'a fila de propostas é o modo de destaque dentro da galeria já existente — não é uma tela nova isolada, é o mesmo lugar com o chip "Propostas pendentes" promovido a caminho principal.', cor: '#00E5FF' },
+        { t: 'Estúdio → aba Classificar (CropClassifier)', d: 'ferramenta IRMÃ, não a mesma coisa: ali o humano julga presença/ausência por TIPO de EPI num recorte de pessoa; aqui o humano confirma ou rejeita a CAIXA inteira que o modelo desenhou num frame. Uma não substitui a outra.', cor: '#8A8F98' },
+        { t: 'Estúdio de Anotação (AnnotationStudio)', d: '"Ajustar antes de aceitar" abre o editor JÁ EXISTENTE — nenhum canvas novo. Ele salva a correção como anotação humana e depois estampa a revisão.', cor: '#8A8F98' },
+        { t: 'Curadoria em lote (duvida/excluída)', d: 'os botões "Marcar em dúvida" e "Excluir da coleta" da barra de seleção são os MESMOS de sempre (POST /training/frames/curation) — só "Confirmar sugestões" e "Rejeitar" em lote é que não têm rota irmã ainda.', cor: '#8A8F98' },
+      ],
+      pedidos: [
+        PD('P1', 'FALTA', 'Confirmar sugestões em lote', 'Aceitar "como veio" N imagens de uma vez, com contrato de falha parcial.', 'Só por frame (accept-suggestions aceita 1 id, com índices opcionais).', 'Endpoint com {"frame_ids": [...]}, mesmo espírito de /training/frames/curation — tudo-ou-nada por frame, sem índice (bulk é sempre "aceitar tudo do frame").', 'CTA "Confirmar sugestões (N)"'),
+        PD('P2', 'FALTA', 'Rejeitar em lote', 'Recusar N propostas de uma vez sem gravar caixa nenhuma.', 'Só por frame (pre-annotation-review aceita 1 id).', 'Mesmo endpoint de P1 com {"status": "rejected"}, ou rota irmã dedicada.', 'Botão "Rejeitar" da barra'),
+        PD('P3', 'FALTA', 'Confiança por card na listagem', 'Mostrar "IA 82%" em cada card da grade sem uma chamada por imagem.', 'Confiança só existe por anotação, na leitura de UM frame por vez.', 'Campo agregado (ex.: menor confiança do frame) no SELECT de list_images_filtered — reusa o mesmo parse de pre_annotations que já alimenta ordenar=incerteza.', 'Selo de proposta do card'),
+      ],
+      deps: [
+        { id: '—', t: 'Contador do chip via facets', d: 'get_facets ganhando a dimensão pending_review — já em correção em paralelo a este desenho.' },
+        { id: '—', t: 'Vazio que revela o filtro', d: 'o estado "0 imagens, mas 2 filtros ativos" descrito na aba Estados — já em correção em paralelo a este desenho.' },
+      ],
+
+      copyBlocos: [
+        { tag: 'TÍTULOS E RÓTULOS', itens: [
+          { k: 'hero da fila', v: '349 sugestões da IA esperando revisão em 281 imagens' },
+          { k: 'CTA principal', v: 'Revisar em sequência →' },
+          { k: 'CTA em lote', v: 'Confirmar sugestões (N)' },
+          { k: 'voltar', v: '← Voltar para a grade' },
+          { k: 'ordenação', v: 'Mais recentes · Onde a IA tem mais dúvida' },
+          { k: 'selo do card', v: '⚠ Proposta · IA 82%' },
+        ] },
+        { tag: 'AÇÕES DA REVISÃO EM SEQUÊNCIA', itens: [
+          { k: 'aceitar', v: 'Aceitar como está' },
+          { k: 'corrigir', v: 'Ajustar antes de aceitar' },
+          { k: 'recusar', v: 'Rejeitar — a IA errou' },
+          { k: 'adiar', v: 'Pular por agora' },
+          { k: 'contagem separada', v: '2 caixas humanas · 3 sugestões da IA' },
+        ] },
+        { tag: 'PROGRESSO E CONSEQUÊNCIA', itens: [
+          { k: 'barra de progresso', v: '12 revisada(s) nesta sessão · 337+ restante(s) na fila' },
+          { k: 'consequência do aceite', v: 'As caixas da IA viram anotação aprovada pela equipe — continuam marcadas como vieram do modelo, nunca como se alguém tivesse desenhado do zero.' },
+          { k: 'gesto do Enter', v: 'Aperte Enter para aceitar a sugestão exatamente como veio — é o caminho mais rápido quando o modelo acertou. Errou? Clique em "Ajustar antes de aceitar".' },
+        ] },
+        { tag: 'VAZIOS, ERROS E AVISOS', itens: [
+          { k: 'vazio de verdade', v: 'Fila de aprovação vazia — nenhuma proposta de IA pendente.' },
+          { k: 'vazio de filtro', v: '0 imagens — mas 2 filtros estão apertando. Origem = Upload + Propostas pendentes. Proposta de IA nunca nasce de upload manual.' },
+          { k: 'erro', v: 'Não conseguimos abrir a fila de propostas — nada foi perdido, as sugestões continuam guardadas.' },
+          { k: 'sem permissão', v: 'Você pode ver, mas não confirmar — aceitar ou rejeitar sugestão é do time de treinamento.' },
+        ] },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>
