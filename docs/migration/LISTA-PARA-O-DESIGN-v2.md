@@ -270,6 +270,31 @@ casa, e o superadmin vê tudo. Não é vazamento de menu por papel (o menu já r
 - **P3 (registro, não pedido)** — marca e papéis **já aceitam** admin de tenant (`/v1/roles`,
   `PUT /v1/admin/branding`): é só construir a tela. Anotado para ninguém criar endpoint por engano.
 
+## 16. Catálogo de modelos — a métrica que existe não é a que a tela mostra
+
+**Como está, medido em 31/08 no DEV:** os **8 modelos** do RVB têm `map50`, `precision` e `recall`
+iguais a **zero literal** (nunca gravados — por isso o guard `!= null` da rodada #1 os deixava
+passar como "0,0%"), e **7 dos 8** estão sem `display_name`, então o cliente lê
+"RF-DETR - Job 3091cfc9".
+
+**O que mudou nesta rodada:** passou a existir uma métrica real — **121 vereditos humanos** na
+fila de verificação. Ela mede o que o supervisor quer saber ("quantos avisos valeram a pena"),
+não o que o treino registrou. Precisão global medida: **48,8%** (59 confirmados / 62 falsos); por
+classe vai de 69,7% (Sem luvas) a 30,4% (Sem óculos).
+
+**Proposta da pista:** `docs/design/handoff-f5/Catálogo de Modelos.dc.html` — o card diz
+"de cada 10 avisos, ~5 são reais" com o `n` ao lado, quebra por classe, três estados
+(em produção × em observação × disponível), linhagem e dataset, e "—" com dignidade onde ninguém
+julgou. **É proposta da pista aguardando refino oficial.**
+
+**Pedidos ao backend:**
+- **P1 (é o número central do card)** — precisão por classe/modelo agregada a partir de
+  `alerts.verification_verdict`. O cálculo já existe fora da API em
+  `scripts/ops/calibracao_classes.py`; falta promover a endpoint.
+- **P2** — "o que mudou" entre versões (delta de imagens/classes). Sem ele o card entrega alias +
+  data e nada de inventado.
+- **P3** — o job de treino gravar métrica real, e o backend distinguir NULL de 0.
+
 ---
 
 # ⚪ POLIMENTO — não bloqueia fase nenhuma
