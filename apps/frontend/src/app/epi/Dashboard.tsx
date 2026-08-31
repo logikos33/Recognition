@@ -182,6 +182,23 @@ function horaCurta(ms: number) {
   return new Date(ms).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 }
 
+/**
+ * Monta o link para `/epi/eventos` na querystring que aquela tela já lê
+ * (`start_date`/`end_date`/`camera_id`/`violation_type` — ver `Eventos.tsx`).
+ * Não inventa parâmetro novo: só usa o que o destino já suporta.
+ */
+function linkParaEventos(params: {
+  start_date?: string
+  end_date?: string
+  camera_id?: string
+  violation_type?: string
+}) {
+  const q = new URLSearchParams()
+  for (const [chave, valor] of Object.entries(params)) if (valor) q.set(chave, valor)
+  const query = q.toString()
+  return rotaNova(`/epi/eventos${query ? `?${query}` : ''}`)
+}
+
 interface PainelProps {
   id: IdWidget
   titulo: string
@@ -219,8 +236,21 @@ function Painel({ id, titulo, nota, acao, children }: PainelProps) {
   )
 }
 
-/** Vazio/erro de painel: nunca derruba a tela, sempre diz o que houve. */
-function VazioPainel({ texto, aoRetentar }: { texto: string; aoRetentar?: () => void }) {
+/**
+ * Vazio/erro de painel: nunca derruba a tela, sempre diz o que houve. `cta`
+ * é o caminho de saída de um vazio de JANELA (turno sem evento) — sem ele o
+ * operador fica preso olhando um painel em branco sem saber que 30 dias atrás
+ * tem dado.
+ */
+function VazioPainel({
+  texto,
+  aoRetentar,
+  cta,
+}: {
+  texto: string
+  aoRetentar?: () => void
+  cta?: { texto: string; to: string }
+}) {
   return (
     <div className={s.painelVazio}>
       <span>{texto}</span>
@@ -228,6 +258,11 @@ function VazioPainel({ texto, aoRetentar }: { texto: string; aoRetentar?: () => 
         <button type="button" className={s.botaoRetentar} onClick={aoRetentar}>
           Tentar novamente
         </button>
+      )}
+      {cta && (
+        <Link to={cta.to} className={s.botaoRetentar}>
+          {cta.texto}
+        </Link>
       )}
     </div>
   )
@@ -287,6 +322,15 @@ export function Dashboard() {
     const agora = new Date()
     const inicio = new Date(agora)
     inicio.setDate(inicio.getDate() - JANELA_RANKING_DIAS)
+    return { de: inicio.toISOString(), ate: agora.toISOString() }
+  }, [])
+
+  // Mesma definição de "hoje" que `Eventos.tsx` usa (00h local até agora) —
+  // é a janela que o backend fixa para `alerts_today`, não a do turno.
+  const janelaHoje = useMemo(() => {
+    const agora = new Date()
+    const inicio = new Date(agora)
+    inicio.setHours(0, 0, 0, 0)
     return { de: inicio.toISOString(), ate: agora.toISOString() }
   }, [])
 
@@ -435,14 +479,16 @@ export function Dashboard() {
         ) : linhaDoTempo.isPending ? (
           <VazioPainel texto="Carregando…" />
         ) : totalHoras === 0 ? (
-          <VazioPainel texto="Sem eventos no período." />
+          <VazioPainel
+            texto="Sem eventos no período."
+            cta={{
+              texto: 'Ver últimos 30 dias →',
+              to: linkParaEventos({ start_date: janela30d.de, end_date: janela30d.ate }),
+            }}
+          />
         ) : (
           <>
-            <div
-              className={s.barras}
-              role="img"
-              aria-label={`Eventos por hora, ${faixaTurno}: pico às ${picoEventos?.rotulo} com ${numero(maxHora)} eventos, ${numero(totalHoras)} no período`}
-            >
+            <div className={s.barras} role="group" aria-label={`Eventos por hora, ${faixaTurno}`}>
               {pontos.map((p) => {
                 const nivel: Severidade =
                   p.count === 0
@@ -452,11 +498,14 @@ export function Dashboard() {
                       : p.count >= maxHora * 0.6
                         ? 'atencao'
                         : 'neutro'
+                const fimHora = new Date(new Date(p.bucket).getTime() + 3_600_000).toISOString()
                 return (
-                  <div
+                  <Link
                     key={p.bucket}
-                    className={s.colunaBarra}
+                    to={linkParaEventos({ start_date: p.bucket, end_date: fimHora })}
+                    className={`${s.colunaBarra} ${s.linkLimpo}`}
                     title={`${p.rotulo} · ${numero(p.count)} evento(s)`}
+                    aria-label={`${p.rotulo} · ${numero(p.count)} evento(s) · ver eventos`}
                   >
                     <div
                       className={s.barra}
@@ -466,7 +515,7 @@ export function Dashboard() {
                       }}
                     />
                     <span className={s.barraRotulo}>{p.rotulo}</span>
-                  </div>
+                  </Link>
                 )
               })}
             </div>
@@ -489,11 +538,26 @@ export function Dashboard() {
         ) : resumo.isPending ? (
           <VazioPainel texto="Carregando…" />
         ) : totalClasses === 0 ? (
-          <VazioPainel texto="Sem violações no período." />
+          <VazioPainel
+            texto="Sem violações no período."
+            cta={{
+              texto: 'Ver últimos 30 dias →',
+              to: linkParaEventos({ start_date: janela30d.de, end_date: janela30d.ate }),
+            }}
+          />
         ) : (
           <>
             {porClasse.slice(0, 6).map((c) => (
-              <div key={c.class} className={s.classeLinha}>
+              <Link
+                key={c.class}
+                to={linkParaEventos({
+                  start_date: janela.de,
+                  end_date: janela.ate,
+                  violation_type: c.class,
+                })}
+                className={`${s.classeLinha} ${s.linkLimpo}`}
+                aria-label={`${violationLabel(c.class)} · ${numero(c.count)} evento(s) · ver eventos`}
+              >
                 <ShieldAlert
                   size={16}
                   strokeWidth={1.7}
@@ -508,7 +572,7 @@ export function Dashboard() {
                   />
                 </div>
                 <span className={s.classeValor}>{numero(c.count)}</span>
-              </div>
+              </Link>
             ))}
             <span className={s.legenda}>
               {violationLabel(porClasse[0].class)} concentra{' '}
@@ -574,8 +638,8 @@ export function Dashboard() {
                 // Regra do ciano: só as 3 primeiras posições em destaque (barra e nome).
                 const destaque = i < 3 ? 'top' : 'resto'
                 const nome = c.camera_name ?? 'Sem nome'
-                return (
-                  <div key={c.camera_id ?? `${nome}-${i}`} className={s.rankingLinha}>
+                const conteudo = (
+                  <>
                     <span className={s.rankingPos}>{String(i + 1).padStart(2, '0')}</span>
                     <span className={`${s.rankingNome} ${s.rankingDestaque[destaque]}`} title={nome}>
                       {nome}
@@ -589,6 +653,27 @@ export function Dashboard() {
                     <span className={`${s.rankingValor} ${s.rankingDestaque[destaque]}`}>
                       {numero(c.count)}
                     </span>
+                  </>
+                )
+                // Sem camera_id (evento sem câmera atribuída) não tem para onde
+                // filtrar — 'camera_id=' vazio mostraria TODAS, o oposto do que
+                // a linha representa. Linha fica de pé, só não clicável.
+                return c.camera_id ? (
+                  <Link
+                    key={c.camera_id}
+                    to={linkParaEventos({
+                      start_date: janela30d.de,
+                      end_date: janela30d.ate,
+                      camera_id: c.camera_id,
+                    })}
+                    className={`${s.rankingLinha} ${s.linkLimpo}`}
+                    aria-label={`${nome} · ${numero(c.count)} evento(s) · ver eventos`}
+                  >
+                    {conteudo}
+                  </Link>
+                ) : (
+                  <div key={`${nome}-${i}`} className={s.rankingLinha}>
+                    {conteudo}
                   </div>
                 )
               })}
@@ -730,7 +815,13 @@ export function Dashboard() {
         {/* Eventos hoje */}
         <section className={`${s.cartaoKpi} ${s.acento.neutro}`} aria-label="Eventos hoje">
           <span className={s.overline}>Eventos hoje</span>
-          <span className={s.kpiValor}>{numero(eventosHoje)}</span>
+          <Link
+            to={linkParaEventos({ start_date: janelaHoje.de, end_date: janelaHoje.ate })}
+            className={`${s.kpiValor} ${s.linkLimpo}`}
+            aria-label={`Eventos hoje: ${numero(eventosHoje)} · ver eventos`}
+          >
+            {numero(eventosHoje)}
+          </Link>
           <span className={s.legenda}>
             {deltaEventos === null ? (
               'sem média de 7 dias ainda'
