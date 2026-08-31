@@ -23,6 +23,25 @@ export const abas = style({
   borderBottom: `1px solid ${lk.cor.borda}`,
 })
 
+/** "← Voltar", primeiro item da barra — sem lateral própria (SEM_BARRA_LATERAL),
+ * é a única saída do módulo. Borda à direita porque a barra aqui é horizontal
+ * (mesmo papel da borda inferior no `voltar` do Estúdio). */
+export const voltar = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  height: lk.medida.itemNav,
+  padding: '0 12px 0 0',
+  marginRight: '8px',
+  borderRight: `1px solid ${lk.cor.borda}`,
+  fontSize: '13.5px',
+  color: lk.cor.cinzaNevoa,
+  textDecoration: 'none',
+  selectors: {
+    '&:hover': { color: lk.cor.brancoSinal },
+  },
+})
+
 const abaBase = style({
   display: 'flex',
   alignItems: 'center',

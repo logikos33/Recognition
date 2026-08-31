@@ -1,9 +1,26 @@
 /**
- * REGRA GLOBAL — nenhuma tela do front novo é beco sem saída (contrato A3).
+ * REGRA GLOBAL — nenhuma área do front novo é beco sem saída (contrato C2).
  *
- * Percorre TODA rota de `ROTAS_NOVAS` + `ROTAS_NOVAS_SEM_SHELL` (as mesmas
- * listas que montam o app em `App.tsx`, não uma cópia) e falha se a tela não
- * oferecer um jeito de voltar. Critério objetivo:
+ * Deriva a lista de áreas SEM barra lateral própria de `SEM_BARRA_LATERAL`
+ * (Shell.tsx) — a MESMA constante que decide se o Shell esconde a nav
+ * principal — em vez de escrever a lista à mão aqui: foi uma lista escrita à
+ * mão que deixou Admin de fora na rodada anterior (dívida registrada,
+ * consertada nesta).
+ *
+ * ── POR QUE ISTO RENDERIZA DE VERDADE, E NÃO LÊ O ARQUIVO COMO TEXTO ────────
+ *
+ * A versão anterior deste teste lia o arquivo da área como STRING e casava
+ * `/voltar/i` + `/rotaNova\(/` por regex. Isso passa mesmo que o link não
+ * funcione — ou pior, que ele exista com OUTRO significado: `RevisaoQualidade
+ * .tsx` tem um `s.voltar` que fecha um painel de detalhe, nada a ver com sair
+ * da área. Regex não distingue os dois. Por isso `ABRE_AREA` abaixo MONTA a
+ * área de verdade (React Testing Library) e busca o elemento REAL no DOM: um
+ * link quebrado, removido, ou que virou `<button>` sem `href` reprova aqui —
+ * é a mesma garantia que `getByRole('link')` já dá em `Estudio.test.tsx` e
+ * `Admin.test.tsx`, só que agora para TODA área, num só lugar, sem depender de
+ * ninguém lembrar de escrever o teste local.
+ *
+ * Critério objetivo:
  *
  *  · Shell COM a nav principal (sidebar visível — rota fora de
  *    `SEM_BARRA_LATERAL`) já satisfaz: a sidebar sempre mostra ao menos
@@ -12,73 +29,139 @@
  *  · Área com NAV PRÓPRIA (`SEM_BARRA_LATERAL`: a sidebar do Shell some) pede
  *    mais: o logo do topbar (link desde F5-LEVE item 1) chega lá, mas é
  *    pequeno e não é o que se procura quando a lateral inteira virou outra
- *    coisa — por isso a ÁREA precisa do PRÓPRIO link explícito, contando só
- *    o que está no arquivo daquela área (não vale o logo por tabela).
+ *    coisa — por isso a ÁREA precisa do PRÓPRIO link explícito, e é ele que
+ *    `ABRE_AREA` verifica.
  *  · Rota SEM Shell (`ROTAS_NOVAS_SEM_SHELL`): `/modules` É a home de quem
  *    não é superadmin (a raiz do prefixo cai lá, `rotaHomeDoUsuario`) — não
  *    há "nível acima" dela. `/tablet/:station` é o kiosk físico da bancada
  *    (Quality Gate), sem chrome de propósito: tablet fixo, não é navegação
  *    de gente logada — ver docstring de `Kiosk.tsx`.
  *
- * Hoje só o Estúdio tem o link explícito (F5-LEVE item 2, este PR).
- * Quality/Carga/Admin têm a MESMA lacuna estrutural (nav própria, sem link de
- * volta) — dívida real, fora do escopo desta rodada, registrada em
- * `LAYOUT_DA_AREA` abaixo em vez de escondida: um `null` ali é uma lacuna
- * conhecida, não uma aprovação.
+ * O destino esperado é `rotaHomeDoUsuario(role)` para as três áreas
+ * consertadas nesta rodada (Admin/Quality/Carga) — Admin só é alcançável por
+ * superadmin (gate `admin:panel`), então a home é a própria Visão geral: o
+ * link devolve de qualquer sub-rota (Tenants, Usuários...) a ela, e não é um
+ * no-op. O Estúdio é o ÚNICO com destino FIXO (`/epi/dashboard`, medido em
+ * `Estudio.tsx`): ele não tem home própria e por isso não usa
+ * `rotaHomeDoUsuario` — comportamento já existente, fora do escopo desta
+ * rodada, mantido aqui como o valor esperado documentado.
  */
-import fs from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { render, screen } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { describe, expect, it } from 'vitest'
-
-import { PREFIXO_NOVO, ROTAS_NOVAS, ROTAS_NOVAS_SEM_SHELL } from '../RotasNovas'
+import { PREFIXO_NOVO, ROTAS_NOVAS_SEM_SHELL, rotaHomeDoUsuario } from '../RotasNovas'
 import { SEM_BARRA_LATERAL } from './Shell'
 
-const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-const leia = (rel: string) => fs.readFileSync(path.join(SRC, rel), 'utf-8')
+const auth = vi.hoisted(() => ({
+  can: vi.fn((_p: string) => true),
+  hasModule: vi.fn((_m: string) => true),
+  isSuperAdmin: false,
+}))
+vi.mock('../../hooks/useAuth', () => ({ useAuth: () => auth }))
 
-/** Primeiro segmento de um caminho relativo ('quality/gestao' → 'quality'). */
-const areaDe = (caminho: string) => caminho.split('/')[0]
+// Qualidade e Carga chamam `services/api` (e Qualidade também
+// `cameraService`) ao montar — sem o dublê, os testes fariam rede de
+// verdade. Mesma receita de `Qualidade.test.tsx` / `Carga.test.tsx`.
+const get = vi.fn()
+vi.mock('../../services/api', () => ({
+  api: { get: (...a: unknown[]) => get(...a), patch: vi.fn(), delete: vi.fn() },
+}))
+vi.mock('../../services/cameraService', () => ({ cameraService: { test: vi.fn() } }))
 
-/**
- * Área com nav própria → arquivo de layout que precisa do link explícito.
- * `null` = dívida conhecida (ver docstring do arquivo), fora do escopo desta
- * rodada — a rota ainda passa na varredura, mas SEM checar conteúdo nenhum.
- */
-const LAYOUT_DA_AREA: Record<string, string | null> = {
-  quality: null,
-  carga: null,
-  estudio: 'app/estudio/Estudio.tsx',
-  admin: null,
-}
+import { Admin } from '../admin/Admin'
+import { Carga } from '../carga/Carga'
+import { Estudio } from '../estudio/Estudio'
+import { Qualidade } from '../qualidade/Qualidade'
 
 const AREAS_SEM_BARRA = SEM_BARRA_LATERAL.map((r) => r.replace(`${PREFIXO_NOVO}/`, ''))
 
-const caminhosDeTopo = ROTAS_NOVAS
-  .map((r) => (r.props as { path?: string }).path)
-  .filter((p): p is string => typeof p === 'string')
+interface AberturaArea {
+  /** Monta a área de verdade, na sua própria rota, com o gate mínimo aberto. */
+  montar: () => void
+  /** Destino esperado do link de saída. */
+  espera: string
+  /** true quando a área só é alcançável por superadmin (o gate garante). */
+  comoSuperadmin?: boolean
+}
 
-describe('nenhuma tela do front novo é beco sem saída', () => {
-  it('SEM_BARRA_LATERAL não cresce sem entrar no mapa de layouts deste teste', () => {
+/**
+ * Um "abridor" por área. `null` = dívida conhecida — a área ainda entra na
+ * varredura de sanidade abaixo (trava de "não esquecer"), só não é
+ * renderizada. Hoje nenhuma área tem impedimento real: as três desta rodada
+ * (Admin/Quality/Carga) e o Estúdio (rodada anterior) estão todas cobertas.
+ */
+const ABRE_AREA: Record<string, AberturaArea | null> = {
+  estudio: {
+    montar: () =>
+      render(
+        <MemoryRouter initialEntries={[`${PREFIXO_NOVO}/estudio/dados`]}>
+          <Routes>
+            <Route path={`${PREFIXO_NOVO}/estudio`} element={<Estudio />}>
+              <Route path="dados" element={<div />} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      ),
+    espera: `${PREFIXO_NOVO}/epi/dashboard`,
+  },
+  admin: {
+    montar: () =>
+      render(
+        <MemoryRouter initialEntries={[`${PREFIXO_NOVO}/admin`]}>
+          <Routes>
+            <Route path={`${PREFIXO_NOVO}/admin`} element={<Admin />}>
+              <Route index element={<div />} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      ),
+    espera: rotaHomeDoUsuario(true),
+    comoSuperadmin: true,
+  },
+  quality: {
+    montar: () => render(<MemoryRouter><Qualidade /></MemoryRouter>),
+    espera: rotaHomeDoUsuario(false),
+  },
+  carga: {
+    montar: () => render(<MemoryRouter><Carga /></MemoryRouter>),
+    espera: rotaHomeDoUsuario(false),
+  },
+}
+
+beforeEach(() => {
+  auth.can.mockReset().mockReturnValue(true)
+  auth.hasModule.mockReset().mockReturnValue(true)
+  auth.isSuperAdmin = false
+  get.mockReset().mockResolvedValue({ data: {} })
+})
+
+describe('nenhuma área do front novo é beco sem saída', () => {
+  it('SEM_BARRA_LATERAL não cresce sem entrar no mapa de aberturas deste teste', () => {
     // Trava de sanidade do PRÓPRIO teste: área nova com nav própria e sem
-    // entrada aqui seria um buraco silencioso na regra global.
+    // entrada aqui seria um buraco silencioso na regra global — foi assim
+    // que Admin ficou de fora na rodada anterior.
     for (const area of AREAS_SEM_BARRA) {
       expect(
-        Object.keys(LAYOUT_DA_AREA),
-        `área nova em SEM_BARRA_LATERAL sem entrada em LAYOUT_DA_AREA: "${area}"`,
+        Object.keys(ABRE_AREA),
+        `área nova em SEM_BARRA_LATERAL sem entrada em ABRE_AREA: "${area}"`,
       ).toContain(area)
     }
   })
 
-  it.each(caminhosDeTopo.filter((p) => AREAS_SEM_BARRA.includes(areaDe(p))))(
-    'rota "%s" (nav própria): a área tem link explícito de volta — ou é dívida registrada',
-    (caminho) => {
-      const layout = LAYOUT_DA_AREA[areaDe(caminho)]
-      if (layout === null) return // dívida conhecida, ver docstring do arquivo
-      const fonte = leia(layout)
-      expect(fonte, `${layout} precisa de um link "Voltar" via rotaNova()`).toMatch(/voltar/i)
-      expect(fonte).toMatch(/rotaNova\(/)
+  it.each(
+    Object.entries(ABRE_AREA).filter(
+      (par): par is [string, AberturaArea] => par[1] !== null,
+    ),
+  )(
+    'área "%s" (nav própria): RENDERIZADA de verdade, tem link real de volta para a home do usuário',
+    (_area, { montar, espera, comoSuperadmin }) => {
+      auth.isSuperAdmin = comoSuperadmin ?? false
+      montar()
+      // Elemento REAL do DOM, não texto do arquivo-fonte: link quebrado,
+      // removido, ou virado `<button>` sem `href` reprova aqui.
+      const link = screen.getByRole('link', { name: /voltar/i })
+      expect(link.getAttribute('href')).toBe(espera)
     },
   )
 
@@ -87,9 +170,30 @@ describe('nenhuma tela do front novo é beco sem saída', () => {
     expect(caminhos).toEqual([`${PREFIXO_NOVO}/modules`, `${PREFIXO_NOVO}/tablet/:station`])
   })
 
-  it('o logo do Shell é link para a home do usuário (superadmin → admin, demais → modules)', () => {
-    const fonte = leia('app/shell/Shell.tsx')
-    expect(fonte).toMatch(/<Link\b/)
-    expect(fonte).toMatch(/rotaHomeDoUsuario\(/)
+  it('o logo do Shell é link para a home do usuário (comportamento real coberto em Shell.test.tsx)', () => {
+    // Checagem de existência do próprio mecanismo (Marca usa
+    // `rotaHomeDoUsuario`); o comportamento fim-a-fim (href muda por papel)
+    // já é RENDERIZADO em `Shell.test.tsx` ("o logo é um link para a home do
+    // usuário") — não duplicado aqui.
+    expect(rotaHomeDoUsuario(true)).toBe(`${PREFIXO_NOVO}/admin`)
+    expect(rotaHomeDoUsuario(false)).toBe(`${PREFIXO_NOVO}/modules`)
+  })
+
+  // Os testes acima mockam `can`/`hasModule` sempre abertos: cegos para os
+  // ramos em que a própria tela nega acesso — e é lá que a Carga travava. Um
+  // gate negado é RENDER DIFERENTE (early return antes do cabeçalho), não
+  // decoração: precisa da própria varredura, não só do caminho feliz.
+  describe('Carga: os ramos NEGADOS (não só o feliz) também têm saída', () => {
+    it.each([
+      ['sem counting:read', { can: false, hasModule: true }],
+      // Estado REAL do tenant da demo (rvb): módulo counting não habilitado.
+      ['módulo counting desligado', { can: true, hasModule: false }],
+    ])('%s', (_nome, gates) => {
+      auth.can.mockReturnValue(gates.can)
+      auth.hasModule.mockReturnValue(gates.hasModule)
+      render(<MemoryRouter><Carga /></MemoryRouter>)
+      const link = screen.getByRole('link', { name: /voltar/i })
+      expect(link.getAttribute('href')).toBe(rotaHomeDoUsuario(false))
+    })
   })
 })

@@ -77,6 +77,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
+  ArrowLeft,
   CircleCheck,
   CircleSlash,
   FileText,
@@ -97,8 +98,8 @@ import { cameraService, type TestResult } from '../../services/cameraService'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import { lk } from '../tokens/lk.css'
 import * as s from './Qualidade.css'
-import { useNavigate } from 'react-router-dom'
-import { rotaNova } from '../RotasNovas'
+import { Link, useNavigate } from 'react-router-dom'
+import { rotaHomeDoUsuario, rotaNova } from '../RotasNovas'
 
 // ── Formas REAIS do servidor ────────────────────────────────────────────────
 
@@ -740,12 +741,20 @@ function CamerasDasEstacoes() {
 // ── Tela ────────────────────────────────────────────────────────────────────
 
 export function Qualidade() {
+  const { isSuperAdmin } = useAuth()
   const navegar = useNavigate()
   const [aba, setAba] = useState<Aba>('retrabalho')
 
   return (
     <div className={s.raiz}>
       <nav className={s.abas} aria-label="Módulo Qualidade">
+        {/* Sem barra lateral própria (SEM_BARRA_LATERAL): sem este link não há
+            caminho de volta nenhum — regra global, ver
+            app/shell/becoSemSaida.test.tsx. */}
+        <Link to={rotaHomeDoUsuario(isSuperAdmin)} className={s.voltar}>
+          <ArrowLeft size={16} strokeWidth={1.7} aria-hidden="true" />
+          Voltar
+        </Link>
         {ABAS.map((item) => {
           // Aba com `destino` mora noutra tela: ela nunca fica "ativa" aqui.
           const ativa = !item.destino && item.motivoIndisponivel === null && item.chave === aba

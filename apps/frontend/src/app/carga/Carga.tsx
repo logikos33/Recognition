@@ -54,12 +54,14 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  AlertTriangle, CheckCircle2, ClipboardCheck, LayoutGrid, List, Lock, Warehouse,
+  AlertTriangle, ArrowLeft, CheckCircle2, ClipboardCheck, LayoutGrid, List, Lock, Warehouse,
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import { useAuth } from '../../hooks/useAuth'
 import { api } from '../../services/api'
 import { confiancaInternaOuCliente } from '../../services/confidenceDisplay'
+import { rotaHomeDoUsuario } from '../RotasNovas'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import { lk } from '../tokens/lk.css'
 import * as s from './Carga.css'
@@ -347,31 +349,50 @@ export function Carga() {
     [confirmando, sessoes],
   )
 
+  // Sem lateral própria (SEM_BARRA_LATERAL): sem este link nenhum dos dois
+  // ramos abaixo teria saída — mesma regra do cabeçalho do caminho feliz,
+  // ver app/shell/becoSemSaida.test.tsx. `falhou`/`conteudo*` ficam de fora
+  // porque só rodam DEPOIS do cabeçalho com Voltar já estar na árvore.
+  const voltarCentro = (
+    <Link to={rotaHomeDoUsuario(isSuperAdmin)} className={s.voltar}>
+      <ArrowLeft size={16} strokeWidth={1.7} aria-hidden="true" />
+      Voltar
+    </Link>
+  )
+
   if (!podeLer) {
     return (
-      <div className={s.centro}>
-        <Lock size={36} strokeWidth={1.5} color={lk.cor.cinzaNevoa} aria-hidden="true" />
-        <span className={s.centroTitulo}>Sem permissão</span>
-        <span className={s.centroTexto}>
-          A Carga exige a permissão <code>counting:read</code>. Peça ao administrador do
-          seu tenant.
-        </span>
+      <div className={s.raiz}>
+        <div className={s.cabecalho}>{voltarCentro}</div>
+        <div className={s.centro}>
+          <Lock size={36} strokeWidth={1.5} color={lk.cor.cinzaNevoa} aria-hidden="true" />
+          <span className={s.centroTitulo}>Sem permissão</span>
+          <span className={s.centroTexto}>
+            A Carga exige a permissão <code>counting:read</code>. Peça ao administrador do
+            seu tenant.
+          </span>
+        </div>
       </div>
     )
   }
 
   // Módulo desligado (nota do cético do flip): sem isto a tela chamaria as
   // rotas de qualquer jeito e tomaria 403 cru — mesmo tratamento do KPI
-  // "sem fonte" de Retrabalhos em Qualidade.tsx.
+  // "sem fonte" de Retrabalhos em Qualidade.tsx. É o estado REAL do tenant da
+  // demo (rvb só tem o módulo epi habilitado) — por isso não pode ser um
+  // beco sem saída.
   if (!temModuloCarga) {
     return (
-      <div className={s.centro}>
-        <Lock size={36} strokeWidth={1.5} color={lk.cor.cinzaNevoa} aria-hidden="true" />
-        <span className={s.centroTitulo}>Módulo não habilitado</span>
-        <span className={s.centroTexto}>
-          O módulo Carga (<code>counting</code>) não está habilitado nesta sessão. Peça ao
-          administrador do seu tenant.
-        </span>
+      <div className={s.raiz}>
+        <div className={s.cabecalho}>{voltarCentro}</div>
+        <div className={s.centro}>
+          <Lock size={36} strokeWidth={1.5} color={lk.cor.cinzaNevoa} aria-hidden="true" />
+          <span className={s.centroTitulo}>Módulo não habilitado</span>
+          <span className={s.centroTexto}>
+            O módulo Carga (<code>counting</code>) não está habilitado nesta sessão. Peça ao
+            administrador do seu tenant.
+          </span>
+        </div>
       </div>
     )
   }
@@ -890,6 +911,13 @@ export function Carga() {
   return (
     <div className={s.raiz}>
       <div className={s.cabecalho}>
+        {/* Sem barra lateral própria (SEM_BARRA_LATERAL): sem este link não há
+            caminho de volta nenhum — regra global, ver
+            app/shell/becoSemSaida.test.tsx. */}
+        <Link to={rotaHomeDoUsuario(isSuperAdmin)} className={s.voltar}>
+          <ArrowLeft size={16} strokeWidth={1.7} aria-hidden="true" />
+          Voltar
+        </Link>
         <div>
           <span className={s.overline}>CARGA</span>
           <h1 className={s.titulo}>{TITULO[aba]}</h1>

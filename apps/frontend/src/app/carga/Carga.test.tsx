@@ -7,9 +7,14 @@
  *  · citar no erro uma rota que não existe (`/api/carga/sessoes` do desenho).
  */
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const auth = vi.hoisted(() => ({ can: vi.fn((_p: string) => true), hasModule: vi.fn((_m: string) => true) }))
+const auth = vi.hoisted(() => ({
+  can: vi.fn((_p: string) => true),
+  hasModule: vi.fn((_m: string) => true),
+  isSuperAdmin: false,
+}))
 vi.mock('../../hooks/useAuth', () => ({ useAuth: () => auth }))
 
 const get = vi.fn()
@@ -22,6 +27,9 @@ vi.mock('../../services/api', () => ({
 }))
 
 import { Carga } from './Carga'
+
+/** Precisa de Router desde que "Voltar" (Link) entrou no cabeçalho. */
+const montar = () => render(<MemoryRouter><Carga /></MemoryRouter>)
 
 const BAY_UUID = '7f1b1c2e-9a44-4d0e-bd91-6f0a2c5b1234'
 const CAM_UUID = 'a1b2c3d4-e5f6-4711-8899-aabbccddeeff'
@@ -114,24 +122,31 @@ beforeEach(() => {
 })
 
 describe('Carga', () => {
-  it('sem counting:read, a tela não abre e diz qual permissão falta', () => {
+  it('sem counting:read, a tela não abre e diz qual permissão falta — e tem saída', () => {
     auth.can.mockReturnValue(false)
-    render(<Carga />)
+    montar()
     expect(screen.getByText('Sem permissão')).toBeTruthy()
     expect(screen.getByText('counting:read')).toBeTruthy()
     expect(get).not.toHaveBeenCalled()
+    // Beco sem saída: este ramo pulava o cabeçalho inteiro e não tinha
+    // NENHUM link no DOM. Ver becoSemSaida.test.tsx.
+    const link = screen.getByRole('link', { name: /voltar/i })
+    expect(link.getAttribute('href')).toBe('/novo/modules')
   })
 
-  it('sem o módulo counting, a tela bloqueia e não chama rota nenhuma', () => {
+  it('sem o módulo counting, a tela bloqueia e não chama rota nenhuma — e tem saída', () => {
+    // Estado REAL do tenant da demo (rvb só tem o módulo epi habilitado).
     auth.hasModule.mockReturnValue(false)
-    render(<Carga />)
+    montar()
     expect(screen.getByText('Módulo não habilitado')).toBeTruthy()
     expect(get).not.toHaveBeenCalled()
+    const link = screen.getByRole('link', { name: /voltar/i })
+    expect(link.getAttribute('href')).toBe('/novo/modules')
   })
 
   it('KPI de sessões em andamento é a contagem que o servidor devolveu', async () => {
     responde({ sessoes: [sessao(), sessao({ id: 'sess-2' })], conferidas: [conferida()] })
-    render(<Carga />)
+    montar()
     const kpi = (await screen.findByText('SESSÕES EM ANDAMENTO')).parentElement as HTMLElement
     expect(within(kpi).getByText('2')).toBeTruthy()
   })
@@ -144,7 +159,7 @@ describe('Carga', () => {
         { day: '2026-08-28', sessions: 2, system_total: 200, manual_total: 198, abs_error: 2, error_pct: 1.01, passed: true },
       ],
     })
-    render(<Carga />)
+    montar()
     expect(await screen.findByText('Sessões conferidas por dia')).toBeTruthy()
     expect(screen.getAllByText('28/08').length).toBeGreaterThan(0)
     expect(screen.getByText(/não há agregação por hora|Não há agregação por hora/i)).toBeTruthy()
@@ -155,7 +170,7 @@ describe('Carga', () => {
   it('sem contagem gravada, a baia NÃO mostra zero — diz que ninguém contou', async () => {
     // Nada no edge/inferência/worker escreve counting_events: total_counts = {}.
     responde({ sessoes: [sessao()] })
-    render(<Carga />)
+    montar()
     irPara(/baias/i)
     expect(await screen.findByText(/Sem contagem registrada/i)).toBeTruthy()
     expect(screen.queryByText('0')).toBeNull()
@@ -163,7 +178,7 @@ describe('Carga', () => {
 
   it('a sessão é identificada pela câmera — o UUID da baia nunca vai para a tela', async () => {
     responde({ sessoes: [sessao()] })
-    render(<Carga />)
+    montar()
     irPara(/baias/i)
     expect(await screen.findByText('Doca Expedição')).toBeTruthy()
     expect(screen.queryByText(new RegExp(BAY_UUID, 'i'))).toBeNull()
@@ -174,7 +189,7 @@ describe('Carga', () => {
 
   it('encerrar exige confirmação e chama a rota real', async () => {
     responde({ sessoes: [sessao()] })
-    render(<Carga />)
+    montar()
     irPara(/baias/i)
     const botao = await screen.findByRole('button', { name: 'Encerrar sessão' })
     fireEvent.click(botao)
@@ -187,7 +202,7 @@ describe('Carga', () => {
   it('sem counting:write, encerrar fica desabilitado e diz por quê', async () => {
     auth.can.mockImplementation((p: string) => p === 'counting:read')
     responde({ sessoes: [sessao()] })
-    render(<Carga />)
+    montar()
     irPara(/baias/i)
     const botao = (await screen.findByRole('button', {
       name: 'Encerrar sessão',
@@ -202,7 +217,7 @@ describe('Carga', () => {
         { id: 'ev-1', camera_id: CAM_UUID, class_name: 'truck', confidence: 0.91, created_at: '2026-08-29T14:22:00Z' },
       ],
     })
-    render(<Carga />)
+    montar()
     irPara(/eventos/i)
     expect(await screen.findByText('truck')).toBeTruthy()
     expect(screen.getByText('Doca Expedição')).toBeTruthy()
@@ -215,7 +230,7 @@ describe('Carga', () => {
 
   it('o período fica desabilitado onde a rota não aceita data', async () => {
     responde({ eventos: [] })
-    render(<Carga />)
+    montar()
     irPara(/eventos/i)
     const periodo = screen.getByLabelText('Período') as HTMLSelectElement
     await waitFor(() => expect(periodo.disabled).toBe(true))
@@ -224,7 +239,7 @@ describe('Carga', () => {
 
   it('o seletor de site fica desabilitado — não há filtro de site em rota nenhuma', () => {
     responde()
-    render(<Carga />)
+    montar()
     const site = screen.getByLabelText('Site') as HTMLSelectElement
     expect(site.disabled).toBe(true)
     expect(site.title).toMatch(/site_id/)
@@ -234,7 +249,7 @@ describe('Carga', () => {
     // O servidor grava só acceptance_status — não sabe QUAL contagem foi aceita,
     // nem quem aceitou, nem quando.
     responde({ conferidas: [conferida()] })
-    render(<Carga />)
+    montar()
     irPara(/validação/i)
     const sistema = (await screen.findByRole('button', {
       name: /Aceitar contagem do sistema \(142\)/,
@@ -249,14 +264,14 @@ describe('Carga', () => {
 
   it('a diferença exibida é sistema − manual, com sinal', async () => {
     responde({ conferidas: [conferida()] })
-    render(<Carga />)
+    montar()
     irPara(/validação/i)
     expect(await screen.findByText('+2')).toBeTruthy()
   })
 
   it('sem sessão conferida, o vazio explica que não existe fila de pendentes', async () => {
     responde({ conferidas: [] })
-    render(<Carga />)
+    montar()
     irPara(/validação/i)
     expect(await screen.findByText('Nenhuma sessão conferida')).toBeTruthy()
     expect(screen.getByText(/Não existe fila de pendentes/i)).toBeTruthy()
@@ -266,7 +281,7 @@ describe('Carga', () => {
 
   it('erro mostra a rota REAL e o retry refaz a chamada', async () => {
     get.mockRejectedValue(new Error('Timeout na requisicao'))
-    render(<Carga />)
+    montar()
     expect(await screen.findByText(/GET \/api\/counting\/sessions · Timeout/)).toBeTruthy()
     // A rota do desenho não existe no backend.
     expect(screen.queryByText(/\/api\/carga\//)).toBeNull()
@@ -278,11 +293,22 @@ describe('Carga', () => {
 
   it('nada de dado de baia sorteado: /api/fueling/bays e /dashboard não são chamados', async () => {
     responde({ sessoes: [sessao()], conferidas: [conferida()] })
-    render(<Carga />)
+    montar()
     irPara(/baias/i)
     await screen.findByText('Doca Expedição')
     const rotas = get.mock.calls.map((c) => String(c[0]))
     expect(rotas.some((r) => r.startsWith('/fueling/bays'))).toBe(false)
     expect(rotas.some((r) => r.startsWith('/fueling/dashboard'))).toBe(false)
+  })
+
+  it('"Voltar" é o primeiro link do cabeçalho e leva à home do usuário', async () => {
+    // Sem barra lateral própria (SEM_BARRA_LATERAL), este é o único jeito de
+    // sair do módulo — regra global, ver app/shell/becoSemSaida.test.tsx.
+    responde({ sessoes: [sessao()] })
+    montar()
+    const primeiro = (await screen.findAllByRole('link'))[0]
+    expect(primeiro.textContent?.trim()).toBe('Voltar')
+    // isSuperAdmin: false no dublê → home é a escolha de módulo.
+    expect(primeiro.getAttribute('href')).toBe('/novo/modules')
   })
 })

@@ -16,12 +16,18 @@
  *
  * Lateral própria (220px), padrão EXATO de `app/estudio/Estudio.tsx`; a do
  * Shell some via `SEM_BARRA_LATERAL`.
+ *
+ * "Voltar" no topo da lateral, mesmo padrão do Estúdio — mas por
+ * `rotaHomeDoUsuario()`, não caminho chumbado: quem entra aqui é sempre
+ * superadmin (o gate abaixo garante), então a home É `/admin` — "Voltar"
+ * devolve à Visão geral a partir de qualquer sub-rota (Tenants, Usuários...).
  */
 import { Suspense } from 'react'
-import { Building2, HardDrive, LayoutDashboard, ScrollText, Users } from 'lucide-react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { ArrowLeft, Building2, HardDrive, LayoutDashboard, ScrollText, Users } from 'lucide-react'
+import { Link, NavLink, Outlet } from 'react-router-dom'
 
 import { useAuth } from '../../hooks/useAuth'
+import { rotaHomeDoUsuario } from '../RotasNovas'
 import { SemPermissao } from '../shell/SemPermissao'
 import * as s from './Admin.css'
 
@@ -34,13 +40,17 @@ const ITENS = [
 ]
 
 export function Admin() {
-  const { can } = useAuth()
+  const { can, isSuperAdmin } = useAuth()
 
   if (!can('admin:panel')) return <SemPermissao permissao="admin:panel" />
 
   return (
     <div className={s.raiz}>
       <nav className={s.lateral} aria-label="Seções do Admin">
+        <Link to={rotaHomeDoUsuario(isSuperAdmin)} className={s.voltar}>
+          <ArrowLeft size={16} strokeWidth={1.7} aria-hidden="true" />
+          Voltar
+        </Link>
         <span className={s.lateralTitulo}>Plataforma · Admin</span>
         {ITENS.map(({ rota, rotulo, Icone }) => (
           <NavLink
