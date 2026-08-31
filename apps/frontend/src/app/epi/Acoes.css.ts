@@ -159,7 +159,18 @@ export const kanban = style({
   '@media': { 'screen and (max-width: 900px)': { gridTemplateColumns: 'minmax(0, 1fr)' } },
 })
 
-export const coluna = style({ display: 'flex', flexDirection: 'column', gap: lk.espaco.x1 })
+export const coluna = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: lk.espaco.x1,
+  // F5-LEVE (tema não pode estourar): cada coluna do kanban cresce com o
+  // nº de ações (aberta/reconhecida, sem paginação) e empurra a página
+  // inteira — rola por si só. O cálculo não desconta `nota` + `faixaTaxa`
+  // (acima do kanban, altura variável) — a folga que sobra é constante,
+  // não proporcional ao nº de cartões, que era o bug de verdade.
+  maxHeight: `calc(100vh - ${lk.medida.topbar} - ${lk.medida.padding} * 2 - var(--global-banner-offset, 0px))`,
+  overflowY: 'auto',
+})
 
 export const colunaTopo = style({
   display: 'flex',

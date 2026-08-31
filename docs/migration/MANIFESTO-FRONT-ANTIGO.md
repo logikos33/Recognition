@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 387 arquivos, 65.156 linhas
+## Situação — 387 arquivos, 65.173 linhas
 
 | status | arquivos |
 |---|---:|
@@ -243,7 +243,7 @@ apagado não são a mesma coisa.
 | `src/stores/chatStore.ts` | `INFRA` | — | 62 |
 | `src/stores/dashboardStore.ts` | `INFRA` | — | 107 |
 | `src/stores/themeStore.ts` | `INFRA` | — | 37 |
-| `src/styles/global.css.ts` | `INFRA` | — | 71 |
+| `src/styles/global.css.ts` | `INFRA` | — | 88 |
 | `src/styles/theme.css.ts` | `INFRA` | — | 95 |
 | `src/styles/themes/cyberpunk.css.ts` | `INFRA` | — | 86 |
 | `src/styles/themes/professional.css.ts` | `INFRA` | — | 88 |
