@@ -141,11 +141,26 @@ describe('fila por incerteza (delta §2 item 9)', () => {
   })
 
   it('a tela abre no mais duvidoso, não no mais recente', async () => {
-    // O servidor devolve por created_at DESC. Se a tela só repetir essa ordem,
-    // o operador gasta o clique onde o modelo já acerta.
-    get.mockResolvedValue(fila([A, B, C]))
+    // Rodada 4: quem ordena por incerteza é o SERVIDOR agora — o mock já
+    // chega pré-ordenado (B, C, A — a ordem que `get_human_queue` devolveria
+    // para este trio, sem rajada). Se a tela mostrasse por `created_at`
+    // (ordem crua de cadastro, A/B/C), o operador gastaria o clique onde o
+    // modelo já acerta.
+    get.mockResolvedValue(fila([B, C, A]))
     montar()
     expect(await screen.findByText('Sem colete')).toBeTruthy()
+  })
+
+  it('a ordem renderizada é a ordem que o SERVIDOR devolveu — o cliente não reordena mais', async () => {
+    // Teste de mutação (rodada 4): se `ordenarPorIncerteza(itens)` voltar a
+    // ser chamado em `carregar`, este teste fica VERMELHO. O mock devolve A
+    // primeiro DE PROPÓSITO — A é o MENOS incerto (0,40) dos três; por
+    // incerteza ascendente o cliente mostraria B (0,02) primeiro. Aqui tem
+    // de ser A, porque é `itens[0]` do servidor e o cliente não reordena.
+    get.mockResolvedValue(fila([A, C, B]))
+    montar()
+    expect(await screen.findByText('Sem capacete')).toBeTruthy() // A, item[0] do servidor
+    expect(screen.queryByText('Sem colete')).toBeNull() // B (mais incerto) NÃO é o primeiro
   })
 })
 
@@ -153,7 +168,7 @@ describe('fila por incerteza (delta §2 item 9)', () => {
 
 describe('avanço da fila (PRs 496, 500, 487)', () => {
   it('veredito vai para o alerta na tela e avança para o próximo da ordem', async () => {
-    get.mockResolvedValue(fila([A, B, C]))
+    get.mockResolvedValue(fila([B, C, A])) // ordem do servidor — ver "fila por incerteza"
     montar()
     await screen.findByText('Sem colete') // B, o mais duvidoso
 
@@ -166,7 +181,7 @@ describe('avanço da fila (PRs 496, 500, 487)', () => {
   it('a tecla C decide o item CORRENTE, não o do primeiro render (ref atrasado)', async () => {
     // PR 496: listener registrado uma vez fica preso à closure do primeiro
     // render. O operador vê C na tela, aperta C, e o veredito cai em B.
-    get.mockResolvedValue(fila([A, B, C]))
+    get.mockResolvedValue(fila([B, C, A]))
     montar()
     await screen.findByText('Sem colete')
 
@@ -209,7 +224,7 @@ describe('avanço da fila (PRs 496, 500, 487)', () => {
     // fosse reordenado por incerteza junto com ela), a ordem mudaria sozinha no
     // meio da decisão.
     vi.useFakeTimers()
-    get.mockResolvedValueOnce(fila([A, B])) //      ordem local: B, A
+    get.mockResolvedValueOnce(fila([B, A])) // ordem do servidor
     montar()
     await vi.waitFor(() => expect(screen.getByText('Sem colete')).toBeTruthy())
 
@@ -229,7 +244,7 @@ describe('avanço da fila (PRs 496, 500, 487)', () => {
 
   it('reabastecimento não duplica o que já está na fila (dedup por id, não OFFSET)', async () => {
     vi.useFakeTimers()
-    get.mockResolvedValue(fila([A, B])) // as MESMAS duas linhas, de novo
+    get.mockResolvedValue(fila([B, A])) // as MESMAS duas linhas, de novo — ordem do servidor
     montar()
     await vi.waitFor(() => expect(screen.getByText('Sem colete')).toBeTruthy())
 
@@ -247,7 +262,7 @@ describe('avanço da fila (PRs 496, 500, 487)', () => {
   it('decidido NÃO sai da fila: ← volta e mostra o que foi decidido', async () => {
     // Remover o decidido encolheria o array sob o índice — o "próximo" viraria
     // o item errado e o ← do desenho não teria para onde voltar.
-    get.mockResolvedValue(fila([A, B]))
+    get.mockResolvedValue(fila([B, A])) // ordem do servidor
     montar()
     await screen.findByText('Sem colete')
 
@@ -345,7 +360,7 @@ describe('contrato do desenho', () => {
   })
 
   it('progresso e restantes saem do estado real da fila, não de constante', async () => {
-    get.mockResolvedValue(fila([A, B, C]))
+    get.mockResolvedValue(fila([B, C, A])) // ordem do servidor
     montar()
     await screen.findByText('Sem colete')
 
@@ -440,7 +455,7 @@ describe('dois revisores ao mesmo tempo', () => {
     // veredito alheio. Dado de auditoria trocado sem ninguém saber, e com dois
     // revisores isso acontecia no primeiro dia.
     vi.useFakeTimers()
-    get.mockResolvedValueOnce(fila([A, B, C])) // ordem local: B, C, A
+    get.mockResolvedValueOnce(fila([B, C, A])) // ordem do servidor
     montar()
     await vi.waitFor(() => expect(screen.getByText('Sem colete')).toBeTruthy()) // B
     expect(screen.getByText('3 RESTANTES')).toBeTruthy()
@@ -515,7 +530,7 @@ describe('"N RESTANTES" usa a verdade do servidor (bug: "Fila zerada" com centen
   })
 
   it('sem `total` na resposta (backend antigo/mock parcial), cai para a contagem local', async () => {
-    get.mockResolvedValue({ success: true, message: 'OK', data: { items: [A, B], count: 2 } })
+    get.mockResolvedValue({ success: true, message: 'OK', data: { items: [B, A], count: 2 } })
     montar()
     await screen.findByText('Sem colete')
     expect(screen.getByText('2 RESTANTES')).toBeTruthy()
@@ -525,7 +540,7 @@ describe('"N RESTANTES" usa a verdade do servidor (bug: "Fila zerada" com centen
     // O servidor só sabe da minha decisão no PRÓXIMO sync (até 15s depois) —
     // sem descontar local, "N RESTANTES" ficaria travado no valor antigo por
     // até 15s após cada clique, mesmo com feedback visual de "Confirmado".
-    get.mockResolvedValue(fila([A, B, C], 50)) // servidor diz 50, só 3 vieram no lote
+    get.mockResolvedValue(fila([B, C, A], 50)) // servidor diz 50, só 3 vieram no lote
     montar()
     await screen.findByText('Sem colete')
     expect(screen.getByText('50 RESTANTES')).toBeTruthy()

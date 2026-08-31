@@ -52,34 +52,31 @@
  * ─── FILA POR INCERTEZA (delta §2 item 9 — não podia se perder) ──────────────
  *
  * O que ordena a fila é o quanto o modelo está EM DÚVIDA, não a hora do
- * alerta. `ordenarPorIncerteza` reproduz, no cliente, a mesma expressão que o
- * backend usa em `FrameRepository._INCERTEZA_SQL`:
+ * alerta. **Quem ordena é o SERVIDOR** (`get_human_queue`,
+ * verification_service.py), em DUAS camadas: 1) `rank_na_rajada` — dentro de
+ * cada rajada (câmera+classe repetida em <60s), o mais incerto vira rank 1,
+ * e um representante de CADA rajada aparece antes de qualquer rank 2 (dedup
+ * NÃO filtra ninguém, rodada 3 — só reordena: irmãos de rajada continuam
+ * contados e voltam depois); 2) incerteza (`ABS(confidence - 0.5)`) desempata
+ * dentro da camada. Antes ordenava por `created_at DESC`, e como o endpoint
+ * não pagina (`LIMIT` corta DE VERDADE), a ordem decidia QUAIS itens
+ * apareciam: medido no DEV, os 50 mais recentes tinham confiança 0,90-1,00
+ * (o modelo já tinha certeza) e o operador nunca alcançava os casos
+ * ambíguos.
  *
- *     MIN(ABS(confidence - 0.5))  sobre as propostas,  COALESCE(..., 1.0)
- *
- * O backend (`get_human_queue`) TAMBÉM ordena agora, em DUAS camadas
- * (verification_service.py): 1) `rank_na_rajada` — dentro de cada rajada
- * (câmera+classe repetida em <60s), o mais incerto vira rank 1, e um
- * representante de CADA rajada aparece antes de qualquer rank 2 (dedup NÃO
- * filtra mais ninguém, rodada 3 — só reordena: irmãos de rajada continuam
- * contados e voltam depois); 2) incerteza desempata dentro da camada. Antes
- * ordenava por `created_at DESC`, e como o endpoint não pagina (`LIMIT` corta
- * DE VERDADE), a ordem decidia QUAIS itens apareciam: medido no DEV, os 50
- * mais recentes tinham confiança 0,90-1,00 (o modelo já tinha certeza) e o
- * operador nunca alcançava os casos ambíguos.
- *
- * ⚠️ `ordenarPorIncerteza` aqui no cliente reordena o LOTE só por incerteza
- * — sem noção de rajada. Isso DESFAZ a camada 1 do backend (um irmão de
- * rajada com incerteza baixa pode intercalar antes do representante de OUTRA
- * rajada). Achado ao implementar a rodada 3, registrado e NÃO consertado
- * aqui (fora do pedido daquela rodada — precisa ensinar o cliente sobre
- * `rank_na_rajada`, ou confiar 100% na ordem do servidor, o que exigiria
- * reescrever os mocks dos testes de sequência abaixo). Continua valendo por
- * usar o MIN sobre `violations[]` (sinal mais fino que só
- * `alerts.confidence`) e por não depender do backend nunca regredir a ordem.
- * Sem paginação, ordenar de novo no cliente não perde nada: a fila inteira
- * já veio. **A ordenação é aplicada ao LOTE, antes de anexar** — nunca à
- * fila que já está na tela (regra 1).
+ * ⚠️ **O CLIENTE NÃO REORDENA o lote (rodada 4).** Chegou a reordenar por
+ * `ordenarPorIncerteza` (só incerteza, sem noção de rajada) — isso DESFAZIA
+ * a camada 1 do servidor (um irmão de rajada com incerteza baixa intercalava
+ * antes do representante de OUTRA rajada, devolvendo a fila à ordem que a
+ * rodada 1 já tinha reprovado). `carregar` agora passa `itens` direto pra
+ * `anexarSemRepetir` — a ordem renderizada É a ordem que o servidor mandou,
+ * ponto. `incertezaDe`/`ordenarPorIncerteza` continuam exportadas (testadas
+ * como funções puras, documentam a fórmula — mesma de
+ * `FrameRepository._INCERTEZA_SQL`) mas NINGUÉM as chama no caminho de
+ * render; não reintroduza a chamada em `carregar` (teste de mutação:
+ * "a ordem renderizada é a ordem que o SERVIDOR devolveu"). **A ordenação é
+ * aplicada UMA VEZ, no servidor** — nunca de novo no cliente, nunca à fila
+ * que já está na tela (regra 1).
  *
  * ─── PARA O DESIGN / PARA O BACKEND ─────────────────────────────────────────
  *
@@ -292,8 +289,11 @@ export function Verificacao() {
       const continuam = filaRef.current.filter(
         (i) => truncado || idsServidor.has(i.id) || Boolean(decididosRef.current[i.id]),
       )
-      // Ordena o LOTE, anexa sem repetir. Nunca reordena quem já ficou.
-      const nova = anexarSemRepetir(continuam, ordenarPorIncerteza(itens))
+      // Anexa sem repetir, na ORDEM QUE O SERVIDOR MANDOU — nunca reordena
+      // quem já ficou, e não reordena o lote novo por conta própria (ver
+      // docblock do topo: o servidor já rankeia por rajada + incerteza; um
+      // resort aqui embaralharia esse trabalho de volta pra ordem errada).
+      const nova = anexarSemRepetir(continuam, itens)
 
       // O item na tela sumiu e não fui eu quem decidiu: outra pessoa revisou
       // por fora enquanto o operador olhava para ele. Índice pelo ID, nunca
