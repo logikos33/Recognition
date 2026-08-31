@@ -100,9 +100,9 @@ describe('CameraModelScope', () => {
 
     const sel = screen.getByLabelText('Modelo da câmera Canal 8') as HTMLSelectElement
     expect(sel.value).toBe('m-v9')
-    expect((screen.getByLabelText('Classe Luvas em Canal 8') as HTMLInputElement).checked).toBe(true)
-    expect((screen.getByLabelText('Classe Oculos em Canal 8') as HTMLInputElement).checked).toBe(true)
-    expect((screen.getByLabelText('Classe Botas em Canal 8') as HTMLInputElement).checked).toBe(false)
+    expect(screen.getByLabelText('Classe Luvas em Canal 8').getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByLabelText('Classe Oculos em Canal 8').getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByLabelText('Classe Botas em Canal 8').getAttribute('aria-pressed')).toBe('false')
     expect(screen.queryByLabelText(/__sem_suporte_treino__/)).toBeNull()
     // Colete está em __sem_suporte_treino__ → o modelo não a prevê → não é escopo
     expect(screen.queryByLabelText('Classe Colete em Canal 8')).toBeNull()
@@ -175,7 +175,7 @@ describe('CameraModelScope', () => {
     })
     // Linha atualizada com o deployment devolvido → botão volta a desabilitar
     await waitFor(() => expect((screen.getByLabelText('Salvar escopo de Canal 8') as HTMLButtonElement).disabled).toBe(true))
-    expect((screen.getByLabelText('Classe Oculos em Canal 8') as HTMLInputElement).checked).toBe(false)
+    expect(screen.getByLabelText('Classe Oculos em Canal 8').getAttribute('aria-pressed')).toBe('false')
   })
 
   it('escolher modelo numa câmera sem deployment marca todas as classes do modelo', async () => {
@@ -183,7 +183,7 @@ describe('CameraModelScope', () => {
     await waitFor(() => expect(screen.getByLabelText('Modelo da câmera Canal 6')).toBeDefined())
 
     fireEvent.change(screen.getByLabelText('Modelo da câmera Canal 6'), { target: { value: 'm-v9' } })
-    expect((screen.getByLabelText('Classe Botas em Canal 6') as HTMLInputElement).checked).toBe(true)
+    expect(screen.getByLabelText('Classe Botas em Canal 6').getAttribute('aria-pressed')).toBe('true')
     fireEvent.click(screen.getByLabelText('Salvar escopo de Canal 6'))
 
     await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/cameras/cam-2/model-config', {
@@ -198,7 +198,7 @@ describe('CameraModelScope', () => {
 
     expect(screen.getByText(/somente leitura/i)).toBeDefined()
     expect((screen.getByLabelText('Modelo da câmera Canal 8') as HTMLSelectElement).disabled).toBe(true)
-    expect((screen.getByLabelText('Classe Luvas em Canal 8') as HTMLInputElement).disabled).toBe(true)
+    expect((screen.getByLabelText('Classe Luvas em Canal 8') as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getByLabelText('Salvar escopo de Canal 8') as HTMLButtonElement).disabled).toBe(true)
 
     fireEvent.click(screen.getByLabelText('Classe Luvas em Canal 8'))
@@ -223,9 +223,9 @@ describe('CameraModelScope', () => {
     render(<CameraModelScope classesCatalogo={[]} />)
     await waitFor(() => expect(screen.getByLabelText('Classe Luvas em Canal 8')).toBeDefined())
 
-    expect((screen.getByLabelText('Classe Luvas em Canal 8') as HTMLInputElement).checked).toBe(false)
-    expect((screen.getByLabelText('Classe Oculos em Canal 8') as HTMLInputElement).checked).toBe(false)
-    expect((screen.getByLabelText('Classe Botas em Canal 8') as HTMLInputElement).checked).toBe(false)
+    expect(screen.getByLabelText('Classe Luvas em Canal 8').getAttribute('aria-pressed')).toBe('false')
+    expect(screen.getByLabelText('Classe Oculos em Canal 8').getAttribute('aria-pressed')).toBe('false')
+    expect(screen.getByLabelText('Classe Botas em Canal 8').getAttribute('aria-pressed')).toBe('false')
     expect(screen.getByText(/marque ≥1 classe/)).toBeDefined()
     // Corrigível: marcar 1 classe já habilita Salvar (antes `mudou` era false)
     fireEvent.click(screen.getByLabelText('Classe Luvas em Canal 8'))
