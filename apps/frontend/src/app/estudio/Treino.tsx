@@ -29,6 +29,8 @@ import { useTrainingSocket } from '../../hooks/useTrainingSocket'
 import { InfoTooltip } from '../../components/ui/InfoTooltip/InfoTooltip'
 import {
   FIELD_HELP,
+  formatarMetricaModelo,
+  metricaAusente,
   PRESET_LABELS,
   TRAINING_STATUS_OVERRIDES,
   humanize,
@@ -360,22 +362,23 @@ export function Treino() {
 
             {currentJob.status === 'completed' && currentJob.metrics && Object.keys(currentJob.metrics).length > 0 && (
               <div className={s.metricas}>
-                {currentJob.metrics.map50 != null && (
+                {/* 0 é tratado como não registrada (LEI DA CASA) — nunca "0,0%". */}
+                {!metricaAusente(currentJob.metrics.map50) && (
                   <div className={s.metrica}>
                     <span className={s.metricaRotulo}>mAP@50</span>
-                    <span className={`${s.metricaValor} ${s.metricaDestaque}`}>{(currentJob.metrics.map50 * 100).toFixed(1)}%</span>
+                    <span className={`${s.metricaValor} ${s.metricaDestaque}`}>{formatarMetricaModelo(currentJob.metrics.map50)}</span>
                   </div>
                 )}
-                {currentJob.metrics.precision != null && (
+                {!metricaAusente(currentJob.metrics.precision) && (
                   <div className={s.metrica}>
                     <span className={s.metricaRotulo}>Precisão</span>
-                    <span className={s.metricaValor}>{(currentJob.metrics.precision * 100).toFixed(1)}%</span>
+                    <span className={s.metricaValor}>{formatarMetricaModelo(currentJob.metrics.precision)}</span>
                   </div>
                 )}
-                {currentJob.metrics.recall != null && (
+                {!metricaAusente(currentJob.metrics.recall) && (
                   <div className={s.metrica}>
                     <span className={s.metricaRotulo}>Cobertura</span>
-                    <span className={s.metricaValor}>{(currentJob.metrics.recall * 100).toFixed(1)}%</span>
+                    <span className={s.metricaValor}>{formatarMetricaModelo(currentJob.metrics.recall)}</span>
                   </div>
                 )}
               </div>
@@ -429,21 +432,22 @@ export function Treino() {
                 {job.current_epoch}/{job.total_epochs} ép.
                 <InfoTooltip text={FIELD_HELP.epochs} />
               </span>
-              {job.metrics?.map50 != null && (
+              {/* 0 é tratado como não registrada (LEI DA CASA) — nunca "0,0%". */}
+              {!metricaAusente(job.metrics?.map50) && (
                 <span className={s.historicoEpocas}>
-                  mAP@50 {(job.metrics.map50 * 100).toFixed(1)}%
+                  mAP@50 {formatarMetricaModelo(job.metrics?.map50)}
                   <InfoTooltip text={FIELD_HELP.map50} />
                 </span>
               )}
-              {job.metrics?.precision != null && (
+              {!metricaAusente(job.metrics?.precision) && (
                 <span className={s.historicoEpocas}>
-                  Precisão {(job.metrics.precision * 100).toFixed(1)}%
+                  Precisão {formatarMetricaModelo(job.metrics?.precision)}
                   <InfoTooltip text={FIELD_HELP.precision} />
                 </span>
               )}
-              {job.metrics?.recall != null && (
+              {!metricaAusente(job.metrics?.recall) && (
                 <span className={s.historicoEpocas}>
-                  Cobertura {(job.metrics.recall * 100).toFixed(1)}%
+                  Cobertura {formatarMetricaModelo(job.metrics?.recall)}
                   <InfoTooltip text={FIELD_HELP.recall} />
                 </span>
               )}

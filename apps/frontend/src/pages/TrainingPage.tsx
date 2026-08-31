@@ -63,7 +63,7 @@ import type { TrainingJob, TrainedModel, YoloClass, ApiResponse } from '../types
 import * as s from './TrainingPage.css'
 import { InfoTooltip } from '../components/ui/InfoTooltip/InfoTooltip'
 import {
-  FIELD_HELP, PRESET_LABELS, TRAINING_STATUS_OVERRIDES,
+  FIELD_HELP, formatarMetricaModelo, metricaAusente, PRESET_LABELS, TRAINING_STATUS_OVERRIDES,
   humanize, labelForModule, statusToLabel,
 } from '../utils/labels'
 
@@ -583,14 +583,15 @@ export function TrainingPage() {
                           {displayModelName(activeModel.name)}
                         </span>
                         <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
-                          {activeModel.map50 != null && (
-                            <MetricPill label="mAP@50" value={`${(activeModel.map50 * 100).toFixed(1)}%`} color="#22d3ee" />
+                          {/* 0 é tratado como não registrada (LEI DA CASA) — nunca "0,0%". */}
+                          {!metricaAusente(activeModel.map50) && (
+                            <MetricPill label="mAP@50" value={formatarMetricaModelo(activeModel.map50)} color="#22d3ee" />
                           )}
-                          {activeModel.precision != null && (
-                            <MetricPill label="Precisão" value={`${(activeModel.precision * 100).toFixed(1)}%`} color={vars.color.primaryLight} />
+                          {!metricaAusente(activeModel.precision) && (
+                            <MetricPill label="Precisão" value={formatarMetricaModelo(activeModel.precision)} color={vars.color.primaryLight} />
                           )}
-                          {activeModel.recall != null && (
-                            <MetricPill label="Cobertura" value={`${(activeModel.recall * 100).toFixed(1)}%`} color="#34d399" />
+                          {!metricaAusente(activeModel.recall) && (
+                            <MetricPill label="Cobertura" value={formatarMetricaModelo(activeModel.recall)} color="#34d399" />
                           )}
                         </div>
                         <div style={{ display: 'flex', gap: 12, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -693,16 +694,17 @@ export function TrainingPage() {
                           )}
                         </div>
                       </div>
-                      {(model.map50 != null || model.precision != null || model.recall != null) && (
+                      {/* 0 é tratado como não registrada (LEI DA CASA) — nunca "0,0%". */}
+                      {(!metricaAusente(model.map50) || !metricaAusente(model.precision) || !metricaAusente(model.recall)) && (
                         <div className={s.modelMeta} style={{ marginTop: 8, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                          {model.map50 != null && (
-                            <MetricPill label="mAP@50" value={`${(model.map50 * 100).toFixed(1)}%`} color="#22d3ee" />
+                          {!metricaAusente(model.map50) && (
+                            <MetricPill label="mAP@50" value={formatarMetricaModelo(model.map50)} color="#22d3ee" />
                           )}
-                          {model.precision != null && (
-                            <MetricPill label="Precisão" value={`${(model.precision * 100).toFixed(1)}%`} color={vars.color.primaryLight} />
+                          {!metricaAusente(model.precision) && (
+                            <MetricPill label="Precisão" value={formatarMetricaModelo(model.precision)} color={vars.color.primaryLight} />
                           )}
-                          {model.recall != null && (
-                            <MetricPill label="Cobertura" value={`${(model.recall * 100).toFixed(1)}%`} color="#34d399" />
+                          {!metricaAusente(model.recall) && (
+                            <MetricPill label="Cobertura" value={formatarMetricaModelo(model.recall)} color="#34d399" />
                           )}
                         </div>
                       )}
@@ -902,14 +904,15 @@ export function TrainingPage() {
                 {/* Completed metrics */}
                 {currentJob.status === 'completed' && currentJob.metrics && Object.keys(currentJob.metrics).length > 0 && (
                   <div style={{ display: 'flex', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
-                    {currentJob.metrics.map50 != null && (
-                      <MetricPill label="mAP@50" value={`${(currentJob.metrics.map50 * 100).toFixed(1)}%`} color="#22d3ee" />
+                    {/* 0 é tratado como não registrada (LEI DA CASA) — nunca "0,0%". */}
+                    {!metricaAusente(currentJob.metrics.map50) && (
+                      <MetricPill label="mAP@50" value={formatarMetricaModelo(currentJob.metrics.map50)} color="#22d3ee" />
                     )}
-                    {currentJob.metrics.precision != null && (
-                      <MetricPill label="Precisão" value={`${(currentJob.metrics.precision * 100).toFixed(1)}%`} color={vars.color.primaryLight} />
+                    {!metricaAusente(currentJob.metrics.precision) && (
+                      <MetricPill label="Precisão" value={formatarMetricaModelo(currentJob.metrics.precision)} color={vars.color.primaryLight} />
                     )}
-                    {currentJob.metrics.recall != null && (
-                      <MetricPill label="Cobertura" value={`${(currentJob.metrics.recall * 100).toFixed(1)}%`} color="#34d399" />
+                    {!metricaAusente(currentJob.metrics.recall) && (
+                      <MetricPill label="Cobertura" value={formatarMetricaModelo(currentJob.metrics.recall)} color="#34d399" />
                     )}
                   </div>
                 )}
@@ -1005,13 +1008,13 @@ export function TrainingPage() {
                         {job.current_epoch}/{job.total_epochs}
                       </td>
                       <td style={{ padding: '8px 10px', color: '#22d3ee', fontFamily: 'monospace' }}>
-                        {job.metrics?.map50 != null ? `${(job.metrics.map50 * 100).toFixed(1)}%` : '—'}
+                        {formatarMetricaModelo(job.metrics?.map50)}
                       </td>
                       <td style={{ padding: '8px 10px', color: vars.color.primaryLight, fontFamily: 'monospace' }}>
-                        {job.metrics?.precision != null ? `${(job.metrics.precision * 100).toFixed(1)}%` : '—'}
+                        {formatarMetricaModelo(job.metrics?.precision)}
                       </td>
                       <td style={{ padding: '8px 10px', color: '#34d399', fontFamily: 'monospace' }}>
-                        {job.metrics?.recall != null ? `${(job.metrics.recall * 100).toFixed(1)}%` : '—'}
+                        {formatarMetricaModelo(job.metrics?.recall)}
                       </td>
                       <td style={{ padding: '8px 10px', color: vars.color.textMuted, whiteSpace: 'nowrap' }}>
                         {fmtDate(job.created_at)}

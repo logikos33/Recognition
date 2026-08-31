@@ -23,6 +23,7 @@ import { Cpu } from 'lucide-react'
 import { countingService } from '../../services/countingService'
 import { trainingService } from '../../services/trainingService'
 import { nomeInternoOuCliente } from '../../services/modelDisplay'
+import { metricaAusente } from '../../utils/labels'
 import { useToast } from '../ui/Toast/useToast'
 import { useAuth } from '../../hooks/useAuth'
 import { Badge } from '../ui/Badge/Badge'
@@ -57,7 +58,8 @@ const FRAMEWORK_LABELS: Record<string, string> = {
 
 function modelLabel(m: ModelOption, isSuperAdmin: boolean): string {
   const name = nomeInternoOuCliente(m, isSuperAdmin)
-  return m.map50 != null ? `${name} (mAP50 ${(m.map50 * 100).toFixed(0)}%)` : name
+  // 0 é tratado como não registrada (LEI DA CASA) — nunca "(mAP50 0%)".
+  return metricaAusente(m.map50) ? name : `${name} (mAP50 ${((m.map50 as number) * 100).toFixed(0)}%)`
 }
 
 export function CameraModelAssignment({ cameraId }: { cameraId: string }) {

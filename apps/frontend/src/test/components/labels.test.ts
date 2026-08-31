@@ -4,19 +4,46 @@ import {
   COUNTING_SESSION_OVERRIDES,
   DIRECTION_LABELS,
   INTEGRATION_LABELS,
+  METRICA_AUSENTE,
   MODULE_LABELS,
   PERIOD_LABELS,
   PRESET_LABELS,
   ROLE_LABELS,
   STATUS_LABELS,
   TRAINING_STATUS_OVERRIDES,
+  formatarMetricaModelo,
   humanize,
   labelForClass,
   labelForModule,
+  metricaAusente,
   roleLabel,
   statusToLabel,
 } from '../../utils/labels'
 import { statusToBadgeVariant } from '../../components/ui/Badge/Badge'
+
+describe('labels — métrica de modelo ausente vs medida (LEI DA CASA: zero é uma afirmação)', () => {
+  it('0, null e undefined contam como ausente', () => {
+    expect(metricaAusente(0)).toBe(true)
+    expect(metricaAusente(null)).toBe(true)
+    expect(metricaAusente(undefined)).toBe(true)
+  })
+
+  it('um valor medido real (mesmo pequeno) NÃO conta como ausente', () => {
+    expect(metricaAusente(0.001)).toBe(false)
+    expect(metricaAusente(0.87)).toBe(false)
+  })
+
+  it('métrica ausente formata como "—", nunca "0.0%"', () => {
+    expect(formatarMetricaModelo(0)).toBe(METRICA_AUSENTE)
+    expect(formatarMetricaModelo(null)).toBe(METRICA_AUSENTE)
+    expect(formatarMetricaModelo(undefined)).toBe(METRICA_AUSENTE)
+  })
+
+  it('métrica medida formata como percentual', () => {
+    expect(formatarMetricaModelo(0.87)).toBe('87.0%')
+    expect(formatarMetricaModelo(0.8, 0)).toBe('80%')
+  })
+})
 
 describe('labels — labelForClass', () => {
   it('prefere display_name da API sobre o mapa estático', () => {

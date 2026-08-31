@@ -2,7 +2,7 @@ import { CheckCircle, XCircle } from 'lucide-react'
 import * as s from './admin.css'
 import type { TrainingApproval } from '../types/admin'
 import { InfoTooltip } from '../../../components/ui/InfoTooltip/InfoTooltip'
-import { FIELD_HELP, labelForModule } from '../../../utils/labels'
+import { FIELD_HELP, formatarMetricaModelo, labelForModule, metricaAusente } from '../../../utils/labels'
 
 interface Props {
   approval: TrainingApproval
@@ -26,8 +26,9 @@ export function TrainingApprovalCard({ approval, onApprove, onReject }: Props) {
       </div>
 
       <div className={s.twoColumn} style={{ fontSize: 12, marginBottom: 12 }}>
-        {m.mAP50 !== undefined && <div><span className={s.muted}>mAP50 <InfoTooltip text={FIELD_HELP.map50} /></span> {(m.mAP50 * 100).toFixed(1)}%</div>}
-        {m.mAP50_95 !== undefined && <div><span className={s.muted}>mAP50-95 <InfoTooltip text={FIELD_HELP.map50_95} /></span> {(m.mAP50_95 * 100).toFixed(1)}%</div>}
+        {/* 0 é tratado como não registrada (LEI DA CASA) — nunca "0,0%". */}
+        {!metricaAusente(m.mAP50) && <div><span className={s.muted}>mAP50 <InfoTooltip text={FIELD_HELP.map50} /></span> {formatarMetricaModelo(m.mAP50)}</div>}
+        {!metricaAusente(m.mAP50_95) && <div><span className={s.muted}>mAP50-95 <InfoTooltip text={FIELD_HELP.map50_95} /></span> {formatarMetricaModelo(m.mAP50_95)}</div>}
         {m.dataset_size !== undefined && <div><span className={s.muted}>Dataset <InfoTooltip text={FIELD_HELP.dataset} /></span> {m.dataset_size} imgs</div>}
         {m.epochs !== undefined && <div><span className={s.muted}>Épocas <InfoTooltip text={FIELD_HELP.epochs} /></span> {m.epochs}</div>}
       </div>

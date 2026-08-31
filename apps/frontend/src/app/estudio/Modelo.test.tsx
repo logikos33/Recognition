@@ -135,6 +135,15 @@ describe('Modelo — lista e destaque do ativo', () => {
     expect(screen.getAllByText(/ativo/i).length).toBeGreaterThan(0)
   })
 
+  it('métrica 0 (zero literal, não NULL) mostra "—" com rótulo "métrica não registrada" — NUNCA "0.0%" (LEI DA CASA)', async () => {
+    responde([modelo({ id: 'm-zero', is_active: true, map50: 0, precision: 0, recall: 0 })])
+    monta()
+    expect(await screen.findByText('Modelo ativo')).toBeTruthy()
+    expect(screen.queryByText(/0\.0%/)).toBeNull()
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+    expect(screen.getAllByLabelText(/métrica não registrada/i).length).toBeGreaterThan(0)
+  })
+
   it('sem modelo ativo, diz isso em vez de inventar um destaque', async () => {
     responde([modelo({ is_active: false })])
     monta()
