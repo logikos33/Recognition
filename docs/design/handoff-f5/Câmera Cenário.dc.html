@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:#23242F;border-radius:5px}</style>
+</helmet>
+<div style="width:100%;height:100vh;display:flex;flex-direction:column;background:#0A0A0F" data-screen-label="Câmera · Cenário (zonas)">
+  <dc-import name="EPI Topbar" crumb2="Câmeras & Sites" crumb3="CAM-04 Expedição · Cenário" style="flex:none" hint-size="100%,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <dc-import name="EPI Sidebar" ativa="Câmeras & Sites" style="flex:none;align-self:stretch" hint-size="237px,100%"></dc-import>
+    <main style="flex:1;min-width:0;overflow:auto;position:relative">
+      <sc-if value="{{ carregado }}" hint-placeholder-val="{{ true }}">
+        <div style="max-width:1360px;margin:0 auto;padding:20px 24px;box-sizing:border-box;display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <a href="Câmera Operações.dc.html" style="font-size:13px;font-weight:600">← Operações</a>
+            <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:24px">Cenário — CAM-04 Expedição</h1>
+            <span style="font-size:12.5px;color:#8A8F98">o que cada pedaço da imagem exige</span>
+            <div style="flex:1"></div>
+            <button onClick="{{ addZona }}" style="height:38px;display:flex;align-items:center;gap:8px;padding:0 15px;border:1px solid #23242F;border-radius:8px;background:transparent;color:#F4F6F8;font-family:'Inter';font-size:13px;font-weight:600;cursor:pointer" style-hover="border-color:#00E5FF;color:#00E5FF">
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><path d="M12 5v14M5 12h14"></path></svg>
+              Nova zona
+            </button>
+            <button style="height:38px;padding:0 15px;border:1px solid #23242F;border-radius:8px;background:transparent;color:#F4F6F8;font-family:'Inter';font-size:13px;font-weight:600;cursor:pointer" style-hover="border-color:#00E5FF;color:#00E5FF">Nova linha de contagem</button>
+          </div>
+          <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
+            <div style="flex:1;min-width:420px;display:flex;flex-direction:column;gap:10px">
+              <div style="position:relative;aspect-ratio:16/9;border-radius:12px;overflow:hidden;border:1px solid #23242F;background:linear-gradient(200deg,#191822 0%,#0F0F16 60%,#0B0B12 100%)">
+                <span style="position:absolute;top:10px;left:10px;z-index:5;background:rgba(10,10,15,.78);border-radius:5px;padding:4px 9px;font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.1em">FRAME DE REFERÊNCIA · HOJE 14:20</span>
+                <span style="position:absolute;top:10px;right:10px;z-index:5;background:rgba(10,10,15,.78);border-radius:5px;padding:4px 9px;font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98;max-width:34%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">ARRASTE AS ALÇAS PARA AJUSTAR</span>
+                <sc-for list="{{ zonas }}" as="z" hint-placeholder-count="2">
+                  <div onClick="{{ z.sel }}" style="position:absolute;top:{{ z.t }};left:{{ z.l }};width:{{ z.w }};height:{{ z.h }};border:2px {{ z.estilo }} {{ z.corBorda }};background:{{ z.fill }};border-radius:4px;cursor:pointer;z-index:3">
+                    <span style="position:absolute;top:-22px;left:-2px;display:flex;align-items:center;gap:5px;background:{{ z.tagBg }};color:{{ z.tagCor }};font-family:'JetBrains Mono';font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:3px;white-space:nowrap">{{ z.nome }}</span>
+                    <sc-if value="{{ z.ativa }}" hint-placeholder-val="{{ false }}">
+                      <span style="position:absolute;top:-4px;left:-4px;width:8px;height:8px;background:#00E5FF;border-radius:2px"></span>
+                      <span style="position:absolute;top:-4px;right:-4px;width:8px;height:8px;background:#00E5FF;border-radius:2px"></span>
+                      <span style="position:absolute;bottom:-4px;left:-4px;width:8px;height:8px;background:#00E5FF;border-radius:2px"></span>
+                      <span style="position:absolute;bottom:-4px;right:-4px;width:8px;height:8px;background:#00E5FF;border-radius:2px"></span>
+                    </sc-if>
+                  </div>
+                </sc-for>
+                <div style="position:absolute;top:18%;left:64%;width:2px;height:70%;background:repeating-linear-gradient(#F4F6F8 0 8px,transparent 8px 15px);z-index:2"></div>
+                <span style="position:absolute;top:12%;left:59%;font-family:'JetBrains Mono';font-size:9.5px;color:#8A8F98;background:rgba(10,10,15,.78);border-radius:3px;padding:2px 7px;z-index:2">LINHA · EXPEDIÇÃO →</span>
+              </div>
+              <div style="display:flex;gap:10px;font-size:12px;color:#8A8F98;line-height:1.5">
+                <span style="flex:1">Zona sem nenhuma classe exigida não dispara nada — o aviso âmbar na lista aponta isso.</span>
+                <span style="flex:1">A linha de contagem pertence à operação de Carga; direção da seta = sentido contado.</span>
+              </div>
+            </div>
+            <div style="width:440px;max-width:100%;flex:none;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;flex-direction:column;background:#14141C;border:1px solid #23242F;border-radius:12px;overflow:hidden">
+                <div style="display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid #23242F">
+                  <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">O QUE CADA ZONA EXIGE</span>
+                  <span style="margin-left:auto;font-size:11.5px;color:#8A8F98">toque para exigir</span>
+                </div>
+                <div style="display:grid;grid-template-columns:1.3fr repeat(4,64px);align-items:stretch">
+                  <span style="padding:9px 16px;font-family:'JetBrains Mono';font-size:9px;letter-spacing:.12em;color:#8A8F98;border-bottom:1px solid #23242F">ZONA</span>
+                  <sc-for list="{{ classesHead }}" as="c" hint-placeholder-count="4">
+                    <span style="padding:9px 4px;text-align:center;font-family:'JetBrains Mono';font-size:8.5px;letter-spacing:.06em;color:{{ c.cor }};border-bottom:1px solid #23242F">{{ c.t }}</span>
+                  </sc-for>
+                  <sc-for list="{{ matriz }}" as="m" hint-placeholder-count="2">
+                    <div style="display:contents">
+                      <button onClick="{{ m.sel }}" style="display:flex;flex-direction:column;gap:2px;padding:10px 16px;background:{{ m.bg }};border:none;border-left:2px solid {{ m.marca }};border-bottom:1px solid rgba(138,143,152,.08);cursor:pointer;text-align:left">
+                        <span style="font-size:13px;font-weight:600;color:#F4F6F8">{{ m.nome }}</span>
+                        <span style="font-family:'JetBrains Mono';font-size:9.5px;color:{{ m.subCor }}">{{ m.sub }}</span>
+                      </button>
+                      <sc-for list="{{ m.cels }}" as="c" hint-placeholder-count="4">
+                        <button onClick="{{ c.go }}" title="{{ c.tt }}" style="display:flex;align-items:center;justify-content:center;background:{{ c.bg }};border:none;border-bottom:1px solid rgba(138,143,152,.08);cursor:pointer;min-height:52px">
+                          <span style="width:22px;height:22px;border-radius:6px;border:1.5px solid {{ c.borda }};background:{{ c.fill }};color:#0A0A0F;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center">{{ c.mark }}</span>
+                        </button>
+                      </sc-for>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:9px;padding:14px 16px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">ZONA SELECIONADA</span>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <input value="{{ selNome }}" onChange="{{ renomear }}" style="flex:1;height:38px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:13.5px;font-weight:600;padding:0 11px;outline:none" style-focus="border-color:#00E5FF" />
+                  <button onClick="{{ removerZona }}" style="height:38px;padding:0 13px;background:transparent;border:1px solid #23242F;border-radius:8px;color:#8A8F98;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer" style-hover="border-color:#E5484D;color:#E5484D">Remover</button>
+                </div>
+                <span style="font-size:12px;color:#8A8F98;line-height:1.5">Remover tira a zona do cenário e desliga o que ela exigia — as operações que a usam avisam antes de salvar.</span>
+              </div>
+              <sc-if value="{{ dirty }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:center;gap:12px;padding:13px 16px;background:rgba(0,229,255,.05);border:1px solid rgba(0,229,255,.35);border-radius:12px">
+                  <div style="display:flex;flex-direction:column;gap:1px">
+                    <span style="font-size:13px;font-weight:700">{{ nMudancas }} alterações não salvas</span>
+                    <span style="font-family:'JetBrains Mono';font-size:10px;color:#8A8F98">PROPAGA AO EDGE EM ~60 S APÓS SALVAR</span>
+                  </div>
+                  <div style="flex:1"></div>
+                  <button onClick="{{ descartar }}" style="height:38px;padding:0 13px;background:transparent;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">Descartar</button>
+                  <button onClick="{{ salvar }}" style="height:38px;padding:0 16px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13px;font-weight:700;cursor:pointer">Salvar cenário</button>
+                </div>
+              </sc-if>
+              <sc-if value="{{ salvo }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:center;gap:10px;padding:13px 16px;background:rgba(62,207,142,.06);border:1px solid rgba(62,207,142,.4);border-radius:12px">
+                  <svg viewBox="0 0 24 24" style="width:15px;height:15px;flex:none" fill="none" stroke="#3ECF8E" stroke-width="2.4" stroke-linecap="square"><path d="M5 12l5 5 9-10"></path></svg>
+                  <span style="font-size:13px;font-weight:600;color:#3ECF8E">Cenário salvo — propagando ao edge</span>
+                  <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98">JETSON RVB-01 · ~60 S</span>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}">
+        <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="fullscreen" state="waiting" label="CARREGANDO CENÁRIO" size="96" style="position:absolute;inset:0" hint-size="100%,100%"></x-import>
+      </sc-if>
+      <sc-if value="{{ vazio }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#8A8F98" stroke-width="1.5" stroke-linecap="square"><path d="M4 4h7v7H4zM13 13h7v7h-7zM13 4h7M4 15h5"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Nenhuma zona desenhada</span>
+          <span style="font-size:13.5px;color:#8A8F98;max-width:400px;line-height:1.55">Sem zona, a câmera vê tudo e não exige nada. Desenhe a primeira sobre o frame de referência.</span>
+          <button style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Nova zona</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{ erro }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;box-sizing:border-box">
+          <svg viewBox="0 0 24 24" style="width:36px;height:36px" fill="none" stroke="#E5484D" stroke-width="1.5" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+          <span style="font-family:'Space Grotesk';font-weight:700;font-size:19px">Não foi possível carregar o cenário</span>
+          <span style="font-family:'JetBrains Mono';font-size:12px;color:#8A8F98">GET /api/cameras/cam-04/scenario · TIMEOUT 10 S</span>
+          <button style="height:40px;padding:0 18px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Tentar novamente</button>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+  <div style="position:fixed;left:16px;bottom:14px;display:flex;align-items:center;gap:6px;background:#14141C;border:1px solid #23242F;border-radius:10px;padding:7px 10px;z-index:130;box-shadow:0 8px 32px rgba(0,0,0,.6)">
+    <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.2em;color:#8A8F98;margin-right:4px">ESTADO</span>
+    <sc-for list="{{ chips }}" as="ch" hint-placeholder-count="4">
+      <button onClick="{{ ch.go }}" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid {{ ch.borda }};background:{{ ch.bg }};color:{{ ch.cor }};font-family:'JetBrains Mono';font-size:10.5px;cursor:pointer">{{ ch.t }}</button>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:940}}">
+class Component extends DCLogic {
+  CLASSES = [
+    { key: 'capacete', t: 'CAPACETE', cor: '#FFD24D' },
+    { key: 'colete', t: 'COLETE', cor: '#FF8A5C' },
+    { key: 'oculos', t: 'ÓCULOS', cor: '#6ED0FF' },
+    { key: 'luva', t: 'LUVA', cor: '#B48CFF' },
+  ];
+  state = {
+    estado: 'carregado', sel: 1, dirty: 0, salvo: false, prox: 3,
+    zonas: [
+      { id: 1, nome: 'Doca 3', t: '30%', l: '10%', w: '38%', h: '54%', req: { capacete: true, colete: true, oculos: false, luva: false } },
+      { id: 2, nome: 'Entrada da doca', t: '58%', l: '52%', w: '30%', h: '34%', req: { capacete: true, colete: false, oculos: false, luva: false } },
+    ],
+  };
+  _mut(fn) { this.setState(p => ({ ...fn(p), dirty: p.dirty + 1, salvo: false })); }
+  renderVals() {
+    const s = this.state;
+    const chip = (t, k) => ({ t, go: () => this.setState({ estado: k }), bg: s.estado === k ? 'rgba(0,229,255,.09)' : 'transparent', cor: s.estado === k ? '#00E5FF' : '#8A8F98', borda: s.estado === k ? 'rgba(0,229,255,.4)' : '#23242F' });
+    const sel = s.zonas.find(z => z.id === s.sel) || s.zonas[0];
+    return {
+      carregado: s.estado === 'carregado', loading: s.estado === 'loading', vazio: s.estado === 'vazio', erro: s.estado === 'erro',
+      chips: [chip('CARREGADO', 'carregado'), chip('LOADING', 'loading'), chip('VAZIO', 'vazio'), chip('ERRO', 'erro')],
+      zonas: s.zonas.map(z => {
+        const ativa = z.id === s.sel;
+        return {
+          nome: z.nome.toUpperCase(), t: z.t, l: z.l, w: z.w, h: z.h, ativa,
+          estilo: 'solid', corBorda: ativa ? '#00E5FF' : 'rgba(244,246,248,.55)',
+          fill: ativa ? 'rgba(0,229,255,.07)' : 'rgba(244,246,248,.04)',
+          tagBg: ativa ? '#00E5FF' : 'rgba(10,10,15,.8)', tagCor: ativa ? '#0A0A0F' : '#F4F6F8',
+          sel: () => this.setState({ sel: z.id }),
+        };
+      }),
+      classesHead: this.CLASSES.map(c => ({ t: c.t, cor: c.cor })),
+      matriz: s.zonas.map(z => {
+        const nReq = Object.values(z.req).filter(Boolean).length;
+        return {
+          nome: z.nome,
+          sub: nReq === 0 ? '▲ NADA EXIGIDO — NÃO DISPARA' : nReq + ' CLASSE' + (nReq > 1 ? 'S' : '') + ' EXIGIDA' + (nReq > 1 ? 'S' : ''),
+          subCor: nReq === 0 ? '#E8A13C' : '#8A8F98',
+          bg: z.id === s.sel ? 'rgba(0,229,255,.05)' : 'transparent',
+          marca: z.id === s.sel ? '#00E5FF' : 'transparent',
+          sel: () => this.setState({ sel: z.id }),
+          cels: this.CLASSES.map(c => {
+            const on = z.req[c.key];
+            return {
+              mark: on ? '✓' : '', tt: (on ? 'Exigido: ' : 'Não exigido: ') + c.t.toLowerCase() + ' em ' + z.nome,
+              borda: on ? c.cor : '#3A3D4A', fill: on ? c.cor : 'transparent',
+              bg: z.id === s.sel ? 'rgba(0,229,255,.03)' : 'transparent',
+              go: () => this._mut(p => ({ zonas: p.zonas.map(zz => zz.id === z.id ? { ...zz, req: { ...zz.req, [c.key]: !zz.req[c.key] } } : zz) })),
+            };
+          }),
+        };
+      }),
+      selNome: sel ? sel.nome : '',
+      renomear: (e) => this._mut(p => ({ zonas: p.zonas.map(z => z.id === s.sel ? { ...z, nome: e.target.value } : z) })),
+      removerZona: () => this._mut(p => { const zonas = p.zonas.filter(z => z.id !== s.sel); return { zonas, sel: zonas.length ? zonas[0].id : 0, estado: zonas.length ? p.estado : 'vazio' }; }),
+      addZona: () => this._mut(p => ({ zonas: [...p.zonas, { id: p.prox, nome: 'Zona ' + p.prox, t: '14%', l: '58%', w: '26%', h: '30%', req: { capacete: false, colete: false, oculos: false, luva: false } }], prox: p.prox + 1, sel: p.prox })),
+      dirty: s.dirty > 0, nMudancas: s.dirty,
+      salvar: () => this.setState({ dirty: 0, salvo: true }),
+      descartar: () => this.setState({ dirty: 0, salvo: false }),
+      salvo: s.salvo,
+    };
+  }
+}
+</script>
+</body>
+</html>

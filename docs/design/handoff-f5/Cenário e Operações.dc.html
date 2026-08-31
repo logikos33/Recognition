@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:#23242F;border-radius:5px}input::placeholder{color:#3A3D4A}</style>
+</helmet>
+<div style="width:100%;min-height:100vh;background:#0A0A0F;display:flex;flex-direction:column" data-screen-label="Cenário e Operações">
+
+  <header style="position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:14px;padding:12px 24px;background:#14141C;border-bottom:1px solid #23242F">
+    <svg viewBox="0 0 100 100" style="width:25px;height:25px;flex:none"><defs><mask id="khCO"><rect width="100" height="100" fill="white"></rect><g transform="translate(24,22.4) scale(0.52)"><path d="M40 55.3 A20 20 0 1 1 60 55.3 L67 88 L33 88 Z" fill="black"></path></g></mask></defs><circle cx="50" cy="50" r="44" fill="#F4F6F8" mask="url(#khCO)"></circle></svg>
+    <div style="display:flex;flex-direction:column">
+      <span style="font-family:'Space Grotesk';font-weight:700;font-size:15.5px">Cenário &amp; Operações — redesenho</span>
+      <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.12em;color:#8A8F98">CAM-04 EXPEDIÇÃO · RVB ISOLANTES — BLUMENAU · 30/08/2026</span>
+    </div>
+    <div style="flex:1"></div>
+    <span style="font-size:12px;color:#8A8F98;max-width:320px;line-height:1.45;text-align:right">O desenho define o contrato-alvo. Onde o backend ainda não chega, a tela marca a dependência em vez de mentir.</span>
+  </header>
+
+  <nav style="position:sticky;top:54px;z-index:39;display:flex;gap:2px;padding:10px 24px;background:#0A0A0F;border-bottom:1px solid #23242F;flex-wrap:wrap">
+    <sc-for list="{{ abas }}" as="a" hint-placeholder-count="6">
+      <button onClick="{{ a.go }}" style="height:34px;padding:0 14px;border:1px solid {{ a.borda }};border-radius:8px;background:{{ a.bg }};color:{{ a.cor }};font-family:'Inter';font-size:13px;font-weight:600;cursor:pointer">{{ a.t }}</button>
+    </sc-for>
+  </nav>
+
+  <main style="flex:1;padding:20px 24px 60px;max-width:1500px;width:100%;margin:0 auto;box-sizing:border-box">
+
+    <sc-if value="{{ vLista }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:20px">O que esta câmera vigia</h2>
+          <span style="font-family:'JetBrains Mono';font-size:11px;color:#8A8F98">3 REGRAS · 2 ATIVAS</span>
+          <div style="flex:1"></div>
+          <a href="Estúdio.dc.html" style="height:36px;display:flex;align-items:center;gap:8px;padding:0 14px;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-size:12.5px;font-weight:600" style-hover="border-color:#00E5FF;color:#00E5FF">
+            <svg viewBox="0 0 24 24" style="width:14px;height:14px" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12L4 7.5M12 12l8-4.5M12 12v9"></path></svg>
+            O que a câmera reconhece
+          </a>
+          <button onClick="{{ novo }}" style="height:36px;padding:0 16px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13px;font-weight:700;cursor:pointer">Desenhar nova regra</button>
+        </div>
+        <span style="font-size:12.5px;color:#8A8F98;line-height:1.55;max-width:820px;margin-top:-6px">Cada regra é uma frase: <b style="color:#F4F6F8">onde</b> na imagem, <b style="color:#F4F6F8">o que</b> observar e <b style="color:#F4F6F8">quando avisar</b>. O que a câmera é capaz de reconhecer vem do Estúdio; aqui você escolhe o que fiscalizar.</span>
+        <sc-for list="{{ regras }}" as="r" hint-placeholder-count="3">
+          <div style="display:flex;flex-direction:column;background:#14141C;border:1px solid {{ r.borda }};border-radius:12px;overflow:hidden">
+            <div style="display:flex;align-items:center;gap:16px;padding:14px 16px">
+              <div style="width:96px;height:60px;flex:none;border-radius:8px;overflow:hidden;border:1px solid #23242F;background:{{ r.fundo }};position:relative">
+                <svg viewBox="0 0 96 60" style="position:absolute;inset:0;width:100%;height:100%">
+                  <polygon points="{{ r.mini }}" fill="{{ r.miniFill }}" stroke="{{ r.miniCor }}" stroke-width="1.6"></polygon>
+                </svg>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
+                <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                  <span style="font-size:14.5px;font-weight:600">{{ r.nome }}</span>
+                  <span style="font-family:'JetBrains Mono';font-size:9px;letter-spacing:.08em;color:#8A8F98;border:1px solid #23242F;border-radius:4px;padding:2px 7px">{{ r.template }}</span>
+                </div>
+                <span style="font-size:12.5px;color:#8A8F98;line-height:1.5">{{ r.frase }}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end;flex:none">
+                <span style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:{{ r.stCor }}"><span style="width:8px;height:8px;border-radius:50%;background:{{ r.stCor }}"></span>{{ r.stIco }} {{ r.st }}</span>
+                <span style="font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98">{{ r.ultimo }}</span>
+              </div>
+              <div style="display:flex;gap:8px;flex:none">
+                <button onClick="{{ novo }}" style="height:34px;padding:0 13px;background:transparent;border:1px solid #23242F;border-radius:7px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer" style-hover="border-color:#00E5FF;color:#00E5FF">Editar</button>
+                <button onClick="{{ r.togglePausa }}" style="position:relative;height:34px;padding:0 13px;background:transparent;border:1px dashed #3A3D4A;border-radius:7px;color:#8A8F98;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer" title="Depende do pedido B1">{{ r.acao }}</button>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-top:1px solid #23242F;flex-wrap:wrap">
+              <span style="font-size:12px;color:#8A8F98">Esta regra está pegando o que devia?</span>
+              <button onClick="{{ r.ok }}" style="height:30px;padding:0 12px;display:flex;align-items:center;gap:6px;background:transparent;border:1px dashed {{ r.okBorda }};border-radius:7px;color:{{ r.okCor }};font-family:'Inter';font-size:12px;font-weight:600;cursor:pointer">Sim, está boa</button>
+              <button onClick="{{ r.nok }}" style="height:30px;padding:0 12px;display:flex;align-items:center;gap:6px;background:transparent;border:1px dashed {{ r.nokBorda }};border-radius:7px;color:{{ r.nokCor }};font-family:'Inter';font-size:12px;font-weight:600;cursor:pointer">Não, precisa ajuste</button>
+              <span style="font-family:'JetBrains Mono';font-size:9px;letter-spacing:.08em;color:#E8A13C;border:1px solid rgba(232,161,60,.4);border-radius:4px;padding:2px 7px">AGUARDA BACKEND · B1 PAUSAR · B2 AVALIAR</span>
+              <div style="flex:1"></div>
+              <a href="EPI Eventos.dc.html" style="font-size:12px;font-weight:600">ver eventos desta regra →</a>
+            </div>
+            <sc-if value="{{ r.avaliada }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:center;gap:9px;padding:10px 16px;background:{{ r.avBg }};border-top:1px solid {{ r.avBorda }}">
+                <span style="font-size:12.5px;font-weight:600;color:{{ r.avCor }}">{{ r.avTxt }}</span>
+                <span style="font-size:12px;color:#8A8F98">{{ r.avSub }}</span>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+        <div style="display:flex;gap:14px;padding:14px 16px;background:#14141C;border:1px solid #23242F;border-radius:10px;font-size:12.5px;color:#8A8F98;line-height:1.6;flex-wrap:wrap">
+          <span style="flex:1;min-width:280px">Pausar não apaga nada: a regra sai do box no próximo ciclo e volta igual. Apagar fica na tela de edição, com o nome por extenso.</span>
+          <span style="flex:1;min-width:280px">A avaliação é o seu recado para quem cuida do modelo: "não, precisa ajuste" abre um caso na fila do Estúdio com o frame do último disparo.</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ vEditor }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <button onClick="{{ voltarLista }}" style="height:34px;padding:0 13px;background:transparent;border:1px solid #23242F;border-radius:7px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">← Regras da câmera</button>
+          <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:19px">{{ tituloEditor }}</h2>
+          <div style="flex:1"></div>
+          <sc-for list="{{ passos }}" as="p" hint-placeholder-count="3">
+            <button onClick="{{ p.go }}" style="height:34px;display:flex;align-items:center;gap:9px;padding:0 13px;background:{{ p.bg }};border:1px solid {{ p.borda }};border-radius:8px;color:{{ p.cor }};font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">
+              <span style="width:19px;height:19px;border-radius:50%;background:{{ p.numBg }};color:{{ p.numCor }};font-family:'JetBrains Mono';font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ p.n }}</span>
+              {{ p.t }}
+            </button>
+          </sc-for>
+        </div>
+
+        <sc-if value="{{ pTemplate }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <span style="font-size:13.5px;color:#8A8F98;line-height:1.6;max-width:760px">Comece pelo que você quer que a câmera faça. A gente cuida do resto por baixo.</span>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px">
+              <sc-for list="{{ templates }}" as="t" hint-placeholder-count="5">
+                <button onClick="{{ t.go }}" style="display:flex;flex-direction:column;gap:11px;padding:18px;background:#14141C;border:1px solid {{ t.borda }};border-radius:14px;cursor:pointer;text-align:left" style-hover="border-color:rgba(0,229,255,.5)">
+                  <div style="display:flex;align-items:center;gap:10px">
+                    <svg viewBox="0 0 24 24" style="width:20px;height:20px;flex:none" fill="none" stroke="#F4F6F8" stroke-width="1.7" stroke-linecap="square"><path d="{{ t.d }}"></path></svg>
+                    <span style="font-family:'Space Grotesk';font-weight:700;font-size:16px;color:#F4F6F8">{{ t.nome }}</span>
+                  </div>
+                  <span style="font-size:12.5px;color:#8A8F98;line-height:1.55">{{ t.desc }}</span>
+                  <span style="font-family:'JetBrains Mono';font-size:10px;color:#8A8F98;border-top:1px solid #23242F;padding-top:9px;width:100%;box-sizing:border-box">EX.: {{ t.exemplo }}</span>
+                </button>
+              </sc-for>
+            </div>
+            <span style="font-size:12px;color:#8A8F98;line-height:1.5">Nenhum destes serve? <a href="#" onClick="{{ abrirAvancado }}">Modo avançado</a> — só para quem cuida da plataforma.</span>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ pEditando }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
+            <div style="flex:1;min-width:440px;display:flex;flex-direction:column;gap:10px">
+              <div onClick="{{ clicarCena }}" style="position:relative;aspect-ratio:16/9;border-radius:12px;overflow:hidden;border:1px solid #23242F;background:linear-gradient(200deg,#191822 0%,#0F0F16 60%,#0B0B12 100%);cursor:{{ cursorCena }}">
+                <span style="position:absolute;top:10px;left:10px;z-index:6;background:rgba(10,10,15,.78);border-radius:5px;padding:4px 9px;font-family:'JetBrains Mono';font-size:10px;letter-spacing:.1em">CAM-04 EXPEDIÇÃO · AO VIVO</span>
+                <span style="position:absolute;top:10px;right:10px;z-index:6;background:rgba(10,10,15,.78);border-radius:5px;padding:4px 9px;font-family:'JetBrains Mono';font-size:10px;color:#8A8F98;max-width:44%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ dicaCena }}</span>
+                <svg viewBox="0 0 160 90" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;z-index:2">
+                  <sc-for list="{{ zonasSalvas }}" as="z" hint-placeholder-count="2">
+                    <polygon points="{{ z.pts }}" fill="rgba(244,246,248,.04)" stroke="rgba(244,246,248,.4)" stroke-width="0.7" stroke-dasharray="2 2"></polygon>
+                  </sc-for>
+                  <sc-if value="{{ ehLinha }}" hint-placeholder-val="{{ false }}">
+                    <polyline points="{{ ptsAtual }}" fill="none" stroke="#00E5FF" stroke-width="1.2"></polyline>
+                  </sc-if>
+                  <sc-if value="{{ ehArea }}" hint-placeholder-val="{{ true }}">
+                    <polygon points="{{ ptsAtual }}" fill="rgba(0,229,255,.09)" stroke="#00E5FF" stroke-width="1.2"></polygon>
+                  </sc-if>
+                </svg>
+                <sc-for list="{{ zonasSalvas }}" as="z" hint-placeholder-count="2">
+                  <span style="position:absolute;top:{{ z.rotT }};left:{{ z.rotL }};z-index:3;font-family:'JetBrains Mono';font-size:9px;font-weight:700;color:#F4F6F8;background:rgba(10,10,15,.8);border-radius:3px;padding:2px 7px;white-space:nowrap">{{ z.nome }}</span>
+                </sc-for>
+                <sc-for list="{{ handles }}" as="h" hint-placeholder-count="4">
+                  <span onClick="{{ h.remover }}" title="{{ h.tt }}" style="position:absolute;top:{{ h.t }};left:{{ h.l }};width:14px;height:14px;margin:-7px 0 0 -7px;background:#00E5FF;border:2px solid #0A0A0F;border-radius:3px;z-index:5;cursor:pointer"></span>
+                </sc-for>
+                <span style="position:absolute;top:{{ rotAtualT }};left:{{ rotAtualL }};z-index:5;font-family:'JetBrains Mono';font-size:10px;font-weight:700;color:#0A0A0F;background:#00E5FF;border-radius:3px;padding:2px 8px;white-space:nowrap">{{ nomeRegra }}</span>
+                <sc-if value="{{ simular }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute;top:34%;left:22%;width:11%;height:44%;border:2px solid #E5484D;border-radius:3px;z-index:4">
+                    <span style="position:absolute;top:-20px;left:-2px;background:#E5484D;color:#0A0A0F;font-family:'JetBrains Mono';font-size:9px;font-weight:700;padding:2px 6px;border-radius:2px;white-space:nowrap">{{ simLabel }}</span>
+                  </div>
+                </sc-if>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <button onClick="{{ toggleDesenho }}" style="height:36px;display:flex;align-items:center;gap:8px;padding:0 13px;background:{{ desBg }};border:1px solid {{ desBorda }};border-radius:8px;color:{{ desCor }};font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">
+                  <svg viewBox="0 0 24 24" style="width:14px;height:14px" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"><path d="M4 20l4-1L20 7l-3-3L5 16z"></path></svg>
+                  {{ desTxt }}
+                </button>
+                <button onClick="{{ limpar }}" style="height:36px;padding:0 13px;background:transparent;border:1px solid #23242F;border-radius:8px;color:#8A8F98;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer" style-hover="color:#F4F6F8">Recomeçar o desenho</button>
+                <button onClick="{{ toggleSimular }}" style="height:36px;padding:0 13px;background:{{ simBg }};border:1px solid {{ simBorda }};border-radius:8px;color:{{ simCor }};font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">Simular sobre a cena</button>
+                <div style="flex:1"></div>
+                <span style="font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98">{{ nPontos }}</span>
+              </div>
+              <span style="font-size:12px;color:#8A8F98;line-height:1.5">{{ ajudaDesenho }}</span>
+            </div>
+
+            <div style="width:430px;max-width:100%;flex:none;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;flex-direction:column;gap:11px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">PASSO 1 · ONDE</span>
+                <input value="{{ nomeRegra }}" onChange="{{ setNome }}" placeholder="Nome deste lugar — ex.: Doca 3" style="height:40px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:13.5px;font-weight:600;padding:0 11px;outline:none" style-focus="border-color:#00E5FF" />
+                <span style="font-size:12px;color:#8A8F98;line-height:1.5">O nome aparece na imagem, no evento e no relatório. Use o nome que a equipe já usa no chão.</span>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:11px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">PASSO 2 · O QUÊ</span>
+                  <span style="margin-left:auto;font-size:11.5px;color:#8A8F98">{{ dicaClasses }}</span>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:7px">
+                  <sc-for list="{{ classes }}" as="c" hint-placeholder-count="6">
+                    <button onClick="{{ c.go }}" style="height:34px;display:flex;align-items:center;gap:8px;padding:0 12px;border-radius:17px;border:1.5px solid {{ c.borda }};background:{{ c.bg }};color:{{ c.cor }};font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">
+                      <span style="width:9px;height:9px;border-radius:50%;background:{{ c.ponto }}"></span>
+                      {{ c.nome }}
+                    </button>
+                  </sc-for>
+                </div>
+                <span style="font-size:12px;color:#8A8F98;line-height:1.5">Só aparece aqui o que esta câmera já sabe reconhecer. Falta algo? <a href="Estúdio.dc.html">ensine no Estúdio</a>.</span>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:12px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">PASSO 3 · QUANDO AVISAR</span>
+                <sc-for list="{{ condicoes }}" as="c" hint-placeholder-count="2">
+                  <button onClick="{{ c.go }}" style="display:flex;align-items:flex-start;gap:11px;padding:12px 13px;background:{{ c.bg }};border:1px solid {{ c.borda }};border-radius:10px;cursor:pointer;text-align:left">
+                    <span style="width:17px;height:17px;flex:none;margin-top:1px;border-radius:50%;border:1.5px solid {{ c.radio }};background:{{ c.dot }}"></span>
+                    <div style="display:flex;flex-direction:column;gap:2px">
+                      <span style="font-size:13px;font-weight:600;color:#F4F6F8">{{ c.t }}</span>
+                      <span style="font-size:11.5px;color:#8A8F98;line-height:1.45">{{ c.sub }}</span>
+                    </div>
+                  </button>
+                </sc-for>
+                <sc-if value="{{ temSegundos }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:8px;padding:12px 13px;background:#0A0A0F;border:1px solid #23242F;border-radius:10px">
+                    <div style="display:flex;align-items:baseline;gap:8px">
+                      <span style="font-size:12.5px;color:#8A8F98">Só avisar depois de</span>
+                      <span style="font-family:'JetBrains Mono';font-weight:700;font-size:18px">{{ segundos }}</span>
+                      <span style="font-size:12.5px;color:#8A8F98">segundos seguidos</span>
+                    </div>
+                    <input type="range" min="1" max="60" value="{{ segundos }}" onChange="{{ setSegundos }}" style="width:100%;accent-color:#00E5FF" />
+                    <span style="font-size:11.5px;color:#8A8F98;line-height:1.45">{{ dicaSegundos }}</span>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ temSensibilidade }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:8px;padding:12px 13px;background:#0A0A0F;border:1px solid #23242F;border-radius:10px">
+                    <span style="font-size:12.5px;color:#8A8F98">Quão perto é "perto demais"?</span>
+                    <div style="display:flex;background:#14141C;border-radius:8px;padding:3px;gap:2px">
+                      <sc-for list="{{ sensOpts }}" as="o" hint-placeholder-count="3">
+                        <button onClick="{{ o.go }}" style="flex:1;height:34px;border:none;border-radius:6px;background:{{ o.bg }};color:{{ o.cor }};font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">{{ o.t }}</button>
+                      </sc-for>
+                    </div>
+                    <span style="font-size:11.5px;color:#8A8F98;line-height:1.45">{{ dicaSens }}</span>
+                  </div>
+                </sc-if>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:10px;padding:16px;background:#14141C;border:1px solid rgba(0,229,255,.35);border-radius:12px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#00E5FF">O QUE VAI ACONTECER</span>
+                <span style="font-size:14px;line-height:1.6">{{ preview }}</span>
+                <span style="font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98;line-height:1.5">{{ previewTecnico }}</span>
+                <sc-if value="{{ incompleto }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;align-items:center;gap:9px;padding:10px 12px;background:rgba(232,161,60,.07);border:1px solid rgba(232,161,60,.4);border-radius:9px">
+                    <svg viewBox="0 0 24 24" style="width:14px;height:14px;flex:none" fill="none" stroke="#E8A13C" stroke-width="2" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+                    <span style="font-size:12.5px;color:#E8A13C;font-weight:600">{{ faltaTxt }}</span>
+                  </div>
+                </sc-if>
+                <div style="display:flex;gap:8px">
+                  <button onClick="{{ salvar }}" style="flex:1;height:46px;border:none;border-radius:10px;background:{{ salvarBg }};color:#0A0A0F;font-family:'Inter';font-size:14px;font-weight:700;cursor:pointer;opacity:{{ salvarOp }}">{{ salvarTxt }}</button>
+                  <button onClick="{{ voltarLista }}" style="height:46px;padding:0 15px;background:transparent;border:1px solid #23242F;border-radius:10px;color:#F4F6F8;font-family:'Inter';font-size:13.5px;font-weight:600;cursor:pointer">Cancelar</button>
+                </div>
+                <span style="font-family:'JetBrains Mono';font-size:10px;color:#8A8F98">SALVAR PROPAGA AO BOX DO SITE EM ~60 S</span>
+              </div>
+
+              <div style="display:flex;flex-direction:column;background:#14141C;border:1px solid #23242F;border-radius:12px;overflow:hidden">
+                <button onClick="{{ toggleAvancado }}" style="display:flex;align-items:center;gap:10px;padding:13px 16px;background:transparent;border:none;cursor:pointer;text-align:left">
+                  <svg viewBox="0 0 24 24" style="width:14px;height:14px;flex:none;transform:{{ avFlip }}" fill="none" stroke="#8A8F98" stroke-width="2"><path d="M9 6l6 6-6 6"></path></svg>
+                  <span style="font-size:13px;font-weight:600;color:#8A8F98">Modo avançado</span>
+                  <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:9px;letter-spacing:.08em;color:#E8A13C;border:1px solid rgba(232,161,60,.4);border-radius:4px;padding:2px 7px">SÓ SUPERADMIN</span>
+                </button>
+                <sc-if value="{{ avancadoOn }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:10px;padding:0 16px 16px">
+                    <span style="font-size:12px;color:#8A8F98;line-height:1.5">Números crus do motor. O cliente nunca precisa abrir isto — e o TST não vê o botão.</span>
+                    <div style="display:grid;grid-template-columns:auto 1fr;gap:7px 14px;font-family:'JetBrains Mono';font-size:11.5px">
+                      <span style="color:#8A8F98">operation_type</span><span>{{ advTipo }}</span>
+                      <span style="color:#8A8F98">watch_classes</span><span>{{ advClasses }}</span>
+                      <span style="color:#8A8F98">geometry</span><span>{{ advGeo }}</span>
+                      <span style="color:#8A8F98">persistence_s</span><span>{{ advPers }}</span>
+                      <span style="color:#8A8F98">iou_threshold</span><span>{{ advIou }}</span>
+                    </div>
+                    <span style="font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98;line-height:1.6;padding:11px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px;word-break:break-all">{{ advJson }}</span>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ vEstados }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:20px">Estados da tela</h2>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:12px">
+
+          <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px;min-height:250px">
+            <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">VAZIO · COM CTA</span>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px;text-align:center">
+              <svg viewBox="0 0 24 24" style="width:32px;height:32px" fill="none" stroke="#8A8F98" stroke-width="1.5" stroke-linecap="square"><path d="M4 4h7v7H4zM13 13h7v7h-7zM13 4h7M4 15h5"></path></svg>
+              <span style="font-family:'Space Grotesk';font-weight:700;font-size:17px">Esta câmera ainda não vigia nada</span>
+              <span style="font-size:12.5px;color:#8A8F98;line-height:1.55;max-width:280px">Ela está gravando, mas ninguém disse o que observar. Desenhe a primeira zona sobre a imagem — leva um minuto.</span>
+              <button onClick="{{ novo }}" style="height:42px;padding:0 18px;border:none;border-radius:9px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13.5px;font-weight:700;cursor:pointer">Desenhe sua primeira zona</button>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px;min-height:250px">
+            <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">CARREGANDO</span>
+            <div style="flex:1;position:relative;border-radius:10px;overflow:hidden;border:1px solid #23242F">
+              <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="fullscreen" state="waiting" label="ABRINDO O CENÁRIO" size="64" style="position:absolute;inset:0" hint-size="100%,100%"></x-import>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px;min-height:250px">
+            <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">ERRO · COM RETRY</span>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px;text-align:center">
+              <svg viewBox="0 0 24 24" style="width:32px;height:32px" fill="none" stroke="#E5484D" stroke-width="1.5" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+              <span style="font-family:'Space Grotesk';font-weight:700;font-size:17px">Não conseguimos abrir o cenário</span>
+              <span style="font-size:12.5px;color:#8A8F98;line-height:1.55;max-width:290px">As regras que já estão valendo continuam funcionando — só a edição está indisponível agora.</span>
+              <span style="font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98">GET /api/v1/scenarios · TEMPO ESGOTADO (10 S)</span>
+              <div style="display:flex;gap:8px">
+                <button style="height:40px;padding:0 16px;border:none;border-radius:9px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13px;font-weight:700;cursor:pointer">Tentar de novo</button>
+                <button style="height:40px;padding:0 14px;background:transparent;border:1px solid #23242F;border-radius:9px;color:#F4F6F8;font-family:'Inter';font-size:13px;font-weight:600;cursor:pointer">Avisar o suporte</button>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px;min-height:250px">
+            <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">SEM PERMISSÃO</span>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px;text-align:center">
+              <svg viewBox="0 0 24 24" style="width:32px;height:32px" fill="none" stroke="#E8A13C" stroke-width="1.5" stroke-linecap="square"><path d="M6 11V8a6 6 0 0 1 12 0v3M4 11h16v10H4zM12 15v3"></path></svg>
+              <span style="font-family:'Space Grotesk';font-weight:700;font-size:17px">Você pode ver, mas não mudar</span>
+              <span style="font-size:12.5px;color:#8A8F98;line-height:1.55;max-width:290px">Alterar o que a câmera vigia é do administrador do site. As regras abaixo estão em leitura.</span>
+              <button style="height:40px;padding:0 16px;background:transparent;border:1px solid #23242F;border-radius:9px;color:#F4F6F8;font-family:'Inter';font-size:13px;font-weight:600;cursor:pointer">Pedir acesso ao administrador</button>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px;min-height:250px">
+            <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">CÂMERA SEM SINAL</span>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px;text-align:center">
+              <svg viewBox="0 0 24 24" style="width:32px;height:32px" fill="none" stroke="#E8A13C" stroke-width="1.5" stroke-linecap="square"><path d="M3 7h12v10H3zM15 10l6-3v10l-6-3"></path></svg>
+              <span style="font-family:'Space Grotesk';font-weight:700;font-size:17px">Sem imagem para desenhar em cima</span>
+              <span style="font-size:12.5px;color:#8A8F98;line-height:1.55;max-width:290px">Usamos o último frame guardado (hoje 11:04) — dá para desenhar, mas confira depois que a câmera voltar.</span>
+              <div style="display:flex;gap:8px">
+                <button style="height:40px;padding:0 16px;border:none;border-radius:9px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13px;font-weight:700;cursor:pointer">Usar o último frame</button>
+                <button style="height:40px;padding:0 14px;background:transparent;border:1px solid #23242F;border-radius:9px;color:#F4F6F8;font-family:'Inter';font-size:13px;font-weight:600;cursor:pointer">Testar conexão</button>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px;min-height:250px">
+            <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">MOBILE · LEITURA</span>
+            <div style="flex:1;display:flex;align-items:center;justify-content:center">
+              <div style="width:210px;border:1px solid #23242F;border-radius:20px;overflow:hidden;background:#0A0A0F">
+                <div style="height:34px;display:flex;align-items:center;gap:7px;padding:0 11px;background:#14141C;border-bottom:1px solid #23242F">
+                  <span style="font-family:'Space Grotesk';font-weight:700;font-size:11px;letter-spacing:.12em">LOGIKOS</span>
+                  <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:8.5px;color:#8A8F98">CAM-04</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:7px;padding:11px">
+                  <div style="position:relative;aspect-ratio:16/9;border-radius:7px;border:1px solid #23242F;background:linear-gradient(200deg,#191822,#0F0F16)">
+                    <div style="position:absolute;top:32%;left:16%;width:40%;height:50%;border:1.5px solid rgba(244,246,248,.5);border-radius:2px"></div>
+                  </div>
+                  <span style="font-size:10.5px;font-weight:600">Doca 3 — EPI obrigatório</span>
+                  <span style="font-size:9.5px;color:#8A8F98;line-height:1.4">Avisa quem entrar sem capacete ou colete.</span>
+                  <span style="font-family:'JetBrains Mono';font-size:8.5px;color:#8A8F98;border:1px solid #23242F;border-radius:5px;padding:5px 7px;text-align:center">DESENHAR ZONA: MELHOR NO COMPUTADOR</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ vMapa }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+          <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:20px">Mapa de conexões — UI × endpoint × estado</h2>
+          <span style="font-size:12.5px;color:#8A8F98">medido no backend real; é daqui que sai a lista de ajustes</span>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <sc-for list="{{ mapaKpis }}" as="k" hint-placeholder-count="3">
+            <div style="flex:1;min-width:210px;display:flex;flex-direction:column;gap:4px;padding:14px 16px;background:#14141C;border:1px solid #23242F;border-radius:11px;border-top:2px solid {{ k.cor }}">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">{{ k.label }}</span>
+              <span style="font-family:'JetBrains Mono';font-weight:700;font-size:24px;line-height:1;color:{{ k.cor }}">{{ k.v }}</span>
+              <span style="font-size:11.5px;color:#8A8F98;line-height:1.45">{{ k.sub }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="overflow-x:auto;border:1px solid #23242F;border-radius:11px;background:#14141C">
+          <div style="display:grid;grid-template-columns:minmax(210px,1.2fr) minmax(250px,1.4fr) 160px minmax(250px,1.5fr);min-width:940px">
+            <sc-for list="{{ mapaHead }}" as="h" hint-placeholder-count="4">
+              <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">{{ h.t }}</div>
+            </sc-for>
+            <sc-for list="{{ mapa }}" as="m" hint-placeholder-count="14">
+              <div style="display:contents">
+                <span style="padding:11px 14px;font-size:12.5px;font-weight:600;border-bottom:1px solid rgba(138,143,152,.07)">{{ m.ui }}</span>
+                <span style="padding:11px 14px;font-family:'JetBrains Mono';font-size:11px;color:#F4F6F8;border-bottom:1px solid rgba(138,143,152,.07);word-break:break-all">{{ m.ep }}</span>
+                <span style="padding:11px 14px;border-bottom:1px solid rgba(138,143,152,.07)"><span style="font-family:'JetBrains Mono';font-size:9px;font-weight:700;letter-spacing:.06em;color:{{ m.cor }};border:1px solid {{ m.borda }};border-radius:4px;padding:2px 7px;white-space:nowrap">{{ m.st }}</span></span>
+                <span style="padding:11px 14px;font-size:12px;color:#8A8F98;line-height:1.5;border-bottom:1px solid rgba(138,143,152,.07)">{{ m.nota }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:11px">
+          <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">COMO OS PARENTES CONVERSAM</span>
+          <sc-for list="{{ parentes }}" as="p" hint-placeholder-count="4">
+            <div style="display:flex;gap:11px;align-items:flex-start">
+              <span style="width:7px;height:7px;border-radius:50%;background:{{ p.cor }};margin-top:6px;flex:none"></span>
+              <span style="font-size:12.5px;line-height:1.6"><b>{{ p.t }}</b> — <span style="color:#8A8F98">{{ p.d }}</span></span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ vPedidos }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+          <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:20px">Pedidos ao backend — derivados deste desenho</h2>
+          <span style="font-size:12.5px;color:#8A8F98">o que a tela precisa · o que existe hoje · o delta</span>
+        </div>
+        <div style="display:flex;flex-direction:column;background:#14141C;border:1px solid #23242F;border-radius:11px;overflow:hidden">
+          <sc-for list="{{ pedidos }}" as="p" hint-placeholder-count="9">
+            <div style="display:flex;gap:14px;padding:14px 16px;border-bottom:1px solid rgba(138,143,152,.07);flex-wrap:wrap">
+              <div style="display:flex;flex-direction:column;gap:5px;flex:none;width:78px">
+                <span style="font-family:'JetBrains Mono';font-size:11px;font-weight:700;color:#00E5FF">{{ p.id }}</span>
+                <span style="font-family:'JetBrains Mono';font-size:9px;font-weight:700;color:{{ p.sevCor }};border:1px solid {{ p.sevBorda }};border-radius:4px;padding:2px 5px;text-align:center">{{ p.sev }}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:5px;flex:1;min-width:260px">
+                <span style="font-size:13.5px;font-weight:600">{{ p.o }}</span>
+                <span style="font-size:12.5px;color:#8A8F98;line-height:1.5"><b style="color:#F4F6F8">A tela precisa:</b> {{ p.precisa }}</span>
+                <span style="font-size:12.5px;color:#8A8F98;line-height:1.5"><b style="color:#F4F6F8">Hoje existe:</b> {{ p.hoje }}</span>
+                <span style="font-size:12.5px;color:#8A8F98;line-height:1.5"><b style="color:#E8A13C">Delta:</b> {{ p.delta }}</span>
+              </div>
+              <span style="flex:none;width:160px;font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98;line-height:1.5">{{ p.bloqueia }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;padding:16px;background:#14141C;border:1px solid rgba(232,161,60,.35);border-radius:11px">
+          <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#E8A13C">DEPENDÊNCIAS JÁ EM CURSO</span>
+          <sc-for list="{{ deps }}" as="d" hint-placeholder-count="3">
+            <div style="display:flex;gap:11px;align-items:flex-start">
+              <span style="font-family:'JetBrains Mono';font-size:10.5px;font-weight:700;color:#E8A13C;flex:none;width:34px">{{ d.id }}</span>
+              <span style="font-size:12.5px;line-height:1.6"><b>{{ d.t }}</b> — <span style="color:#8A8F98">{{ d.d }}</span></span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:9px;padding:16px;background:#14141C;border:1px solid rgba(0,229,255,.3);border-radius:11px">
+          <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#00E5FF">O QUE ESTE DESENHO DECIDE (E O BACKEND SEGUE)</span>
+          <span style="font-size:13px;line-height:1.7">O tipo técnico sai da tela: o cliente escolhe um dos 5 templates e o front traduz para <span style="font-family:'JetBrains Mono';font-size:12px">operation_type</span>. Consequência: a criação passa a mandar sempre <span style="font-family:'JetBrains Mono';font-size:12px">template_id</span> junto — é o que permite reabrir a regra na mesma linguagem em que ela foi criada, sem adivinhar pelo JSON. É o único campo novo que o desenho impõe ao contrato de criação.</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ vCopy }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+          <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:20px">Microcopy — português de chão de fábrica</h2>
+          <span style="font-size:12.5px;color:#8A8F98">nenhuma frase inventada na implementação: use estas</span>
+        </div>
+        <sc-for list="{{ copyBlocos }}" as="b" hint-placeholder-count="5">
+          <div style="display:flex;flex-direction:column;gap:10px;padding:16px 18px;background:#14141C;border:1px solid #23242F;border-radius:11px">
+            <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">{{ b.tag }}</span>
+            <sc-for list="{{ b.itens }}" as="i" hint-placeholder-count="4">
+              <div style="display:grid;grid-template-columns:170px 1fr;gap:6px 16px;padding:9px 0;border-bottom:1px solid rgba(138,143,152,.07)">
+                <span style="font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98">{{ i.k }}</span>
+                <span style="font-size:12.5px;line-height:1.55">{{ i.v }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-for>
+        <div style="display:flex;flex-direction:column;gap:9px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:11px">
+          <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">PALAVRAS PROIBIDAS NESTA TELA</span>
+          <span style="font-size:12.5px;color:#8A8F98;line-height:1.7">threshold · IoU · condition_satisfied · bounding box · overlap · polygon · payload · JSON · confidence score · inferência · YOLO · tracker. Cada uma tem tradução na coluna acima; se não tiver, é sinal de que a informação não deveria estar na tela do cliente.</span>
+        </div>
+      </div>
+    </sc-if>
+
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1500,&quot;height&quot;:940}}">
+class Component extends DCLogic {
+  TEMPLATES = [
+    { key: 'epi', nome: 'Zona de EPI obrigatório', desc: 'Um lugar onde só se entra com o equipamento certo. Avisamos quem entrar sem.', exemplo: '"avise se entrar na doca sem capacete"', d: 'M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z', forma: 'area', tipo: 'sobreposição área fixa', minClasses: 1, classes: ['capacete', 'colete', 'oculos', 'luva'], cond: [['entrada', 'Avisar assim que alguém entrar sem o equipamento', 'O aviso sai na hora — bom para doca e corredor de passagem.'], ['permanencia', 'Só avisar se ficar um tempo dentro', 'Evita aviso de quem só passou reto.']], pers: 3 },
+    { key: 'restrita', nome: 'Área restrita', desc: 'Um lugar onde ninguém deveria estar. Avisamos qualquer presença.', exemplo: '"avise se alguém entrar atrás da prensa"', d: 'M6 11V8a6 6 0 0 1 12 0v3M4 11h16v10H4z', forma: 'area', tipo: 'posição', minClasses: 1, classes: ['pessoa', 'empilhadeira'], cond: [['entrada', 'Avisar em qualquer presença', 'Zona de risco: qualquer segundo dentro já vale aviso.'], ['permanencia', 'Só avisar se ficar um tempo dentro', 'Para áreas onde a passagem rápida é normal.']], pers: 2 },
+    { key: 'linha', nome: 'Linha de contagem', desc: 'Uma linha atravessando o caminho. Contamos cada vez que alguém ou algo cruza.', exemplo: '"conte os pallets que saem pela doca"', d: 'M4 20L20 4M8 4h12v12', forma: 'linha', tipo: 'linha de contagem', minClasses: 1, classes: ['pessoa', 'pallet', 'empilhadeira', 'caminhao'], cond: [['cruzamento', 'Contar cada cruzamento', 'Vira número no painel, não alerta.'], ['sentido', 'Contar só num sentido', 'Conta saída e ignora quem volta.']], pers: 0 },
+    { key: 'tempo', nome: 'Tempo de permanência', desc: 'Quanto tempo algo fica parado num lugar. Vira número e vira aviso se passar do limite.', exemplo: '"meça quanto a empilhadeira fica na doca"', d: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l4 2', forma: 'area', tipo: 'contagem estática', minClasses: 1, classes: ['pessoa', 'empilhadeira', 'pallet', 'caminhao'], cond: [['permanencia', 'Avisar se passar do tempo', 'Também guarda a média do turno para o relatório.'], ['medir', 'Só medir, sem avisar', 'Para entender o gargalo antes de criar alerta.']], pers: 20 },
+    { key: 'aproximacao', nome: 'Aproximação perigosa', desc: 'Duas coisas que não deveriam chegar perto uma da outra. Avisamos quando isso acontece.', exemplo: '"avise se pessoa e empilhadeira se aproximarem"', d: 'M7 12a4 4 0 1 0 8 0 4 4 0 0 0-8 0zM17 8l4 4-4 4', forma: 'area', tipo: 'sobreposição dinâmica', minClasses: 2, classes: ['pessoa', 'empilhadeira', 'caminhao'], cond: [['entrada', 'Avisar na hora da aproximação', 'Segurança: quanto mais rápido o aviso, melhor.'], ['permanencia', 'Só avisar se durar alguns segundos', 'Reduz aviso de cruzamento rápido e normal.']], pers: 2 },
+  ];
+  CLASSE_NOMES = { capacete: 'Capacete', colete: 'Colete refletivo', oculos: 'Óculos de proteção', luva: 'Luva', pessoa: 'Pessoa', empilhadeira: 'Empilhadeira', pallet: 'Pallet', caminhao: 'Caminhão' };
+  CLASSE_CORES = { capacete: '#FFD24D', colete: '#FF8A5C', oculos: '#6ED0FF', luva: '#B48CFF', pessoa: '#F4F6F8', empilhadeira: '#7CE0C0', pallet: '#E0C27C', caminhao: '#C0A0FF' };
+  ZONAS_SALVAS = [
+    { nome: 'ENTRADA DA DOCA', pts: '96,60 140,58 142,84 92,86', rotT: '62%', rotL: '58%' },
+    { nome: 'CORREDOR', pts: '12,10 44,10 44,30 12,30', rotT: '7%', rotL: '9%' },
+  ];
+  state = {
+    aba: 'lista', passo: 'template', tpl: null,
+    nome: '', classesSel: [], cond: null, seg: 5, sens: 'media',
+    pontos: [[22, 34], [70, 32], [74, 76], [18, 80]],
+    desenhando: false, simular: false, avancado: false,
+    pausadas: [], aval: {},
+  };
+  _tpl() { return this.TEMPLATES.find(t => t.key === this.state.tpl); }
+  renderVals() {
+    const s = this.state;
+    const tpl = this._tpl();
+    const tab = (t, k) => ({ t, go: () => this.setState({ aba: k }), bg: s.aba === k ? 'rgba(0,229,255,.08)' : '#14141C', cor: s.aba === k ? '#00E5FF' : '#8A8F98', borda: s.aba === k ? 'rgba(0,229,255,.45)' : '#23242F' });
+    const nomeClasse = (k) => this.CLASSE_NOMES[k] || k;
+    const listaNomes = (arr) => arr.map(nomeClasse).map(n => n.toLowerCase()).join(' ou ');
+    const condAtual = tpl && s.cond ? tpl.cond.find(c => c[0] === s.cond) : null;
+    const pts = s.pontos.map(p => (p[0] * 1.6).toFixed(1) + ',' + (p[1] * 0.9).toFixed(1)).join(' ');
+    const faltaClasse = tpl ? s.classesSel.length < tpl.minClasses : true;
+    const faltaNome = !s.nome.trim();
+    const faltaCond = !s.cond;
+    const completo = tpl && !faltaClasse && !faltaNome && !faltaCond;
+    let preview = 'Escolha um modelo de regra para ver o que vai acontecer.';
+    if (tpl) {
+      const lugar = s.nome.trim() || 'este lugar';
+      const cls = s.classesSel.length ? listaNomes(s.classesSel) : '…';
+      if (tpl.key === 'epi') preview = s.cond === 'permanencia'
+        ? 'Você verá um evento quando alguém ficar mais de ' + s.seg + ' segundos em "' + lugar + '" sem ' + cls + '.'
+        : 'Você verá um evento quando alguém entrar em "' + lugar + '" sem ' + cls + '.';
+      else if (tpl.key === 'restrita') preview = s.cond === 'permanencia'
+        ? 'Você verá um evento quando ' + cls + ' ficar mais de ' + s.seg + ' segundos dentro de "' + lugar + '".'
+        : 'Você verá um evento assim que ' + cls + ' aparecer dentro de "' + lugar + '".';
+      else if (tpl.key === 'linha') preview = s.cond === 'sentido'
+        ? 'Cada ' + cls + ' que cruzar a linha "' + lugar + '" no sentido da seta soma 1 na contagem. Quem voltar não conta.'
+        : 'Cada ' + cls + ' que cruzar a linha "' + lugar + '" soma 1 na contagem do turno.';
+      else if (tpl.key === 'tempo') preview = s.cond === 'medir'
+        ? 'Vamos medir quanto tempo ' + cls + ' fica em "' + lugar + '" e mostrar a média do turno no painel. Nenhum aviso será enviado.'
+        : 'Você verá um evento quando ' + cls + ' ficar mais de ' + s.seg + ' segundos em "' + lugar + '" — e a média do turno aparece no painel.';
+      else preview = s.cond === 'permanencia'
+        ? 'Você verá um evento quando ' + cls + ' ficarem próximos por mais de ' + s.seg + ' segundos em "' + lugar + '".'
+        : 'Você verá um evento quando ' + cls + ' se aproximarem em "' + lugar + '".';
+    }
+    const sensTxt = { alta: 'quase se tocando', media: 'a um passo de distância', baixa: 'no mesmo canto da cena' };
+    const advIou = { alta: '0.30', media: '0.10', baixa: '0.03' };
+    const st = { EXISTE: ['#3ECF8E', 'rgba(62,207,142,.4)'], 'INSUFICIENTE': ['#E8A13C', 'rgba(232,161,60,.4)'], 'NÃO EXISTE': ['#E5484D', 'rgba(229,72,77,.4)'] };
+    const MP = (ui, ep, estado, nota) => ({ ui, ep, st: estado, nota, cor: st[estado][0], borda: st[estado][1] });
+    const sev = { 'BLOQUEIA': ['#E5484D', 'rgba(229,72,77,.5)'], 'DEFEITO': ['#E8A13C', 'rgba(232,161,60,.5)'], 'FALTA': ['#00E5FF', 'rgba(0,229,255,.5)'] };
+    const PD = (id, sv, o, precisa, hoje, delta, bloqueia) => ({ id, sev: sv, o, precisa, hoje, delta, bloqueia, sevCor: sev[sv][0], sevBorda: sev[sv][1] });
+    const regrasBase = [
+      { id: 1, nome: 'Doca 3 — EPI obrigatório', template: 'ZONA DE EPI OBRIGATÓRIO', frase: 'Avisa quem entrar na doca sem capacete ou colete.', st: 'rodando', ultimo: 'ÚLTIMO AVISO 14:32', mini: '10,12 78,10 84,46 14,50', fundo: 'linear-gradient(200deg,#191822,#0F0F16)' },
+      { id: 2, nome: 'Saída da expedição', template: 'LINHA DE CONTAGEM', frase: 'Conta cada pallet que cruza a linha no sentido da rua.', st: 'rodando', ultimo: '142 CRUZAMENTOS HOJE', mini: '18,6 22,54 26,54 22,6', fundo: 'linear-gradient(155deg,#1A1B26,#101018)' },
+      { id: 3, nome: 'Atrás da prensa', template: 'ÁREA RESTRITA', frase: 'Avisa qualquer presença de pessoa na área.', st: 'pausada', ultimo: 'PAUSADA HÁ 2 DIAS', mini: '44,14 88,16 86,50 46,48', fundo: 'linear-gradient(175deg,#181926,#0E0E15)' },
+    ];
+    const stDef = { rodando: ['ATIVA', '#3ECF8E', ''], pausada: ['PAUSADA', '#8A8F98', '⏸'] };
+    const MAPA = [
+      MP('Lista de regras da câmera', 'GET /api/cameras/<id>/operations', 'EXISTE', 'Liga direto. Precisa devolver também o horário do último disparo para o cartão — hoje vem do pipeline de eventos.'),
+      MP('Criar regra (3 passos)', 'POST /api/cameras/<id>/operations', 'INSUFICIENTE', 'Aceita os 5 tipos, mas não guarda qual template originou. Sem template_id não conseguimos reabrir a regra na mesma linguagem.'),
+      MP('Editar regra existente', 'PUT /api/cameras/<id>/operations/<op>', 'INSUFICIENTE', 'Aceita só name e config. Trocar a classe observada ou a geometria exige apagar e recriar — inaceitável para o TST.'),
+      MP('Zonas desenhadas sobre a cena', 'GET /api/v1/scenarios', 'EXISTE', 'Leitura confirmada. Escrita ainda a validar: é o que salva o polígono.'),
+      MP('Salvar zona / polígono', 'POST|PUT /api/v1/scenarios', 'INSUFICIENTE', 'Escrita não verificada. O desenho assume pontos normalizados 0–1 para não depender da resolução da câmera.'),
+      MP('Catálogo de classes do passo 2', 'GET /api/modules/<code>/classes + classes do tenant', 'EXISTE', 'Já aceita nomes RVB. A tela só mostra o que a câmera reconhece — cruza com o escopo do Estúdio.'),
+      MP('Frame de referência para desenhar', 'GET /api/cameras/<id>/snapshot', 'EXISTE', 'Serve para o editor e para o estado "sem sinal" (último frame guardado).'),
+      MP('Vídeo ao vivo no editor', 'GET /api/cameras/<id>/stream/info + HLS', 'EXISTE', 'Desenhar sobre movimento ajuda a acertar a zona; snapshot é o fallback.'),
+      MP('Linha de contagem (UI dedicada)', 'config.counting_line', 'INSUFICIENTE', 'Hoje se configura por JSON cru na tela. O desenho substitui isso pelos 2 pontos da linha + sentido.'),
+      MP('Pausar / retomar regra', '—', 'NÃO EXISTE', 'Pedido B1. Sem isso o TST apaga a regra para "desligar" e perde o histórico.'),
+      MP('Avaliação OK/NOK da regra', '—', 'NÃO EXISTE', 'Pedido B2. Sem tabela nem rota; é o elo que alimenta o retreino.'),
+      MP('Sentido da linha (entra/sai)', '—', 'NÃO EXISTE', 'A contagem hoje não distingue direção; "conte só quem sai" depende disso.'),
+      MP('Tempo de permanência', 'persistência temporal (ADR-0067)', 'INSUFICIENTE', 'A ADR prevê persistência, mas não há campo por operação exposto na API.'),
+      MP('Simular sobre a cena', '—', 'NÃO EXISTE', 'Pedido B6: avaliar a regra contra os últimos N minutos gravados antes de salvar.'),
+      MP('Propagação ao box (~60 s)', 'comandos de edge / heartbeat', 'INSUFICIENTE', 'A tela promete "vale em ~60 s"; precisa de confirmação de que o box aplicou.'),
+    ];
+    const conta = (k) => String(MAPA.filter(m => m.st === k).length);
+    return {
+      abas: [tab('Regras da câmera', 'lista'), tab('Editor (3 passos)', 'editor'), tab('Estados', 'estados'), tab('Mapa de conexões', 'mapa'), tab('Pedidos ao backend', 'pedidos'), tab('Microcopy', 'copy')],
+      vLista: s.aba === 'lista', vEditor: s.aba === 'editor', vEstados: s.aba === 'estados', vMapa: s.aba === 'mapa', vPedidos: s.aba === 'pedidos', vCopy: s.aba === 'copy',
+      novo: () => this.setState({ aba: 'editor', passo: 'template', tpl: null, nome: '', classesSel: [], cond: null, simular: false }),
+      voltarLista: () => this.setState({ aba: 'lista' }),
+      regras: regrasBase.map(r => {
+        const pausada = s.pausadas.includes(r.id);
+        const key = pausada ? 'pausada' : (r.st === 'pausada' ? 'pausada' : 'rodando');
+        const efetivo = s.pausadas.includes(r.id) ? (r.st === 'pausada' ? 'rodando' : 'pausada') : r.st;
+        const [stTxt, stCor, stIco] = stDef[efetivo];
+        const a = s.aval[r.id];
+        return {
+          nome: r.nome, template: r.template, frase: r.frase, ultimo: r.ultimo, mini: r.mini, fundo: r.fundo,
+          st: stTxt, stCor, stIco,
+          miniCor: efetivo === 'pausada' ? 'rgba(138,143,152,.7)' : '#00E5FF',
+          miniFill: efetivo === 'pausada' ? 'rgba(138,143,152,.08)' : 'rgba(0,229,255,.1)',
+          borda: '#23242F',
+          acao: efetivo === 'pausada' ? 'Retomar' : 'Pausar',
+          togglePausa: () => this.setState(p => ({ pausadas: p.pausadas.includes(r.id) ? p.pausadas.filter(i => i !== r.id) : [...p.pausadas, r.id] })),
+          ok: () => this.setState(p => ({ aval: { ...p.aval, [r.id]: 'ok' } })),
+          nok: () => this.setState(p => ({ aval: { ...p.aval, [r.id]: 'nok' } })),
+          okCor: a === 'ok' ? '#3ECF8E' : '#8A8F98', okBorda: a === 'ok' ? 'rgba(62,207,142,.5)' : '#3A3D4A',
+          nokCor: a === 'nok' ? '#E5484D' : '#8A8F98', nokBorda: a === 'nok' ? 'rgba(229,72,77,.5)' : '#3A3D4A',
+          avaliada: !!a,
+          avTxt: a === 'ok' ? 'Registrado: a regra está boa' : 'Registrado: precisa de ajuste',
+          avSub: a === 'ok' ? 'Nada muda no funcionamento — fica no histórico da regra.' : 'Abre um caso na fila do Estúdio com o frame do último aviso.',
+          avCor: a === 'ok' ? '#3ECF8E' : '#E8A13C',
+          avBg: a === 'ok' ? 'rgba(62,207,142,.05)' : 'rgba(232,161,60,.05)',
+          avBorda: a === 'ok' ? 'rgba(62,207,142,.35)' : 'rgba(232,161,60,.35)',
+        };
+      }),
+      tituloEditor: tpl ? tpl.nome : 'O que você quer que esta câmera faça?',
+      passos: [['1', 'Modelo', 'template'], ['2', 'Onde e o quê', 'editando'], ['3', 'Quando avisar', 'editando']].map(([n, t, k], i) => {
+        const ativo = (i === 0 && s.passo === 'template') || (i > 0 && s.passo === 'editando');
+        return { n, t, go: () => this.setState({ passo: i === 0 ? 'template' : (tpl ? 'editando' : 'template') }),
+          bg: ativo ? 'rgba(0,229,255,.07)' : 'transparent', borda: ativo ? 'rgba(0,229,255,.4)' : '#23242F', cor: ativo ? '#00E5FF' : '#8A8F98',
+          numBg: ativo ? '#00E5FF' : '#23242F', numCor: ativo ? '#0A0A0F' : '#8A8F98' };
+      }),
+      pTemplate: s.passo === 'template', pEditando: s.passo === 'editando' && !!tpl,
+      templates: this.TEMPLATES.map(t => ({
+        nome: t.nome, desc: t.desc, exemplo: t.exemplo, d: t.d,
+        borda: s.tpl === t.key ? 'rgba(0,229,255,.5)' : '#23242F',
+        go: () => this.setState({ tpl: t.key, passo: 'editando', classesSel: t.key === 'aproximacao' ? ['pessoa', 'empilhadeira'] : t.key === 'epi' ? ['capacete'] : [t.classes[0]], cond: t.cond[0][0], seg: t.pers || 5, nome: '', pontos: t.forma === 'linha' ? [[62, 18], [66, 84]] : [[22, 34], [70, 32], [74, 76], [18, 80]] }),
+      })),
+      abrirAvancado: (e) => { if (e && e.preventDefault) e.preventDefault(); this.setState({ tpl: 'epi', passo: 'editando', avancado: true, classesSel: ['capacete'], cond: 'entrada', nome: '' }); },
+      zonasSalvas: this.ZONAS_SALVAS,
+      ehLinha: !!tpl && tpl.forma === 'linha', ehArea: !!tpl && tpl.forma === 'area',
+      ptsAtual: pts,
+      handles: s.pontos.map((p, i) => ({ t: p[1] + '%', l: p[0] + '%', tt: 'Ponto ' + (i + 1) + ' — clique para remover', remover: (e) => { if (e && e.stopPropagation) e.stopPropagation(); this.setState(pr => ({ pontos: pr.pontos.length > 2 ? pr.pontos.filter((_, j) => j !== i) : pr.pontos })); } })),
+      rotAtualT: (Math.min(...s.pontos.map(p => p[1])) - 7) + '%', rotAtualL: Math.min(...s.pontos.map(p => p[0])) + '%',
+      nomeRegra: s.nome.trim() ? s.nome : 'sem nome ainda',
+      setNome: (e) => this.setState({ nome: e.target.value }),
+      clicarCena: (e) => {
+        if (!s.desenhando) return;
+        const r = e.currentTarget.getBoundingClientRect();
+        const x = Math.round((e.clientX - r.left) / r.width * 100);
+        const y = Math.round((e.clientY - r.top) / r.height * 100);
+        this.setState(p => ({ pontos: [...p.pontos, [x, y]] }));
+      },
+      cursorCena: s.desenhando ? 'crosshair' : 'default',
+      dicaCena: s.desenhando ? 'CLIQUE PARA ADICIONAR PONTOS' : 'ARRASTE OS PONTOS PARA AJUSTAR',
+      toggleDesenho: () => this.setState(p => ({ desenhando: !p.desenhando })),
+      desTxt: s.desenhando ? 'Terminar o desenho' : 'Ajustar o desenho',
+      desBg: s.desenhando ? 'rgba(0,229,255,.08)' : 'transparent', desBorda: s.desenhando ? 'rgba(0,229,255,.45)' : '#23242F', desCor: s.desenhando ? '#00E5FF' : '#F4F6F8',
+      limpar: () => this.setState({ pontos: tpl && tpl.forma === 'linha' ? [[62, 18], [66, 84]] : [[22, 34], [70, 32], [74, 76], [18, 80]] }),
+      nPontos: s.pontos.length + (tpl && tpl.forma === 'linha' ? ' pontos na linha' : ' cantos na zona'),
+      ajudaDesenho: tpl && tpl.forma === 'linha'
+        ? 'A linha precisa atravessar o caminho por onde as coisas passam. Quem cruza de um lado para o outro é contado.'
+        : 'Cubra só o lugar que interessa. Zona grande demais pega quem está de passagem; pequena demais deixa passar.',
+      toggleSimular: () => this.setState(p => ({ simular: !p.simular })),
+      simular: s.simular, simBg: s.simular ? 'rgba(0,229,255,.08)' : 'transparent', simBorda: s.simular ? 'rgba(0,229,255,.45)' : '#23242F', simCor: s.simular ? '#00E5FF' : '#F4F6F8',
+      simLabel: tpl && tpl.key === 'linha' ? 'CRUZOU · CONTA 1' : tpl && tpl.key === 'tempo' ? 'PARADO HÁ ' + s.seg + ' S' : 'ISTO GERARIA UM EVENTO',
+      dicaClasses: tpl ? (tpl.minClasses > 1 ? 'escolha as duas' : 'pode escolher mais de um') : '',
+      classes: (tpl ? tpl.classes : []).map(k => {
+        const on = s.classesSel.includes(k);
+        return { nome: nomeClasse(k), ponto: this.CLASSE_CORES[k] || '#8A8F98',
+          borda: on ? this.CLASSE_CORES[k] : '#3A3D4A', bg: on ? 'rgba(244,246,248,.05)' : 'transparent', cor: on ? '#F4F6F8' : '#8A8F98',
+          go: () => this.setState(p => ({ classesSel: on ? p.classesSel.filter(c => c !== k) : [...p.classesSel, k] })) };
+      }),
+      condicoes: (tpl ? tpl.cond : []).map(([k, t, sub]) => {
+        const on = s.cond === k;
+        return { t, sub, go: () => this.setState({ cond: k }),
+          bg: on ? 'rgba(0,229,255,.05)' : '#0A0A0F', borda: on ? 'rgba(0,229,255,.4)' : '#23242F',
+          radio: on ? '#00E5FF' : '#3A3D4A', dot: on ? '#00E5FF' : 'transparent' };
+      }),
+      temSegundos: !!condAtual && (s.cond === 'permanencia'),
+      segundos: s.seg, setSegundos: (e) => this.setState({ seg: parseInt(e.target.value, 10) }),
+      dicaSegundos: s.seg <= 2 ? 'Muito curto: quem passa reto também vai gerar aviso.' : s.seg >= 30 ? 'Longo: bom para medir gargalo, ruim para segurança.' : 'Bom equilíbrio — ignora quem só atravessa.',
+      temSensibilidade: !!tpl && tpl.key === 'aproximacao',
+      sensOpts: [['alta', 'Bem perto'], ['media', 'Perto'], ['baixa', 'Na mesma área']].map(([k, t]) => ({ t, go: () => this.setState({ sens: k }), bg: s.sens === k ? '#0A0A0F' : 'transparent', cor: s.sens === k ? '#00E5FF' : '#8A8F98' })),
+      dicaSens: 'Consideramos aproximação quando estiverem ' + sensTxt[s.sens] + '.',
+      preview,
+      previewTecnico: tpl ? ('VIRA: ' + tpl.tipo.toUpperCase() + ' · ' + (s.classesSel.length || 0) + ' CLASSE(S) · ' + (tpl.forma === 'linha' ? 'LINHA' : 'ÁREA') + ' DE ' + s.pontos.length + ' PONTOS') : '',
+      incompleto: !completo,
+      faltaTxt: faltaNome ? 'Dê um nome ao lugar — ele aparece em todo evento.' : faltaClasse ? (tpl && tpl.minClasses > 1 ? 'Escolha as duas coisas que não devem se aproximar.' : 'Escolha ao menos uma coisa para observar.') : 'Escolha quando avisar.',
+      salvar: () => { if (completo) this.setState({ aba: 'lista' }); },
+      salvarTxt: completo ? 'Salvar e começar a valer' : 'Complete os 3 passos',
+      salvarBg: completo ? '#00E5FF' : '#3A3D4A', salvarOp: completo ? '1' : '.75',
+      avancadoOn: s.avancado, toggleAvancado: () => this.setState(p => ({ avancado: !p.avancado })), avFlip: s.avancado ? 'rotate(90deg)' : 'none',
+      advTipo: tpl ? tpl.tipo : '—',
+      advClasses: s.classesSel.length ? '[' + s.classesSel.map(c => '"' + c + '"').join(', ') + ']' : '[]',
+      advGeo: tpl && tpl.forma === 'linha' ? 'line · ' + s.pontos.length + ' pts (normalizados 0–1)' : 'polygon · ' + s.pontos.length + ' pts (normalizados 0–1)',
+      advPers: s.cond === 'permanencia' ? s.seg + ' s' : '0 s (sem persistência)',
+      advIou: tpl && tpl.key === 'aproximacao' ? advIou[s.sens] : '— (não se aplica)',
+      advJson: '{"template_id":"' + (tpl ? tpl.key : '') + '","name":"' + (s.nome || '') + '","config":{"watch_classes":' + (s.classesSel.length ? '[' + s.classesSel.map(c => '"' + c + '"').join(',') + ']' : '[]') + ',"points":' + s.pontos.length + ',"persistence_s":' + (s.cond === 'permanencia' ? s.seg : 0) + '}}',
+      mapaKpis: [
+        { label: 'EXISTE E SERVE', v: conta('EXISTE'), sub: 'ligação direta na migração', cor: '#3ECF8E' },
+        { label: 'EXISTE, INSUFICIENTE', v: conta('INSUFICIENTE'), sub: 'contrato precisa de campo ou verbo', cor: '#E8A13C' },
+        { label: 'NÃO EXISTE', v: conta('NÃO EXISTE'), sub: 'rota nova — sai daqui a lista de pedidos', cor: '#E5484D' },
+      ],
+      mapaHead: [{ t: 'ELEMENTO DE UI' }, { t: 'ENDPOINT REAL' }, { t: 'ESTADO' }, { t: 'O QUE ISSO IMPLICA' }],
+      mapa: MAPA,
+      mapaAntigo: [
+        MP('Lista de regras da câmera', 'GET /api/cameras/<id>/operations', 'EXISTE', 'Liga direto. Precisa devolver também o horário do último disparo para o cartão — hoje vem do pipeline de eventos.'),
+        MP('Criar regra (3 passos)', 'POST /api/cameras/<id>/operations', 'INSUFICIENTE', 'Aceita os 5 tipos, mas não guarda qual template originou. Sem template_id não conseguimos reabrir a regra na mesma linguagem.'),
+        MP('Editar regra existente', 'PUT /api/cameras/<id>/operations/<op>', 'INSUFICIENTE', 'Aceita só name e config. Trocar a classe observada ou a geometria exige apagar e recriar — inaceitável para o TST.'),
+        MP('Zonas desenhadas sobre a cena', 'GET /api/v1/scenarios', 'EXISTE', 'Leitura confirmada. Escrita ainda a validar: é o que salva o polígono.'),
+        MP('Salvar zona / polígono', 'POST|PUT /api/v1/scenarios', 'INSUFICIENTE', 'Escrita não verificada. O desenho assume pontos normalizados 0–1 para não depender da resolução da câmera.'),
+        MP('Catálogo de classes do passo 2', 'GET /api/modules/<code>/classes + classes do tenant', 'EXISTE', 'Já aceita nomes RVB. A tela só mostra o que a câmera reconhece — cruza com o escopo do Estúdio.'),
+        MP('Frame de referência para desenhar', 'GET /api/cameras/<id>/snapshot', 'EXISTE', 'Serve para o editor e para o estado "sem sinal" (último frame guardado).'),
+        MP('Vídeo ao vivo no editor', 'GET /api/cameras/<id>/stream/info + HLS', 'EXISTE', 'Desenhar sobre movimento ajuda a acertar a zona; snapshot é o fallback.'),
+        MP('Linha de contagem (UI dedicada)', 'config.counting_line', 'INSUFICIENTE', 'Hoje se configura por JSON cru na tela. O desenho substitui isso pelos 2 pontos da linha + sentido.'),
+        MP('Pausar / retomar regra', '—', 'NÃO EXISTE', 'Pedido B1. Sem isso o TST apaga a regra para "desligar" e perde o histórico.'),
+        MP('Avaliação OK/NOK da regra', '—', 'NÃO EXISTE', 'Pedido B2. Sem tabela nem rota; é o elo que alimenta o retreino.'),
+        MP('Sentido da linha (entra/sai)', '—', 'NÃO EXISTE', 'A contagem hoje não distingue direção; "conte só quem sai" depende disso.'),
+        MP('Tempo de permanência', 'persistência temporal (ADR-0067)', 'INSUFICIENTE', 'A ADR prevê persistência, mas não há campo por operação exposto na API.'),
+        MP('Simular sobre a cena', '—', 'NÃO EXISTE', 'Pedido B6: avaliar a regra contra os últimos N minutos gravados antes de salvar.'),
+        MP('Propagação ao box (~60 s)', 'comandos de edge / heartbeat', 'INSUFICIENTE', 'A tela promete "vale em ~60 s"; precisa de confirmação de que o box aplicou.'),
+      ],
+      parentes: [
+        { t: 'Estúdio → Modelos por câmera (escopo)', d: 'define O QUE a câmera é capaz de reconhecer. É a fonte do passo 2: se a classe não está no escopo, ela não aparece aqui — com link "ensine no Estúdio".', cor: '#00E5FF' },
+        { t: 'Cenário & Operações (esta tela)', d: 'define ONDE e QUANDO aquilo vira evento. Nunca cria classe nova; só consome o catálogo.', cor: '#00E5FF' },
+        { t: 'Ficha da câmera', d: 'porta de entrada: os botões "Operações" e "Cenário" do detalhe abrem esta tela já com a câmera no contexto. O editor é full-screen, não modal.', cor: '#8A8F98' },
+        { t: 'Eventos / dashboard de violações', d: 'consumidor a jusante. Cada cartão de regra tem "ver eventos desta regra", e cada evento cita o nome da zona que o gerou — a mesma palavra que o cliente escreveu no passo 1.', cor: '#8A8F98' },
+      ],
+      pedidos: [
+        PD('B1', 'BLOQUEIA', 'Pausar e retomar uma regra', 'Um verbo que desliga a regra sem apagar: a regra sai do box e volta igual.', 'Nada — só criar e apagar.', 'PATCH .../operations/<op> com {"enabled": false} + refletir no próximo heartbeat.', 'Botão Pausar do cartão'),
+        PD('B2', 'BLOQUEIA', 'Avaliação OK/NOK da regra', 'Registrar "esta regra está pegando o que devia?" com autor, data e o frame do último disparo.', 'Nada: sem tabela e sem rota.', 'Tabela operation_evaluations + POST .../operations/<op>/evaluations e GET do histórico. NOK abre caso na fila do Estúdio.', 'Rodapé de avaliação'),
+        PD('B3', 'BLOQUEIA', 'template_id na criação e na leitura', 'Saber em que linguagem a regra foi criada, para reabrir nos mesmos 3 passos.', 'operation_type apenas — o template se perde.', 'Campo template_id (string) no POST e no GET das operações.', 'Editor · reabrir regra'),
+        PD('B4', 'DEFEITO', 'PUT completo da operação', 'Trocar classe observada, geometria e condição sem recriar a regra.', 'PUT aceita só name e config.', 'Aceitar watch_classes, geometry e persistence no PUT — ou documentar que config carrega tudo.', 'Editor · botão Salvar'),
+        PD('B5', 'FALTA', 'Escrita de cenário validada', 'Salvar polígono e linha em pontos normalizados 0–1, independentes da resolução.', 'Leitura ok; escrita não verificada.', 'Confirmar POST/PUT /api/v1/scenarios e fixar o formato normalizado no contrato.', 'Passo 1 · desenho'),
+        PD('B6', 'FALTA', 'Simular a regra antes de salvar', 'Rodar a regra proposta contra os últimos minutos gravados e dizer quantos eventos ela geraria.', 'Nada.', 'POST .../operations/preview com a config e uma janela de tempo, devolvendo contagem e frames de amostra.', 'Botão Simular'),
+        PD('B7', 'FALTA', 'Sentido na linha de contagem', 'Contar só quem sai (ou só quem entra).', 'Contagem sem direção.', 'Campo direction ("a_to_b" | "b_to_a" | "both") no config da linha.', 'Passo 3 · linha'),
+        PD('B8', 'FALTA', 'Persistência por operação', '"Só avisar se ficar mais de N segundos" como campo de primeira classe.', 'ADR-0067 prevê persistência temporal, sem campo exposto por operação.', 'Campo persistence_s (int, segundos) no config, respeitado pelo pipeline.', 'Passo 3 · tempo'),
+        PD('B9', 'FALTA', 'Confirmação de que o box aplicou', 'Trocar "propaga em ~60 s" por "valendo desde 14:41".', 'Comandos e heartbeat existem, sem confirmação por regra.', 'applied_at por operação, escrito quando o box confirma a configuração.', 'Rodapé do editor'),
+        PD('B10', 'DEFEITO', 'Último disparo na listagem', 'Mostrar no cartão quando a regra disparou por último, sem N+1.', 'Vem do pipeline de eventos, por consulta separada.', 'Campo last_event_at no GET das operações.', 'Cartão da regra'),
+      ],
+      deps: [
+        { id: 'B1', t: 'Pausar/retomar', d: 'pedido já em curso na pista de código; a tela desenha o botão com o selo "aguarda backend" até chegar.' },
+        { id: 'B2', t: 'Avaliação OK/NOK', d: 'pedido já em curso; sem tabela nem rota hoje. Desenhado e marcado.' },
+        { id: '—', t: 'Crash do Editor de Cenário', d: 'a rota /epi/cameras/:id/scenario quebra hoje com erro cru de JS. O conserto emergencial corre em paralelo e não é assunto deste desenho — mas este desenho substitui a tela consertada.' },
+      ],
+      copyBlocos: [
+        { tag: 'TÍTULOS E RÓTULOS', itens: [
+          { k: 'título da lista', v: 'O que esta câmera vigia' },
+          { k: 'botão principal', v: 'Desenhar nova regra' },
+          { k: 'título do editor', v: 'O que você quer que esta câmera faça?' },
+          { k: 'passos', v: '1 Modelo · 2 Onde e o quê · 3 Quando avisar' },
+          { k: 'atalho ao Estúdio', v: 'O que a câmera reconhece' },
+          { k: 'bloco de preview', v: 'O QUE VAI ACONTECER' },
+        ] },
+        { tag: 'FRASES DE CONDIÇÃO (PASSO 3)', itens: [
+          { k: 'EPI · imediato', v: 'Avisar assim que alguém entrar sem o equipamento' },
+          { k: 'EPI · com tempo', v: 'Só avisar se ficar um tempo dentro' },
+          { k: 'restrita', v: 'Avisar em qualquer presença' },
+          { k: 'linha', v: 'Contar cada cruzamento · Contar só num sentido' },
+          { k: 'tempo', v: 'Avisar se passar do tempo · Só medir, sem avisar' },
+          { k: 'aproximação', v: 'Avisar na hora da aproximação · Só avisar se durar alguns segundos' },
+          { k: 'slider', v: 'Só avisar depois de N segundos seguidos' },
+          { k: 'sensibilidade', v: 'Bem perto · Perto · Na mesma área' },
+        ] },
+        { tag: 'PREVIEW DA CONSEQUÊNCIA', itens: [
+          { k: 'padrão', v: 'Você verá um evento quando ___' },
+          { k: 'contagem', v: 'Cada pallet que cruzar a linha "Saída da expedição" soma 1 na contagem do turno.' },
+          { k: 'medição', v: 'Vamos medir quanto tempo a empilhadeira fica em "Doca 3" e mostrar a média do turno no painel. Nenhum aviso será enviado.' },
+          { k: 'simulação', v: 'ISTO GERARIA UM EVENTO' },
+        ] },
+        { tag: 'VAZIOS, ERROS E AVISOS', itens: [
+          { k: 'vazio', v: 'Esta câmera ainda não vigia nada — Ela está gravando, mas ninguém disse o que observar. / Desenhe sua primeira zona' },
+          { k: 'erro', v: 'Não conseguimos abrir o cenário — As regras que já estão valendo continuam funcionando. / Tentar de novo' },
+          { k: 'sem permissão', v: 'Você pode ver, mas não mudar — Alterar o que a câmera vigia é do administrador do site.' },
+          { k: 'sem sinal', v: 'Sem imagem para desenhar em cima — Usamos o último frame guardado.' },
+          { k: 'incompleto', v: 'Dê um nome ao lugar — ele aparece em todo evento.' },
+          { k: 'zona grande', v: 'Zona grande demais pega quem está de passagem; pequena demais deixa passar.' },
+          { k: 'mobile', v: 'Desenhar zona: melhor no computador' },
+        ] },
+        { tag: 'AJUDA E CONSEQUÊNCIA', itens: [
+          { k: 'propagação', v: 'Salvar propaga ao box do site em ~60 s' },
+          { k: 'pausar', v: 'Pausar não apaga nada: a regra sai do box no próximo ciclo e volta igual.' },
+          { k: 'avaliação', v: 'Esta regra está pegando o que devia? Sim, está boa · Não, precisa ajuste' },
+          { k: 'NOK', v: 'Abre um caso na fila do Estúdio com o frame do último aviso.' },
+          { k: 'classe ausente', v: 'Só aparece aqui o que esta câmera já sabe reconhecer. Falta algo? Ensine no Estúdio.' },
+          { k: 'modo avançado', v: 'Números crus do motor. O cliente nunca precisa abrir isto.' },
+        ] },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>
