@@ -1302,7 +1302,7 @@ export function Cameras() {
                       </span>
                     </div>
                     <div className={s.metrica}>
-                      <span className={s.metricaChave}>FPS inferência</span>
+                      <span className={s.metricaChave}>FPS reconhecimento</span>
                       <span className={s.metricaValor}>{numero(saude?.fps)}</span>
                     </div>
                     <div className={s.metrica}>
