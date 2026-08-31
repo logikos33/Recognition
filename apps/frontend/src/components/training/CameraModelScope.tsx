@@ -276,17 +276,26 @@ export function CameraModelScope({ classesCatalogo }: { classesCatalogo: YoloCla
       <Banner variant="warning">
         O escopo abaixo é uma <strong>sugestão derivada de evidência</strong> (classe com ≥10 anotações
         humanas naquela câmera + protetor auditivo universal): é a CAPACIDADE do modelo ali, não a
-        EXIGÊNCIA do cliente. Será substituído pela matriz de exigência da RVB (issue #535) — uma área
-        sem nenhuma luva anotada hoje fica sem escopo de luvas, e nenhuma violação de luva seria vista
-        nela. Onde este escopo vale hoje: no shadow sobre os frames que o box envia E no worker de
-        inferência da nuvem, que passou a descartar detecção fora do escopo antes de virar violação
-        (tasks/inference.py::_no_escopo_da_camera). O box edge ainda NÃO recebe classe por câmera —
-        essa ponta segue aberta na issue #519.
+        EXIGÊNCIA do cliente. Será substituído pela matriz de exigência da RVB assim que ela ficar
+        pronta — até lá, uma área sem nenhuma luva anotada hoje fica sem escopo de luvas, e nenhuma
+        violação de luva seria vista nela. Se uma classe que devia estar marcada não aparece aqui, é
+        porque falta anotação dela nesta câmera — fale com quem cuida do treinamento. Onde este
+        escopo já vale: no shadow sobre os frames que o equipamento envia e no reconhecimento que
+        roda na nuvem, que já descarta detecção fora do escopo antes de virar violação. O
+        equipamento instalado no site ainda NÃO aplica esse recorte por câmera — essa parte segue
+        pendente.
+        {isSuperAdmin && (
+          <>
+            {' '}
+            {/* jargao-ok: modo avançado (superadmin) — referência de implementação, só quem mexe no código precisa disto */}
+            <span style={{ opacity: 0.72 }}>{'Detalhe técnico: aplica em tasks/inference.py::_no_escopo_da_camera · pendências nas issues #519 (equipamento do site) e #535 (matriz de exigência).'}</span>
+          </>
+        )}
       </Banner>
       <div style={{ padding: '10px 12px', fontSize: 12, color: vars.color.textMuted, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <span>Modelo + classes que valem em cada câmera (escopo). Sem deployment = detector padrão do ambiente (não há como desativar por aqui — só trocar).</span>
         {!podeEditar && <span style={{ color: vars.color.warning }}>(somente leitura — requer permissão de aprovação)</span>}
-        {models.length === 0 && <span style={{ color: vars.color.warning }}>Nenhum modelo com artefato ONNX no tenant.</span>}
+        {models.length === 0 && <span style={{ color: vars.color.warning }}>Nenhum modelo pronto para uso neste tenant.</span>}
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
