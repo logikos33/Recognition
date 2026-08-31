@@ -105,6 +105,7 @@ import { Link } from 'react-router-dom'
 import { anexarSemRepetir } from '../../components/annotation/studioQueue'
 import { useAuth } from '../../hooks/useAuth'
 import { api } from '../../services/api'
+import { confiancaInternaOuCliente } from '../../services/confidenceDisplay'
 import { useToast } from '../../components/ui/Toast/useToast'
 import { labelForClass, MOTIVOS_VERIFICACAO, type MotivoVerificacao } from '../../utils/labels'
 import { LogikosLoader } from '../shell/LogikosLoader'
@@ -216,7 +217,7 @@ const POLL_MS = 15_000
 const LIMITE = 50
 
 export function Verificacao() {
-  const { can } = useAuth()
+  const { can, isSuperAdmin } = useAuth()
   const toast = useToast()
   const podeLer = can('verification:read')
   const podeEscrever = can('verification:write')
@@ -648,7 +649,7 @@ export function Verificacao() {
             <span className={s.fichaDado}>{horaDe(atual)}</span>
             <span className={s.fichaRotulo}>Confiança</span>
             <span className={s.fichaDado}>
-              {typeof confianca === 'number' ? `${Math.round(confianca * 100)}%` : '—'}
+              {confiancaInternaOuCliente(confianca, isSuperAdmin)}
             </span>
             {atual.verification_reason && (
               <>

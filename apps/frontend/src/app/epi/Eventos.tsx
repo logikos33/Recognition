@@ -48,6 +48,7 @@ import { useModuleClasses } from '../../hooks/useModuleClasses'
 import { useToast } from '../../components/ui/Toast/useToast'
 import { api, ApiError } from '../../services/api'
 import { cameraService } from '../../services/cameraService'
+import { confiancaInternaOuCliente } from '../../services/confidenceDisplay'
 import { classificarLatencia } from '../../components/shared/ProcedenciaBadge'
 import { vereditoHumano, type Veredito } from '../../components/shared/VereditoHumano'
 import {
@@ -148,7 +149,7 @@ function intervaloDoPeriodo(periodo: Periodo): { from: string; to: string } {
 }
 
 export function Eventos() {
-  const { can } = useAuth()
+  const { can, isSuperAdmin } = useAuth()
   const toast = useToast()
   const [parametros] = useSearchParams()
   const { classes, classLabel } = useModuleClasses(MODULO)
@@ -649,12 +650,13 @@ export function Eventos() {
                       </td>
 
                       {/* Confiança da detecção (§9 paridade) — o dado já vinha,
-                          só não era desenhado. Primeira violação, como no legado. */}
+                          só não era desenhado. Primeira violação, como no legado.
+                          Contrato A1c: o número cru não prevê acerto (medido no
+                          DEV, ~58-65% plano em toda faixa) — leitura honesta para
+                          quem não é superadmin, ver confidenceDisplay.ts. */}
                       <td className={s.celula}>
                         <span className={s.confianca}>
-                          {ev.violations?.[0]?.confidence != null
-                            ? `${Math.round(ev.violations[0].confidence * 100)}%`
-                            : '—'}
+                          {confiancaInternaOuCliente(ev.violations?.[0]?.confidence, isSuperAdmin)}
                         </span>
                       </td>
 

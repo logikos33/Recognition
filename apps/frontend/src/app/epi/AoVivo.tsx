@@ -66,6 +66,7 @@ import {
 import { LayoutGrid, Maximize2, MoreVertical, Plus, Video, X } from 'lucide-react'
 
 import { api, getToken } from '../../services/api'
+import { confiancaBruta } from '../../services/confidenceDisplay'
 import { useAuth } from '../../hooks/useAuth'
 import { useLiveView } from '../../hooks/useLiveView'
 import { useMonitoringSocket, type Detection } from '../../hooks/useMonitoringSocket'
@@ -209,6 +210,7 @@ function useNaTela(ref: RefObject<HTMLElement | null>): boolean {
 // Overlay de detecção — ⛔ pointerEvents none, ZERO onClick (CLAUDE.md).
 // ---------------------------------------------------------------------------
 function CamadaCaixas({ deteccoes, comRotulo }: { deteccoes: Detection[]; comRotulo: boolean }) {
+  const { isSuperAdmin } = useAuth()
   return (
     // pointerEvents também inline: é regra de segurança de interação, não
     // enfeite — tem de valer mesmo se alguém trocar a folha de estilo.
@@ -230,7 +232,11 @@ function CamadaCaixas({ deteccoes, comRotulo }: { deteccoes: Detection[]; comRot
           >
             {comRotulo && (
               <span className={s.rotuloCaixa[tom]}>
-                {d.class} {Math.round(d.confidence * 100)}%
+                {/* Contrato A1c: número cru não prevê acerto — a etiqueta sobre
+                    o vídeo ao vivo não tem espaço para a leitura honesta
+                    (whiteSpace nowrap), então só superadmin vê o %; ver
+                    services/confidenceDisplay.ts. */}
+                {d.class}{isSuperAdmin ? ` ${confiancaBruta(d.confidence)}` : ''}
               </span>
             )}
           </div>

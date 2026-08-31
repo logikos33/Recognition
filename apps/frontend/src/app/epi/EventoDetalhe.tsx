@@ -57,6 +57,7 @@ import { HANDLES, boxFromDrag, clamp, moveBox, resizeBox, type HandleId } from '
 import type { Box } from '../../components/annotation/studioTypes'
 import { classificarLatencia } from '../../components/shared/ProcedenciaBadge'
 import { useAuth } from '../../hooks/useAuth'
+import { confiancaBruta, confiancaInternaOuCliente } from '../../services/confidenceDisplay'
 import {
   ESCALA_MAX, ESCALA_MIN, LUPA_INICIAL, distanciaEntre, proximoEstado,
   type EventoLupa, type Palco,
@@ -180,7 +181,7 @@ const ALCA_POS: Record<HandleId, React.CSSProperties> = {
 
 export function EventoDetalhe() {
   const { id } = useParams<{ id: string }>()
-  const { can } = useAuth()
+  const { can, isSuperAdmin } = useAuth()
 
   const [evento, setEvento] = useState<Evento | null>(null)
   const [fase, setFase] = useState<Fase>('carregando')
@@ -606,7 +607,11 @@ export function EventoDetalhe() {
                         className={s.caixaRotulo}
                         style={{ transform: `scale(${1 / lupa.escala})` }}
                       >
-                        {labelForClass(v.class)} · {(v.confidence * 100).toFixed(0)}%
+                        {/* Contrato A1c: número cru não prevê acerto — a etiqueta
+                            sobre a evidência não tem espaço para a leitura honesta
+                            (whiteSpace nowrap), então só superadmin vê o %; ver
+                            services/confidenceDisplay.ts. */}
+                        {labelForClass(v.class)}{isSuperAdmin ? ` · ${confiancaBruta(v.confidence)}` : ''}
                       </span>
                     </div>
                   ))}
@@ -753,7 +758,7 @@ export function EventoDetalhe() {
                   >
                     <span className={s.deteccaoInfo}>
                       <span>{labelForClass(v.class)}</span>
-                      <span className={s.confianca}>{(v.confidence * 100).toFixed(0)}%</span>
+                      <span className={s.confianca}>{confiancaInternaOuCliente(v.confidence, isSuperAdmin)}</span>
                     </span>
                     {evidencia && podeCorrigir && selecionada === null && (
                       <button type="button" className={s.botaoCorrigir} onClick={() => iniciarCorrecao(i)}>
