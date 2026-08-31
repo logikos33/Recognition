@@ -19,12 +19,17 @@
  *     "Credenciais" é a mesma tela final de senha-uma-vez do item 1.
  *  3. **Overrides de permissão / sessões do usuário**: `UserPermissionsDrawer`
  *     (333 linhas: matriz de permissões + revogar sessões) não foi recriado
- *     nesta PR — "Permissões avançadas" linka deliberadamente para a tela
- *     antiga (`/admin/tenants/<tenant_id>`, aba Usuários), que já hospeda o
- *     drawer inteiro, revogar sessões incluído (não há listagem de sessões
- *     no antigo, só o botão de revogar dentro do drawer).
+ *     nesta PR. O link desta linha ("Ver tenant →") já foi corrigido para
+ *     `/novo/admin/tenants/<tenant_id>` (C1 — antes vazava pro front antigo
+ *     via `href` absoluto, driblando a régua de coexistência que só olhava
+ *     `to=`/`navigate()`) e mostra dados reais do tenant (módulos, limites,
+ *     marca) em `TenantDetalhe.tsx` — mas esse drawer específico (matriz de
+ *     permissão por usuário + revogar sessão) **não tem equivalente no front
+ *     novo ainda**. Pendência nomeada, não fingida: não é "Permissões
+ *     avançadas" até esse drawer existir aqui.
  */
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Check, Copy, KeyRound } from 'lucide-react'
 
@@ -34,6 +39,7 @@ import { EmptyState } from '../../components/ui/EmptyState/EmptyState'
 import { useToast } from '../../components/ui/Toast/useToast'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import { lk } from '../tokens/lk.css'
+import { rotaNova } from '../RotasNovas'
 import * as s from './Usuarios.css'
 
 const PAGE_SIZE = 20
@@ -169,6 +175,7 @@ function ModalConvidar({
 
 export function Usuarios() {
   const toast = useToast()
+  const nav = useNavigate()
   const qc = useQueryClient()
   const [busca, setBusca] = useState('')
   const [tenantFiltro, setTenantFiltro] = useState('')
@@ -339,13 +346,14 @@ export function Usuarios() {
                           {u.is_active ? 'Desativar' : 'Reativar'}
                         </button>
                         {u.tenant_id && (
-                          <a
-                            className={s.mono}
-                            href={`/admin/tenants/${u.tenant_id}`}
-                            title="Overrides de permissão e sessões — tela antiga (aba Usuários)"
+                          <button
+                            type="button"
+                            className={s.linkPermissoes}
+                            onClick={() => nav(rotaNova(`/admin/tenants/${u.tenant_id}`))}
+                            title="Dados do tenant — módulos, limites e marca"
                           >
-                            Permissões avançadas →
-                          </a>
+                            Ver tenant →
+                          </button>
                         )}
                       </div>
                     </td>

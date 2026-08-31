@@ -251,7 +251,9 @@ export function Treino() {
           o componente Link de rotas com destino absoluto — o teste de
           coexistência barra justamente esse componente apontando pra fora do
           prefixo (regra certa: SAIR do front novo é o que esta navegação
-          precisa fazer de verdade). */}
+          precisa fazer de verdade). Sem equivalente no front novo ainda (C1) —
+          texto e title avisam que é a área antiga; exceção nomeada em
+          EXCECOES de coexistencia.test.tsx, nunca por silêncio. */}
       {!gpuEnabled && (
         <div className={s.bannerGpu}>
           <AlertTriangle size={16} style={{ flexShrink: 0 }} />
@@ -260,8 +262,12 @@ export function Treino() {
             (não roda mais em simulação automaticamente).{' '}
           </span>
           {isSuperAdmin ? (
-            <a href="/admin/integrations?type=vast_ai" className={s.linkBanner}>
-              Administração → Integrações
+            <a
+              href="/admin/integrations?type=vast_ai"
+              className={s.linkBanner}
+              title="Abre a área técnica do front antigo — sem equivalente novo ainda"
+            >
+              Administração → Integrações (área técnica antiga)
             </a>
           ) : (
             <span>Solicite ao administrador da plataforma a configuração da chave de GPU.</span>
