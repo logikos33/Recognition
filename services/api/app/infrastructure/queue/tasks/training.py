@@ -42,6 +42,7 @@ import logging
 import os
 import secrets
 import zipfile
+from datetime import datetime, timezone
 from io import BytesIO
 from typing import Any
 from uuid import uuid4
@@ -163,6 +164,21 @@ def _build_model_name(framework: str, model_size: str, job_id: str) -> str:
     if framework == "yolo26":
         return f"{label} {model_size} - Job {short_job}"
     return f"{label} - Job {short_job}"
+
+
+def _build_display_name(version_n: int, when: datetime | None = None) -> str:
+    """Alias comercial pro cliente (task D3, política já vigente na casa):
+    "Logikos V<n> · DD/MM". NUNCA framework/".py"/UUID/job-id — só o alias
+    sequencial (nº de modelos já registrados do tenant, +1) e a data.
+
+    "O que mudou" (ex.: "+340 imagens de Expedição", no espírito do exemplo
+    do contrato) fica de fora de propósito: neste ponto do dispatch não há
+    dado de delta de dataset disponível (dataset_versions não guarda quantas
+    imagens foram adicionadas desde a versão anterior) — registrado como
+    pedido pendente no relatório da task, não inventado aqui.
+    """
+    quando = when or datetime.now(timezone.utc)
+    return f"Logikos V{version_n} · {quando.strftime('%d/%m')}"
 
 
 @celery.task(
@@ -288,17 +304,39 @@ def dispatch_training(
             )
             job_framework = str((job_row or {}).get("framework") or "rfdetr")
             model_name = _build_model_name(job_framework, model_size, job_id)
+            # display_name (migration 129, task D3 — "job/treino aparece com
+            # nome cru"): alias comercial voltado ao cliente, NUNCA o `name`
+            # interno acima (framework/job-id são jargão de stack). Só
+            # calculado quando o tenant é resolvível — sem tenant não há como
+            # contar "modelo nº quantos" e o front já cai em "Logikos"
+            # (NOME_PADRAO_CLIENTE) quando display_name vem NULL.
+            display_name = None
+            if tenant_id:
+                try:
+                    contagem = repo._execute_one(
+                        "SELECT COUNT(*) AS cnt FROM trained_models tm "
+                        "LEFT JOIN users u ON u.id = tm.user_id "
+                        "WHERE COALESCE(tm.tenant_id, u.tenant_id) = %s",
+                        (tenant_id,),
+                    )
+                    version_n = int((contagem or {}).get("cnt") or 0) + 1
+                    display_name = _build_display_name(version_n)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "display_name_version_lookup_failed: job=%s tenant=%s err=%s",
+                        job_id, tenant_id, exc,
+                    )
             # C2 (task "treino honesto"): metrics (JSONB, migration 098 —
             # campo JSON já existente, sem migration nova) carrega o marcador
             # {'simulated': true, ...} pra artefatos simulados — indelével,
             # sobrevive independente de qualquer futura mudança em `origin`.
             repo._execute_mutation_no_return(
                 """INSERT INTO trained_models
-                   (id, user_id, job_id, name, model_path,
+                   (id, user_id, job_id, name, display_name, model_path,
                     map50, precision, recall, is_active, created_at,
                     created_by, origin, tenant_id, framework,
                     r2_onnx_key, dataset_version_id, metrics)
-                   SELECT %s, tj.user_id, %s, %s, %s, %s, %s, %s, FALSE, NOW(),
+                   SELECT %s, tj.user_id, %s, %s, %s, %s, %s, %s, %s, FALSE, NOW(),
                           tj.user_id, %s, u.tenant_id, tj.framework, %s, %s, %s
                    FROM training_jobs tj
                    JOIN users u ON u.id = tj.user_id
@@ -306,6 +344,7 @@ def dispatch_training(
                 (
                     new_model_id, job_id,
                     model_name,
+                    display_name,
                     model_path,
                     metrics.get("mAP50", 0.0),
                     metrics.get("precision", 0.0),

@@ -21,6 +21,7 @@ Cobre:
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -304,6 +305,90 @@ class TestBuildModelName:
     def test_unknown_framework_falls_back_to_upper(self) -> None:
         name = training_mod._build_model_name("outro", "yolo26n", _JOB_ID)
         assert name.startswith("OUTRO"), name
+
+
+class TestBuildDisplayName:
+    """_build_display_name: alias comercial pro cliente (task D3 — "job/treino
+    aparece com nome cru"). NUNCA framework/".py"/job-id/UUID — só
+    "Logikos V<n> · DD/MM" (política já vigente na casa)."""
+
+    def test_format_is_alias_plus_date_no_jargon(self) -> None:
+        when = datetime(2026, 8, 25, tzinfo=timezone.utc)
+        name = training_mod._build_display_name(2, when)
+        assert name == "Logikos V2 · 25/08", name
+        assert "RF-DETR" not in name
+        assert "YOLOX" not in name
+        assert "YOLO26" not in name
+        assert _JOB_ID not in name
+        assert ".py" not in name
+
+    def test_defaults_to_now_when_no_date_given(self) -> None:
+        name = training_mod._build_display_name(1)
+        assert name.startswith("Logikos V1 · "), name
+
+
+class TestTrainedModelInsertDisplayName:
+    """Fail-antes/passa-depois (task D3): o INSERT em trained_models grava
+    `display_name` como alias "Logikos V<n>" — nunca o `name` interno
+    (framework/job-id), e só quando o tenant é resolvível."""
+
+    def _run(self, monkeypatch, existing_count: int = 4, tenant: str | None = _REAL_TENANT):
+        def _execute_one_side_effect(sql, params=()):
+            if "SELECT COUNT(*) AS cnt FROM trained_models" in sql:
+                return {"cnt": existing_count}
+            if "SELECT id FROM trained_models WHERE job_id" in sql:
+                return None  # guarda anti-duplicação: nenhum modelo existente
+            if "SELECT framework FROM training_jobs" in sql:
+                return {"framework": "rfdetr"}
+            return {"tenant_id": tenant}  # _get_job_tenant_id
+
+        with patch.object(training_mod, "DatabasePool"), \
+             patch.object(training_mod, "AnnotationRepository") as mock_repo_cls, \
+             patch.object(training_mod, "_publish_progress"), \
+             patch.object(
+                 training_mod, "get_training_compute",
+                 return_value=MagicMock(dispatch=MagicMock(return_value=_DEFAULT_RESULT)),
+             ), \
+             patch.object(training_mod, "verify_model_artifact", return_value=True):
+            mock_repo_cls.return_value._execute_one.side_effect = _execute_one_side_effect
+            training_mod.dispatch_training(_JOB_ID, _DSV_ID, epochs=5)
+            repo = mock_repo_cls.return_value
+
+        return _find_insert_call(repo)
+
+    def test_insert_includes_display_name_column(self, monkeypatch) -> None:
+        sql, _ = self._run(monkeypatch)
+        assert "name, display_name, model_path" in sql
+
+    def test_display_name_is_logikos_alias_counts_tenant_models(self, monkeypatch) -> None:
+        _, params = self._run(monkeypatch, existing_count=4)
+        [display_name] = [
+            p for p in params if isinstance(p, str) and p.startswith("Logikos V")
+        ]
+        # 4 modelos já existentes do tenant => este é o 5º (V5).
+        assert display_name.startswith("Logikos V5 · "), display_name
+
+    def test_display_name_never_leaks_internal_jargon(self, monkeypatch) -> None:
+        """Mutação-alvo: reinstalar o nome cru (framework/job-id/".py") no
+        display_name reprova este teste."""
+        _, params = self._run(monkeypatch, existing_count=0)
+        [display_name] = [
+            p for p in params if isinstance(p, str) and p.startswith("Logikos V")
+        ]
+        assert "RF-DETR" not in display_name
+        assert "YOLOX" not in display_name
+        assert "YOLO26" not in display_name
+        assert _JOB_ID not in display_name
+        assert ".py" not in display_name
+
+    def test_display_name_stays_none_when_tenant_unresolvable(self, monkeypatch) -> None:
+        """Sem tenant resolvível não há como contar "modelo nº quantos" —
+        nunca inventa um alias sem dado real (front cai em "Logikos")."""
+        _, params = self._run(monkeypatch, tenant=None)
+        assert None in params
+        assert not any(
+            isinstance(p, str) and p.startswith("Logikos V") for p in params
+        )
 
 
 class TestTrainedModelInsertNameReflectsRealFramework:

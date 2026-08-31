@@ -151,6 +151,11 @@ class DashboardEdgeService:
             summary.append(
                 {
                     "model_name": row["model_name"],
+                    # display_name (task D3): alias voltado ao cliente — NULL
+                    # quando ninguém atribuiu ainda / não há trained_models
+                    # correspondente; o caller decide o fallback ("Logikos"),
+                    # nunca `model_name` cru.
+                    "display_name": row.get("display_name"),
                     "framework": row.get("framework"),
                     "last_epoch": row.get("last_epoch"),
                     "epoch_count": int(row.get("epoch_count") or 0),

@@ -38,6 +38,8 @@ import {
   type TelemetryWindow,
   type TrainingCurves,
 } from '../services/dashboardEdgeService'
+import { nomeInternoOuCliente } from '../services/modelDisplay'
+import { useAuth } from '../hooks/useAuth'
 import { useEdgeTelemetrySocket } from '../hooks/useEdgeTelemetrySocket'
 import * as s from './DashboardIntegradoPage.css'
 
@@ -184,6 +186,7 @@ function Gauge({ label, icon, value, unit, max, spark }: GaugeProps) {
 
 export function DashboardIntegradoPage() {
   const token = getToken()
+  const { isSuperAdmin } = useAuth()
 
   // -- Modelos --
   const [models, setModels] = useState<ModelSummary[]>([])
@@ -328,7 +331,7 @@ export function DashboardIntegradoPage() {
                     aria-pressed={active}
                   >
                     <span className={s.chipSwatch} style={{ background: colorMap[m.model_name] }} />
-                    {m.model_name}
+                    {nomeInternoOuCliente({ id: m.model_name, name: m.model_name, display_name: m.display_name }, isSuperAdmin)}
                     {m.ap_small != null && <span style={{ color: vars.color.textMuted }}>· small {m.ap_small.toFixed(3)}</span>}
                   </button>
                 )

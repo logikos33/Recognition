@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 388 arquivos, 65.504 linhas
+## Situação — 388 arquivos, 65.512 linhas
 
 | status | arquivos |
 |---|---:|
@@ -227,7 +227,7 @@ apagado não são a mesma coisa.
 | `src/services/confidenceDisplay.ts` | `INFRA` | — | 59 |
 | `src/services/countingService.ts` | `INFRA` | — | 64 |
 | `src/services/crossTenantCameras.ts` | `INFRA` | — | 107 |
-| `src/services/dashboardEdgeService.ts` | `INFRA` | — | 98 |
+| `src/services/dashboardEdgeService.ts` | `INFRA` | — | 103 |
 | `src/services/edgeService.ts` | `INFRA` | — | 197 |
 | `src/services/eventsService.ts` | `INFRA` | — | 85 |
 | `src/services/impersonation.ts` | `INFRA` | — | 93 |
@@ -416,7 +416,7 @@ apagado não são a mesma coisa.
 | `src/pages/monitoring/VersionPanel.tsx` | `PENDENTE` | — | 70 |
 | `src/pages/ResetPasswordPage.tsx` | `PENDENTE` | — | 84 |
 | `src/pages/CameraTriagePage.tsx` | `SEM-DESENHO` | — | 482 |
-| `src/pages/DashboardIntegradoPage.tsx` | `SEM-DESENHO` | — | 418 |
+| `src/pages/DashboardIntegradoPage.tsx` | `SEM-DESENHO` | — | 421 |
 | `src/pages/epi/EpiOperationsPage.tsx` | `SEM-DESENHO` | — | 72 |
 | `src/pages/epi/EpiScenarioEditorPage.tsx` | `SEM-DESENHO` | — | 38 |
 | `src/pages/epi/EpiSitesPage.tsx` | `SEM-DESENHO` | — | 160 |
