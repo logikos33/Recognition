@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 387 arquivos, 65.295 linhas
+## Situação — 387 arquivos, 65.353 linhas
 
 | status | arquivos |
 |---|---:|
@@ -159,8 +159,8 @@ apagado não são a mesma coisa.
 | `src/components/training/panels/OperationCatalogPanel.tsx` | `INFRA` | — | 91 |
 | `src/components/training/panels/RegisteredToolsPanel.css.ts` | `INFRA` | — | 46 |
 | `src/components/training/panels/RegisteredToolsPanel.tsx` | `INFRA` | — | 148 |
-| `src/components/training/TrainingGallery.css.ts` | `INFRA` | — | 302 |
-| `src/components/training/TrainingGallery.tsx` | `INFRA` | — | 945 |
+| `src/components/training/TrainingGallery.css.ts` | `INFRA` | — | 317 |
+| `src/components/training/TrainingGallery.tsx` | `INFRA` | — | 988 |
 | `src/components/training/TrainingModeLayout.css.ts` | `INFRA` | — | 15 |
 | `src/components/training/TrainingModeLayout.tsx` | `INFRA` | — | 270 |
 | `src/components/ui/AppDrawer/AppDrawer.css.ts` | `INFRA` | — | 106 |
