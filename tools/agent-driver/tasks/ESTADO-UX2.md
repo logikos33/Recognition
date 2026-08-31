@@ -124,6 +124,48 @@ e até linha-de-base. Ela mede o **dataset**; `scripts/ops/calibracao_classes.py
 **"Dois admins" esclarecido:** `admin:panel` é SUPERADMIN-ONLY (navPorPerfil.ts:81-89); admin de
 tenant não vê item de administração. Não há menu vazando por papel — o vazamento é por link.
 
+## 🔴 LOTE 1 — os 8 temas foram REPROVADOS pelos céticos (com quebra provada)
+
+Isto é o sistema funcionando. Quebras que os céticos provaram rodando:
+
+| tema | quebra provada |
+|---|---|
+| A1 | conserto de UMA tela só: Dashboard segue binário → o mesmo alerta é "Não definida" em Eventos e **violação** no Dashboard, derrubando o score. Trocou uma mentira coerente por duas telas que se desmentem |
+| B1 | 🔴 `salvarCaixa()` carimba por **posição na fila**, não por id → correção **e autoria** caem no alerta ERRADO se a fila reordenar durante o await |
+| B4 | consertou a fila, mas o **export** (`versioning_v2.py`) segue descartando o que a fila serve → o anotador trabalha e o dataset perde. Pior que o bug original: gasta gente |
+| C2 | Carga tem **2 ramos sem saída nenhuma** (sem `counting:read`, e módulo desligado) — um deles é o estado real do tenant da demo |
+| D1 | o teste não trava o "sem fração": a mutação reintroduzindo a fração passou VERDE |
+| D3 | serve `display_name` no JSON e a tela ignora (`dashboardEdgeService.ts` sem o campo) |
+| A1c, B2 | **CI vermelho**: `manifesto.test.ts` desatualizado. Medi na develop limpa: **8/8 passa** → a desatualização é dos PRs, não pré-existente |
+
+### Achado do cético do A1 que vale além da rodada
+`annotation_repository.create_class` insere **sem** `is_violation`, e a coluna é nullable sem
+default → **toda classe que o cliente criar no Estúdio nasce indecisa**. Hoje o dano é zero (medi:
+**0 classes NULL** no DEV, a migration 125 backfillou tudo), mas é o estado de NASCIMENTO daqui
+para a frente. Entrou no conserto.
+
+### 🔴 Onde EU refutei o cético (regra: não alegar sem evidência vale para nós)
+Ele afirmou "magnitude atual = 0 — o fix não muda rótulo nenhum no DEV". **Falso.** Medi com o
+predicado real (`_IS_COMPLIANCE_SQL` lê o **jsonb `violations`**, não `class_name` — nisso ele
+estava certo e eu, na primeira tentativa, errado):
+
+| classe | hoje | com o fix | n |
+|---|---|---|---:|
+| Sem Luvas | violação | **observação** | 33 |
+| Sem Óculos | violação | **observação** | 23 |
+| Óculos | violação | **observação** | 12 |
+
+**68 de 423 alertas mudam** — 56% das violações atuais (68 de 121). Isso torna a Quebra 1 dele
+**mais grave**: a contradição Eventos × Dashboard atingiria 68 alertas reais na demo, não um caso
+hipotético.
+
+### Como fix e calibração se compõem (o que o cliente vê no fim)
+Violações hoje: 121. Depois do fix do `event_kind`: 53. Depois de rodar
+`aplicar_calibracao_rvb.py` (cadastra `Sem Luvas`=violação 69,7%, `Óculos`=conformidade,
+`Sem Óculos`=indecisa; rebaixa `Sem protetor de ouvido` 27,3% e `Uso incorreto` 20,0%):
+**66 violações, todas com precisão medida ≥63%**. A demo continua tendo o que mostrar — e o que
+mostra acerta 6 em 10, em vez de acusar quem cumpre em 7 de 10.
+
 ## Delta (mais recente primeiro)
 - 31/08 lote 1 despachado: 8 consertos em worktrees próprios (`wt-ux2-{a1,a1c,c2,b1,b2,d1,b4,d3}`)
   + C1 em `wt-ux2-c1`, cada um com cético opus por cima. Adendo do Vitor incorporado (A1 ampliado,
