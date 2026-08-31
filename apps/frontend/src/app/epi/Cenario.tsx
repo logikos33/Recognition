@@ -42,9 +42,13 @@
  * `overlap_dynamic` (aproximação) não tem campo de geometria no schema real
  * — é sobreposição entre DUAS CLASSES em qualquer lugar do quadro, não uma
  * zona. A prancha desenha uma zona para esse template mesmo assim (para a
- * UX ficar igual às outras 4); a tela mantém o desenho por consistência, mas
- * o `zone_points` que sobra no `config` é extra que o motor ainda não lê —
- * documentado no comentário de `construirConfig`, não escondido.
+ * UX ficar igual às outras 4); a tela mantém o desenho como REFERÊNCIA
+ * VISUAL declarada — nunca como recorte espacial que não existe. Isso é
+ * pedido **B11 — geometria para aproximação** (motor passar a respeitar
+ * `zone_points` em `overlap_dynamic`; aditivo, pequeno-médio). Até lá, um
+ * aviso (`AVISO_APROXIMACAO_SEM_ZONA`) aparece no painel do passo 3 E no
+ * preview "O QUE VAI ACONTECER", e a frase natural nunca cita o lugar
+ * desenhado para este template — só "vale para toda a imagem desta câmera".
  *
  * ⛔ Esta tela nunca cria classe (isso é do Estúdio) e nunca mostra JSON cru
  * para quem não é superadmin.
@@ -282,6 +286,15 @@ function construirConfig(tpl: TemplateDef, r: Rascunho): Record<string, unknown>
   }
 }
 
+/**
+ * `overlap_dynamic` não recebe zone_points (pedido B11 — geometria para
+ * aproximação, ainda não existe no motor). A tela mantém o desenho como
+ * REFERÊNCIA VISUAL — nunca finge um recorte espacial que não existe: nem
+ * na frase, nem calada. Mesmo texto no aviso do painel e no preview.
+ */
+const AVISO_APROXIMACAO_SEM_ZONA =
+  'Nesta regra o aviso vale para toda a imagem — a marcação serve só de referência para quem for olhar depois.'
+
 // ── frase em linguagem natural (porte fiel da prancha) ──────────────────────
 
 function frase(tpl: TemplateDef, nomeLugar: string, classesDisplay: string[], cond: string, seg: number): string {
@@ -305,9 +318,11 @@ function frase(tpl: TemplateDef, nomeLugar: string, classesDisplay: string[], co
         ? `Vamos medir quanto tempo ${cls} fica em "${lugar}" e mostrar a média do turno no painel. Nenhum aviso será enviado.`
         : `Você verá um evento quando ${cls} ficar mais de ${seg} segundos em "${lugar}" — e a média do turno aparece no painel.`
     case 'aproximacao':
+      // Sem geometria real no motor (B11) — a frase NUNCA cita o lugar
+      // desenhado, senão prometeria um recorte espacial que não existe.
       return cond === 'permanencia'
-        ? `Você verá um evento quando ${cls} ficarem próximos por mais de ${seg} segundos em "${lugar}".`
-        : `Você verá um evento quando ${cls} se aproximarem em "${lugar}".`
+        ? `Você verá um evento quando ${cls} ficarem próximos por mais de ${seg} segundos — vale para toda a imagem desta câmera.`
+        : `Você verá um evento quando ${cls} se aproximarem — vale para toda a imagem desta câmera.`
   }
 }
 
@@ -789,6 +804,12 @@ export function Cenario() {
 
             <div className={s.blocoPasso}>
               <span className={s.overlinePasso}>PASSO 3 · QUANDO AVISAR</span>
+              {t.key === 'aproximacao' && (
+                <div className={s.avisoIncompleto}>
+                  <TriangleAlert size={14} strokeWidth={2} color={lk.estado.atencao} aria-hidden="true" />
+                  <span className={s.avisoIncompletoTexto}>{AVISO_APROXIMACAO_SEM_ZONA}</span>
+                </div>
+              )}
               <div className={s.blocoCondicoes}>
                 {t.condicoes.map((c) => {
                   const on = cond === c.chave
@@ -840,6 +861,9 @@ export function Cenario() {
             <div className={s.blocoPreview}>
               <span className={s.overlinePreview}>O QUE VAI ACONTECER</span>
               <span className={s.textoPreview}>{previewTexto}</span>
+              {t.key === 'aproximacao' && (
+                <span className={s.avisoIncompletoTexto}>{AVISO_APROXIMACAO_SEM_ZONA}</span>
+              )}
               <span className={s.textoPreviewTecnico}>
                 VIRA: {t.forma === 'linha' ? 'LINHA' : 'ÁREA'} DE {pontos.length} PONTOS · {classesSel.length} CLASSE(S)
               </span>

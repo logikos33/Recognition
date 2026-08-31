@@ -174,6 +174,30 @@ describe('editor — template primeiro', () => {
   })
 })
 
+describe('aproximação — sem geometria real no motor (B11)', () => {
+  it('preview e aviso NUNCA afirmam recorte espacial — falha se o aviso sumir', async () => {
+    servir([])
+    montar()
+    fireEvent.click(await screen.findByRole('button', { name: /desenhar nova regra/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /aproximação perigosa/i }))
+    await screen.findByPlaceholderText(/nome deste lugar/i)
+
+    fireEvent.change(screen.getByPlaceholderText(/nome deste lugar/i), { target: { value: 'Pátio X' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Capacete' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Colete refletivo' }))
+
+    // o mesmo aviso aparece duas vezes: painel do passo 3 + preview
+    const avisos = await screen.findAllByText(
+      /vale para toda a imagem — a marcação serve só de referência para quem for olhar depois/i,
+    )
+    expect(avisos.length).toBe(2)
+
+    // a frase natural também não promete recorte — nunca cita "em <lugar>"
+    expect(screen.getByText(/vale para toda a imagem desta câmera\./)).toBeTruthy()
+    expect(screen.queryByText(/em "Pátio X"/)).toBeNull()
+  })
+})
+
 describe('pausar/retomar — degradação graciosa', () => {
   it('funciona de ponta a ponta quando a rota responde', async () => {
     servir([opEpi()])
