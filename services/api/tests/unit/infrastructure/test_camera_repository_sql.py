@@ -179,3 +179,22 @@ class TestCameraListExposesActiveModule:
         repo.get_by_id_and_tenant(str(uuid4()), str(uuid4()))
         sql = pool.mock_cursor.execute.call_args[0][0]
         assert sql.count("active_module") == 1
+
+
+class TestCameraCountByModuleExcludesArchived:
+    """D1: count_by_module alimenta `cameras_total` do dashboard EPI. Um
+    COUNT(*) sem filtro de is_active soma câmeras arquivadas ao "total" —
+    bug real medido na RVB (29 = 19 ativas + 10 arquivadas). O denominador
+    tem que contar só o que count_by_status também conta (is_active=true)."""
+
+    def test_count_by_module_filters_is_active_true(self) -> None:
+        repo, pool = _make_repo()
+        pool.mock_cursor.fetchone.return_value = {"count": 19}
+
+        repo.count_by_module(str(uuid4()), "epi")
+
+        sql = pool.mock_cursor.execute.call_args[0][0]
+        assert "is_active = true" in sql, (
+            "count_by_module sem filtro is_active — volta a somar câmeras "
+            "arquivadas ao total exibido como 'câmeras ativas'"
+        )

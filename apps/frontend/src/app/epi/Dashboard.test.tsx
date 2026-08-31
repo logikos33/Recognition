@@ -7,7 +7,7 @@
  *    o gestor age em cima do que leu.
  *  · **mostrar cor sozinha.** Todo estado sai com palavra junto — quem não
  *    distingue verde de vermelho ainda tem de conseguir operar.
- *  · **oferecer link que dá 403.** "triar eventos" e "ver saúde" só aparecem
+ *  · **oferecer link que dá 403.** "triar eventos" e "ver câmeras" só aparecem
  *    para quem tem a permissão da tela de destino (`navPorPerfil` já provou
  *    que item que leva a porta fechada é pior que item ausente).
  *  · **chamar "sem dados" um dia bom.** Zero evento com câmera rodando é o
@@ -144,18 +144,29 @@ describe('EPI Dashboard — o que o backend não tem', () => {
   })
 })
 
-describe('EPI Dashboard — estado é cor + ícone + palavra', () => {
-  it('câmera fora do ar sai com a palavra, não só com âmbar', async () => {
+describe('EPI Dashboard — câmeras não fingem telemetria que não existe (D1)', () => {
+  it('mostra só o número de câmeras ativas — nunca "online", que prometeria conectividade não medida', async () => {
     montar()
-    const cartao = await screen.findByLabelText('Câmeras online')
-    expect(within(cartao).getByText('1 fora do ar')).toBeTruthy()
+    const cartao = await screen.findByLabelText('Câmeras ativas')
+    const valor = within(cartao).getByText('2')
+    expect(valor).toBeTruthy()
+    // getByText('2') casa igual com "2/3": por padrão o testing-library só
+    // junta os text nodes DIRETOS do elemento, então um <span> aninhado com
+    // o "/3" fica fora do match e passaria despercebido. .textContent pega
+    // a árvore inteira — é o que de fato trava a fração fora da tela.
+    expect(valor.textContent).toBe('2')
+    expect(within(cartao).getByText('Cadastradas e ativas')).toBeTruthy()
+    expect(within(cartao).queryByText(/online/i)).toBeNull()
+    expect(within(cartao).queryByText(/fora do ar/i)).toBeNull()
   })
 
-  it('frota inteira de pé diz "Todas online"', async () => {
-    getStats.mockResolvedValue({ ...STATS_RVB, cameras_active: 3 })
+  it('zero câmera ativa admite isso em vez de inventar contagem', async () => {
+    getStats.mockResolvedValue({ ...STATS_RVB, cameras_active: 0, cameras_total: 0 })
     montar()
-    const cartao = await screen.findByLabelText('Câmeras online')
-    expect(within(cartao).getByText('Todas online')).toBeTruthy()
+    const cartao = await screen.findByLabelText('Câmeras ativas')
+    const valor = within(cartao).getByText('0')
+    expect(valor.textContent).toBe('0')
+    expect(within(cartao).getByText('Nenhuma câmera ativa')).toBeTruthy()
   })
 })
 
@@ -164,13 +175,13 @@ describe('EPI Dashboard — permissão', () => {
     montar({ permissoes: [] })
     await screen.findByText('87')
     expect(screen.queryByText(/triar eventos/)).toBeNull()
-    expect(screen.queryByText(/ver saúde/)).toBeNull()
+    expect(screen.queryByText(/ver câmeras/)).toBeNull()
   })
 
   it('mostra os atalhos para quem pode', async () => {
     montar()
     expect(await screen.findByText(/triar eventos/)).toBeTruthy()
-    expect(screen.getByText(/ver saúde/)).toBeTruthy()
+    expect(screen.getByText(/ver câmeras/)).toBeTruthy()
   })
 })
 
