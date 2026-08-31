@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 387 arquivos, 65.142 linhas
+## Situação — 387 arquivos, 65.156 linhas
 
 | status | arquivos |
 |---|---:|
@@ -218,7 +218,7 @@ apagado não são a mesma coisa.
 | `src/hooks/useOperationLiveStatus.ts` | `INFRA` | — | 85 |
 | `src/hooks/useOperations.ts` | `INFRA` | — | 110 |
 | `src/hooks/usePolling.ts` | `INFRA` | — | 69 |
-| `src/hooks/useScenario.ts` | `INFRA` | — | 64 |
+| `src/hooks/useScenario.ts` | `INFRA` | — | 78 |
 | `src/hooks/useTraining.ts` | `INFRA` | — | 95 |
 | `src/hooks/useTrainingSocket.ts` | `INFRA` | — | 127 |
 | `src/main.tsx` | `INFRA` | — | 21 |
