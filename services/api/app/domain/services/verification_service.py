@@ -1,20 +1,25 @@
 """
 DOMAIN verification_service.py — Fila de verificação humana de alertas.
 
-Fluxo desenhado (triagem por IA — atualmente NÃO roda no worker, ver
+Fluxo desenhado (triagem por IA — atualmente NÃO conclui no worker, ver
 get_human_queue):
   1. Claude pré-analisa alertas de baixa confiança
-  2. "approve" e "reject" resolvem automaticamente
-  3. "needs_human" vai para a fila visível ao operador
+  2. "approve" e "reject" resolvem automaticamente (verdict terminal)
+  3. "needs_human" é ESTADO DE TRIAGEM, não veredito — fica visível ao operador
   4. Operador confirma ou rejeita o que a IA deixou pendente
 
-Fluxo real hoje: a triagem por IA nunca conclui, então a fila mostra todo
-alerta ainda sem veredito (`verification_verdict IS NULL`) — humano ou IA.
-O operador NUNCA vê os aprovados/rejeitados automaticamente.
+Fluxo real hoje: a triagem por IA quase nunca conclui, então a fila mostra
+todo alerta ainda sem veredito TERMINAL (`verification_verdict IS NULL`) —
+humano ou IA. O operador NUNCA vê os aprovados/rejeitados automaticamente.
+
+A fila também exclui CONFORMIDADE (reuso de `AlertRepository._IS_COMPLIANCE_SQL`,
+ADR-0065) e colapsa rajadas repetidas da mesma câmera+classe numa janela curta
+num único representante — ver `_candidatos_sql`.
 """
 import logging
 
 from app.infrastructure.database.connection import DatabasePool
+from app.infrastructure.database.repositories.alert_repository import AlertRepository
 
 logger = logging.getLogger(__name__)
 
@@ -25,15 +30,30 @@ def _get_pool():
 
 class VerificationService:
 
+    #: Alertas da MESMA câmera+classe que se repetem dentro desta janela são
+    #: uma rajada — o modelo redetecta a mesma pessoa/situação frame a frame,
+    #: não N eventos distintos. Medido no DEV (tenant RVB): 114 alertas
+    #: violação/verdict-NULL colapsam para 15 eventos distintos com 60s — é a
+    #: janela usada nessa medição e a que fica valendo aqui. Documentar o
+    #: número é o ponto: se precisar mudar, é decisão consciente, não default
+    #: escondido.
+    _DEDUP_WINDOW_SECONDS = 60
+
     def submit_for_verification(
         self,
         alert_id: str,
         camera_id: str,
         class_name: str,
         confidence: float,
+        tenant_id: str,
         module_code: str = "epi",
     ) -> None:
-        """Dispara Celery task de verificação. Fire-and-forget."""
+        """Dispara Celery task de verificação. Fire-and-forget.
+
+        `tenant_id` é obrigatório (C-01): `verify_alert` grava o veredito da
+        IA de volta no alerta, e o UPDATE lá precisa do tenant no WHERE para
+        não escrever cross-tenant por um `alert_id` adivinhado.
+        """
         try:
             from app.infrastructure.queue.tasks.verification import verify_alert  # noqa: PLC0415
             verify_alert.delay(
@@ -41,11 +61,52 @@ class VerificationService:
                 camera_id=camera_id,
                 class_name=class_name,
                 confidence=confidence,
+                tenant_id=tenant_id,
                 module_code=module_code,
             )
             logger.info("verification_submitted: alert=%s", alert_id)
         except Exception as exc:
             logger.error("verification_submit_error: alert=%s err=%s", alert_id, exc)
+
+    def _candidatos_sql(self, camera_filtro: bool) -> str:
+        """CTE compartilhada entre `get_human_queue` e `get_queue_count`.
+
+        As DUAS têm de usar o MESMO texto de WHERE — o cético mediu contagem
+        e lista divergindo porque só a lista tinha o filtro de conformidade e
+        o dedup. Devolve `(id, gap)` por alerta candidato:
+
+          · `verification_verdict IS NULL` — critério honesto (não
+            `needs_human`, ver docstring do módulo).
+          · `NOT _IS_COMPLIANCE_SQL` (reuso de AlertRepository, ADR-0065) —
+            exclui CONFORMIDADE. Medido no DEV: 302/416 (72,6%) dos alertas
+            `verdict IS NULL` do tenant RVB são conformidade (ex.: "Protetor
+            auditivo", 270 sozinho) — a fila de revisão HUMANA não é lugar
+            pra confirmar o que o sistema já considera OK.
+          · `gap` = tempo desde o alerta anterior da MESMA câmera+classe
+            (LAG). `gap IS NULL OR gap > _DEDUP_WINDOW_SECONDS` no chamador
+            mantém só o PRIMEIRO de cada rajada — ver `_DEDUP_WINDOW_SECONDS`.
+            A classe usada é a do primeiro item de `violations` (imensa
+            maioria dos alertas tem só 1); `alerts.class_name` (coluna
+            separada) é NULL em ~20% das linhas do DEV — não serve pra dedup.
+
+        `presence_names` (achado por `AlertRepository.presence_class_names`)
+        é o `%s` embutido no texto do `_IS_COMPLIANCE_SQL` — quem monta os
+        params tem de passá-lo na MESMA posição textual (depois do
+        `camera_id`, se houver).
+        """
+        camera_clause = "AND a.camera_id = %s " if camera_filtro else ""
+        return f"""
+            SELECT a.id,
+                   (a.created_at - LAG(a.created_at) OVER (
+                       PARTITION BY a.camera_id, COALESCE(a.violations->0->>'class', '')
+                       ORDER BY a.created_at
+                   )) AS gap
+            FROM alerts a
+            WHERE a.verification_verdict IS NULL
+              AND a.tenant_id = %s
+              {camera_clause}
+              AND NOT {AlertRepository._IS_COMPLIANCE_SQL}
+        """  # noqa: SLF001 — reuso deliberado do predicado (pedido: "reuse, não reescreva")
 
     def get_human_queue(
         self,
@@ -53,42 +114,48 @@ class VerificationService:
         limit: int = 50,
         camera_id: str | None = None,
     ) -> list[dict]:
-        """Lista alertas aguardando revisão do tenant, mais recentes primeiro (C-01).
+        """Lista alertas aguardando revisão do tenant, mais incertos primeiro (C-01).
 
         tenant_id é obrigatório — sem ele a fila vazaria alertas de todos os
         tenants (achado #14 do API_CONTRACT_MAP.md).
 
-        Critério é `verification_verdict IS NULL`, não `verification_status =
-        'needs_human'`. `needs_human` é escrito só pela task Celery
-        `verify_alert` (infrastructure/queue/tasks/verification.py) — a
-        triagem por IA que decide approve/reject/needs_human. Essa task nunca
-        conclui no worker atual: medido no DEV, 0 linhas em needs_human/
-        auto_approved/auto_rejected e 0 com verified_by='claude-haiku' no
-        banco inteiro. Todo alerta nasce e fica em `pending` (DEFAULT da
-        migration 016). Com o filtro antigo a fila filtrava por um conjunto
-        vazio por construção — o operador nunca via nada, mesmo com centenas
-        de alertas reais esperando (tenant RVB: 416 pending, 0 needs_human).
-        `verdict IS NULL` é o estado honesto de "ninguém decidiu ainda",
-        humano ou IA. Quando a triagem por IA voltar a rodar, `pending` volta
-        a ser um estado transitório de verdade e a distinção fina
-        (needs_human vs. auto-resolvido) pode ser reintroduzida — até lá,
-        NULL é o único jeito de a fila achar os alertas reais.
+        Ordena por incerteza (`ABS(confidence - 0.5)` — o modelo mais em
+        dúvida primeiro), não por `created_at`: com `LIMIT 50` e centenas de
+        candidatos, a ordem decide QUAIS 50 aparecem, não só a sequência. Os
+        50 mais recentes medidos no DEV tinham confiança 0,90-1,00 (o modelo
+        já tem certeza) e bbox não-projetável — o operador nunca alcançava os
+        casos realmente ambíguos (confiança 0,2-0,8) sem primeiro julgar
+        dezenas de itens óbvios.
+
+        Ver `_candidatos_sql` para o critério completo (verdict NULL +
+        exclusão de conformidade + dedup de rajada).
         """
         pool = _get_pool()
         if pool is None:
             return []
 
-        base_query = (
-            "SELECT a.*, c.name AS camera_name "
-            "FROM alerts a "
-            "LEFT JOIN cameras c ON c.id = a.camera_id "
-            "WHERE a.verification_verdict IS NULL AND a.tenant_id = %s "
-        )
+        presence_names = AlertRepository(pool).presence_class_names(tenant_id)
+        candidatos_sql = self._candidatos_sql(camera_filtro=bool(camera_id))
+
+        query = f"""
+            WITH candidatos AS ({candidatos_sql})
+            SELECT a.*, cam.name AS camera_name
+            FROM alerts a
+            JOIN candidatos k ON k.id = a.id
+            LEFT JOIN public.cameras cam ON cam.id = a.camera_id
+            WHERE k.gap IS NULL OR EXTRACT(EPOCH FROM k.gap) > %s
+            ORDER BY ABS(COALESCE(a.confidence, 1.0) - 0.5) ASC
+            LIMIT %s
+        """
+        # `public.cameras`, não `cameras`: o pool é compartilhado entre
+        # schemas (rvb/dev/admin.cameras também existe) e um search_path de
+        # outra query na mesma conexão bastaria pra casar com a tabela
+        # errada — ver ADR-0004 (schema-per-tenant).
         params: list = [tenant_id]
         if camera_id:
-            base_query += "AND a.camera_id = %s "
             params.append(camera_id)
-        base_query += "ORDER BY a.created_at DESC LIMIT %s"
+        params.append(presence_names)
+        params.append(self._DEDUP_WINDOW_SECONDS)
         params.append(limit)
 
         # ⚠️ NÃO engolir: `[]` significa "fila vazia", e a tela escreve
@@ -102,7 +169,7 @@ class VerificationService:
         # `return []` daqui impedia que fossem alcançados.
         with pool.get_connection() as conn:
             cur = conn.cursor()
-            cur.execute(base_query, tuple(params))
+            cur.execute(query, tuple(params))
             return [dict(row) for row in cur.fetchall()]
 
     def human_review(
@@ -156,29 +223,38 @@ class VerificationService:
         logger.info("human_review: alert=%s verdict=%s user=%s", alert_id, verdict, user_id)
         return affected > 0
 
-    def get_queue_count(self, tenant_id: str) -> int:
-        """Conta alertas pendentes de revisão humana do tenant (badge na nav, C-01)."""
+    def get_queue_count(self, tenant_id: str, camera_id: str | None = None) -> int:
+        """Conta alertas pendentes de revisão humana do tenant (C-01).
+
+        `camera_id` opcional para casar exatamente com o filtro de
+        `get_human_queue` quando o chamador escopa por câmera — contagem e
+        lista com WHERE divergente é a MESMA classe de bug que o filtro
+        fantasma `needs_human`: um número que não bate com o que a tela
+        mostra. Ver `_candidatos_sql` para o critério completo.
+        """
         pool = _get_pool()
         if pool is None:
             return 0
-        # Mesma razão da fila: 0 é uma contagem legítima, não "não sei".
-        #
-        # `AS total` + acesso por NOME porque o pool usa RealDictCursor: a linha
-        # é um dict, e o `row[0]` que estava aqui levantava KeyError SEMPRE. O
-        # `except: return 0` engolia, então o badge nunca contou nada — mostrava
-        # 0 pela via da exceção desde o primeiro dia. Só apareceu quando o
-        # fallback silencioso saiu e a rota passou a devolver 500.
-        #
-        # Mesmo critério honesto de get_human_queue: `verification_verdict IS
-        # NULL`, não `verification_status = 'needs_human'`. needs_human só é
-        # escrito pela triagem por IA (verify_alert), que não conclui no
-        # worker atual — ver comentário completo em get_human_queue.
+
+        presence_names = AlertRepository(pool).presence_class_names(tenant_id)
+        candidatos_sql = self._candidatos_sql(camera_filtro=bool(camera_id))
+
+        query = f"""
+            WITH candidatos AS ({candidatos_sql})
+            SELECT COUNT(*) AS total FROM candidatos k
+            WHERE k.gap IS NULL OR EXTRACT(EPOCH FROM k.gap) > %s
+        """
+        params: list = [tenant_id]
+        if camera_id:
+            params.append(camera_id)
+        params.append(presence_names)
+        params.append(self._DEDUP_WINDOW_SECONDS)
+
+        # Mesma razão de get_human_queue: 0 é uma contagem legítima, não "não
+        # sei" — exceção SOBE, não vira 0 em silêncio (`AS total` + acesso por
+        # NOME porque o pool usa RealDictCursor).
         with pool.get_connection() as conn:
             cur = conn.cursor()
-            cur.execute(
-                "SELECT COUNT(*) AS total FROM alerts "
-                "WHERE verification_verdict IS NULL AND tenant_id = %s",
-                (tenant_id,),
-            )
+            cur.execute(query, tuple(params))
             row = cur.fetchone()
             return int(row["total"]) if row else 0

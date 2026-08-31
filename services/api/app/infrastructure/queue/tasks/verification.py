@@ -9,7 +9,9 @@ Fluxo:
   2. Cria alerta no DB com verification_status='pending'
   3. Dispara esta task via Celery
   4. Claude analisa: approve / reject / needs_human
-  5. Atualiza alerts.verification_status no DB
+  5. Atualiza alerts.verification_status no DB — `needs_human` NUNCA grava em
+     `verification_verdict` (só approve/reject, veredito terminal); ver o
+     gate em `_update_alert_verification`.
 
 Env vars:
   ANTHROPIC_API_KEY           — obrigatório para chamada Claude
@@ -102,14 +104,36 @@ def _call_claude(camera_id: str, class_name: str, confidence: float, module_code
         return {"verdict": "needs_human", "reason": f"Erro IA: {exc}", "adjusted_confidence": confidence}
 
 
-def _update_alert_verification(alert_id: str, verdict: str, reason: str, confidence: float) -> None:
-    """Atualiza verification_status da alerta no DB."""
+def _update_alert_verification(
+    alert_id: str, verdict: str, reason: str, confidence: float, tenant_id: str,
+) -> None:
+    """Atualiza verification_status/verdict da alerta no DB.
+
+    ⚠️ GATE: `needs_human` é ESTADO DE TRIAGEM, não veredito terminal — nunca
+    grava em `verification_verdict`. Se gravasse, no dia em que esta task
+    voltar a concluir de verdade, todo alerta que a IA manda pro humano
+    ganharia `verification_verdict` NOT NULL e SUMIRIA da fila
+    (`get_human_queue`/`get_queue_count` filtram por `verdict IS NULL` —
+    exatamente o que deveriam mostrar). Só `approve`/`reject` (auto ou
+    humano) são veredito TERMINAL; `needs_human` fica só em
+    `verification_status`, com `verification_verdict` NULL — a mesma
+    distinção que `human_review` (verification_service.py) já preserva.
+    """
     status_map = {
         "approve": "auto_approved",
         "reject": "auto_rejected",
         "needs_human": "needs_human",
     }
     verification_status = status_map.get(verdict, "needs_human")
+    verdict_terminal = verdict if verdict in ("approve", "reject") else None
+
+    if not tenant_id:
+        # Sem tenant não há WHERE seguro: `tenant_id = NULL` no SQL nunca
+        # bate nenhuma linha (semântica de NULL), e escrever sem escopo é
+        # exatamente o vetor cross-tenant que C-01 proíbe. Melhor pular e
+        # logar do que arriscar.
+        logger.warning("verification_update_skipped: sem tenant_id, alert=%s", alert_id)
+        return
 
     try:
         from app.infrastructure.database.connection import DatabasePool  # noqa: PLC0415
@@ -125,8 +149,8 @@ def _update_alert_verification(alert_id: str, verdict: str, reason: str, confide
                 "UPDATE alerts SET "
                 "verification_status = %s, verification_verdict = %s, "
                 "verification_reason = %s, verified_at = NOW(), verified_by = 'claude-haiku' "
-                "WHERE id = %s",
-                (verification_status, verdict, reason, alert_id),
+                "WHERE id = %s AND tenant_id = %s",
+                (verification_status, verdict_terminal, reason, alert_id, tenant_id),
             )
         logger.info("alert_verified: id=%s status=%s", alert_id, verification_status)
     except Exception as exc:
@@ -146,9 +170,14 @@ def verify_alert(
     camera_id: str,
     class_name: str,
     confidence: float,
+    tenant_id: str,
     module_code: str = "epi",
 ) -> dict:
     """Verifica alerta de baixa confiança com Claude claude-haiku-4-5-20251001.
+
+    `tenant_id` obrigatório: escopa o UPDATE em `_update_alert_verification`
+    (C-01) — sem ele o WHERE ficava só em `id`, e um `alert_id` de outro
+    tenant seria gravável por esta task.
 
     Returns dict com verdict e reason.
     """
@@ -164,6 +193,7 @@ def verify_alert(
             verdict=result["verdict"],
             reason=result["reason"],
             confidence=result["adjusted_confidence"],
+            tenant_id=tenant_id,
         )
         logger.info(
             "verify_alert_done: alert=%s verdict=%s",
@@ -174,7 +204,7 @@ def verify_alert(
     except Exception as exc:
         logger.error("verify_alert_error: alert=%s err=%s", alert_id, exc)
         try:
-            _update_alert_verification(alert_id, "needs_human", f"Erro: {exc}", confidence)
+            _update_alert_verification(alert_id, "needs_human", f"Erro: {exc}", confidence, tenant_id)
         except Exception:
             pass
         raise self.retry(exc=exc, countdown=30)

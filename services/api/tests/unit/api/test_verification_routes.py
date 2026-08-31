@@ -69,22 +69,53 @@ class TestGetQueue:
     def test_empty_queue_returns_200(self, client, auth_headers):
         mock_svc = MagicMock()
         mock_svc.get_human_queue.return_value = []
+        mock_svc.get_queue_count.return_value = 0
         with patch(_SVC_PATH, mock_svc):
             resp = client.get("/api/verification/queue", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.get_json()
         assert data["data"]["items"] == []
         assert data["data"]["count"] == 0
+        assert data["data"]["total"] == 0
 
     def test_returns_items_with_correct_count(self, client, auth_headers):
         items = [{"id": ALERT_ID, "camera_id": "cam1"}, {"id": str(uuid4()), "camera_id": "cam2"}]
         mock_svc = MagicMock()
         mock_svc.get_human_queue.return_value = items
+        mock_svc.get_queue_count.return_value = 2
         with patch(_SVC_PATH, mock_svc):
             resp = client.get("/api/verification/queue", headers=auth_headers)
         data = resp.get_json()
         assert data["data"]["count"] == 2
         assert len(data["data"]["items"]) == 2
+
+    def test_total_vem_de_get_queue_count_nao_de_len_items(self, client, auth_headers):
+        """`total` (achado do cético, item d) é a verdade do servidor —
+        precisa poder DIVERGIR de `count`/`len(items)` quando `limit` corta a
+        página. Sem isso, a tela não teria como saber "quanto falta de
+        verdade" além do lote carregado."""
+        items = [{"id": ALERT_ID, "camera_id": "cam1"}]
+        mock_svc = MagicMock()
+        mock_svc.get_human_queue.return_value = items
+        mock_svc.get_queue_count.return_value = 366
+        with patch(_SVC_PATH, mock_svc):
+            resp = client.get("/api/verification/queue", headers=auth_headers)
+        data = resp.get_json()
+        assert data["data"]["count"] == 1
+        assert data["data"]["total"] == 366
+
+    def test_total_usa_get_queue_count_escopado_pelo_mesmo_camera_id(self, client, auth_headers):
+        """Achado do cético (item d): contagem e lista tinham WHERE
+        divergente porque `get_queue_count` não aceitava `camera_id` — o
+        `total` de uma tela filtrada por câmera contava OUTRAS câmeras
+        também. Alinhado agora: mesmo filtro para as duas chamadas."""
+        mock_svc = MagicMock()
+        mock_svc.get_human_queue.return_value = []
+        mock_svc.get_queue_count.return_value = 0
+        with patch(_SVC_PATH, mock_svc):
+            client.get(f"/api/verification/queue?camera_id={ALERT_ID}", headers=auth_headers)
+        count_kwargs = mock_svc.get_queue_count.call_args[1]
+        assert count_kwargs["camera_id"] == ALERT_ID
 
     def test_limit_capped_at_100(self, client, auth_headers):
         mock_svc = MagicMock()
@@ -193,6 +224,16 @@ class TestQueueCount:
             resp = client.get("/api/verification/queue/count", headers=auth_headers_no_tenant_claim)
         assert resp.status_code == 401
         mock_svc.get_queue_count.assert_not_called()
+
+    def test_camera_id_filter_forwarded(self, client, auth_headers):
+        """Endpoint dedicado também aceita `camera_id`, mesma semântica de
+        `/queue` — achado do cético (item d): antes, só a lista filtrava."""
+        mock_svc = MagicMock()
+        mock_svc.get_queue_count.return_value = 0
+        with patch(_SVC_PATH, mock_svc):
+            client.get(f"/api/verification/queue/count?camera_id={ALERT_ID}", headers=auth_headers)
+        call_kwargs = mock_svc.get_queue_count.call_args[1]
+        assert call_kwargs["camera_id"] == ALERT_ID
 
 
 # ---------------------------------------------------------------------------

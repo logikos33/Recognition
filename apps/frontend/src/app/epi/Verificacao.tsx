@@ -5,7 +5,7 @@
  * Endpoints (contrato do design, `contrato-dados.js`, categoria
  * `events-alerts-media`):
  *
- *   GET  /api/verification/queue              → fila needs_human do tenant
+ *   GET  /api/verification/queue              → fila sem veredito do tenant (verdict IS NULL)
  *   POST /api/verification/<alert_id>/review  → veredito humano
  *   GET  /api/alerts/<alert_id>/snapshot      → URL assinada da evidência
  *
@@ -26,7 +26,7 @@
  *     dele sai, o índice não pode ficar apontando pra o vizinho errado, que era
  *     exatamente o bug do PR 496.
  *  2. **Reabastecimento por dedup de id, jamais por OFFSET — e só remove sob
- *     lote INTEIRO.** Decidir um alerta o tira do filtro `needs_human` no
+ *     lote INTEIRO.** Decidir um alerta o tira do filtro (`verdict IS NULL`) no
  *     servidor: a próxima leitura da MESMA "página" já é outro conjunto. É a
  *     família exata do OFFSET que perdia 50% das linhas no PR 500. Quem separa
  *     "já está na fila" de "trabalho novo" é `anexarSemRepetir` — o mesmo
@@ -43,6 +43,12 @@
  * `precisaDeReabastecimento`: pedir "página 2" a um endpoint que não tem
  * páginas seria inventar paginação, e inventar paginação é como o PR 500 começou.
  *
+ * ⚠️ **"N RESTANTES" e o gate de "Fila zerada" usam `total` (verdade do
+ * servidor), não `fila.length`.** A tela já escreveu "Fila zerada" com
+ * centenas de alertas pendentes ainda no banco — `fila.length` é só os
+ * `LIMITE` (50) mais incertos carregados agora, nunca "quanto falta de
+ * verdade". Ver `restantes` e o comentário do endpoint em `carregar`.
+ *
  * ─── FILA POR INCERTEZA (delta §2 item 9 — não podia se perder) ──────────────
  *
  * O que ordena a fila é o quanto o modelo está EM DÚVIDA, não a hora do
@@ -51,10 +57,17 @@
  *
  *     MIN(ABS(confidence - 0.5))  sobre as propostas,  COALESCE(..., 1.0)
  *
- * Aqui é no cliente porque `/api/verification/queue` não aceita `ordenar=` (só
- * `/api/training/active-learning/queue` aceita) — e, sem paginação, ordenar no
- * cliente não perde nada: a fila inteira já veio. **A ordenação é aplicada ao
- * LOTE, antes de anexar** — nunca à fila que já está na tela (regra 1).
+ * O backend (`get_human_queue`) TAMBÉM ordena por incerteza agora
+ * (`ORDER BY ABS(confidence - 0.5)` sobre `alerts.confidence`) — antes
+ * ordenava por `created_at DESC`, e como o endpoint não pagina (`LIMIT` corta
+ * DE VERDADE), a ordem decidia QUAIS itens apareciam: medido no DEV, os 50
+ * mais recentes tinham confiança 0,90-1,00 (o modelo já tinha certeza) e o
+ * operador nunca alcançava os casos ambíguos. O reordenar aqui no cliente
+ * continua — não é redundância à toa: usa o MIN sobre `violations[]`
+ * (sinal mais fino que só `alerts.confidence`) e não depende do backend
+ * nunca regredir a ordem. Sem paginação, ordenar de novo no cliente não
+ * perde nada: a fila inteira já veio. **A ordenação é aplicada ao LOTE,
+ * antes de anexar** — nunca à fila que já está na tela (regra 1).
  *
  * ─── PARA O DESIGN / PARA O BACKEND ─────────────────────────────────────────
  *
@@ -112,6 +125,17 @@ export interface ItemVerificacao {
   evidence_key?: string | null
   created_at?: string | null
   timestamp?: string | null
+}
+
+/** Envelope de `GET /verification/queue`. `total` é a contagem REAL do
+ *  servidor (mesmo WHERE do `items` — verdict nulo + exclusão de
+ *  conformidade + dedup, ver `get_queue_count`); `count` é só `len(items)`,
+ *  capado no `limit`. Backends antigos (ou mocks de teste) podem não mandar
+ *  `total` — nesse caso a tela cai para a contagem local (ver `restantes`). */
+interface RespostaFila {
+  items?: ItemVerificacao[]
+  count?: number
+  total?: number
 }
 
 /** Traço de aprendizado ativo do backend: `MIN(ABS(confidence - 0.5))`.
@@ -193,6 +217,13 @@ export function Verificacao() {
   const [fila, setFila] = useState<ItemVerificacao[]>([])
   const [indice, setIndice] = useState(0)
   const [decididos, setDecididos] = useState<Record<string, Veredito>>({})
+  // Verdade do servidor para "N RESTANTES" — ver `restantes` abaixo e o
+  // comentário do endpoint em `carregar`. `null` até o primeiro sync OK.
+  const [totalServidor, setTotalServidor] = useState<number | null>(null)
+  // Quantos itens já estavam em `decididos` no momento do ÚLTIMO sync bem
+  // sucedido — a diferença para `decididos` atual é "decisão feita DEPOIS do
+  // último sync", que ainda não pode estar refletida em `totalServidor`.
+  const decididosNoUltimoSyncRef = useRef(0)
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
@@ -227,11 +258,20 @@ export function Verificacao() {
 
   const carregar = useCallback(async () => {
     try {
-      const res = await api.get<{ data?: { items?: ItemVerificacao[] } }>(
-        `/verification/queue?limit=${LIMITE}`,
-      )
+      const res = await api.get<{ data?: RespostaFila }>(`/verification/queue?limit=${LIMITE}`)
       const itens = res?.data?.items ?? []
       const idsServidor = new Set(itens.map((i) => i.id))
+
+      // `total` é a verdade do servidor no INSTANTE deste request. Decisões
+      // feitas DEPOIS (ver `restantes`) descontam por cima até o próximo
+      // sync realinhar tudo — é o que corrige o "Fila zerada" com centenas
+      // no banco (docblock do topo): antes, "quanto falta" só existia como
+      // `fila.length`, o array LOCAL de no máximo `LIMITE` itens.
+      const totalNovo = res?.data?.total
+      if (typeof totalNovo === 'number') {
+        setTotalServidor(totalNovo)
+        decididosNoUltimoSyncRef.current = Object.keys(decididosRef.current).length
+      }
 
       // Lote CHEIO não prova nada sobre quem faltou (regra 2) — só remove
       // abaixo do limite, e nunca remove o que EU decidi (regra 1).
@@ -274,12 +314,27 @@ export function Verificacao() {
   }, [carregar, podeLer])
 
   const atual = fila[indice]
-  const pendentes = useMemo(
+  // Progresso do LOTE carregado (feedback do "quanto já venci do que estou
+  // olhando agora") — continua local de propósito, decisão é instantânea.
+  const pendentesLocal = useMemo(
     () => fila.filter((i) => !decididos[i.id]).length,
     [fila, decididos],
   )
   const total = fila.length
-  const progresso = total === 0 ? 0 : Math.round(((total - pendentes) / total) * 100)
+  const progresso = total === 0 ? 0 : Math.round(((total - pendentesLocal) / total) * 100)
+
+  // "N RESTANTES" e o gate de fila-vazia usam a VERDADE DO SERVIDOR
+  // (`totalServidor`, de `get_queue_count` — ver `carregar`), não
+  // `fila.length`: o array local é só os `LIMITE` (50) mais incertos, e a
+  // tela já escreveu "Fila zerada" com centenas ainda no banco (docblock do
+  // topo do arquivo — exatamente o bug que este contador existe pra matar).
+  // Decisões feitas DEPOIS do último sync descontam na hora
+  // (`decididosDesdeSync`), pro operador ver o número cair no clique — sem
+  // isso "2 RESTANTES" só apareceria no próximo poll, até 15s depois.
+  const decididosDesdeSync = Object.keys(decididos).length - decididosNoUltimoSyncRef.current
+  const restantes = totalServidor === null
+    ? pendentesLocal
+    : Math.max(0, totalServidor - decididosDesdeSync)
 
   // Evidência do item corrente. A fila entrega `evidence_key`; a URL assinada
   // vem de /alerts/<id>/snapshot. Cache por id: voltar com ← não repede.
@@ -412,7 +467,7 @@ export function Verificacao() {
     )
   }
 
-  if (pendentes === 0 || !atual) {
+  if (restantes === 0 || !atual) {
     return (
       <div className={s.centro}>
         <ShieldCheck size={36} strokeWidth={1.5} className={s.iconeOk} aria-hidden />
@@ -444,7 +499,7 @@ export function Verificacao() {
     <div className={s.pagina}>
       <div className={s.cabecalho}>
         <h1 className={s.titulo}>Verificação</h1>
-        <span className={s.restantes}>{pendentes} RESTANTES</span>
+        <span className={s.restantes}>{restantes} RESTANTES</span>
         <div
           className={s.trilho}
           role="progressbar"

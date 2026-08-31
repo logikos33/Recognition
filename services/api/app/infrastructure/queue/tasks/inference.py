@@ -514,7 +514,7 @@ def _queue_verification_if_low_confidence(
         if not alert_id:
             return
 
-        violacao, _presenca, _t, _m = _polaridade_da_camera(camera_id)
+        violacao, _presenca, tenant_id, _m = _polaridade_da_camera(camera_id)
         # Mesma fonte que decidiu que havia violação (yolo_classes.is_violation).
         # Sem tenant resolvido cai no env, que só decide se alguém o setou.
         def _e_violacao(d: dict) -> bool:
@@ -539,6 +539,7 @@ def _queue_verification_if_low_confidence(
             camera_id=camera_id,
             class_name=det.get("class", ""),
             confidence=det.get("confidence", 0.0),
+            tenant_id=tenant_id,
             module_code=module_code or "epi",
         )
         logger.info(
