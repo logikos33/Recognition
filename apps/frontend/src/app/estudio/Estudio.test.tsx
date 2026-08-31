@@ -46,4 +46,14 @@ describe('Estudio (layout + gate)', () => {
     expect(screen.getByRole('link', { name: /dados/i })).toBeTruthy()
     expect(screen.getByText('conteudo-dados')).toBeTruthy()
   })
+
+  it('"Voltar" é o primeiro link da lateral e leva ao Dashboard EPI', () => {
+    // A lateral do Estúdio SUBSTITUI a nav principal do Shell — sem este
+    // link, quem entra aqui não tem caminho de volta nenhum (regra global,
+    // ver app/shell/becoSemSaida.test.tsx).
+    monta()
+    const primeiro = screen.getAllByRole('link')[0]
+    expect(primeiro.textContent?.trim()).toBe('Voltar')
+    expect(primeiro.getAttribute('href')).toBe('/novo/epi/dashboard')
+  })
 })

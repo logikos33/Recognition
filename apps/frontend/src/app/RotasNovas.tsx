@@ -67,6 +67,19 @@ const TenantDetalheAdmin = lazy(() => import('./admin/TenantDetalhe').then((m) =
 const UsuariosAdmin = lazy(() => import('./admin/Usuarios').then((m) => ({ default: m.Usuarios })))
 
 /**
+ * Raiz do prefixo (`/novo` exato). `lazy()` como as demais telas acima —
+ * precisa de `useAuth()`, e carregá-la ESTATICAMENTE arrastaria
+ * `services/api.ts` (que lê `import.meta.env` no topo do arquivo) para
+ * dentro de QUALQUER import de `RotasNovas.tsx` — inclusive o de
+ * `test/e2e/identidade-rotas.spec.ts`, que importa só para ler `ROTAS_NOVAS`
+ * como dado, em Node puro, sem Vite (CI do #623, achado do coordenador). Ver
+ * a docstring de `RaizRotasNovas.tsx`.
+ */
+const RaizRotasNovas = lazy(() =>
+  import('./RaizRotasNovas').then((m) => ({ default: m.RaizRotasNovas })),
+)
+
+/**
  * Prefixo do front novo enquanto os dois convivem. Sai no tombamento.
  *
  * As rotas abaixo são declaradas RELATIVAS de propósito: caminho relativo só
@@ -87,12 +100,25 @@ export const PREFIXO_NOVO = '/novo'
 export const rotaNova = (caminho: string) => PREFIXO_NOVO + caminho
 
 /**
+ * Home do usuário no front novo — MESMA regra do `RootRedirect` do front
+ * ANTIGO (`AppRoutes.tsx`: superadmin → painel da plataforma, demais →
+ * escolha de módulo), só que apontando para as telas NOVAS (`admin`,
+ * `modules`, já sob o prefixo). Função pura de propósito — sem hook, sem
+ * import de serviço: o logo do Shell (`Marca`, F5-LEVE) e a raiz do prefixo
+ * (`RaizRotasNovas.tsx`) chamam esta MESMA função — duplicar a regra nos
+ * dois lugares é como ela divergiria um dia sem ninguém perceber.
+ */
+export function rotaHomeDoUsuario(isSuperAdmin: boolean): string {
+  return rotaNova(isSuperAdmin ? '/admin' : '/modules')
+}
+
+/**
  * As telas entram aqui conforme forem migradas E PROVADAS, uma por uma.
  * Lista vazia = o front novo ainda não serve rota nenhuma, e o antigo atende
  * tudo. É o estado honesto até a primeira tela ficar de pé.
  */
 export const ROTAS_NOVAS: ReactElement[] = [
-  <Route key="i" index element={<Navigate to="epi/dashboard" replace />} />,
+  <Route key="i" index element={<RaizRotasNovas />} />,
 
   // EPI, na ordem da jornada mestra: DETECTAR → TRIAR → AGIR → PROVAR.
   <Route key="d" path="epi/dashboard" element={<Dashboard />} />,

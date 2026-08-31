@@ -52,6 +52,17 @@ export const itemAtivo = style({
   background: lk.cor.preto,
 })
 
+/** "← Voltar" no topo da lateral — mesma cara do item, com respiro para
+ * separar de "Estúdio" logo abaixo: não é uma seção, é a saída. */
+export const voltar = style([
+  item,
+  {
+    marginBottom: '8px',
+    paddingBottom: '10px',
+    borderBottom: `1px solid ${lk.cor.borda}`,
+  },
+])
+
 // Só o respiro entre o trilho e o conteúdo — o `main` do Shell já dá 24px em
 // volta de tudo; padding aqui dobrava para 48px (achado do cético).
 export const conteudo = style({
