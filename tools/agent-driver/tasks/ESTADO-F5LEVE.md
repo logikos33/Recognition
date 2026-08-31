@@ -8,7 +8,7 @@
 
 ## Decisões do Vitor (30/08 noite)
 - **FLIP #592 = quinta 03/09, pós-onboarding** (confirmado). Condições na hora: **re-rebase no dia** + rodar os 4 gates na árvore final + **congelamento de App.tsx / RotasNovas.tsx / AppRoutes.tsx / ROTAS_NOVAS** entre o rebase e o merge (coordenar com F5-PESADA) + aviso do endereço aos usuários.
-- **#603 (risk:security)**: aguardando decisão A/B do Vitor. Estado em 30/08 noite: OPEN, **MERGEABLE/CLEAN** contra a develop atual, 23 checks verdes, zero conflito mesmo após 8 PRs mergeados depois dele.
+- **#603 (risk:security): GO do Vitor — MERGEADO 31/08 02:42Z** (gate: livez running_jobs=0, 23 checks verdes, MERGEABLE/CLEAN). Razão registrada pelo Vitor: credencial de worker sai de circulação ANTES da quarta (segurança não espera embarque) e /novo/estudio/modelo para de mentir na demo — o cliente vê os modelos do RVB, a vitrine do volante. Prova pela tela no DEV em curso.
 
 ## Leis vigentes
 - Plano aprovado: `~/.claude/plans/prompt-sess-o-merry-waffle.md` (fonte da missão; NÃO recontextualizar aqui).
