@@ -13,8 +13,18 @@ todo alerta ainda sem veredito TERMINAL (`verification_verdict IS NULL`) —
 humano ou IA. O operador NUNCA vê os aprovados/rejeitados automaticamente.
 
 A fila também exclui CONFORMIDADE (reuso de `AlertRepository._IS_COMPLIANCE_SQL`,
-ADR-0065) e colapsa rajadas repetidas da mesma câmera+classe numa janela curta
-num único representante — ver `_candidatos_sql`.
+ADR-0065). Rajadas de câmera+classe (o modelo redetectando a mesma
+pessoa/situação frame a frame) NÃO são removidas — só reordenadas: o
+representante mais incerto de cada rajada aparece primeiro, os irmãos vêm
+depois. `total`/`get_queue_count` conta TODO o trabalho real (candidatos
+únicos, sem dedup) — ver `_candidatos_sql` e `get_human_queue`.
+
+⚠️ Decisão de produto PENDENTE (não implementada aqui — perguntar ao Vitor):
+julgar o representante de uma rajada deveria decidir a rajada inteira
+(propagar o veredito pros irmãos)? Isso tornaria "quantos EVENTOS distintos"
+a contagem certa de novo — mas grava veredito em alertas que ninguém olhou.
+Até essa decisão, cada alerta é julgado individualmente e o contador mostra
+o trabalho real (114 no tenant RVB), não os 15 eventos.
 """
 import logging
 
@@ -32,12 +42,25 @@ class VerificationService:
 
     #: Alertas da MESMA câmera+classe que se repetem dentro desta janela são
     #: uma rajada — o modelo redetecta a mesma pessoa/situação frame a frame,
-    #: não N eventos distintos. Medido no DEV (tenant RVB): 114 alertas
-    #: violação/verdict-NULL colapsam para 15 eventos distintos com 60s — é a
+    #: não N eventos distintos. Usada SÓ para decidir quem aparece primeiro
+    #: (`get_human_queue`) — nunca para excluir (`get_queue_count` conta
+    #: todo mundo). Medido no DEV (tenant RVB): 114 alertas violação/
+    #: verdict-NULL formam 15 rajadas (a maior com 32 itens, média 7,6) — é a
     #: janela usada nessa medição e a que fica valendo aqui. Documentar o
     #: número é o ponto: se precisar mudar, é decisão consciente, não default
     #: escondido.
     _DEDUP_WINDOW_SECONDS = 60
+
+    #: `presence_class_names` ESCOPADO por módulo (ver docstring do método na
+    #: própria AlertRepository — omitir `module_code` já foi bug real:
+    #: catálogo global sem filtro vaza classes de OUTRO módulo, ex. `truck`/
+    #: `pallet`/`forklift` de fueling lidas como conformidade de EPI).
+    #: ponytail: hardcoded "epi" — é o único módulo com alertas reais hoje
+    #: (RVB). Quando um tenant de fueling/quality tiver fila de verificação
+    #: de verdade, isto precisa virar filtro por `a.module_code` na própria
+    #: query (não só no catálogo), porque HOJE a query mistura alertas de
+    #: todos os módulos do tenant sem filtrar por linha.
+    _MODULE_CODE = "epi"
 
     def submit_for_verification(
         self,
@@ -69,11 +92,12 @@ class VerificationService:
             logger.error("verification_submit_error: alert=%s err=%s", alert_id, exc)
 
     def _candidatos_sql(self, camera_filtro: bool) -> str:
-        """CTE compartilhada entre `get_human_queue` e `get_queue_count`.
+        """CTE base compartilhada entre `get_human_queue` e `get_queue_count`
+        — o TRABALHO REAL: um alerta por linha, sem dedup nenhum.
 
-        As DUAS têm de usar o MESMO texto de WHERE — o cético mediu contagem
-        e lista divergindo porque só a lista tinha o filtro de conformidade e
-        o dedup. Devolve `(id, gap)` por alerta candidato:
+        As DUAS têm de contar/listar exatamente o mesmo conjunto — o cético
+        mediu contagem e lista divergindo porque só a lista tinha o filtro de
+        conformidade. Critério:
 
           · `verification_verdict IS NULL` — critério honesto (não
             `needs_human`, ver docstring do módulo).
@@ -82,25 +106,21 @@ class VerificationService:
             `verdict IS NULL` do tenant RVB são conformidade (ex.: "Protetor
             auditivo", 270 sozinho) — a fila de revisão HUMANA não é lugar
             pra confirmar o que o sistema já considera OK.
-          · `gap` = tempo desde o alerta anterior da MESMA câmera+classe
-            (LAG). `gap IS NULL OR gap > _DEDUP_WINDOW_SECONDS` no chamador
-            mantém só o PRIMEIRO de cada rajada — ver `_DEDUP_WINDOW_SECONDS`.
-            A classe usada é a do primeiro item de `violations` (imensa
-            maioria dos alertas tem só 1); `alerts.class_name` (coluna
-            separada) é NULL em ~20% das linhas do DEV — não serve pra dedup.
 
-        `presence_names` (achado por `AlertRepository.presence_class_names`)
-        é o `%s` embutido no texto do `_IS_COMPLIANCE_SQL` — quem monta os
-        params tem de passá-lo na MESMA posição textual (depois do
-        `camera_id`, se houver).
+        `presence_names` (achado por `AlertRepository.presence_class_names`,
+        JÁ escopado por `_MODULE_CODE`) é o `%s` embutido no texto do
+        `_IS_COMPLIANCE_SQL` — quem monta os params tem de passá-lo na MESMA
+        posição textual (depois do `camera_id`, se houver).
+
+        `classe` (a do primeiro item de `violations` — imensa maioria dos
+        alertas tem só 1) é exposta aqui porque `get_human_queue` precisa
+        dela para agrupar rajada; `alerts.class_name` (coluna separada) é
+        NULL em ~20% das linhas do DEV — não serve pro agrupamento.
         """
         camera_clause = "AND a.camera_id = %s " if camera_filtro else ""
         return f"""
-            SELECT a.id,
-                   (a.created_at - LAG(a.created_at) OVER (
-                       PARTITION BY a.camera_id, COALESCE(a.violations->0->>'class', '')
-                       ORDER BY a.created_at
-                   )) AS gap
+            SELECT a.id, a.camera_id, a.created_at, a.confidence,
+                   COALESCE(a.violations->0->>'class', '') AS classe
             FROM alerts a
             WHERE a.verification_verdict IS NULL
               AND a.tenant_id = %s
@@ -114,37 +134,71 @@ class VerificationService:
         limit: int = 50,
         camera_id: str | None = None,
     ) -> list[dict]:
-        """Lista alertas aguardando revisão do tenant, mais incertos primeiro (C-01).
+        """Lista TODO o trabalho real do tenant, ordenado pra maximizar
+        eventos distintos vistos cedo (C-01) — nunca some ninguém.
 
         tenant_id é obrigatório — sem ele a fila vazaria alertas de todos os
         tenants (achado #14 do API_CONTRACT_MAP.md).
 
-        Ordena por incerteza (`ABS(confidence - 0.5)` — o modelo mais em
-        dúvida primeiro), não por `created_at`: com `LIMIT 50` e centenas de
-        candidatos, a ordem decide QUAIS 50 aparecem, não só a sequência. Os
-        50 mais recentes medidos no DEV tinham confiança 0,90-1,00 (o modelo
-        já tem certeza) e bbox não-projetável — o operador nunca alcançava os
-        casos realmente ambíguos (confiança 0,2-0,8) sem primeiro julgar
-        dezenas de itens óbvios.
+        Ordenação em DUAS camadas (achado do cético, rodada 3 — "o contador
+        não pode mentir de novo"):
 
-        Ver `_candidatos_sql` para o critério completo (verdict NULL +
-        exclusão de conformidade + dedup de rajada).
+          1. `rank_na_rajada` — dentro de cada rajada (câmera+classe, gap
+             ≤ `_DEDUP_WINDOW_SECONDS`), o alerta MAIS INCERTO vira rank 1.
+             Um representante (rank 1) de CADA rajada aparece antes de
+             qualquer rank 2 — maximiza quantos EVENTOS DISTINTOS o operador
+             vê nos primeiros N cliques, sem esconder ninguém.
+          2. Incerteza (`ABS(confidence - 0.5)`) desempata dentro da mesma
+             camada — mesmo raciocínio de antes: os mais recentes medidos no
+             DEV tinham confiança 0,90-1,00 (o modelo já tinha certeza) e
+             bbox não-projetável.
+
+        Nenhum alerta é FILTRADO por rajada — só reordenado. Julgar o
+        representante NÃO decide os irmãos (nenhuma propagação de veredito
+        aqui): eles continuam na fila, aparecem depois, e `get_queue_count`
+        já os conta desde o início. Isso é deliberado — ver docstring do
+        módulo sobre a decisão de produto pendente.
         """
         pool = _get_pool()
         if pool is None:
             return []
 
-        presence_names = AlertRepository(pool).presence_class_names(tenant_id)
+        presence_names = AlertRepository(pool).presence_class_names(tenant_id, self._MODULE_CODE)
         candidatos_sql = self._candidatos_sql(camera_filtro=bool(camera_id))
 
         query = f"""
-            WITH candidatos AS ({candidatos_sql})
+            WITH candidatos AS ({candidatos_sql}),
+            com_gap AS (
+                SELECT *,
+                       LAG(created_at) OVER (
+                           PARTITION BY camera_id, classe ORDER BY created_at
+                       ) AS anterior
+                FROM candidatos
+            ),
+            sessoes AS (
+                SELECT *,
+                       SUM(CASE
+                             WHEN anterior IS NULL
+                                  OR EXTRACT(EPOCH FROM (created_at - anterior)) > %s
+                             THEN 1 ELSE 0
+                           END) OVER (
+                           PARTITION BY camera_id, classe ORDER BY created_at
+                       ) AS sessao_id
+                FROM com_gap
+            ),
+            ranked AS (
+                SELECT *,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY camera_id, classe, sessao_id
+                           ORDER BY ABS(COALESCE(confidence, 1.0) - 0.5) ASC, created_at ASC
+                       ) AS rank_na_rajada
+                FROM sessoes
+            )
             SELECT a.*, cam.name AS camera_name
             FROM alerts a
-            JOIN candidatos k ON k.id = a.id
+            JOIN ranked r ON r.id = a.id
             LEFT JOIN public.cameras cam ON cam.id = a.camera_id
-            WHERE k.gap IS NULL OR EXTRACT(EPOCH FROM k.gap) > %s
-            ORDER BY ABS(COALESCE(a.confidence, 1.0) - 0.5) ASC
+            ORDER BY r.rank_na_rajada ASC, ABS(COALESCE(a.confidence, 1.0) - 0.5) ASC
             LIMIT %s
         """
         # `public.cameras`, não `cameras`: o pool é compartilhado entre
@@ -195,6 +249,10 @@ class VerificationService:
         tenant não bate a condição, rowcount fica 0 e a rota trata isso como
         404 (achado #14 do API_CONTRACT_MAP.md: sem isso, um operador de um
         tenant podia revisar/editar alertas de outro tenant via IDOR).
+
+        Escopo: SOMENTE o alerta `alert_id`. Sem propagação para irmãos de
+        rajada (`get_human_queue`) — decisão de produto pendente, ver
+        docstring do módulo.
         """
         if verdict not in ("approve", "reject"):
             raise ValueError("verdict deve ser 'approve' ou 'reject'")
@@ -224,31 +282,37 @@ class VerificationService:
         return affected > 0
 
     def get_queue_count(self, tenant_id: str, camera_id: str | None = None) -> int:
-        """Conta alertas pendentes de revisão humana do tenant (C-01).
+        """Conta o TRABALHO REAL do tenant — todo alerta candidato, sem
+        dedup de rajada (C-01).
+
+        Achado do cético (rodada 3): contar só os representantes (15 no
+        tenant RVB) fazia "N RESTANTES" cair pra 0 assim que os 15 fossem
+        julgados, enquanto 99 alertas (os irmãos de rajada, nunca julgados)
+        continuavam no banco — "Fila zerada" mentindo de novo, a MESMA classe
+        de bug que abriu esta rodada. Contagem honesta = 114 (todo alerta
+        candidato); `get_human_queue` só REORDENA pra mostrar 1 representante
+        de cada rajada primeiro — nunca filtra.
 
         `camera_id` opcional para casar exatamente com o filtro de
         `get_human_queue` quando o chamador escopa por câmera — contagem e
-        lista com WHERE divergente é a MESMA classe de bug que o filtro
-        fantasma `needs_human`: um número que não bate com o que a tela
-        mostra. Ver `_candidatos_sql` para o critério completo.
+        lista com WHERE divergente é a MESMA classe de bug do parágrafo
+        acima. Ver `_candidatos_sql` para o critério completo.
         """
         pool = _get_pool()
         if pool is None:
             return 0
 
-        presence_names = AlertRepository(pool).presence_class_names(tenant_id)
+        presence_names = AlertRepository(pool).presence_class_names(tenant_id, self._MODULE_CODE)
         candidatos_sql = self._candidatos_sql(camera_filtro=bool(camera_id))
 
         query = f"""
             WITH candidatos AS ({candidatos_sql})
-            SELECT COUNT(*) AS total FROM candidatos k
-            WHERE k.gap IS NULL OR EXTRACT(EPOCH FROM k.gap) > %s
+            SELECT COUNT(*) AS total FROM candidatos
         """
         params: list = [tenant_id]
         if camera_id:
             params.append(camera_id)
         params.append(presence_names)
-        params.append(self._DEDUP_WINDOW_SECONDS)
 
         # Mesma razão de get_human_queue: 0 é uma contagem legítima, não "não
         # sei" — exceção SOBE, não vira 0 em silêncio (`AS total` + acesso por

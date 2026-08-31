@@ -212,7 +212,7 @@ class TestGetHumanQueue:
 
 
 # ---------------------------------------------------------------------------
-# Teste de mutação: critério fantasma `needs_human` + conformidade + dedup
+# Teste de mutação: critério fantasma `needs_human` + conformidade + rajada
 #
 # get_human_queue e get_queue_count filtravam por `verification_status =
 # 'needs_human'`, mas essa coluna é escrita SÓ pela task Celery `verify_alert`
@@ -221,24 +221,33 @@ class TestGetHumanQueue:
 # 1 `human_approved`, 0 `needs_human`. A fila filtrava por um conjunto vazio
 # por construção.
 #
-# Rodada 2 (revisão do cético) foi além do WHERE: a fila também precisa
-# excluir CONFORMIDADE (302/416 = 72,6% no DEV — ex. "Protetor auditivo", 270
-# sozinho) e colapsar rajada de câmera+classe (347/416 repetem em <10s; com
-# dedup de 60s, 114 alertas-violação viram 15 eventos — números medidos e
-# reproduzidos ao vivo contra o Postgres do DEV, ver corpo do PR).
+# Rodada 2 foi além do WHERE: a fila também precisa excluir CONFORMIDADE
+# (302/416 = 72,6% no DEV) e lidar com rajada de câmera+classe (347/416
+# repetem em <10s).
 #
-# `_FakeDbCursor` (rodada 2) interpreta de verdade a query que o código
-# EMITIU — não um retorno fixo de MagicMock. Acerto do cético na rodada 1: o
-# fake anterior ignorava `params` inteiro (vazava tenant, ignorava `limit` e
-# `camera_id`). Este:
+# Rodada 3 (o cético reprovou a rodada 2): dedup como FILTRO fazia "N
+# RESTANTES" cair pra 0 ao julgar só os 15 representantes, enquanto 99
+# irmãos de rajada continuavam pendentes no banco — "Fila zerada" mentindo de
+# novo, a MESMA classe de bug que abriu esta rodada. Decisão (orquestrador):
+# `total`/`get_queue_count` conta TODO O TRABALHO REAL (114 no DEV, sem
+# dedup); `get_human_queue` só REORDENA — o representante mais incerto de
+# cada rajada (`rank_na_rajada = 1`) aparece antes de qualquer irmão, mas
+# NINGUÉM é filtrado. Também corrigido: `presence_class_names` sem
+# `module_code` vazava classes de outro módulo (medido: 24 nomes sem módulo
+# vs. 13 com 'epi') — agora escopado.
+#
+# `_FakeDbCursor` interpreta de verdade a query que o código EMITIU — não um
+# retorno fixo de MagicMock, e não mais uma reimplementação hardcoded do
+# "resultado correto" desconectada do texto (foi assim que as mutações M3 —
+# reverter `ORDER BY` pra `created_at DESC` — e M4 — neutralizar o rank de
+# rajada — passaram no fake da rodada 2: 102 passed, 0 failed). Este:
 #   · lê `tenant_id`/`camera_id`/`presence_names`/`window`/`limit` NA POSIÇÃO
 #     em que o código realmente os coloca — não hardcoda o resultado;
-#   · decide o critério de veredito e a presença do filtro de conformidade
-#     LENDO O TEXTO da query (não assume) — se o WHERE regredir para
-#     `needs_human`, ou se o `NOT (...)` de conformidade sumir, o teste vê a
-#     mudança de verdade;
-#   · aplica o dedup (LAG por câmera+classe) com os mesmos dados que o
-#     Postgres usaria — gap por `created_at`, não por índice de lista.
+#   · decide o critério de veredito/conformidade LENDO O TEXTO da query;
+#   · decide a ORDENAÇÃO lendo qual `ORDER BY` está de fato no texto — o
+#     oráculo de "rank de rajada" só roda quando o `ORDER BY` real está
+#     presente; um `ORDER BY` diferente (mutado) produz uma ordem DIFERENTE
+#     e OBSERVÁVEL, não a mesma resposta disfarçada.
 # ---------------------------------------------------------------------------
 
 _T0 = datetime(2026, 8, 24, 23, 58, 0)
@@ -261,13 +270,53 @@ def _alerta(
     }
 
 
+def _incerteza(a: dict) -> float:
+    conf = a.get("confidence")
+    return abs((conf if conf is not None else 1.0) - 0.5)
+
+
+def _classe_de(a: dict) -> str:
+    viols = a.get("violations") or []
+    return viols[0].get("class", "") if viols else ""
+
+
+def _ordem_real_por_rajada(candidatos: list[dict], window_seconds: float) -> list[dict]:
+    """Oráculo: reproduz a ordenação de 2 camadas real (rank_na_rajada, depois
+    incerteza) — sessioniza por (câmera, classe) com gap > window_seconds
+    (gaps-and-islands), rank 1 = o mais incerto de cada sessão."""
+    grupos: dict[tuple, list[dict]] = {}
+    for a in candidatos:
+        grupos.setdefault((a.get("camera_id"), _classe_de(a)), []).append(a)
+
+    ranqueados: list[tuple[int, dict]] = []
+    for grupo in grupos.values():
+        por_tempo = sorted(grupo, key=lambda a: a["created_at"])
+        sessoes: list[list[dict]] = []
+        anterior = None
+        for a in por_tempo:
+            nova_sessao = anterior is None or (a["created_at"] - anterior).total_seconds() > window_seconds
+            if nova_sessao:
+                sessoes.append([])
+            sessoes[-1].append(a)
+            anterior = a["created_at"]
+        for sessao in sessoes:
+            for rank, a in enumerate(sorted(sessao, key=lambda a: (_incerteza(a), a["created_at"])), start=1):
+                ranqueados.append((rank, a))
+
+    ranqueados.sort(key=lambda t: (t[0], _incerteza(t[1])))
+    return [a for _, a in ranqueados]
+
+
+_ORDER_BY_REAL = "ORDER BY r.rank_na_rajada ASC, ABS(COALESCE(a.confidence, 1.0) - 0.5) ASC"
+
+
 class _FakeDbCursor:
     """Interpreta de verdade as DUAS queries que `get_human_queue` e
     `get_queue_count` emitem: (1) `AlertRepository.presence_class_names`
     (delegada de verdade — não mockada — para exercitar o código real de
-    conformidade) e (2) a CTE de candidatos (dedup + exclusão de
-    conformidade). Um WHERE fora do esperado FALHA alto — não filtra errado
-    em silêncio.
+    conformidade, e ESCOPADA por `module_code`) e (2) a CTE de candidatos
+    (conformidade + rank de rajada). Um WHERE/ORDER BY fora do esperado
+    FALHA alto — não filtra/ordena errado em silêncio.
     """
 
     def __init__(self, alerts: list[dict], presence_names: tuple[str, ...] = ()):
@@ -306,7 +355,8 @@ class _FakeDbCursor:
             raise AssertionError(f"critério de veredito não reconhecido: {query!r}")
 
         # 2) Params NA POSIÇÃO em que o código os monta — tenant primeiro,
-        #    depois camera_id SE o texto tiver o filtro, depois presença.
+        #    depois camera_id SE o texto tiver o filtro, depois presença,
+        #    depois (só na lista) janela de rajada e limit.
         idx = 0
         tenant_id = params[idx]; idx += 1
         camera_filtro = "AND a.camera_id = %s" in query
@@ -318,12 +368,14 @@ class _FakeDbCursor:
         if exclui_conformidade:
             presence_lower = {str(p).lower() for p in params[idx]}
             idx += 1
-        aplica_dedup = "LAG(a.created_at)" in query
-        window = params[idx] if aplica_dedup else None
-        if aplica_dedup:
-            idx += 1
         is_list = "cam.name AS camera_name" in query
-        limit = params[idx] if is_list else None
+        is_count = "COUNT(*) AS total" in query
+        if not is_list and not is_count:
+            raise AssertionError(f"nem lista nem contagem reconhecidas: {query!r}")
+        window = limit = None
+        if is_list:
+            window = params[idx]; idx += 1
+            limit = params[idx]; idx += 1
 
         def _e_conformidade(a: dict) -> bool:
             viols = a.get("violations") or []
@@ -334,6 +386,7 @@ class _FakeDbCursor:
         # 3) Filtro — tenant, câmera (se pedido), veredito, conformidade.
         #    NENHUM alerta de outro tenant passa daqui, mesmo que o dataset
         #    do fixture misture tenants (prova contra vazamento cross-tenant).
+        #    NENHUM dedup de rajada aqui — rajada NUNCA filtra (rodada 3).
         candidatos = [
             a for a in self._alerts
             if a.get("tenant_id") == tenant_id
@@ -342,29 +395,19 @@ class _FakeDbCursor:
             and (not exclui_conformidade or not _e_conformidade(a))
         ]
 
-        # 4) Dedup por (câmera, classe) — LAG real sobre `created_at`.
-        if aplica_dedup:
-            grupos: dict[tuple, list[dict]] = {}
-            for a in candidatos:
-                classe = (a.get("violations") or [{}])[0].get("class", "")
-                grupos.setdefault((a.get("camera_id"), classe), []).append(a)
-            sobreviventes = []
-            for grupo in grupos.values():
-                grupo.sort(key=lambda a: a["created_at"])
-                anterior = None
-                for a in grupo:
-                    gap = None if anterior is None else (a["created_at"] - anterior).total_seconds()
-                    if gap is None or gap > window:
-                        sobreviventes.append(a)
-                    anterior = a["created_at"]
-            candidatos = sobreviventes
-
-        # 5) Ordenação por incerteza + LIMIT (só na query de lista).
+        # 4) Ordenação — só na lista, e só lendo o ORDER BY de verdade do
+        #    texto. Um ORDER BY diferente do real produz uma ordem DIFERENTE
+        #    (efeito observável), não a mesma resposta disfarçada — é o que
+        #    faz este fake pegar M3/M4 (ver testes de mutação abaixo).
         if is_list:
-            candidatos = sorted(
-                candidatos,
-                key=lambda a: abs((a.get("confidence") if a.get("confidence") is not None else 1.0) - 0.5),
-            )
+            if _ORDER_BY_REAL in query:
+                candidatos = _ordem_real_por_rajada(candidatos, window)
+            elif "ORDER BY a.created_at DESC" in query:
+                candidatos = sorted(candidatos, key=lambda a: a["created_at"], reverse=True)
+            elif "ORDER BY ABS(COALESCE(a.confidence, 1.0) - 0.5) ASC" in query:
+                candidatos = sorted(candidatos, key=_incerteza)
+            else:
+                raise AssertionError(f"ORDER BY não reconhecido: {query!r}")
             if limit is not None:
                 candidatos = candidatos[:limit]
 
@@ -381,7 +424,8 @@ def _rvb_like_alerts(tenant_id: str, outro_tenant: str = "tenant-outro") -> list
     """Amostra reduzida, mas com a MESMA composição medida no DEV: pending
     (verdict NULL) que são violação de verdade, pending que são conformidade
     (excluídos), já julgados (excluídos), 0 needs_human, uma rajada
-    câmera+classe (dedup) e um alerta de OUTRO tenant (prova de isolamento).
+    câmera+classe (reordenada, NUNCA filtrada) e um alerta de OUTRO tenant
+    (prova de isolamento).
     """
     alerts = [
         # 5 eventos DISTINTOS — câmeras/classes diferentes, bem espaçados.
@@ -390,8 +434,9 @@ def _rvb_like_alerts(tenant_id: str, outro_tenant: str = "tenant-outro") -> list
         _alerta("pending-2", tenant_id=tenant_id, camera_id="cam-3", classe="Sem mascara", confidence=0.6, offset_s=2000),
         _alerta("pending-3", tenant_id=tenant_id, camera_id="cam-4", classe="Sem Luvas", confidence=0.35, offset_s=3000),
         _alerta("pending-4", tenant_id=tenant_id, camera_id="cam-5", classe="Sem Óculos", confidence=0.55, offset_s=4000),
-        # Rajada: MESMA câmera+classe de pending-0, 5s e 8s depois — dedup de
-        # 60s colapsa as duas no representante já contado (pending-0).
+        # Rajada: MESMA câmera+classe de pending-0, 5s e 8s depois. Rodada 3:
+        # NÃO somem mais — continuam contados e aparecem DEPOIS de todos os
+        # representantes (rank 1) de outras rajadas.
         _alerta("rajada-0a", tenant_id=tenant_id, camera_id="cam-1", classe="Sem Luvas", confidence=0.4, offset_s=5),
         _alerta("rajada-0b", tenant_id=tenant_id, camera_id="cam-1", classe="Sem Luvas", confidence=0.4, offset_s=8),
         # Conformidade — classe no catálogo de presença, verdict NULL. Some
@@ -410,18 +455,26 @@ def _rvb_like_alerts(tenant_id: str, outro_tenant: str = "tenant-outro") -> list
 # AlertRepository.presence_class_names — lowercase, ADR-0065).
 _PRESENCA = ("protetor auditivo",)
 
+# 7 = trabalho real do fixture pro tenant "tenant-1": 5 eventos distintos +
+# 2 irmãos de rajada (rajada-0a/0b). Exclui conforme-0 (conformidade),
+# rejected-1/approved-1 (já julgados) e cross-tenant (outro tenant).
+_TRABALHO_REAL_TENANT1 = 7
+
 
 class TestFilaCriterioHonestoNaoENeedsHumanFantasma:
 
-    def test_fila_devolve_eventos_distintos_pending_com_veredito_nulo(self):
-        """A régua desta rodada: 5 eventos distintos (após dedup de rajada) —
-        `pending`/verdict NULL que são violação de verdade — têm que aparecer
-        na fila. Com o critério `needs_human` antigo, 0 resultados."""
+    def test_fila_devolve_todo_o_trabalho_real_pending_com_veredito_nulo(self):
+        """A régua desta rodada: TODO alerta `pending`/verdict NULL que é
+        violação de verdade aparece na fila — inclusive os irmãos de rajada
+        (rodada 3: dedup não filtra mais ninguém). Com o critério
+        `needs_human` antigo, 0 resultados."""
         cursor = _FakeDbCursor(_rvb_like_alerts("tenant-1"), presence_names=_PRESENCA)
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = _pool_with_cursor(cursor)
             result = _make_service().get_human_queue(tenant_id="tenant-1")
-        assert {a["id"] for a in result} == {f"pending-{i}" for i in range(5)}
+        esperado = {f"pending-{i}" for i in range(5)} | {"rajada-0a", "rajada-0b"}
+        assert {a["id"] for a in result} == esperado
+        assert len(result) == _TRABALHO_REAL_TENANT1
 
     def test_fila_nao_devolve_alertas_ja_julgados(self):
         cursor = _FakeDbCursor(_rvb_like_alerts("tenant-1"), presence_names=_PRESENCA)
@@ -442,18 +495,27 @@ class TestFilaCriterioHonestoNaoENeedsHumanFantasma:
             result = _make_service().get_human_queue(tenant_id="tenant-1")
         assert "conforme-0" not in {a["id"] for a in result}
 
-    def test_fila_colapsa_rajada_camera_classe_no_representante_mais_antigo(self):
-        """347/416 (83%) do DEV repetem câmera+classe em <10s — o modelo
-        redetecta a MESMA situação frame a frame, não N eventos. Só o
-        primeiro da rajada sobrevive."""
+    def test_representante_da_rajada_aparece_antes_dos_irmaos(self):
+        """Achado do cético (rodada 3): dedup não pode mais EXCLUIR — só
+        reordenar. `rajada-0a`/`rajada-0b` (irmãos de `pending-0`, mesma
+        câmera+classe, <10s de diferença) continuam na fila inteira, mas
+        depois de TODOS os representantes (rank 1) das outras rajadas —
+        maximiza eventos distintos vistos cedo sem esconder ninguém. Julgar
+        o representante NÃO decide os irmãos — nenhuma propagação aqui (ver
+        docstring do módulo: decisão de produto pendente)."""
         cursor = _FakeDbCursor(_rvb_like_alerts("tenant-1"), presence_names=_PRESENCA)
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = _pool_with_cursor(cursor)
             result = _make_service().get_human_queue(tenant_id="tenant-1")
-        ids = {a["id"] for a in result}
-        assert "pending-0" in ids
-        assert "rajada-0a" not in ids
-        assert "rajada-0b" not in ids
+        ids = [a["id"] for a in result]
+        assert "rajada-0a" in ids
+        assert "rajada-0b" in ids
+        posicao_irmaos = min(ids.index("rajada-0a"), ids.index("rajada-0b"))
+        posicao_ultimo_representante = max(ids.index(f"pending-{i}") for i in range(5))
+        assert posicao_irmaos > posicao_ultimo_representante, (
+            "os 2 irmãos de rajada têm de vir DEPOIS de todos os 5 "
+            "representantes de outras rajadas"
+        )
 
     def test_fila_nunca_vaza_alerta_de_outro_tenant(self):
         """Prova direta contra o achado do cético (fake anterior vazava
@@ -472,7 +534,7 @@ class TestFilaCriterioHonestoNaoENeedsHumanFantasma:
 
     def test_fila_respeita_limit_de_verdade(self):
         """Achado do cético: o fake anterior ignorava `limit`. Este devolve
-        só os N mais incertos quando o `limit` corta o conjunto."""
+        só os N primeiros na ordem real quando o `limit` corta o conjunto."""
         cursor = _FakeDbCursor(_rvb_like_alerts("tenant-1"), presence_names=_PRESENCA)
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = _pool_with_cursor(cursor)
@@ -489,27 +551,49 @@ class TestFilaCriterioHonestoNaoENeedsHumanFantasma:
 
     def test_fila_ordena_por_incerteza_nao_por_recencia(self):
         """Achado do cético: os 50 mais recentes tinham confiança 0,90-1,00 —
-        o modelo já tinha certeza. `pending-3` (confiança 0,35, incerteza
-        0,15) é mais incerto que `pending-2` (confiança 0,6, incerteza 0,1) e
-        tem de vir depois; o mais incerto de todos (`pending-0`/`pending-3`,
-        ambos a 0,10-0,15 de 0,5) vem primeiro — nunca por `created_at`, que
-        poria `pending-4` (o mais recente) primeiro."""
+        o modelo já tinha certeza. Dentro do tier de representantes (rank 1),
+        a ordem é por incerteza — nunca por `created_at`, que poria
+        `pending-4` (o mais recente) primeiro."""
         cursor = _FakeDbCursor(_rvb_like_alerts("tenant-1"), presence_names=_PRESENCA)
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = _pool_with_cursor(cursor)
             result = _make_service().get_human_queue(tenant_id="tenant-1")
-        incertezas = [abs((a["confidence"] or 1.0) - 0.5) for a in result]
-        assert incertezas == sorted(incertezas), "tem de vir em ordem crescente de incerteza"
         # pending-4 (offset mais recente, confiança 0,55) NÃO pode ser o
         # primeiro — seria ORDER BY created_at, não por incerteza.
         assert result[0]["id"] != "pending-4"
+        # Dentro do tier de representantes (as 5 primeiras posições, um por
+        # rajada), a incerteza é crescente.
+        tier_representantes = result[:5]
+        incertezas = [_incerteza(a) for a in tier_representantes]
+        assert incertezas == sorted(incertezas)
 
-    def test_contagem_bate_com_a_fila_apos_dedup_e_conformidade(self):
+    def test_contagem_conta_trabalho_real_sem_dedup_de_rajada(self):
+        """Achado do cético (rodada 3, o bloqueio principal): contar só os
+        representantes (5 no fixture, 15 no DEV) faz `total` cair pra 0 ao
+        julgar só eles, enquanto os irmãos de rajada (2 no fixture, 99 no
+        DEV) continuam pendentes — "Fila zerada" mentindo de novo. Contagem
+        honesta = TODO candidato, sem dedup nenhum."""
         cursor = _FakeDbCursor(_rvb_like_alerts("tenant-1"), presence_names=_PRESENCA)
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = _pool_with_cursor(cursor)
             count = _make_service().get_queue_count(tenant_id="tenant-1")
-        assert count == 5
+        assert count == _TRABALHO_REAL_TENANT1
+
+    def test_contagem_bate_com_o_tamanho_da_fila_sem_limit(self):
+        """`total` e `len(get_human_queue(limit=200))` têm de bater — mesma
+        régua que motivou o achado do cético (contagem e lista com WHERE
+        divergente)."""
+        cursor_count = _FakeDbCursor(_rvb_like_alerts("tenant-1"), presence_names=_PRESENCA)
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(cursor_count)
+            count = _make_service().get_queue_count(tenant_id="tenant-1")
+
+        cursor_list = _FakeDbCursor(_rvb_like_alerts("tenant-1"), presence_names=_PRESENCA)
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(cursor_list)
+            items = _make_service().get_human_queue(tenant_id="tenant-1", limit=200)
+
+        assert count == len(items)
 
     def test_query_nao_usa_mais_verification_status_needs_human(self):
         """Assinatura textual do gate: se alguém reintroduzir
@@ -525,6 +609,78 @@ class TestFilaCriterioHonestoNaoENeedsHumanFantasma:
         for query in queries_principais:
             assert "needs_human" not in query
             assert "a.verification_verdict IS NULL" in query
+
+    def test_presence_names_escopado_por_epi_nao_todos_os_modulos(self):
+        """Achado do cético (rodada 3): `presence_class_names` sem
+        `module_code` vazava classes de OUTRO módulo (medido no DEV: 24
+        nomes sem módulo vs. 13 com 'epi' — `truck`/`pallet`/`forklift` de
+        fueling seriam lidos como conformidade de EPI). Hoje o impacto é 0
+        (RVB é EPI-only), mas no primeiro tenant de fueling/contagem isso
+        some alerta real da fila em silêncio."""
+        cursor = _FakeDbCursor(_rvb_like_alerts("tenant-1"), presence_names=_PRESENCA)
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(cursor)
+            _make_service().get_human_queue(tenant_id="tenant-1")
+        presence_query, presence_params = cursor.calls[0]  # 1ª chamada = presence_class_names
+        assert "module_classes" in presence_query and "yolo_classes" in presence_query
+        assert "module_code = %s" in presence_query
+        assert "epi" in presence_params
+
+
+class TestFakeDetectaMutacoesDeOrdenacao:
+    """As duas mutações que o cético provou que passavam no fake da rodada 2
+    (102 passed, 0 failed): M3 reverte o `ORDER BY` pra `created_at DESC`;
+    M4 neutraliza o rank de rajada (sobra só incerteza, sem tier). Aqui a
+    query REAL capturada (não uma reconstrução manual, que pode divergir do
+    texto de verdade) é mutada em UM ponto (o `ORDER BY`) e reexecutada no
+    fake — a ordem observável muda, provando que o fake DEPENDE do texto."""
+
+    def _query_real_capturada(self) -> tuple[list[dict], str, tuple]:
+        alerts = _rvb_like_alerts("tenant-1")
+        cursor = _FakeDbCursor(alerts, presence_names=_PRESENCA)
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(cursor)
+            _make_service().get_human_queue(tenant_id="tenant-1")
+        query, params = cursor.calls[-1]
+        assert _ORDER_BY_REAL in query, "sanity: a query real tem de conter o ORDER BY esperado"
+        return alerts, query, params
+
+    def test_M3_reverter_para_created_at_desc_muda_a_ordem(self):
+        alerts, query_real, params = self._query_real_capturada()
+        query_m3 = query_real.replace(_ORDER_BY_REAL, "ORDER BY a.created_at DESC")
+        assert query_m3 != query_real
+
+        cursor_m3 = _FakeDbCursor(alerts, presence_names=_PRESENCA)
+        cursor_m3.execute(query_m3, params)
+        ordem_m3 = [a["id"] for a in cursor_m3.fetchall()]
+
+        # created_at DESC bota o mais RECENTE primeiro — pending-4 (offset
+        # 4000, o maior). Com o rank de rajada (comportamento real), isso
+        # NUNCA acontece (pending-4 tem incerteza mediana, não é o 1º).
+        assert ordem_m3[0] == "pending-4"
+
+    def test_M4_neutralizar_rank_de_rajada_intercala_irmao_com_representantes(self):
+        alerts, query_real, params = self._query_real_capturada()
+        query_m4 = query_real.replace(
+            _ORDER_BY_REAL, "ORDER BY ABS(COALESCE(a.confidence, 1.0) - 0.5) ASC",
+        )
+        assert query_m4 != query_real
+
+        cursor_m4 = _FakeDbCursor(alerts, presence_names=_PRESENCA)
+        cursor_m4.execute(query_m4, params)
+        ordem_m4 = [a["id"] for a in cursor_m4.fetchall()]
+
+        # Sem o rank de rajada, `rajada-0a` (incerteza 0,1 — empatada com
+        # pending-0/pending-2) intercala com representantes de OUTRAS
+        # rajadas, ao invés de ficar atrás de TODOS eles (comportamento
+        # real, provado em test_representante_da_rajada_aparece_antes_dos_irmaos).
+        posicao_irmao = ordem_m4.index("rajada-0a")
+        posicao_ultimo_representante = max(ordem_m4.index(f"pending-{i}") for i in range(5))
+        assert posicao_irmao < posicao_ultimo_representante, (
+            "sem o rank de rajada, o irmão vem ANTES de algum representante "
+            "— prova que é o rank (não a incerteza sozinha) que garante "
+            "'representante primeiro'"
+        )
 
 
 # ---------------------------------------------------------------------------

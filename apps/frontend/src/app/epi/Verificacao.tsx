@@ -57,17 +57,29 @@
  *
  *     MIN(ABS(confidence - 0.5))  sobre as propostas,  COALESCE(..., 1.0)
  *
- * O backend (`get_human_queue`) TAMBÉM ordena por incerteza agora
- * (`ORDER BY ABS(confidence - 0.5)` sobre `alerts.confidence`) — antes
+ * O backend (`get_human_queue`) TAMBÉM ordena agora, em DUAS camadas
+ * (verification_service.py): 1) `rank_na_rajada` — dentro de cada rajada
+ * (câmera+classe repetida em <60s), o mais incerto vira rank 1, e um
+ * representante de CADA rajada aparece antes de qualquer rank 2 (dedup NÃO
+ * filtra mais ninguém, rodada 3 — só reordena: irmãos de rajada continuam
+ * contados e voltam depois); 2) incerteza desempata dentro da camada. Antes
  * ordenava por `created_at DESC`, e como o endpoint não pagina (`LIMIT` corta
  * DE VERDADE), a ordem decidia QUAIS itens apareciam: medido no DEV, os 50
  * mais recentes tinham confiança 0,90-1,00 (o modelo já tinha certeza) e o
- * operador nunca alcançava os casos ambíguos. O reordenar aqui no cliente
- * continua — não é redundância à toa: usa o MIN sobre `violations[]`
- * (sinal mais fino que só `alerts.confidence`) e não depende do backend
- * nunca regredir a ordem. Sem paginação, ordenar de novo no cliente não
- * perde nada: a fila inteira já veio. **A ordenação é aplicada ao LOTE,
- * antes de anexar** — nunca à fila que já está na tela (regra 1).
+ * operador nunca alcançava os casos ambíguos.
+ *
+ * ⚠️ `ordenarPorIncerteza` aqui no cliente reordena o LOTE só por incerteza
+ * — sem noção de rajada. Isso DESFAZ a camada 1 do backend (um irmão de
+ * rajada com incerteza baixa pode intercalar antes do representante de OUTRA
+ * rajada). Achado ao implementar a rodada 3, registrado e NÃO consertado
+ * aqui (fora do pedido daquela rodada — precisa ensinar o cliente sobre
+ * `rank_na_rajada`, ou confiar 100% na ordem do servidor, o que exigiria
+ * reescrever os mocks dos testes de sequência abaixo). Continua valendo por
+ * usar o MIN sobre `violations[]` (sinal mais fino que só
+ * `alerts.confidence`) e por não depender do backend nunca regredir a ordem.
+ * Sem paginação, ordenar de novo no cliente não perde nada: a fila inteira
+ * já veio. **A ordenação é aplicada ao LOTE, antes de anexar** — nunca à
+ * fila que já está na tela (regra 1).
  *
  * ─── PARA O DESIGN / PARA O BACKEND ─────────────────────────────────────────
  *
