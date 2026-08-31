@@ -17,15 +17,33 @@ logger = logging.getLogger(__name__)
 class OperationRepository(BaseRepository):
     """Repository para operações e seus resultados."""
 
+    # LATERAL join para B10 (último disparo): busca, por operação, o
+    # evaluated_at mais recente em operation_results cujo condition_satisfied
+    # seja true — sem N+1 (usa o índice idx_results_operation existente,
+    # migration 039) e sem confundir com last_evaluated_at (que atualiza a
+    # cada avaliação, disparando ou não).
+    _LAST_EVENT_JOIN = """
+            LEFT JOIN LATERAL (
+                SELECT r.evaluated_at
+                FROM operation_results r
+                WHERE r.operation_id = o.id
+                  AND (r.result_json ->> 'condition_satisfied')::boolean IS TRUE
+                ORDER BY r.evaluated_at DESC
+                LIMIT 1
+            ) last_event ON true
+    """
+
     def list_by_camera(self, tenant_id: str, camera_id: str) -> list[dict[str, Any]]:
         """Lista operações de uma câmera para o tenant informado."""
         return self._execute(
-            """
-            SELECT id, tenant_id, camera_id, module_id, type_id, name,
-                   config, status, version, last_value_json, last_evaluated_at, created_at
-            FROM operations
-            WHERE tenant_id = %s AND camera_id = %s
-            ORDER BY id ASC
+            f"""
+            SELECT o.id, o.tenant_id, o.camera_id, o.module_id, o.type_id, o.name,
+                   o.template_id, o.config, o.status, o.version, o.last_value_json,
+                   o.last_evaluated_at, o.created_at, last_event.evaluated_at AS last_event_at
+            FROM operations o
+            {self._LAST_EVENT_JOIN}
+            WHERE o.tenant_id = %s AND o.camera_id = %s
+            ORDER BY o.id ASC
             """,
             (tenant_id, camera_id),
         )
@@ -35,12 +53,14 @@ class OperationRepository(BaseRepository):
     ) -> list[dict[str, Any]]:
         """Lista operações filtrando por câmera e módulo."""
         return self._execute(
-            """
-            SELECT id, tenant_id, camera_id, module_id, type_id, name,
-                   config, status, version, last_value_json, last_evaluated_at, created_at
-            FROM operations
-            WHERE tenant_id = %s AND camera_id = %s AND module_id = %s
-            ORDER BY id ASC
+            f"""
+            SELECT o.id, o.tenant_id, o.camera_id, o.module_id, o.type_id, o.name,
+                   o.template_id, o.config, o.status, o.version, o.last_value_json,
+                   o.last_evaluated_at, o.created_at, last_event.evaluated_at AS last_event_at
+            FROM operations o
+            {self._LAST_EVENT_JOIN}
+            WHERE o.tenant_id = %s AND o.camera_id = %s AND o.module_id = %s
+            ORDER BY o.id ASC
             """,
             (tenant_id, camera_id, module_id),
         )
@@ -49,7 +69,7 @@ class OperationRepository(BaseRepository):
         """Busca operação por ID garantindo isolamento multi-tenant."""
         return self._execute_one(
             """
-            SELECT id, tenant_id, camera_id, module_id, type_id, name,
+            SELECT id, tenant_id, camera_id, module_id, type_id, name, template_id,
                    config, status, version, last_value_json, last_evaluated_at, created_at
             FROM operations
             WHERE tenant_id = %s AND id = %s
@@ -65,16 +85,17 @@ class OperationRepository(BaseRepository):
         type_id: str,
         name: str,
         config: dict,
+        template_id: str | None = None,
     ) -> dict[str, Any] | None:
         """Cria nova operação. Retorna row criada."""
         return self._execute_mutation(
             """
-            INSERT INTO operations (tenant_id, camera_id, module_id, type_id, name, config)
-            VALUES (%s, %s, %s, %s, %s, %s::jsonb)
-            RETURNING id, tenant_id, camera_id, module_id, type_id, name,
+            INSERT INTO operations (tenant_id, camera_id, module_id, type_id, name, config, template_id)
+            VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s)
+            RETURNING id, tenant_id, camera_id, module_id, type_id, name, template_id,
                       config, status, version, last_value_json, last_evaluated_at, created_at
             """,
-            (tenant_id, camera_id, module_id, type_id, name, json.dumps(config)),
+            (tenant_id, camera_id, module_id, type_id, name, json.dumps(config), template_id),
         )
 
     def update(
@@ -84,7 +105,11 @@ class OperationRepository(BaseRepository):
         name: str,
         config: dict,
     ) -> dict[str, Any] | None:
-        """Atualiza nome e config, incrementa version. Retorna row atualizada."""
+        """Atualiza nome e config, incrementa version. Retorna row atualizada.
+
+        template_id não é atualizável aqui (B4 — PUT completo — fora de escopo);
+        só entra no SELECT/RETURNING para o GET não perder o campo após editar.
+        """
         return self._execute_mutation(
             """
             UPDATE operations
@@ -92,10 +117,31 @@ class OperationRepository(BaseRepository):
                 config = %s::jsonb,
                 version = version + 1
             WHERE tenant_id = %s AND id = %s
-            RETURNING id, tenant_id, camera_id, module_id, type_id, name,
+            RETURNING id, tenant_id, camera_id, module_id, type_id, name, template_id,
                       config, status, version, last_value_json, last_evaluated_at, created_at
             """,
             (name, json.dumps(config), tenant_id, operation_id),
+        )
+
+    def set_status(
+        self, tenant_id: str, operation_id: int, status: str
+    ) -> dict[str, Any] | None:
+        """Pausa/retoma uma operação (B1) trocando só o status.
+
+        Não incrementa version nem toca config — pausar não é mudança
+        estrutural. O worker (OperationsEngine) já ignora status='inactive'
+        em list_all_active() e remove do mapa em reload_operation(); esta é a
+        rota que faltava para o usuário chegar nesse estado.
+        """
+        return self._execute_mutation(
+            """
+            UPDATE operations
+            SET status = %s
+            WHERE tenant_id = %s AND id = %s
+            RETURNING id, tenant_id, camera_id, module_id, type_id, name, template_id,
+                      config, status, version, last_value_json, last_evaluated_at, created_at
+            """,
+            (status, tenant_id, operation_id),
         )
 
     def delete(self, tenant_id: str, operation_id: int) -> int:
