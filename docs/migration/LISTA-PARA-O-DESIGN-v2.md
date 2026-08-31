@@ -245,6 +245,33 @@ backend".
 
 ---
 
+## 15. Arquitetura de administração — o admin do cliente tem a chave e não tem a porta
+
+**Como está, medido em 31/08:** o produto tem **dois papéis administrativos** e só um tem
+painel. O papel `admin` do tenant já possui `admin:users`, `admin:roles` e `branding:write`
+(`services/api/app/core/permissions.py`) — pode gerir a própria equipe, os papéis e a marca.
+Mas a única porta administrativa é gateada por `admin:panel`, que é **superadmin-only**, e no
+blueprint admin há **59 rotas `@require_superadmin` e zero `@require_admin`**.
+
+Isso explica o relato de "dois admins convivendo": o cliente não tem onde administrar a própria
+casa, e o superadmin vê tudo. Não é vazamento de menu por papel (o menu já respeita `admin:panel`)
+— era vazamento por **link**: três `href` absolutos para o front antigo, corrigidos nesta rodada.
+
+**Proposta da pista:** `docs/design/handoff-f5/Arquitetura de Administração.dc.html` +
+`… — Conexões.dc.html` — quem vê o quê, como se troca de chapéu (assumir contexto com o banner
+âmbar sempre visível), o princípio de nenhum menu vazado, e o de-para completo elemento × endpoint
+× existe/insuficiente/não-existe. **É proposta da pista aguardando refino oficial.**
+
+**Pedidos ao backend, nesta ordem:**
+- **P1 (BLOQUEIA a tela Equipe)** — rotas de usuário passam a aceitar `admin:users` e, nesse caso,
+  respondem apenas com gente do tenant do token. Cross-tenant → **404**, nunca 403.
+- **P2** — auditoria escopada ao próprio tenant (`audit:read` é superadmin-only hoje; o cliente não
+  vê quem desativou uma câmera na casa dele).
+- **P3 (registro, não pedido)** — marca e papéis **já aceitam** admin de tenant (`/v1/roles`,
+  `PUT /v1/admin/branding`): é só construir a tela. Anotado para ninguém criar endpoint por engano.
+
+---
+
 # ⚪ POLIMENTO — não bloqueia fase nenhuma
 
 ## 11. Chat flutuante

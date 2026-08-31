@@ -1,0 +1,160 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+  <style>
+    body { margin: 0; background: #0A0A0F; color: #F4F6F8;
+           font-family: Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #00E5FF; } a:hover { color: #0091AD; }
+    .ov { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px;
+          text-transform: uppercase; letter-spacing: .18em; color: #8A8F98; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    .h { font-family: 'Space Grotesk', system-ui, sans-serif; }
+  </style>
+</helmet>
+
+<div style="padding: 40px 48px; max-width: 1344px; box-sizing: border-box;">
+
+  <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 32px;">
+    <div class="ov">E1 · Prancha de arquitetura · medida em 31/08/2026</div>
+    <h1 class="h" style="margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -.01em;">Arquitetura de Administração</h1>
+    <p style="margin: 4px 0 0; font-size: 14px; color: #8A8F98; max-width: 780px; line-height: 1.55;">
+      O produto tem <strong style="color:#F4F6F8">dois papéis administrativos</strong> e só um tem painel.
+      Esta prancha diz quem vê o quê, como se navega entre os dois, e por que nenhum menu pode vazar de um para o outro.
+    </p>
+  </div>
+
+  <!-- O ACHADO -->
+  <div style="display: flex; gap: 14px; align-items: flex-start; padding: 18px 20px; margin-bottom: 32px;
+              background: #14141C; border: 1px solid #23242F; border-left: 2px solid #E8A13C; border-radius: 10px;">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#E8A13C" stroke-width="1.7"
+         stroke-linecap="square" style="flex-shrink:0; margin-top:1px;" aria-hidden="true">
+      <path d="M12 9v5"/><path d="M12 17h.01"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/>
+    </svg>
+    <div>
+      <div class="h" style="font-size: 15px; font-weight: 700; margin-bottom: 5px;">O admin do cliente tem a chave e não tem a porta</div>
+      <div style="font-size: 13px; color: #8A8F98; line-height: 1.6;">
+        Medido em <span class="mono" style="color:#F4F6F8">core/permissions.py</span>: o papel <span class="mono" style="color:#F4F6F8">admin</span> do tenant
+        já possui <span class="mono" style="color:#F4F6F8">admin:users</span>, <span class="mono" style="color:#F4F6F8">admin:roles</span> e
+        <span class="mono" style="color:#F4F6F8">branding:write</span> — pode gerir os próprios usuários, papéis e a marca.
+        Mas a única entrada administrativa é gateada por <span class="mono" style="color:#F4F6F8">admin:panel</span>, que é
+        <strong style="color:#F4F6F8">superadmin-only</strong>. Ele tem a permissão e nenhum lugar onde exercê-la.
+      </div>
+    </div>
+  </div>
+
+  <!-- AS DUAS COLUNAS -->
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; margin-bottom: 32px;">
+
+    <!-- PLATAFORMA -->
+    <div style="background: #14141C; border: 1px solid #23242F; border-radius: 12px; overflow: hidden;">
+      <div style="padding: 16px 20px; border-bottom: 1px solid #23242F; display: flex; align-items: center; gap: 10px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="1.7" stroke-linecap="square" aria-hidden="true">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/>
+        </svg>
+        <div>
+          <div class="h" style="font-size: 15px; font-weight: 700;">Administração da plataforma</div>
+          <div class="ov" style="margin-top: 2px;">Logikos · superadmin</div>
+        </div>
+      </div>
+      <div style="padding: 16px 20px;">
+        <div style="font-size: 12px; color: #8A8F98; margin-bottom: 12px; line-height: 1.5;">
+          Cuida do negócio Logikos: quem são os clientes, o que cada um contratou, e a saúde da operação inteira.
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 7px;">
+          <div class="mono" style="font-size: 11px; color: #F4F6F8;">admin:panel <span style="color:#8A8F98">— acessar o painel</span></div>
+          <div class="mono" style="font-size: 11px; color: #F4F6F8;">admin:settings <span style="color:#8A8F98">— planos, módulos, políticas</span></div>
+          <div class="mono" style="font-size: 11px; color: #F4F6F8;">plans:manage <span style="color:#8A8F98">— planos comerciais</span></div>
+          <div class="mono" style="font-size: 11px; color: #F4F6F8;">workers:manage <span style="color:#8A8F98">— workers de inferência</span></div>
+          <div class="mono" style="font-size: 11px; color: #F4F6F8;">audit:read <span style="color:#8A8F98">— log de auditoria</span></div>
+          <div class="mono" style="font-size: 11px; color: #F4F6F8;">announcements:manage <span style="color:#8A8F98">— comunicados</span></div>
+          <div class="mono" style="font-size: 11px; color: #F4F6F8;">training:approve <span style="color:#8A8F98">— aprovar treinos</span></div>
+        </div>
+        <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid #23242F;">
+          <div class="ov" style="margin-bottom: 8px;">Telas · existem hoje</div>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+            <span class="mono" style="font-size:10px; padding:4px 8px; background:#0A0A0F; border:1px solid #23242F; border-radius:6px;">Visão geral</span>
+            <span class="mono" style="font-size:10px; padding:4px 8px; background:#0A0A0F; border:1px solid #23242F; border-radius:6px;">Tenants</span>
+            <span class="mono" style="font-size:10px; padding:4px 8px; background:#0A0A0F; border:1px solid #23242F; border-radius:6px;">Usuários</span>
+            <span class="mono" style="font-size:10px; padding:4px 8px; background:#0A0A0F; border:1px solid #23242F; border-radius:6px;">Dispositivos</span>
+            <span class="mono" style="font-size:10px; padding:4px 8px; background:#0A0A0F; border:1px solid #23242F; border-radius:6px;">Auditoria</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TENANT -->
+    <div style="background: #14141C; border: 1px solid #23242F; border-radius: 12px; overflow: hidden;">
+      <div style="padding: 16px 20px; border-bottom: 1px solid #23242F; display: flex; align-items: center; gap: 10px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8A8F98" stroke-width="1.7" stroke-linecap="square" aria-hidden="true">
+          <path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M10 21v-5h4v5"/>
+        </svg>
+        <div>
+          <div class="h" style="font-size: 15px; font-weight: 700;">Administração do cliente</div>
+          <div class="ov" style="margin-top: 2px;">RVB Isolantes · papel admin</div>
+        </div>
+      </div>
+      <div style="padding: 16px 20px;">
+        <div style="font-size: 12px; color: #8A8F98; margin-bottom: 12px; line-height: 1.5;">
+          Cuida da própria casa: quem da equipe entra, o que cada um pode, as câmeras, as classes e a marca.
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 7px;">
+          <div class="mono" style="font-size: 11px; color: #F4F6F8;">admin:users <span style="color:#3ECF8E">— já tem a permissão</span></div>
+          <div class="mono" style="font-size: 11px; color: #F4F6F8;">admin:roles <span style="color:#3ECF8E">— já tem a permissão</span></div>
+          <div class="mono" style="font-size: 11px; color: #F4F6F8;">branding:write <span style="color:#3ECF8E">— já tem a permissão</span></div>
+          <div class="mono" style="font-size: 11px; color: #F4F6F8;">cameras:configure <span style="color:#8A8F98">— tela existe (Câmeras)</span></div>
+          <div class="mono" style="font-size: 11px; color: #F4F6F8;">retention:write <span style="color:#8A8F98">— retenção de vídeo</span></div>
+          <div class="mono" style="font-size: 11px; color: #F4F6F8;">notifications:manage <span style="color:#8A8F98">— avisos da equipe</span></div>
+          <div class="mono" style="font-size: 11px; color: #F4F6F8;">devices:manage · edge:manage <span style="color:#8A8F98">— equipamento do site</span></div>
+        </div>
+        <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid #23242F;">
+          <div class="ov" style="margin-bottom: 8px;">Telas · <span style="color:#E5484D">não existem</span></div>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+            <span class="mono" style="font-size:10px; padding:4px 8px; background:#0A0A0F; border:1px dashed #E5484D; border-radius:6px; color:#8A8F98;">Equipe</span>
+            <span class="mono" style="font-size:10px; padding:4px 8px; background:#0A0A0F; border:1px dashed #E5484D; border-radius:6px; color:#8A8F98;">Permissões</span>
+            <span class="mono" style="font-size:10px; padding:4px 8px; background:#0A0A0F; border:1px dashed #E5484D; border-radius:6px; color:#8A8F98;">Marca</span>
+            <span class="mono" style="font-size:10px; padding:4px 8px; background:#0A0A0F; border:1px dashed #E5484D; border-radius:6px; color:#8A8F98;">Retenção</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PRINCIPIOS -->
+  <div style="background: #14141C; border: 1px solid #23242F; border-radius: 12px; padding: 20px 24px;">
+    <div class="ov" style="margin-bottom: 14px;">Três regras que a implementação tem de cumprir</div>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px;">
+      <div>
+        <div class="h" style="font-size: 13px; font-weight: 700; margin-bottom: 6px; color: #00E5FF;">1 · Nenhum menu vazado</div>
+        <div style="font-size: 12px; color: #8A8F98; line-height: 1.6;">
+          O menu mostra o que o papel tem, nunca o que a área tem. Admin do cliente não vê "Tenants" nem "Workers";
+          superadmin não vê a Marca de um cliente sem antes assumir aquele contexto.
+        </div>
+      </div>
+      <div>
+        <div class="h" style="font-size: 13px; font-weight: 700; margin-bottom: 6px; color: #00E5FF;">2 · Trocar de chapéu é explícito</div>
+        <div style="font-size: 12px; color: #8A8F98; line-height: 1.6;">
+          O superadmin entra na casa do cliente <em>assumindo o contexto</em>, com o banner âmbar de 42px sempre visível.
+          Sair é um clique. Sem banner, ninguém sabe em nome de quem está agindo.
+        </div>
+      </div>
+      <div>
+        <div class="h" style="font-size: 13px; font-weight: 700; margin-bottom: 6px; color: #00E5FF;">3 · Toda área tem saída</div>
+        <div style="font-size: 12px; color: #8A8F98; line-height: 1.6;">
+          A logo leva à home do papel de quem está logado — não a uma rota fixa. Área com barra lateral própria
+          sem volta é defeito, e a régua do repo reprova.
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>
