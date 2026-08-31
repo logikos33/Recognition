@@ -158,6 +158,7 @@ class TestClassUnionWriteThenRead:
     ) -> None:
         created = tenant_class_service.create_class(
             user_id=user_id, tenant_id=tenant_id, name="Protetor Auricular",
+            is_violation=False,
         )
         classes = module_service_instance.get_classes("epi", tenant_id=tenant_id)
 
@@ -176,6 +177,7 @@ class TestClassUnionWriteThenRead:
     ) -> None:
         created = tenant_class_service.create_class(
             user_id=user_id, tenant_id=tenant_id, name="Protetor Auditivo",
+            is_violation=False,
         )
         class_id = namespace_tenant_class_id(created["id"])
         annotations = [
@@ -211,6 +213,7 @@ class TestClassUnionWriteThenRead:
         checagem de posse de FRAME)."""
         created = tenant_class_service.create_class(
             user_id=user_id, tenant_id=tenant_id, name="Classe Exclusiva Tenant A",
+            is_violation=True,
         )
         class_id = namespace_tenant_class_id(created["id"])
 

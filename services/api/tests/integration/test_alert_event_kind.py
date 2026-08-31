@@ -1,5 +1,6 @@
 """
-Integration: presença é CONFORMIDADE, ausência é VIOLAÇÃO (ADR-0065).
+Integration: presença é CONFORMIDADE, ausência é VIOLAÇÃO, indecisa é
+OBSERVAÇÃO (ADR-0065, refinado pelo contrato A1 — TRÊS estados, não dois).
 
 Postgres REAL — o defeito é de SQL (predicado + ordem de parâmetros) e de
 schema (`yolo_classes.is_violation`, migration 125). Mock de repositório não
@@ -13,6 +14,17 @@ O caso que mais importa aqui é o 4º: o alerta `camera_gap` do liveness grava
 `[{"type": "camera_gap", ...}]` SEM chave `class`. Se a classificação errasse
 para o lado "conformidade", o alerta de CÂMERA OFFLINE sumiria da tela padrão
 e ninguém perceberia. Sumir é o erro caro; aparecer a mais é barato (ADR-0017).
+
+Contrato A1 (refinamento de ADR-0065 §4): o binário original colapsava
+"classe indecidida" (`is_violation IS NULL`, ou fora do catálogo) dentro do
+mesmo balde de VIOLAÇÃO — o que também é uma mentira, só que menos óbvia que
+"presença = violação". `is_violation NULL`/classe desconhecida agora é um
+TERCEIRO estado, 'observacao': continua visível (não some — mesmo espírito
+do ADR-0017), só não afirma mais "violação" sobre o que ninguém decidiu.
+`camera_gap` (sem `class`, não é sobre polaridade de classe nenhuma) SEGUE
+'violation' — é o teste de mutação: se `event_kind` voltar a ser binário,
+`test_classe_fora_do_catalogo_e_observacao`/`test_is_violation_null_e_observacao_nao_violacao`
+abaixo reprovam (voltam a ver 'violation').
 
 Pulados automaticamente sem INTEGRATION_DATABASE_URL/HARNESS_DATABASE_URL.
 """
@@ -148,18 +160,22 @@ class TestEventKind:
         kinds = _kind_by_id(AlertRepository(pg_pool), tenant_id)
         assert kinds[cenario["ids"]["camera_gap"]] == "violation"
 
-    def test_classe_fora_do_catalogo_e_violacao(self, pg_pool, tenant_id, cenario):
+    def test_classe_fora_do_catalogo_e_observacao(self, pg_pool, tenant_id, cenario):
+        """Contrato A1: classe que ninguém cadastrou é INDECIDIDA, não violação
+        — mas continua visível (não vira conformidade, não some)."""
         kinds = _kind_by_id(AlertRepository(pg_pool), tenant_id)
-        assert kinds[cenario["ids"]["desconhecida"]] == "violation"
+        assert kinds[cenario["ids"]["desconhecida"]] == "observacao"
 
-    def test_is_violation_null_nunca_conta_como_presenca(self, pg_raw, pg_pool, tenant_id, cenario):
-        """NULL = ninguém decidiu ainda ⇒ cai em VIOLAÇÃO, onde alguém percebe."""
+    def test_is_violation_null_e_observacao_nao_violacao(self, pg_raw, pg_pool, tenant_id, cenario):
+        """Contrato A1: NULL = ninguém decidiu ainda ⇒ 'observacao', o TERCEIRO
+        estado — nem presença (não vira conformidade) nem violação de verdade
+        (não pode assustar o operador com algo que ninguém classificou)."""
         with pg_raw.cursor() as cur:
             _insert_class(cur, tenant_id, cenario["user_id"], "Classe Indecisa", None)
             aid = _insert_alert(cur, tenant_id, cenario["camera_id"], [
                 {"class": "Classe Indecisa", "confidence": 0.9},
             ])
-        assert _kind_by_id(AlertRepository(pg_pool), tenant_id)[aid] == "violation"
+        assert _kind_by_id(AlertRepository(pg_pool), tenant_id)[aid] == "observacao"
 
 
 # ---------------------------------------------------------------------------
@@ -168,21 +184,34 @@ class TestEventKind:
 
 class TestKindFilter:
 
-    def test_violation_esconde_a_conformidade(self, pg_pool, tenant_id, cenario):
+    def test_violation_esconde_a_conformidade_e_a_observacao(self, pg_pool, tenant_id, cenario):
+        """Contrato A1: kind=violation agora é a classe de violação DE
+        VERDADE — não mais 'tudo que não é conformidade'. `camera_gap`
+        (sem `class`) continua entrando (ADR-0065, não é sobre polaridade);
+        `desconhecida` (indecidida) sai — foi ela que 'sumia' na mentira
+        binária antiga por aparecer disfarçada de violação real."""
         kinds = _kind_by_id(AlertRepository(pg_pool), tenant_id, kind="violation")
         assert cenario["ids"]["so_presenca"] not in kinds
+        assert cenario["ids"]["desconhecida"] not in kinds
         assert set(kinds.values()) == {"violation"}
-        assert len(kinds) == 3
+        assert len(kinds) == 2
 
     def test_compliance_mostra_so_o_epi_em_uso(self, pg_pool, tenant_id, cenario):
         kinds = _kind_by_id(AlertRepository(pg_pool), tenant_id, kind="compliance")
         assert list(kinds) == [cenario["ids"]["so_presenca"]]
 
+    def test_observacao_mostra_so_a_classe_indecidida(self, pg_pool, tenant_id, cenario):
+        """Terceiro estado, filtrável — o operador consegue ACHAR o que
+        ninguém classificou, em vez dele ficar escondido dentro de 'violação'."""
+        kinds = _kind_by_id(AlertRepository(pg_pool), tenant_id, kind="observacao")
+        assert kinds == {cenario["ids"]["desconhecida"]: "observacao"}
+
     def test_total_acompanha_o_filtro(self, pg_pool, tenant_id, cenario):
         """`total` alimenta a paginação — se ignorar o filtro, a tela mente."""
         repo = AlertRepository(pg_pool)
-        assert repo.list_with_filters(tenant_id=tenant_id, kind="violation")["total"] == 3
+        assert repo.list_with_filters(tenant_id=tenant_id, kind="violation")["total"] == 2
         assert repo.list_with_filters(tenant_id=tenant_id, kind="compliance")["total"] == 1
+        assert repo.list_with_filters(tenant_id=tenant_id, kind="observacao")["total"] == 1
         assert repo.list_with_filters(tenant_id=tenant_id)["total"] == 4
 
     def test_kind_none_devolve_tudo_com_event_kind(self, pg_pool, tenant_id, cenario):
@@ -200,7 +229,7 @@ class TestKindFilter:
             acknowledged=False,
             kind="violation",
         )
-        assert result["total"] == 3
+        assert result["total"] == 2
         assert {r["event_kind"] for r in result["items"]} == {"violation"}
 
 
@@ -224,7 +253,12 @@ class TestCrossTenant:
             _insert_class(cur, outro, outro_user, DESCONHECIDA, False)
         try:
             kinds = _kind_by_id(AlertRepository(pg_pool), tenant_id)
-            assert kinds[cenario["ids"]["desconhecida"]] == "violation"
+            # A propriedade de segurança é NÃO virar 'compliance' emprestando
+            # a classificação do outro tenant — o valor exato (contrato A1)
+            # é 'observacao', porque para ESTE tenant a classe continua
+            # indecidida (não registrada nem em presença nem em violação).
+            assert kinds[cenario["ids"]["desconhecida"]] == "observacao"
+            assert kinds[cenario["ids"]["desconhecida"]] != "compliance"
         finally:
             _purge_tenant(pg_raw, outro)
             with pg_raw.cursor() as cur:
@@ -253,6 +287,15 @@ class TestAggregates:
             _insert_alert(cur, tenant_id, cam2, [{"class": PRESENCA, "confidence": 0.9}])
         assert repo.camera_hours_with_violation(tenant_id, "epi", since) == 1
 
+        # Contrato A1: câmera 3 com APENAS classe INDECIDIDA (observação)
+        # também não pode somar hora de violação — é o MESMO alerta que
+        # /epi/eventos mostra como "Não definida"; contá-lo aqui derrubaria
+        # compliance_rate como se fosse violação confirmada.
+        with pg_raw.cursor() as cur:
+            cam3 = _insert_camera(cur, tenant_id, cenario["user_id"], "Canal 10", "Recebimento")
+            _insert_alert(cur, tenant_id, cam3, [{"class": DESCONHECIDA, "confidence": 0.5}])
+        assert repo.camera_hours_with_violation(tenant_id, "epi", since) == 1
+
     def test_classe_de_presenca_nao_vira_linha_de_violacao_por_classe(
         self, pg_pool, tenant_id, cenario
     ):
@@ -262,14 +305,43 @@ class TestAggregates:
         classes = {r["class"] for r in rows}
         assert PRESENCA not in classes
         assert AUSENCIA in classes
+        # Contrato A1: classe indecidida (fora do catálogo) também não forma
+        # linha de "violação por classe" — senão o `compliance_by_class` do
+        # Dashboard chamaria de violação o MESMO alerta que /epi/eventos
+        # mostra como "Não definida".
+        assert DESCONHECIDA not in classes
+
+    def test_classe_desconhecida_nao_vira_linha_em_violations_by_class(
+        self, pg_pool, tenant_id, cenario
+    ):
+        """Mesmo contrato A1, agora para `violations_by_class` — alimenta o
+        painel "Violações por classe" do Dashboard e `/events/summary`
+        `by_class`. Tinha o mesmo defeito de `violation_hours_by_class`:
+        só excluía presença, não excluía a classe indecidida."""
+        rows = AlertRepository(pg_pool).violations_by_class(
+            tenant_id, NOW - timedelta(hours=1), NOW + timedelta(minutes=1), module_code="epi",
+        )
+        classes = {r["class"] for r in rows}
+        assert PRESENCA not in classes
+        assert DESCONHECIDA not in classes
+        assert AUSENCIA in classes
 
     def test_taxa_de_uso_por_area(self, pg_pool, tenant_id, cenario):
+        """Contrato A1: `violation` usa o MESMO predicado de
+        `list_with_filters(kind="violation")`
+        (`_IS_VIOLATION_SQL AND NOT _IS_COMPLIANCE_SQL`) — a classe
+        indecidida ('desconhecida') não conta mais como violação. Do cenário
+        (4 alertas): 1 compliance (so_presenca) + 2 violação de verdade
+        (presenca_e_ausencia, camera_gap); 'desconhecida' é observação e não
+        soma em nenhum dos dois — ANTES deste fix ela inflava o numerador de
+        violação (era o `assert ... == 3` que este teste tinha, e que
+        congelava a mesma mentira que /epi/eventos já não conta mais)."""
         rows = AlertRepository(pg_pool).usage_rate_by_area(
             tenant_id, NOW - timedelta(hours=1), NOW + timedelta(minutes=1), module_code="epi"
         )
         por_area = {r["area"]: r for r in rows}
         assert por_area["Expedição"]["compliance"] == 1
-        assert por_area["Expedição"]["violation"] == 3
+        assert por_area["Expedição"]["violation"] == 2
 
     def test_area_cai_no_nome_da_camera_sem_location(
         self, pg_raw, pg_pool, tenant_id, cenario

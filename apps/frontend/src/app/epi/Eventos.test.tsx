@@ -447,3 +447,20 @@ describe('deep-link do sino continua valendo', () => {
     expect(h.gets[0]).toContain('acknowledged=false')
   })
 })
+
+describe('terceiro estado do filtro — contrato A1', () => {
+  it('"Não definida" é uma opção selecionável e pede kind=observacao', async () => {
+    montar()
+    await screen.findByText('CAM-04 Expedição')
+    fireEvent.change(screen.getByLabelText('Tipo de evento'), {
+      target: { value: 'observacao' },
+    })
+    await waitFor(() => expect(h.gets.at(-1)).toContain('kind=observacao'))
+  })
+
+  it('deep-link com kind=observacao chega como filtro da primeira busca', async () => {
+    montar('/epi/eventos?kind=observacao')
+    await waitFor(() => expect(h.gets.length).toBeGreaterThan(0))
+    expect(h.gets[0]).toContain('kind=observacao')
+  })
+})

@@ -145,11 +145,13 @@ function LinhaClasse({ cls, tecla, maxUso, onRename, onColor, onArchive, onPolar
           <Pencil size={11} className={s.nomeIcone} />
         </button>
       )}
-      <SeletorPolaridade
-        polaridade={cls.polaridade ?? 'indefinida'}
-        editavel={cls.source === 'tenant'}
-        onChange={(p) => onPolaridade(cls, p === 'violacao')}
-      />
+      <span data-testid={`polaridade-${cls.id}`}>
+        <SeletorPolaridade
+          polaridade={cls.polaridade ?? 'indefinida'}
+          editavel={cls.source === 'tenant'}
+          onChange={(p) => onPolaridade(cls, p === 'violacao')}
+        />
+      </span>
       <div className={s.barraWrap}>
         <div className={s.barraPreenchida} style={{ width: `${pct}%`, background: cls.color || VALORES.cianoVisao }} />
       </div>
@@ -173,6 +175,10 @@ export function Classes() {
   const [newName, setNewName] = useState('')
   const [newColor, setNewColor] = useState<string>(VALORES.cianoVisao)
   const [creating, setCreating] = useState(false)
+  /** Contrato A1: toda classe nasce com polaridade decidida — sem default,
+   * `null` até o operador escolher (o INSERT nunca gravava a coluna antes
+   * disto, e toda classe nova nascia `is_violation IS NULL` para sempre). */
+  const [newIsViolation, setNewIsViolation] = useState<boolean | null>(null)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
@@ -314,18 +320,21 @@ export function Classes() {
 
   const handleCreate = useCallback(() => {
     const name = newName.trim()
-    if (!name) return
+    if (!name || newIsViolation === null) return
     setCreating(true)
     api
-      .post<ApiResponse<{ class_id: number }>>('/classes', { name, color: newColor, module: MODULE_CODE })
+      .post<ApiResponse<{ class_id: number }>>('/classes', {
+        name, color: newColor, module: MODULE_CODE, is_violation: newIsViolation,
+      })
       .then(() => {
         setNewName('')
+        setNewIsViolation(null)
         toast.success(`Classe "${name}" criada`)
         carregar()
       })
       .catch((e: unknown) => toast.error(e instanceof Error ? e.message : 'Erro ao criar classe'))
       .finally(() => setCreating(false))
-  }, [newName, newColor, carregar, toast])
+  }, [newName, newColor, newIsViolation, carregar, toast])
 
   // ── render ────────────────────────────────────────────────────────────────
   const criarForm = (
@@ -340,7 +349,15 @@ export function Classes() {
         }}
       />
       <input type="color" className={s.criarCor} value={newColor} onChange={(e) => setNewColor(e.target.value)} title="Cor da nova classe" />
-      <button className={s.criarBotao} disabled={!newName.trim() || creating} onClick={handleCreate}>
+      {/* data-testid só para o teste desambiguar do SeletorPolaridade de cada linha já existente (mesmo rótulo de botão) */}
+      <span data-testid="nova-classe-polaridade">
+        <SeletorPolaridade
+          polaridade={newIsViolation === null ? 'indefinida' : newIsViolation ? 'violacao' : 'conformidade'}
+          editavel
+          onChange={(p) => setNewIsViolation(p === 'violacao')}
+        />
+      </span>
+      <button className={s.criarBotao} disabled={!newName.trim() || newIsViolation === null || creating} onClick={handleCreate}>
         {creating ? 'Criando…' : 'Nova classe'}
       </button>
     </div>

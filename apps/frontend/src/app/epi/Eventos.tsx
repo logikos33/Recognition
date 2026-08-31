@@ -79,8 +79,11 @@ interface Evento {
   created_at: string
   /** Hora REAL da captura no edge — pode divergir de `created_at`. */
   timestamp?: string
-  /** ADR-0065: 'compliance' = EPI em uso (telemetria); 'violation' = alertável. */
-  event_kind?: 'violation' | 'compliance'
+  /** ADR-0065 (contrato A1, três estados): 'compliance' = EPI em uso
+   *  (telemetria); 'violation' = classe de violação de verdade; 'observacao'
+   *  = classe indecidida (não decide `polaridadeDoEvento` sozinho — quem
+   *  desempata é o catálogo, ver abaixo). */
+  event_kind?: 'violation' | 'compliance' | 'observacao'
   /** Veredito bruto — a IA grava o MESMO 'approve'/'reject'; sozinho não prova gente. */
   verification_verdict?: string | null
   /** 'user:<id>' (gente) ou 'claude-haiku' (IA) — a prova de procedência do veredito. */
@@ -439,7 +442,13 @@ export function Eventos() {
         </select>
 
         {/* Fora do desenho, preservado da tela antiga (ADR-0065): sem isto a
-            lista abriria misturando telemetria de EPI em uso com violação. */}
+            lista abriria misturando telemetria de EPI em uso com violação.
+            Contrato A1: 'observacao' é o TERCEIRO balde do backend — classe
+            que ninguém classificou ainda (nem presença, nem violação). Sem
+            esta opção, quem quisesse ACHAR essas detecções só teria
+            "Todos os tipos" (misturado com violação/conformidade de
+            verdade) — o filtro dedicado é o que torna o indecidido
+            achável. */}
         <select
           className={s.filtro}
           aria-label="Tipo de evento"
@@ -448,6 +457,7 @@ export function Eventos() {
         >
           <option value="violation">Violações</option>
           <option value="compliance">Conformidade (EPI em uso)</option>
+          <option value="observacao">Não definida (ninguém classificou)</option>
           <option value="">Todos os tipos</option>
         </select>
 

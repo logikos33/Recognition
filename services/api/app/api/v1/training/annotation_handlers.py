@@ -180,9 +180,12 @@ def create_class_handler():
             name: {type: string}
             color: {type: string, default: '#3b82f6'}
             module: {type: string, default: epi}
+            is_violation: {type: boolean}
     responses:
       201:
         description: Classe criada
+      400:
+        description: Nome ausente ou is_violation não informado
       409:
         description: Nome duplicado
     """
@@ -196,6 +199,7 @@ def create_class_handler():
             name=data.get("name", ""),
             color=data.get("color", "#3b82f6"),
             module_code=data.get("module") or request.args.get("module", "epi"),
+            is_violation=data.get("is_violation"),
         )
         # AI_NOTE (união catálogo∪tenant): o anotador (AnnotationInterface.jsx
         # createNewClass) lê `result.data.class_id ?? result.data.id` — sem

@@ -256,6 +256,77 @@ class TestListWithFilters:
 
 
 # ---------------------------------------------------------------------------
+# event_kind — TRÊS estados (contrato A1, refina ADR-0065 §4)
+#
+# Teste de MUTAÇÃO: sem banco real (roda em qualquer CI), lê o TEXTO da query
+# de itens que o repositório realmente emitiu. Se alguém reverter o CASE para
+# binário (`WHEN compliance THEN 'compliance' ELSE 'violation'`), a 3ª
+# ramificação some do texto e este teste reprova — não precisa de Postgres
+# pra pegar essa regressão específica (a semântica fina, "indecidida vira
+# observação de verdade", ainda depende do teste de integração real).
+# ---------------------------------------------------------------------------
+
+class TestEventKindTresEstados:
+
+    def _items_query(self, cur) -> str:
+        for call in cur.execute.call_args_list:
+            sql = call[0][0]
+            if "event_kind" in sql:
+                return sql
+        raise AssertionError("nenhuma chamada com 'event_kind' no SQL")
+
+    def test_case_tem_tres_ramos_nao_dois(self):
+        """FALHA se o CASE voltar a ser binário (só compliance/violation)."""
+        cur = MagicMock()
+        cur.fetchone.return_value = {"count": 0}
+        cur.fetchall.return_value = [{"n": "protetor auditivo"}]
+        repo, cur = _repo(cur)
+        repo.list_with_filters("tenant-1")
+        sql = self._items_query(cur)
+        assert "'compliance'" in sql
+        assert "'violation'" in sql
+        assert "'observacao'" in sql
+        assert sql.count("WHEN") == 2, "CASE precisa de DOIS WHEN — um terceiro balde, não ELSE direto"
+
+    def test_kind_observacao_gera_condicao_propria(self):
+        """FALHA se kind='observacao' não filtrar nada (virar sinônimo de
+        kind=None) — a query de contagem precisa ganhar uma condição NOVA."""
+        cur_none = MagicMock()
+        cur_none.fetchone.return_value = {"count": 0}
+        cur_none.fetchall.return_value = [{"n": "protetor auditivo"}]
+        repo_none, cur_none = _repo(cur_none)
+        repo_none.list_with_filters("tenant-1")
+        count_query_none = cur_none.execute.call_args_list[-2][0][0]
+
+        cur_obs = MagicMock()
+        cur_obs.fetchone.return_value = {"count": 0}
+        cur_obs.fetchall.return_value = [{"n": "protetor auditivo"}]
+        repo_obs, cur_obs = _repo(cur_obs)
+        repo_obs.list_with_filters("tenant-1", kind="observacao")
+        count_query_obs = cur_obs.execute.call_args_list[-2][0][0]
+
+        assert count_query_obs != count_query_none
+        assert "NOT" in count_query_obs
+
+    def test_kind_violation_exige_classe_de_verdade_nao_so_not_compliance(self):
+        """FALHA se kind='violation' voltar a ser 'NOT compliance' puro — a
+        mentira original do contrato A1 (indecidida disfarçada de violação)."""
+        cur = MagicMock()
+        cur.fetchone.return_value = {"count": 0}
+        cur.fetchall.return_value = [{"n": "protetor auditivo"}]
+        repo, cur = _repo(cur)
+        repo.list_with_filters("tenant-1", kind="violation")
+        count_query = cur.execute.call_args_list[-2][0][0]
+        # `_IS_COMPLIANCE_SQL` usa `<> ALL(...)`; só `_IS_VIOLATION_SQL` usa
+        # `= ANY(...)` — marcador que discrimina "só NOT compliance" (mentira
+        # antiga) de "EXISTS classe de violação de verdade" (fix).
+        assert "= ANY(" in count_query, (
+            "kind=violation precisa checar _IS_VIOLATION_SQL (= ANY, classe "
+            "de violação de verdade), não só 'NOT compliance' (<> ALL)"
+        )
+
+
+# ---------------------------------------------------------------------------
 # list_for_camera_scenario
 # ---------------------------------------------------------------------------
 

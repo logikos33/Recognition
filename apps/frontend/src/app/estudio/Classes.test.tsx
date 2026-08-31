@@ -10,7 +10,7 @@
  *  · DELETE 409 chega legível (a API já manda a frase pronta) — não pode
  *    sumir em silêncio.
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const get = vi.fn()
@@ -83,16 +83,31 @@ describe('Classes (Estúdio)', () => {
     expect(get).toHaveBeenCalledWith('/modules/epi/classes?include_archived=1')
   })
 
-  it('criar chama POST /classes com o payload certo', async () => {
+  it('criar sem escolher polaridade não chama POST — classe não pode nascer indecidida', async () => {
     responde([tenantClasse()])
     render(<Classes />)
     await screen.findByText('Capacete')
     fireEvent.change(screen.getByPlaceholderText(/nova classe/i), { target: { value: 'Luva' } })
     fireEvent.click(screen.getByRole('button', { name: /nova classe/i }))
+    expect(post).not.toHaveBeenCalled()
+  })
+
+  it('criar chama POST /classes com o payload certo, incluindo a polaridade escolhida', async () => {
+    responde([tenantClasse()])
+    render(<Classes />)
+    await screen.findByText('Capacete')
+    fireEvent.change(screen.getByPlaceholderText(/nova classe/i), { target: { value: 'Luva' } })
+    // Contrato A1: o cadastro EXIGE a polaridade — sem escolher, o botão
+    // fica inerte (ver teste acima). Escolhe "Violação" no seletor de
+    // CRIAÇÃO (desambiguado por testid — a linha "Capacete" tem o próprio
+    // par de botões com o mesmo rótulo).
+    fireEvent.click(within(screen.getByTestId('nova-classe-polaridade')).getByRole('button', { name: 'Violação' }))
+    fireEvent.click(screen.getByRole('button', { name: /nova classe/i }))
     expect(post).toHaveBeenCalledWith('/classes', {
       name: 'Luva',
       color: VALORES.cianoVisao,
       module: 'epi',
+      is_violation: true,
     })
   })
 
@@ -100,7 +115,8 @@ describe('Classes (Estúdio)', () => {
     responde([tenantClasse({ polaridade: 'conformidade' })])
     render(<Classes />)
     await screen.findByText('Capacete')
-    fireEvent.click(screen.getByRole('button', { name: 'Violação' }))
+    // Desambiguado por testid — o seletor da CRIAÇÃO tem o mesmo rótulo de botão.
+    fireEvent.click(within(screen.getByTestId('polaridade-7')).getByRole('button', { name: 'Violação' }))
     // Mutação verificada: trocar para `is_violation: false` aqui quebra o
     // teste (o clique foi em "Violação", não em "Conformidade").
     expect(patch).toHaveBeenCalledWith('/classes/7', { is_violation: true })

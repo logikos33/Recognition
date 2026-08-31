@@ -48,8 +48,9 @@ def _parse_bool(s: str | None) -> bool | None:
 
 
 def _parse_kind(s: str | None) -> str | None:
-    """?kind= (ADR-0065). Valor inválido → None (= todos). Nunca 500 por querystring."""
-    return s if s in ("violation", "compliance") else None
+    """?kind= (ADR-0065, contrato A1: TRÊS valores). Valor inválido → None (=
+    todos). Nunca 500 por querystring."""
+    return s if s in ("violation", "compliance", "observacao") else None
 
 
 def _iso_utc(value):  # type: ignore[no-untyped-def]

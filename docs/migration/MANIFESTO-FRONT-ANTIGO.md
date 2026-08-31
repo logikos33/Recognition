@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 388 arquivos, 65.447 linhas
+## Situação — 388 arquivos, 65.458 linhas
 
 | status | arquivos |
 |---|---:|
@@ -268,7 +268,7 @@ apagado não são a mesma coisa.
 | `src/utils/labels.ts` | `INFRA` | — | 253 |
 | `src/utils/statusColors.ts` | `INFRA` | — | 18 |
 | `src/utils/timeBuckets.ts` | `INFRA` | — | 106 |
-| `src/pages/ModuleClassesPage.tsx` | `MIGRADO` | src/app/estudio/Classes.tsx | 765 |
+| `src/pages/ModuleClassesPage.tsx` | `MIGRADO` | src/app/estudio/Classes.tsx | 776 |
 | `src/pages/ReportsPage.tsx` | `MIGRADO` | src/app/epi/Relatorios.tsx | 31 |
 | `src/pages/TrainingPage.css.ts` | `MIGRADO` | src/app/estudio/*.css.ts | 361 |
 | `src/pages/TrainingPage.tsx` | `MIGRADO` | src/app/estudio/* | 1075 |

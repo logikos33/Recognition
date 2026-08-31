@@ -74,12 +74,22 @@ class TestCreateClass:
             "id": 1, "name": "Capacete", "color": "#22c55e",
         }
         result = self.service.create_class(
-            uid, tenant, "  Capacete ", "#22c55e", module_code="fueling"
+            uid, tenant, "  Capacete ", "#22c55e", module_code="fueling", is_violation=False,
         )
         assert result["name"] == "Capacete"
         self.repo.create_class.assert_called_once_with(
-            uid, "Capacete", "#22c55e", tenant_id=tenant, module_code="fueling"
+            uid, "Capacete", "#22c55e",
+            tenant_id=tenant, module_code="fueling", is_violation=False,
         )
+
+    def test_create_without_is_violation_raises(self) -> None:
+        """Contrato A1: toda classe nova precisa nascer com a polaridade
+        decidida — sem `is_violation` explícito, a classe nascia
+        `is_violation IS NULL` (o INSERT nunca gravava a coluna) e ficava
+        indecidida para sempre, salvo curadoria manual via PATCH."""
+        with pytest.raises(ValidationError, match="is_violation"):
+            self.service.create_class(uuid4(), str(uuid4()), "Capacete")
+        self.repo.create_class.assert_not_called()
 
     def test_create_empty_name_raises(self) -> None:
         with pytest.raises(ValidationError, match="obrigatório"):
@@ -101,7 +111,7 @@ class TestCreateClass:
     def test_create_duplicate_name_maps_to_conflict(self) -> None:
         self.repo.create_class.side_effect = psycopg2.errors.UniqueViolation()
         with pytest.raises(ConflictError, match="já existe") as exc_info:
-            self.service.create_class(uuid4(), str(uuid4()), "Capacete")
+            self.service.create_class(uuid4(), str(uuid4()), "Capacete", is_violation=True)
         assert exc_info.value.status_code == 409
 
 
