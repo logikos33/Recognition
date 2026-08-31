@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#0A0A0F;font-family:'Inter',sans-serif;color:#F4F6F8}a{color:#00E5FF;text-decoration:none}a:hover{color:#0091AD}::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:#23242F;border-radius:5px}input::placeholder{color:#3A3D4A}</style>
+</helmet>
+<div style="width:100%;height:100vh;display:flex;flex-direction:column;background:#0A0A0F" data-screen-label="Saúde da Operação — PROPOSTA F5-LEVE">
+
+  <dc-import name="EPI Topbar" crumb2="Sites &amp; Saúde" style="flex:none" hint-size="100%,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <dc-import name="EPI Sidebar" ativa="Sites &amp; Saúde" style="flex:none;align-self:stretch" hint-size="237px,100%"></dc-import>
+
+    <main style="flex:1;min-width:0;overflow:auto;position:relative">
+      <div style="position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:10px;padding:10px 24px;background:#0A0A0F;border-bottom:1px solid #23242F;flex-wrap:wrap">
+        <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.18em;color:#E8A13C;border:1px solid rgba(232,161,60,.4);border-radius:4px;padding:3px 8px">PROPOSTA F5-LEVE · AGUARDA REFINO OFICIAL DO DESIGN</span>
+        <span style="font-size:12px;color:#8A8F98;max-width:520px;line-height:1.4">Não veio prancha oficial para esta tela — o desenho abaixo é rascunho no padrão do bundle, para virar pauta de refino, não pixel final.</span>
+        <div style="flex:1"></div>
+        <sc-for list="{{ abas }}" as="a" hint-placeholder-count="5">
+          <button onClick="{{ a.go }}" style="height:32px;padding:0 13px;border:1px solid {{ a.borda }};border-radius:8px;background:{{ a.bg }};color:{{ a.cor }};font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">{{ a.t }}</button>
+        </sc-for>
+      </div>
+
+      <div style="max-width:1360px;margin:0 auto;padding:20px 24px 60px;box-sizing:border-box">
+
+        <sc-if value="{{ vTela }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+              <h1 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:24px">Saúde da Operação</h1>
+              <span style="font-size:12.5px;color:#8A8F98">o que está de pé agora — sites, dispositivos e câmeras do seu tenant</span>
+              <div style="flex:1"></div>
+              <button onClick="{{ atualizar }}" style="height:34px;padding:0 14px;border:1px solid #23242F;border-radius:8px;background:transparent;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer" style-hover="border-color:#00E5FF;color:#00E5FF">Atualizar agora</button>
+            </div>
+            <span style="font-size:12px;color:#8A8F98;line-height:1.5">Substitui 4 telas antigas (Status dos streams, Sites &amp; Saúde, Observabilidade do edge, Monitoramento) por uma pergunta só. <a href="#" onClick="{{ irMapa }}">Ver o de-para completo →</a></span>
+
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+                <div style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:4px;padding:14px 16px;background:#14141C;border:1px solid #23242F;border-radius:11px;border-top:2px solid {{ k.cor }}">
+                  <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">{{ k.label }}</span>
+                  <span style="font-family:'JetBrains Mono';font-weight:700;font-size:22px;line-height:1;color:{{ k.cor }}">{{ k.v }}</span>
+                  <span style="font-size:11.5px;color:#8A8F98;line-height:1.4">{{ k.sub }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <div style="display:flex;background:#14141C;border-radius:8px;padding:3px;gap:2px">
+                <sc-for list="{{ filtros }}" as="f" hint-placeholder-count="5">
+                  <button onClick="{{ f.go }}" style="height:32px;padding:0 13px;border:none;border-radius:6px;background:{{ f.bg }};color:{{ f.cor }};font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">{{ f.t }}</button>
+                </sc-for>
+              </div>
+              <input value="{{ busca }}" onChange="{{ setBusca }}" placeholder="Buscar site..." style="height:34px;width:220px;background:#14141C;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;padding:0 12px;outline:none" style-focus="border-color:#00E5FF" />
+              <div style="flex:1"></div>
+              <span style="font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98">{{ nSites }}</span>
+            </div>
+
+            <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
+              <div style="flex:2;min-width:520px;overflow-x:auto;border:1px solid #23242F;border-radius:11px;background:#14141C">
+                <div style="display:grid;grid-template-columns:1.5fr 110px 80px 100px 70px 70px 60px 120px;min-width:900px">
+                  <sc-for list="{{ tabelaHead }}" as="h" hint-placeholder-count="8">
+                    <div style="padding:9px 12px;font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.1em;color:#8A8F98;border-bottom:1px solid #23242F;text-align:{{ h.al }}">{{ h.t }}</div>
+                  </sc-for>
+                  <sc-for list="{{ sitesFiltrados }}" as="s" hint-placeholder-count="3">
+                    <div onClick="{{ s.abrir }}" style="display:contents;cursor:pointer">
+                      <span style="padding:12px;border-bottom:1px solid rgba(138,143,152,.08);background:{{ s.selBg }}">
+                        <span style="display:block;font-size:13px;font-weight:600">{{ s.nome }}</span>
+                        <span style="font-size:11px;color:#8A8F98">{{ s.local }}</span>
+                      </span>
+                      <span style="padding:12px;border-bottom:1px solid rgba(138,143,152,.08);background:{{ s.selBg }};display:flex;align-items:center">
+                        <span style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:{{ s.stCor }}"><span style="width:8px;height:8px;border-radius:50%;background:{{ s.stCor }}"></span>{{ s.stTxt }}</span>
+                      </span>
+                      <span style="padding:12px;font-family:'JetBrains Mono';font-size:11.5px;color:#8A8F98;border-bottom:1px solid rgba(138,143,152,.08);background:{{ s.selBg }}">{{ s.modo }}</span>
+                      <span style="padding:12px;font-family:'JetBrains Mono';font-size:12.5px;border-bottom:1px solid rgba(138,143,152,.08);background:{{ s.selBg }}">{{ s.cameras }}</span>
+                      <span style="padding:12px;font-family:'JetBrains Mono';font-size:12.5px;color:{{ s.fpsCor }};border-bottom:1px solid rgba(138,143,152,.08);background:{{ s.selBg }}">{{ s.fps }}</span>
+                      <span style="padding:12px;font-family:'JetBrains Mono';font-size:12.5px;color:{{ s.gpuCor }};border-bottom:1px solid rgba(138,143,152,.08);background:{{ s.selBg }}">{{ s.gpu }}</span>
+                      <span style="padding:12px;font-family:'JetBrains Mono';font-size:12.5px;color:{{ s.filaCor }};border-bottom:1px solid rgba(138,143,152,.08);background:{{ s.selBg }}">{{ s.fila }}</span>
+                      <span style="padding:12px;font-family:'JetBrains Mono';font-size:11.5px;color:{{ s.sinalCor }};border-bottom:1px solid rgba(138,143,152,.08);background:{{ s.selBg }}">{{ s.sinal }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <sc-if value="{{ semResultado }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:28px;text-align:center;color:#8A8F98;font-size:13px">Nenhum site bate com esse filtro.</div>
+                </sc-if>
+              </div>
+
+              <sc-if value="{{ temSelecao }}" hint-placeholder-val="{{ true }}">
+                <div style="width:400px;max-width:100%;flex:none;display:flex;flex-direction:column;gap:12px">
+                  <div style="display:flex;flex-direction:column;gap:12px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                      <span style="font-family:'Space Grotesk';font-weight:700;font-size:16.5px">{{ selNome }}</span>
+                      <span style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono';font-size:10px;color:{{ selStCor }}">● {{ selStTxt }}</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:12px">
+                      <span style="color:#8A8F98">Local</span><span>{{ selLocal }}</span>
+                      <span style="color:#8A8F98">Modo</span><span>{{ selModo }}</span>
+                      <span style="color:#8A8F98">Dispositivos</span><span>{{ selDeviceCount }}</span>
+                    </div>
+
+                    <div style="display:flex;background:#0A0A0F;border-radius:8px;padding:3px;gap:2px">
+                      <sc-for list="{{ janelas }}" as="j" hint-placeholder-count="3">
+                        <button onClick="{{ j.go }}" style="flex:1;height:30px;border:none;border-radius:6px;background:{{ j.bg }};color:{{ j.cor }};font-family:'Inter';font-size:12px;font-weight:600;cursor:pointer">{{ j.t }}</button>
+                      </sc-for>
+                    </div>
+
+                    <sc-if value="{{ selTemTelemetria }}" hint-placeholder-val="{{ true }}">
+                      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+                        <sc-for list="{{ selMetricas }}" as="m" hint-placeholder-count="6">
+                          <div style="display:flex;flex-direction:column;gap:2px;padding:9px 10px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px">
+                            <span style="font-family:'JetBrains Mono';font-size:8.5px;letter-spacing:.1em;color:#8A8F98">{{ m.k }}</span>
+                            <span style="font-family:'JetBrains Mono';font-weight:700;font-size:14.5px">{{ m.v }}</span>
+                          </div>
+                        </sc-for>
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:4px">
+                        <span style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.14em;color:#8A8F98">FPS · ÚLTIMOS SINAIS</span>
+                        <svg viewBox="0 0 180 40" style="width:100%;height:40px;background:#0A0A0F;border:1px solid #23242F;border-radius:6px">
+                          <polyline points="{{ selSpark }}" fill="none" stroke="#00E5FF" stroke-width="1.6"></polyline>
+                        </svg>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ selSemTelemetria }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;align-items:center;gap:9px;padding:11px 12px;background:rgba(138,143,152,.06);border:1px solid #23242F;border-radius:9px">
+                        <span style="font-size:12.5px;color:#8A8F98;line-height:1.5">Sem telemetria deste site — {{ selSemTelemetriaTxt }}. Assim que o dispositivo enviar o primeiro sinal, os números aparecem aqui.</span>
+                      </div>
+                    </sc-if>
+                  </div>
+
+                  <div style="display:flex;flex-direction:column;gap:8px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:12px">
+                    <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">DISPOSITIVOS DESTE SITE</span>
+                    <sc-for list="{{ selDevices }}" as="d" hint-placeholder-count="1">
+                      <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(138,143,152,.08)">
+                        <div style="display:flex;flex-direction:column;gap:1px;flex:1;min-width:0">
+                          <span style="font-size:12.5px;font-weight:600">{{ d.nome }}</span>
+                          <span style="font-family:'JetBrains Mono';font-size:10px;color:#8A8F98">{{ d.visto }}</span>
+                        </div>
+                        <button onClick="{{ d.revogar }}" style="height:30px;padding:0 11px;background:transparent;border:1px solid {{ d.borda }};border-radius:7px;color:{{ d.cor }};font-family:'Inter';font-size:11.5px;font-weight:600;cursor:pointer">{{ d.acao }}</button>
+                      </div>
+                    </sc-for>
+                    <button style="margin-top:2px;height:34px;padding:0 13px;background:transparent;border:1px dashed #3A3D4A;border-radius:8px;color:#8A8F98;font-family:'Inter';font-size:12px;font-weight:600;cursor:pointer" title="Depende do pedido S3">Reiniciar agente deste site</button>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:8px;padding:14px 16px;background:#14141C;border:1px solid #23242F;border-radius:11px">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">MOTOR DE DETECÇÃO</span>
+              <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                <span style="font-size:13.5px;font-weight:600;color:{{ motorCor }}">{{ motorTxt }}</span>
+                <span style="font-size:12px;color:#8A8F98;line-height:1.4;flex:1;min-width:260px">{{ motorSub }}</span>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ vEstados }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:20px">Estados da tela</h2>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:12px">
+
+              <div style="display:flex;flex-direction:column;gap:9px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:12px;min-height:180px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#3ECF8E">CARREGADO</span>
+                <span style="font-size:12.5px;color:#8A8F98;line-height:1.55">É o que está na aba "A tela": KPIs, tabela de sites filtrável e o painel do site selecionado. Estado padrão quando a chamada volta com pelo menos 1 site.</span>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px;min-height:220px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">CARREGANDO</span>
+                <div style="flex:1;position:relative;border-radius:10px;overflow:hidden;border:1px solid #23242F;min-height:140px">
+                  <x-import component-from-global-scope="lk-loader" from="./lk-loader.js" variant="fullscreen" state="waiting" label="ABRINDO A SAÚDE DA OPERAÇÃO" size="64" style="position:absolute;inset:0" hint-size="100%,100%"></x-import>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px;min-height:220px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">VAZIO · COM CTA</span>
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px;text-align:center">
+                  <svg viewBox="0 0 24 24" style="width:30px;height:30px" fill="none" stroke="#8A8F98" stroke-width="1.5" stroke-linecap="square"><path d="M3 7h12v10H3zM15 10l6-3v10l-6-3"></path></svg>
+                  <span style="font-family:'Space Grotesk';font-weight:700;font-size:16px">Nenhum site cadastrado ainda</span>
+                  <span style="font-size:12.5px;color:#8A8F98;line-height:1.5;max-width:270px">Sites aparecem aqui assim que o primeiro dispositivo edge é emparelhado.</span>
+                  <button style="height:38px;padding:0 16px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:13px;font-weight:700;cursor:pointer">Cadastrar o primeiro site</button>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px;min-height:220px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">ERRO · COM RETRY</span>
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px;text-align:center">
+                  <svg viewBox="0 0 24 24" style="width:30px;height:30px" fill="none" stroke="#E5484D" stroke-width="1.5" stroke-linecap="square"><path d="M12 4l9 16H3zM12 10v4M12 17v.5"></path></svg>
+                  <span style="font-family:'Space Grotesk';font-weight:700;font-size:16px">Não conseguimos carregar a saúde da operação</span>
+                  <span style="font-size:12.5px;color:#8A8F98;line-height:1.5;max-width:280px">As câmeras seguem gravando e detectando — só este painel está indisponível agora.</span>
+                  <span style="font-family:'JetBrains Mono';font-size:10px;color:#8A8F98">GET /api/v1/edge/sites/health · TEMPO ESGOTADO (10 S)</span>
+                  <div style="display:flex;gap:8px">
+                    <button style="height:38px;padding:0 15px;border:none;border-radius:8px;background:#00E5FF;color:#0A0A0F;font-family:'Inter';font-size:12.5px;font-weight:700;cursor:pointer">Tentar de novo</button>
+                    <button style="height:38px;padding:0 13px;background:transparent;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">Avisar o suporte</button>
+                  </div>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:10px;padding:18px;background:#14141C;border:1px solid #23242F;border-radius:12px;min-height:220px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">SEM PERMISSÃO</span>
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px;text-align:center">
+                  <svg viewBox="0 0 24 24" style="width:30px;height:30px" fill="none" stroke="#E8A13C" stroke-width="1.5" stroke-linecap="square"><path d="M6 11V8a6 6 0 0 1 12 0v3M4 11h16v10H4zM12 15v3"></path></svg>
+                  <span style="font-family:'Space Grotesk';font-weight:700;font-size:16px">Você não administra sites deste tenant</span>
+                  <span style="font-size:12.5px;color:#8A8F98;line-height:1.5;max-width:280px">Ver a saúde dos sites e dos dispositivos é do administrador. Fale com quem administra sua conta.</span>
+                  <button style="height:38px;padding:0 15px;background:transparent;border:1px solid #23242F;border-radius:8px;color:#F4F6F8;font-family:'Inter';font-size:12.5px;font-weight:600;cursor:pointer">Pedir acesso ao administrador</button>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:9px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:12px;min-height:180px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">SEM TELEMETRIA · POR SITE</span>
+                <span style="font-size:12.5px;color:#8A8F98;line-height:1.5">Não é a tela inteira que falha — é UM site que nunca mandou sinal (dispositivo recém-emparelhado) ou parou de mandar. A linha continua na tabela, com traço no lugar de número:</span>
+                <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#0A0A0F;border:1px solid #23242F;border-radius:8px">
+                  <span style="width:8px;height:8px;border-radius:50%;background:#8A8F98;flex:none"></span>
+                  <span style="font-size:12.5px;font-weight:600;flex:1">Linha 2 — comissionamento</span>
+                  <span style="font-family:'JetBrains Mono';font-size:11.5px;color:#8A8F98">— · — · —</span>
+                  <span style="font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98">NUNCA CONECTOU</span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ vMapa }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+              <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:20px">Mapa de conexões — UI × endpoint × estado</h2>
+              <span style="font-size:12.5px;color:#8A8F98">medido em services/api/app/api/v1/edge/routes.py, streams/routes.py e cameras/health_context_handler.py</span>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <sc-for list="{{ mapaKpis }}" as="k" hint-placeholder-count="3">
+                <div style="flex:1;min-width:210px;display:flex;flex-direction:column;gap:4px;padding:14px 16px;background:#14141C;border:1px solid #23242F;border-radius:11px;border-top:2px solid {{ k.cor }}">
+                  <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">{{ k.label }}</span>
+                  <span style="font-family:'JetBrains Mono';font-weight:700;font-size:24px;line-height:1;color:{{ k.cor }}">{{ k.v }}</span>
+                  <span style="font-size:11.5px;color:#8A8F98;line-height:1.45">{{ k.sub }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="overflow-x:auto;border:1px solid #23242F;border-radius:11px;background:#14141C">
+              <div style="display:grid;grid-template-columns:minmax(230px,1.2fr) minmax(260px,1.4fr) 150px minmax(280px,1.6fr);min-width:980px">
+                <sc-for list="{{ mapaHead }}" as="h" hint-placeholder-count="4">
+                  <div style="padding:10px 14px;font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.14em;color:#8A8F98;border-bottom:1px solid #23242F">{{ h.t }}</div>
+                </sc-for>
+                <sc-for list="{{ mapa }}" as="m" hint-placeholder-count="10">
+                  <div style="display:contents">
+                    <span style="padding:11px 14px;font-size:12.5px;font-weight:600;border-bottom:1px solid rgba(138,143,152,.07)">{{ m.ui }}</span>
+                    <span style="padding:11px 14px;font-family:'JetBrains Mono';font-size:10.5px;color:#F4F6F8;border-bottom:1px solid rgba(138,143,152,.07);word-break:break-all">{{ m.ep }}</span>
+                    <span style="padding:11px 14px;border-bottom:1px solid rgba(138,143,152,.07)"><span style="font-family:'JetBrains Mono';font-size:9px;font-weight:700;letter-spacing:.06em;color:{{ m.cor }};border:1px solid {{ m.borda }};border-radius:4px;padding:2px 7px;white-space:nowrap">{{ m.st }}</span></span>
+                    <span style="padding:11px 14px;font-size:12px;color:#8A8F98;line-height:1.5;border-bottom:1px solid rgba(138,143,152,.07)">{{ m.nota }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:10px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:11px">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">DE-PARA · AS 4 ROTAS ANTIGAS VIRAM ESTA TELA</span>
+              <div style="overflow-x:auto">
+                <div style="display:grid;grid-template-columns:170px minmax(320px,1.4fr) minmax(280px,1.3fr);min-width:820px">
+                  <sc-for list="{{ deparaHead }}" as="h" hint-placeholder-count="3">
+                    <div style="padding:8px 12px;font-family:'JetBrains Mono';font-size:9px;letter-spacing:.1em;color:#8A8F98;border-bottom:1px solid #23242F">{{ h.t }}</div>
+                  </sc-for>
+                  <sc-for list="{{ depara }}" as="d" hint-placeholder-count="4">
+                    <div style="display:contents">
+                      <span style="padding:10px 12px;font-family:'JetBrains Mono';font-size:11px;color:#00E5FF;border-bottom:1px solid rgba(138,143,152,.07)">{{ d.rota }}</span>
+                      <span style="padding:10px 12px;font-size:12px;color:#8A8F98;line-height:1.5;border-bottom:1px solid rgba(138,143,152,.07)">{{ d.hoje }}</span>
+                      <span style="padding:10px 12px;font-size:12px;line-height:1.5;border-bottom:1px solid rgba(138,143,152,.07)">{{ d.nesta }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:10px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:11px">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">COMO OS PARENTES CONVERSAM</span>
+              <sc-for list="{{ parentes }}" as="p" hint-placeholder-count="4">
+                <div style="display:flex;gap:11px;align-items:flex-start">
+                  <span style="width:7px;height:7px;border-radius:50%;background:{{ p.cor }};margin-top:6px;flex:none"></span>
+                  <span style="font-size:12.5px;line-height:1.6"><b>{{ p.t }}</b> — <span style="color:#8A8F98">{{ p.d }}</span></span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ vPedidos }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+              <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:20px">Pedidos ao backend — derivados deste desenho</h2>
+              <span style="font-size:12.5px;color:#8A8F98">o que a tela precisa · o que existe hoje · o delta</span>
+            </div>
+            <div style="display:flex;flex-direction:column;background:#14141C;border:1px solid #23242F;border-radius:11px;overflow:hidden">
+              <sc-for list="{{ pedidos }}" as="p" hint-placeholder-count="4">
+                <div style="display:flex;gap:14px;padding:14px 16px;border-bottom:1px solid rgba(138,143,152,.07);flex-wrap:wrap">
+                  <div style="display:flex;flex-direction:column;gap:5px;flex:none;width:78px">
+                    <span style="font-family:'JetBrains Mono';font-size:11px;font-weight:700;color:#00E5FF">{{ p.id }}</span>
+                    <span style="font-family:'JetBrains Mono';font-size:9px;font-weight:700;color:{{ p.sevCor }};border:1px solid {{ p.sevBorda }};border-radius:4px;padding:2px 5px;text-align:center">{{ p.sev }}</span>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:5px;flex:1;min-width:260px">
+                    <span style="font-size:13.5px;font-weight:600">{{ p.o }}</span>
+                    <span style="font-size:12.5px;color:#8A8F98;line-height:1.5"><b style="color:#F4F6F8">A tela precisa:</b> {{ p.precisa }}</span>
+                    <span style="font-size:12.5px;color:#8A8F98;line-height:1.5"><b style="color:#F4F6F8">Hoje existe:</b> {{ p.hoje }}</span>
+                    <span style="font-size:12.5px;color:#8A8F98;line-height:1.5"><b style="color:#E8A13C">Delta:</b> {{ p.delta }}</span>
+                  </div>
+                  <span style="flex:none;width:170px;font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98;line-height:1.5">{{ p.bloqueia }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ vCopy }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+              <h2 style="margin:0;font-family:'Space Grotesk';font-weight:700;font-size:20px">Microcopy — português de chão de fábrica</h2>
+              <span style="font-size:12.5px;color:#8A8F98">nenhuma frase inventada na implementação: use estas</span>
+            </div>
+            <sc-for list="{{ copyBlocos }}" as="b" hint-placeholder-count="6">
+              <div style="display:flex;flex-direction:column;gap:10px;padding:16px 18px;background:#14141C;border:1px solid #23242F;border-radius:11px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">{{ b.tag }}</span>
+                <sc-for list="{{ b.itens }}" as="i" hint-placeholder-count="4">
+                  <div style="display:grid;grid-template-columns:190px 1fr;gap:6px 16px;padding:9px 0;border-bottom:1px solid rgba(138,143,152,.07)">
+                    <span style="font-family:'JetBrains Mono';font-size:10.5px;color:#8A8F98">{{ i.k }}</span>
+                    <span style="font-size:12.5px;line-height:1.55">{{ i.v }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-for>
+            <div style="display:flex;flex-direction:column;gap:9px;padding:16px;background:#14141C;border:1px solid #23242F;border-radius:11px">
+              <span style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.16em;color:#8A8F98">PALAVRAS PROIBIDAS NESTA TELA</span>
+              <span style="font-size:12.5px;color:#8A8F98;line-height:1.7">threshold · IoU · condition_satisfied · bounding box · overlap · polygon · payload · JSON · confidence score · inferência · YOLO · tracker. Cada uma tem tradução na coluna acima; se não tiver, é sinal de que a informação não deveria estar na tela do cliente.</span>
+            </div>
+          </div>
+        </sc-if>
+
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:980}}">
+class Component extends DCLogic {
+  SITES = [
+    {
+      id: 's1', nome: 'RVB Isolantes — Blumenau', local: 'Blumenau/SC', modo: 'Edge',
+      status: 'healthy', semSinal: false, sinal: 'há 42 s',
+      camOnline: 26, camTotal: 28, fps: 24.6, gpuPct: 61, gpuMemPct: 54, filaAtual: 0,
+      gpuTempC: 58, decodePct: 47, decodeFps: 24.1, versao: '2026.08.2', deviceCount: 1,
+      devices: [{ nome: 'Jetson RVB-01', visto: 'visto agora', revogado: false }],
+      hb: [22, 23, 24, 23, 25, 24, 26, 25, 24, 23, 25, 24.6],
+      resumo: {
+        '1h':  { uptime: '100%', fpsMedio: '24,8', fpsMax: '26,1', latencia: '38 ms', hb: '60' },
+        '24h': { uptime: '99,6%', fpsMedio: '24,1', fpsMax: '27,8', latencia: '41 ms', hb: '1439' },
+        '7d':  { uptime: '98,9%', fpsMedio: '23,7', fpsMax: '28,4', latencia: '43 ms', hb: '10062' },
+      },
+    },
+    {
+      id: 's2', nome: 'Depósito Norte — piloto', local: 'Joinville/SC (exemplo)', modo: 'Dual',
+      status: 'degraded', semSinal: false, sinal: 'há 3 min',
+      camOnline: 4, camTotal: 6, fps: 11.2, gpuPct: 88, gpuMemPct: 79, filaAtual: 14,
+      gpuTempC: 71, decodePct: 82, decodeFps: 11.0, versao: '2026.07.4', deviceCount: 2,
+      devices: [
+        { nome: 'Jetson piloto-02', visto: 'visto há 3 min', revogado: false },
+        { nome: 'Jetson antigo (trocado)', visto: 'visto há 41 dias', revogado: true },
+      ],
+      hb: [18, 17, 15, 13, 12, 11, 10, 11, 12, 11, 12, 11.2],
+      resumo: {
+        '1h':  { uptime: '91%', fpsMedio: '11,4', fpsMax: '15,2', latencia: '128 ms', hb: '58' },
+        '24h': { uptime: '84,3%', fpsMedio: '12,0', fpsMax: '19,6', latencia: '135 ms', hb: '1210' },
+        '7d':  { uptime: '88,1%', fpsMedio: '13,4', fpsMax: '21,3', latencia: '119 ms', hb: '8477' },
+      },
+    },
+    {
+      id: 's3', nome: 'Linha 2 — comissionamento', local: 'Blumenau/SC (exemplo)', modo: 'Edge',
+      status: 'offline', semSinal: true, sinal: null,
+      camOnline: 0, camTotal: 8, fps: null, gpuPct: null, gpuMemPct: null, filaAtual: null,
+      gpuTempC: null, decodePct: null, decodeFps: null, versao: null, deviceCount: 1,
+      devices: [{ nome: 'Jetson comissionamento', visto: 'nunca visto', revogado: false }],
+      hb: [],
+      resumo: null,
+    },
+  ];
+  STCOR = { healthy: '#3ECF8E', degraded: '#E8A13C', critical: '#E5484D', offline: '#8A8F98' };
+  STLABEL = { healthy: 'Saudável', degraded: 'Degradado', critical: 'Crítico', offline: 'Offline' };
+  state = {
+    aba: 'tela', filtro: 'todos', busca: '', sel: 's1', janela: '24h', revogados: [],
+  };
+  _spark(arr) {
+    if (!arr || arr.length < 2) return '';
+    const min = Math.min(...arr), max = Math.max(...arr), span = (max - min) || 1;
+    return arr.map((v, i) => (i / (arr.length - 1) * 176 + 2).toFixed(1) + ',' + (36 - ((v - min) / span) * 32).toFixed(1)).join(' ');
+  }
+  renderVals() {
+    const s = this.state;
+    const tab = (t, k) => ({ t, go: () => this.setState({ aba: k }), bg: s.aba === k ? 'rgba(0,229,255,.08)' : 'transparent', cor: s.aba === k ? '#00E5FF' : '#8A8F98', borda: s.aba === k ? 'rgba(0,229,255,.45)' : '#23242F' });
+    const sel = this.SITES.find(x => x.id === s.sel) || null;
+    const busca = s.busca.trim().toLowerCase();
+    const sitesFiltrados = this.SITES.filter(x => (s.filtro === 'todos' || x.status === s.filtro) && (!busca || x.nome.toLowerCase().includes(busca)));
+    const num = (v, unidade) => v == null ? '—' : v + (unidade || '');
+    const st = { EXISTE: ['#3ECF8E', 'rgba(62,207,142,.4)'], 'INSUFICIENTE': ['#E8A13C', 'rgba(232,161,60,.4)'], 'NÃO EXISTE': ['#E5484D', 'rgba(229,72,77,.4)'] };
+    const MP = (ui, ep, estado, nota) => ({ ui, ep, st: estado, nota, cor: st[estado][0], borda: st[estado][1] });
+    const sev = { 'BLOQUEIA': ['#E5484D', 'rgba(229,72,77,.5)'], 'DEFEITO': ['#E8A13C', 'rgba(232,161,60,.5)'], 'FALTA': ['#00E5FF', 'rgba(0,229,255,.5)'], 'NOTA': ['#8A8F98', 'rgba(138,143,152,.5)'] };
+    const PD = (id, sv, o, precisa, hoje, delta, bloqueia) => ({ id, sev: sv, o, precisa, hoje, delta, bloqueia, sevCor: sev[sv][0], sevBorda: sev[sv][1] });
+    const totalCamOn = this.SITES.reduce((a, x) => a + x.camOnline, 0);
+    const totalCamTot = this.SITES.reduce((a, x) => a + x.camTotal, 0);
+    const totalDev = this.SITES.reduce((a, x) => a + x.deviceCount, 0);
+    const devRevogados = this.SITES.flatMap(x => x.devices).filter(d => s.revogados.includes(d.nome) || d.revogado).length;
+    const sitesDePe = this.SITES.filter(x => x.status !== 'offline').length;
+
+    const MAPA = [
+      MP('KPI · sites de pé + tabela de sites', 'GET /v1/edge/sites/health', 'EXISTE', 'Liga direto — front já usa (edgeService.getSitesHealth, com teste de contrato).'),
+      MP('KPI · dispositivos online/revogados', 'GET /v1/edge/overview', 'EXISTE', 'Liga direto — front já usa (edgeService.getOverview). sites_por_status do overview é status ADMINISTRATIVO (ativo/manutenção), não saúde — não usar para os badges de cor.'),
+      MP('Colunas GPU/fila/decodificação na tabela', 'GET /v1/edge/sites/health (campos gpu_pct, gpu_mem_pct, queue_depth, decode_pct)', 'EXISTE', 'Backend já serve; o adaptador atual do front descarta esses 4 campos — ver pedido S4 (front-only).'),
+      MP('Painel do site · local, modo, nº de dispositivos', 'GET /v1/edge/sites/<id>', 'EXISTE', 'Rota pronta (task-017). Sem cliente no front ainda — implementação, não desenho.'),
+      MP('Painel do site · janela 1h/24h/7d + métricas', 'GET /v1/edge/sites/<id>/heartbeat-summary?window=', 'EXISTE', 'Front já usa (getHeartbeatSummary), mas fixo — falta expor o parâmetro window e avg_inference_latency_ms na UI.'),
+      MP('Sparkline de FPS recente', 'GET /v1/edge/sites/<id>/heartbeats', 'EXISTE', 'Front já usa (getSiteHeartbeats). Paginação por cursor (before) existe no backend e não é usada ainda.'),
+      MP('Lista de dispositivos do site', 'GET /v1/edge/sites/<id>/devices', 'EXISTE', 'Retorna nome, revogado, último visto — sem chave pública (C-05). Sem cliente no front ainda.'),
+      MP('Botão Revogar dispositivo', 'POST /v1/edge/devices/<id>/revoke', 'EXISTE', 'Idempotente; cross-tenant → 404. Sem cliente no front ainda.'),
+      MP('Card motor de detecção', 'GET /api/streams/status', 'INSUFICIENTE', 'Fora do envelope {status,data} (jsonify cru) e devolve 200 mesmo em erro real — ver pedido S1. Já exige admin/superadmin e só devolve metadado de infraestrutura (nome de processo, contagem de tasks, pool) sem filtro de tenant — ver nota S2.'),
+      MP('Botão "Reiniciar agente deste site"', 'POST /v1/edge/commands (command_type genérico)', 'INSUFICIENTE', 'A fila de comando existe (migration 056) mas nenhum command_type de reinício é validado hoje — ver pedido S3.'),
+    ];
+    const conta = (k) => String(MAPA.filter(m => m.st === k).length);
+
+    const motorOk = true; // exemplo: caminho feliz. Ver aba Estados p/ o caminho de erro escondido.
+    return {
+      abas: [tab('A tela', 'tela'), tab('Estados', 'estados'), tab('Mapa de conexões', 'mapa'), tab('Pedidos ao backend', 'pedidos'), tab('Microcopy', 'copy')],
+      vTela: s.aba === 'tela', vEstados: s.aba === 'estados', vMapa: s.aba === 'mapa', vPedidos: s.aba === 'pedidos', vCopy: s.aba === 'copy',
+      irMapa: (e) => { if (e && e.preventDefault) e.preventDefault(); this.setState({ aba: 'mapa' }); },
+      atualizar: () => {},
+
+      kpis: [
+        { label: 'SITES DE PÉ', v: sitesDePe + '/' + this.SITES.length, sub: (this.SITES.length - sitesDePe) + ' offline agora', cor: sitesDePe === this.SITES.length ? '#3ECF8E' : '#E8A13C' },
+        { label: 'CÂMERAS ONLINE', v: totalCamOn + '/' + totalCamTot, sub: 'somado de todos os sites', cor: '#00E5FF' },
+        { label: 'DISPOSITIVOS', v: (totalDev - devRevogados) + '/' + totalDev, sub: devRevogados + ' revogado(s)', cor: devRevogados > 0 ? '#E8A13C' : '#3ECF8E' },
+        { label: 'MOTOR DE DETECÇÃO', v: motorOk ? '2 ativos' : '?', sub: motorOk ? 'workers respondendo agora' : 'ver aba Estados', cor: motorOk ? '#3ECF8E' : '#E8A13C' },
+      ],
+
+      filtros: [['todos', 'Todos'], ['healthy', 'Saudável'], ['degraded', 'Degradado'], ['critical', 'Crítico'], ['offline', 'Offline']].map(([k, t]) => ({
+        t, go: () => this.setState({ filtro: k }), bg: s.filtro === k ? '#0A0A0F' : 'transparent', cor: s.filtro === k ? '#00E5FF' : '#8A8F98',
+      })),
+      busca: s.busca, setBusca: (e) => this.setState({ busca: e.target.value }),
+      nSites: sitesFiltrados.length + ' de ' + this.SITES.length + ' sites',
+      semResultado: sitesFiltrados.length === 0,
+
+      tabelaHead: [
+        { t: 'SITE', al: 'left' }, { t: 'STATUS', al: 'left' }, { t: 'MODO', al: 'left' },
+        { t: 'CÂMERAS', al: 'left' }, { t: 'FPS', al: 'left' }, { t: 'GPU', al: 'left' },
+        { t: 'FILA', al: 'left' }, { t: 'ÚLTIMO SINAL', al: 'left' },
+      ],
+      sitesFiltrados: sitesFiltrados.map(x => ({
+        abrir: () => this.setState({ sel: x.id }),
+        selBg: s.sel === x.id ? 'rgba(0,229,255,.05)' : 'transparent',
+        nome: x.nome, local: x.local,
+        stTxt: this.STLABEL[x.status], stCor: this.STCOR[x.status],
+        modo: x.modo,
+        cameras: x.camTotal === 0 ? '—' : x.camOnline + '/' + x.camTotal,
+        fps: num(x.fps), fpsCor: x.fps == null ? '#3A3D4A' : '#F4F6F8',
+        gpu: num(x.gpuPct, '%'), gpuCor: x.gpuPct == null ? '#3A3D4A' : (x.gpuPct >= 85 ? '#E8A13C' : '#F4F6F8'),
+        fila: num(x.filaAtual), filaCor: x.filaAtual == null ? '#3A3D4A' : (x.filaAtual > 5 ? '#E8A13C' : '#F4F6F8'),
+        sinal: x.semSinal ? 'NUNCA CONECTOU' : x.sinal.toUpperCase(),
+        sinalCor: x.semSinal ? '#8A8F98' : '#8A8F98',
+      })),
+
+      temSelecao: !!sel,
+      selNome: sel ? sel.nome : '', selLocal: sel ? sel.local : '', selModo: sel ? sel.modo : '',
+      selDeviceCount: sel ? sel.deviceCount : 0,
+      selStTxt: sel ? this.STLABEL[sel.status] : '', selStCor: sel ? this.STCOR[sel.status] : '#8A8F98',
+      janelas: ['1h', '24h', '7d'].map(k => ({ t: k, go: () => this.setState({ janela: k }), bg: s.janela === k ? '#14141C' : 'transparent', cor: s.janela === k ? '#00E5FF' : '#8A8F98' })),
+      selTemTelemetria: !!(sel && sel.resumo),
+      selSemTelemetria: !!(sel && !sel.resumo),
+      selSemTelemetriaTxt: sel && sel.semSinal ? 'este dispositivo nunca enviou heartbeat' : 'sem dado nesta janela',
+      selMetricas: sel && sel.resumo ? [
+        { k: 'DISPONIBILIDADE', v: sel.resumo[s.janela].uptime },
+        { k: 'FPS MÉDIO', v: sel.resumo[s.janela].fpsMedio },
+        { k: 'FPS DE PICO', v: sel.resumo[s.janela].fpsMax },
+        { k: 'LATÊNCIA MÉDIA', v: sel.resumo[s.janela].latencia },
+        { k: 'SINAIS NA JANELA', v: sel.resumo[s.janela].hb },
+        { k: 'GPU · MEM', v: num(sel.gpuTempC, '°C') + ' · ' + num(sel.gpuMemPct, '%') },
+      ] : [],
+      selSpark: sel ? this._spark(sel.hb) : '',
+      selDevices: sel ? sel.devices.map(d => {
+        const revogado = d.revogado || s.revogados.includes(d.nome);
+        return {
+          nome: d.nome, visto: d.visto,
+          acao: revogado ? 'Revogado' : 'Revogar',
+          cor: revogado ? '#8A8F98' : '#E5484D', borda: revogado ? '#23242F' : 'rgba(229,72,77,.5)',
+          revogar: () => { if (!revogado) this.setState(p => ({ revogados: [...p.revogados, d.nome] })); },
+        };
+      }) : [],
+
+      motorCor: motorOk ? '#3ECF8E' : '#E8A13C',
+      motorTxt: motorOk ? '2 motores ativos' : 'Não sabemos se o motor está de pé',
+      motorSub: motorOk ? 'Fila de detecção respondendo — última consulta agora.' : 'A última consulta falhou em silêncio e voltou como se estivesse tudo bem — ver pedido S1.',
+
+      mapaKpis: [
+        { label: 'EXISTE E SERVE', v: conta('EXISTE'), sub: 'ligação direta na migração', cor: '#3ECF8E' },
+        { label: 'EXISTE, INSUFICIENTE', v: conta('INSUFICIENTE'), sub: 'contrato precisa de ajuste', cor: '#E8A13C' },
+        { label: 'NÃO EXISTE', v: conta('NÃO EXISTE'), sub: 'rota nova — nenhuma neste desenho', cor: '#E5484D' },
+      ],
+      mapaHead: [{ t: 'ELEMENTO DE UI' }, { t: 'ENDPOINT REAL' }, { t: 'ESTADO' }, { t: 'O QUE ISSO IMPLICA' }],
+      mapa: MAPA,
+
+      deparaHead: [{ t: 'ROTA ANTIGA' }, { t: 'HOJE (medido em AppRoutes.tsx)' }, { t: 'NESTA TELA' }],
+      depara: [
+        { rota: '/epi/health', hoje: 'Redireciona: superadmin → painel admin (streams); qualquer outro papel → dashboard. Quem administra o próprio tenant perde esse dado.', nesta: 'Card "Motor de detecção" — para qualquer papel com edge:manage, sem depender de ser superadmin.' },
+        { rota: '/epi/sites-health', hoje: 'Redireciona: superadmin → painel admin (frota, todos os tenants); admin do tenant → cadastro de sites (sem saúde); demais → dashboard.', nesta: 'A tabela de sites com status/FPS/GPU/fila É esta tela — primeira vez que o admin do tenant vê saúde, não só cadastro.' },
+        { rota: '/epi/edge-observability', hoje: 'Página viva (curvas de treino do Estúdio + telemetria ao vivo por /v1/dashboard/edge-telemetry — blueprint diferente de /v1/edge).', nesta: 'Só a parte de telemetria do edge se sobrepõe. Curvas de treino continuam no Estúdio — fora deste desenho.' },
+        { rota: '/monitoring', hoje: 'Página oculta, só superadmin: console de comando ao vivo (consultar/capturar/logtail) via /v1/monitoring — outro blueprint, outra ferramenta.', nesta: 'Só a parte de LEITURA de saúde se sobrepõe. O console de comando ao vivo fica fora — investigação ativa, não frota.' },
+      ],
+      parentes: [
+        { t: 'Painel Admin → Frota Edge', d: '/admin/observability?tab=edge — visão cross-tenant, só superadmin, agrega TODOS os tenants. Esta tela é o espelho tenant-scoped, para quem administra só o próprio site.', cor: '#00E5FF' },
+        { t: 'Ficha da câmera → aba Saúde', d: 'GET /api/cameras/<id>/health-context — saúde do site de UMA câmera, aberta para qualquer papel autenticado. Esta tela nunca duplica isso: aqui é a frota inteira, admin-only.', cor: '#00E5FF' },
+        { t: 'Câmeras & Sites → aba Sites & Edge', d: 'cadastro e modo de processamento (edge/dual/cloud) por site — escrita. Esta tela é leitura de saúde; troca de modo continua lá.', cor: '#8A8F98' },
+        { t: 'Admin → Dispositivos', d: 'gera código de pareamento para um dispositivo NOVO (devices:manage, /api/devices/claim-codes). Esta tela mostra dispositivos JÁ pareados e revoga — não pareia.', cor: '#8A8F98' },
+      ],
+
+      pedidos: [
+        PD('S1', 'DEFEITO', 'Envelope e erro real em /api/streams/status', 'Distinguir "motor sem workers" de "erro ao consultar", com o mesmo envelope {status,data} do resto da API.', 'jsonify cru fora do envelope; qualquer exceção (Redis fora, timeout) devolve 200 com {"workers":[],"status":"error"} — indistinguível de zero workers de verdade.', 'Migrar para success()/error(); devolver um código != 200 quando a inspeção falhar de fato.', 'Card "Motor de detecção"'),
+        PD('S2', 'NOTA', 'Metadado de infraestrutura em /api/streams/status', 'Nenhuma — registrado para revisão, não bloqueia a tela.', 'A rota devolve por worker apenas worker_id (nome do processo Celery), status, active_tasks (contagem) e pool — sem tenant, sem argumentos de task, sem nome de fila por cliente. Já exige admin/superadmin desde uma rodada de segurança anterior (era pública antes). Não há dado de cliente ali.', 'Se esta tela de frota for aberta a admin de tenant (hoje já é, via edge:manage), avaliar se o card do motor fica só para superadmin — decisão de produto, não correção de bug.', 'Card "Motor de detecção"'),
+        PD('S3', 'FALTA', 'Comando de reinício de agente por site', 'Um botão de ação quando um site está travado/degradado, sem precisar ir ao box.', 'A fila de comandos existe (POST /v1/edge/commands, migration 056) e aceita command_type livre, mas nenhum tipo de reinício é validado ou tratado hoje.', 'Definir um command_type de reinício e confirmar que o edge-sync-agent sabe executá-lo.', 'Botão "Reiniciar agente deste site"'),
+        PD('S4', 'FALTA', 'Front descarta métricas que o backend já serve', 'Mostrar GPU %, memória de GPU, fila e % de decodificação por site na tabela.', 'GET /v1/edge/sites/health já devolve gpu_pct, gpu_mem_pct, queue_depth e decode_pct. O adaptador do front (edgeService.ts, adaptSiteHealth) descarta os quatro — só repassa gpu_temp_c e decode_fps.', 'Ajuste de client — NÃO é pedido novo ao backend; adaptar edgeService.ts para repassar os campos.', 'FRONT-ONLY · sem pedido ao backend'),
+      ],
+
+      copyBlocos: [
+        { tag: 'TÍTULOS E RÓTULOS', itens: [
+          { k: 'título da tela', v: 'Saúde da Operação' },
+          { k: 'subtítulo', v: 'o que está de pé agora — sites, dispositivos e câmeras do seu tenant' },
+          { k: 'kpis', v: 'Sites de pé · Câmeras online · Dispositivos · Motor de detecção' },
+          { k: 'colunas da tabela', v: 'Site · Status · Modo · Câmeras · FPS · GPU · Fila · Último sinal' },
+        ] },
+        { tag: 'FILTROS E BUSCA', itens: [
+          { k: 'pills de status', v: 'Todos · Saudável · Degradado · Crítico · Offline' },
+          { k: 'busca', v: 'Buscar site...' },
+          { k: 'contagem', v: 'N de M sites' },
+        ] },
+        { tag: 'STATUS E SINAL', itens: [
+          { k: 'derivado', v: 'Saudável · Degradado · Crítico · Offline' },
+          { k: 'sinal recente', v: 'há 42 s · há 3 min · há 2 h' },
+          { k: 'nunca conectou', v: 'NUNCA CONECTOU' },
+        ] },
+        { tag: 'PAINEL DO SITE', itens: [
+          { k: 'janela', v: '1h · 24h · 7d' },
+          { k: 'métricas', v: 'Disponibilidade · FPS médio · FPS de pico · Latência média · Sinais na janela' },
+          { k: 'dispositivos', v: 'Dispositivos deste site' },
+          { k: 'ação', v: 'Revogar · Revogado' },
+        ] },
+        { tag: 'VAZIOS, ERROS E AVISOS', itens: [
+          { k: 'vazio', v: 'Nenhum site cadastrado ainda — Sites aparecem aqui assim que o primeiro dispositivo edge é emparelhado. / Cadastrar o primeiro site' },
+          { k: 'erro', v: 'Não conseguimos carregar a saúde da operação — As câmeras seguem gravando e detectando, só este painel está indisponível. / Tentar de novo' },
+          { k: 'sem permissão', v: 'Você não administra sites deste tenant — Ver a saúde dos sites e dos dispositivos é do administrador.' },
+          { k: 'sem telemetria (site)', v: 'Sem telemetria deste site — este dispositivo nunca enviou heartbeat. Assim que enviar o primeiro sinal, os números aparecem aqui.' },
+          { k: 'sem resultado no filtro', v: 'Nenhum site bate com esse filtro.' },
+        ] },
+        { tag: 'MOTOR DE DETECÇÃO', itens: [
+          { k: 'ativo', v: 'N motores ativos — Fila de detecção respondendo — última consulta agora.' },
+          { k: 'erro escondido', v: 'Não sabemos se o motor está de pé — A última consulta falhou em silêncio e voltou como se estivesse tudo bem.' },
+        ] },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>
