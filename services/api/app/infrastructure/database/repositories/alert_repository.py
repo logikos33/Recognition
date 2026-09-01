@@ -182,12 +182,20 @@ class AlertRepository(BaseRepository):
         evidence_key: str,
         tenant_id: Optional[str] = None,
         module_code: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
     ) -> dict[str, Any]:
         """Cria alerta de violação.
 
         tenant_id/module_code são opcionais (retrocompat — ajuste #8): quando
         fornecidos pelo caller (derivados da câmera), o alerta nasce
         tenant-scoped; omitidos, as colunas usam os defaults do schema.
+
+        `timestamp` (inferência retroativa — inference.py `_save_alert`):
+        hora REAL da captura do frame de origem, em vez do DEFAULT NOW() do
+        caminho ao vivo. É o par (`timestamp`, `created_at`) que
+        `ProcedenciaBadge.classificarLatencia` no front já lê para pintar
+        "coleta retroativa" — omitido, o alerta nasce com timestamp≈created_at
+        e a tela não tem como distinguir de um evento ao vivo.
         """
         columns = ["camera_id", "violations", "confidence", "evidence_key"]
         placeholders = ["%s", "%s::jsonb", "%s", "%s"]
@@ -201,12 +209,32 @@ class AlertRepository(BaseRepository):
             columns.append("module_code")
             placeholders.append("%s")
             values.append(module_code)
+        if timestamp is not None:
+            columns.append("timestamp")
+            placeholders.append("%s")
+            values.append(timestamp)
 
         return self._execute_mutation(
             f"INSERT INTO alerts ({', '.join(columns)}) "  # noqa: S608
             f"VALUES ({', '.join(placeholders)}) RETURNING *",
             tuple(values),
         )  # type: ignore[return-value]
+
+    def exists_at_capture(self, camera_id: UUID, captured_at: datetime) -> bool:
+        """True se já existe alerta desta câmera no MESMO instante de captura.
+
+        Chave natural de idempotência da inferência retroativa (câmera +
+        instante de captura, microssegundo — uma colisão real exigiria duas
+        capturas simultâneas da mesma câmera). Sem FK para `training_frames`
+        de propósito: reaproveita `timestamp` — a mesma coluna que
+        `create(timestamp=...)` já grava com a hora real da captura — em vez
+        de somar uma coluna nova só para isto.
+        """
+        row = self._execute_one(
+            "SELECT 1 FROM alerts WHERE camera_id = %s AND timestamp = %s LIMIT 1",
+            (str(camera_id), captured_at),
+        )
+        return row is not None
 
     def get_by_camera(
         self,

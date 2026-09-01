@@ -2,7 +2,9 @@
 Recognition — Celery Tasks: Inferência ONNX + HLS Streaming.
 
 Tasks:
-  - inference_loop: Loop contínuo de inferência por câmera.
+  - inference_loop: Loop contínuo de inferência por câmera (stream RTSP AO VIVO).
+  - retroactive_inference: Inferência sobre frames JÁ ARMAZENADOS (Nível 1 —
+    sem stream, sem tocar no box; mesmo detector/regra/escrita do inference_loop).
   - start_hls_stream: FFmpeg RTSP→HLS transcoding.
 
 Detector backend selecionável via env:
@@ -552,18 +554,42 @@ def _queue_verification_if_low_confidence(
         )
 
 
-def _save_alert(camera_id: str, detections: list[dict], frame) -> None:
+def _save_alert(
+    camera_id: str,
+    detections: list[dict],
+    frame,
+    *,
+    captured_at: "datetime | None" = None,
+    skip_auto_capture: bool = False,
+) -> "dict | None":
     """Salva alerta: frame no storage + registro no banco (tenant-scoped).
 
-    ÚNICO ponto do sistema que grava alerta a partir de uma detecção ao vivo
-    (#132). Até agosto/2026 o `socket_bridge` também inseria, por SQL cru, na
-    thread da API — a mesma detecção virava duas linhas em `alerts` sempre que
-    a confiança ficava abaixo do limiar de verificação. Aquele caminho foi
-    removido e o disparo de `verify_alert`, que só ele fazia, mudou para cá.
+    ÚNICO ponto do sistema que grava alerta a partir de uma detecção — ao vivo
+    (#132) ou retroativa (`retroactive_inference`, abaixo). Até agosto/2026 o
+    `socket_bridge` também inseria, por SQL cru, na thread da API — a mesma
+    detecção virava duas linhas em `alerts` sempre que a confiança ficava
+    abaixo do limiar de verificação. Aquele caminho foi removido e o disparo
+    de `verify_alert`, que só ele fazia, mudou para cá.
 
     Por ser o escritor único, é também o único lugar correto pro hook de
     auto-captura de frame de treino (WS-B3): duplicar o hook em outro caminho
     duplicaria o frame e a reserva do teto diário.
+
+    `captured_at`: hora REAL da captura do frame de origem — vai para
+    `alerts.timestamp` em vez do DEFAULT NOW() do caminho ao vivo. É o par
+    (`timestamp`, `created_at`) que `ProcedenciaBadge.classificarLatencia` no
+    front já lê para pintar "coleta retroativa"; omitido (caminho ao vivo,
+    comportamento inalterado), o alerta nasce com timestamp≈created_at.
+
+    `skip_auto_capture`: a inferência retroativa lê um frame que JÁ é uma
+    amostra de treino (`training_frames.source='nvr'`) — reinserir como
+    'auto' duplicaria a imagem no storage e consumiria o teto diário de
+    auto-captura da câmera, roubando cota de capturas AO VIVO do resto do dia.
+
+    Retorna a linha do alerta criado, ou None em qualquer falha (storage,
+    banco, encode) — o caminho ao vivo ignora o retorno (best-effort de
+    sempre); a inferência retroativa usa para contar quantos alertas
+    realmente nasceram.
     """
     try:
         import cv2  # noqa: PLC0415
@@ -580,7 +606,7 @@ def _save_alert(camera_id: str, detections: list[dict], frame) -> None:
         ok, buf = cv2.imencode(".jpg", frame)
         if not ok:
             logger.error("alert_frame_encode_failed: camera=%s", camera_id)
-            return
+            return None
         frame_bytes = buf.tobytes()
 
         storage = get_storage()
@@ -594,7 +620,7 @@ def _save_alert(camera_id: str, detections: list[dict], frame) -> None:
         pool = DatabasePool.get_instance()
         if pool is None:
             logger.warning("alert_db_skip: DatabasePool not initialized")
-            return
+            return None
 
         tenant_id, module_code = _camera_tenant_module(pool, camera_id)
 
@@ -605,21 +631,25 @@ def _save_alert(camera_id: str, detections: list[dict], frame) -> None:
             evidence_key=evidence_key,
             tenant_id=tenant_id,
             module_code=module_code,
+            timestamp=captured_at,
         )
         logger.info(
-            "alert_saved: camera=%s evidence=%s violations=%d",
-            camera_id, evidence_key, len(detections),
+            "alert_saved: camera=%s evidence=%s violations=%d retroativo=%s",
+            camera_id, evidence_key, len(detections), captured_at is not None,
         )
 
         _queue_verification_if_low_confidence(
             alert_row, camera_id, detections, module_code
         )
 
-        _auto_capture_frame(
-            camera_id, tenant_id, module_code, frame_bytes, frame, avg_confidence, pool,
-        )
+        if not skip_auto_capture:
+            _auto_capture_frame(
+                camera_id, tenant_id, module_code, frame_bytes, frame, avg_confidence, pool,
+            )
+        return alert_row
     except Exception as exc:
         logger.error("alert_save_failed: camera=%s error=%s", camera_id, exc, exc_info=True)
+        return None
 
 
 # ── Cache do detector (singleton por processo) ────────────────────────────────
@@ -1163,6 +1193,170 @@ def inference_loop(
                 logger.warning(
                     "model_change_close_failed: camera=%s error=%s", camera_id, exc
                 )
+
+
+@celery.task(
+    bind=True,
+    queue="inference",
+    max_retries=0,
+    name="tasks.inference.retroactive_inference",
+)
+def retroactive_inference(
+    self,
+    tenant_id: str,
+    date_from: str,
+    date_to: str,
+    module_code: str = "epi",
+) -> dict:  # noqa: ARG001
+    """Inferência RETROATIVA sobre frames JÁ ARMAZENADOS (Nível 1 — rede de
+    segurança da demo: `staging`/`prod` têm deployment ativo em modo `shadow`
+    e frames `source='nvr'` chegando todo dia, mas nenhuma task roda
+    inferência sobre eles — o único caminho de alerta é `inference_loop`, que
+    exige stream RTSP AO VIVO. Isto fecha esse buraco sem tocar no box nem no
+    caminho ao vivo.
+
+    Reusa TUDO do caminho ao vivo — nenhuma resolução de detector, regra de
+    violação ou escrita de alerta nova:
+      · detector efetivo da câmera → `_get_detector_for_camera` (mesma
+        cascata WS-A6: deployment ativo → cameras.model_{module}_id → ONNX);
+      · escopo de classes da câmera → `_no_escopo_da_camera`;
+      · calibração/polaridade → `_has_violation` (`yolo_classes.is_violation`,
+        ADR-0065 — union global∪tenant, não uma lista hardcoded aqui);
+      · escrita → `_save_alert` (MESMA tabela, MESMO `_queue_verification_
+        if_low_confidence`, MESMO formato de `violations`).
+    Único parâmetro que NÃO existe no caminho ao vivo: `captured_at`, a hora
+    REAL da captura do frame — vai para `alerts.timestamp` e é o que faz
+    `ProcedenciaBadge` (front, já em produção) pintar "coleta retroativa" na
+    tela. Sem ele o alerta pareceria AO VIVO — o defeito mais caro aqui.
+
+    NÃO aplica `_persistencia_satisfeita` (ADR-0067, "sustentar entre
+    frames"): frames retroativos são amostras ESPAÇADAS (o debounce de
+    auto-captura já as separa por dezenas de segundos), não uma sequência
+    contínua — a regra de "N ocorrências numa janela" não tem o que contar.
+
+    Idempotente: `AlertRepository.exists_at_capture(camera_id, captured_at)`
+    — rodar duas vezes sobre a mesma janela não duplica alerta, só pula o que
+    já existe (`skipped_existentes`).
+
+    FALHA ALTA por design (⛔ zero dado mocado): se o detector da câmera não
+    carregar, NENHUM alerta nasce para aquele frame — nunca um veredito
+    inventado. Se TODAS as tentativas da janela caírem nisso, a task levanta
+    `RuntimeError`: zero alerta criado tem de ser visivelmente uma FALHA, não
+    algo indistinguível de "rodou e não achou nada".
+    """
+    import cv2  # noqa: PLC0415
+    import numpy as np  # noqa: PLC0415
+
+    from app.constants import FrameSource  # noqa: PLC0415
+    from app.infrastructure.database.connection import DatabasePool  # noqa: PLC0415
+    from app.infrastructure.database.repositories.alert_repository import (  # noqa: PLC0415
+        AlertRepository,
+    )
+    from app.infrastructure.database.repositories.frame_repository import (  # noqa: PLC0415
+        FrameRepository,
+    )
+    from app.infrastructure.storage.local_storage import get_storage  # noqa: PLC0415
+
+    pool = DatabasePool.get_instance()
+    if pool is None:
+        raise RuntimeError("retroactive_inference: DatabasePool não inicializado")
+
+    frame_repo = FrameRepository(pool)
+    alert_repo = AlertRepository(pool)
+    storage = get_storage(tenant_id)
+
+    frames = frame_repo.get_by_tenant_source_daterange(
+        tenant_id,
+        source=str(FrameSource.NVR),
+        date_from=datetime.fromisoformat(date_from),
+        date_to=datetime.fromisoformat(date_to),
+        module_code=module_code,
+    )
+
+    stats = {
+        "frames_total": len(frames),
+        "alertas_criados": 0,
+        "pulados_existentes": 0,
+        "sem_deteccao_violacao": 0,
+        "sem_detector": 0,
+        "erro_frame": 0,
+    }
+    logger.info(
+        "retroactive_inference_start: tenant=%s modulo=%s janela=%s..%s frames=%d",
+        tenant_id, module_code, date_from, date_to, len(frames),
+    )
+
+    for f in frames:
+        camera_id = str(f["camera_id"])
+        captured_at = f["captured_at"]
+
+        if alert_repo.exists_at_capture(UUID(camera_id), captured_at):
+            stats["pulados_existentes"] += 1
+            continue
+
+        detector = _get_detector_for_camera(camera_id)
+        if not detector.is_ready:
+            stats["sem_detector"] += 1
+            logger.error(
+                "retroactive_sem_detector: camera=%s frame=%s — recusando "
+                "inventar alerta sem detector carregado", camera_id, f["id"],
+            )
+            continue
+
+        try:
+            raw = storage.download_bytes(f["r2_key"])
+            frame_bgr = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR)
+        except Exception as exc:
+            stats["erro_frame"] += 1
+            logger.error(
+                "retroactive_frame_download_falhou: frame=%s r2_key=%s err=%s",
+                f["id"], f.get("r2_key"), exc,
+            )
+            continue
+        if frame_bgr is None:
+            stats["erro_frame"] += 1
+            logger.error(
+                "retroactive_frame_decode_falhou: frame=%s r2_key=%s",
+                f["id"], f.get("r2_key"),
+            )
+            continue
+
+        detector.ultimo_erro = None
+        detections = detector.predict(frame_bgr)
+        if detector.ultimo_erro is not None:
+            stats["erro_frame"] += 1
+            logger.error(
+                "retroactive_predict_falhou: camera=%s frame=%s err=%s",
+                camera_id, f["id"], detector.ultimo_erro,
+            )
+            continue
+
+        for det in detections:
+            det.setdefault("bbox_unidade", _BBOX_UNIDADE)
+        detections = _no_escopo_da_camera(camera_id, detections)
+
+        if not _has_violation(camera_id, detections):
+            stats["sem_deteccao_violacao"] += 1
+            continue
+
+        alert_row = _save_alert(
+            camera_id, detections, frame_bgr,
+            captured_at=captured_at, skip_auto_capture=True,
+        )
+        if alert_row:
+            stats["alertas_criados"] += 1
+
+    tentativas = stats["frames_total"] - stats["pulados_existentes"]
+    if tentativas > 0 and stats["sem_detector"] == tentativas:
+        raise RuntimeError(
+            f"retroactive_inference: nenhum detector carregou para nenhum dos "
+            f"{tentativas} frame(s) da janela — zero alerta é indistinguível "
+            f"de sucesso silencioso; falhando alto em vez de fingir que rodou "
+            f"(tenant={tenant_id!r} modulo={module_code!r})"
+        )
+
+    logger.info("retroactive_inference_done: tenant=%s stats=%s", tenant_id, stats)
+    return stats
 
 
 @celery.task(

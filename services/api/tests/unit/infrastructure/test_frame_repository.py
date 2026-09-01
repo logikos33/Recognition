@@ -5,6 +5,7 @@ Covers: get_pre_annotations, get_annotated_by_video, get_by_id_and_user,
 mark_validated, count_validated.
 """
 from contextlib import contextmanager
+from datetime import datetime
 from uuid import uuid4
 
 from unittest.mock import MagicMock
@@ -331,3 +332,70 @@ class TestListUnlabeledByUncertainty:
         repo.list_unlabeled_by_uncertainty(tenant_id, "quality", limit=7)
         for call in cur.execute.call_args_list:
             assert call[0][1] == (str(tenant_id), "quality", 7)
+
+
+# ---------------------------------------------------------------------------
+# get_by_tenant_source_daterange (alimenta a inferência retroativa, Nível 1)
+# ---------------------------------------------------------------------------
+
+class TestGetByTenantSourceDaterange:
+
+    def test_returns_frames(self):
+        cur = MagicMock()
+        rows = [{"id": "f1", "camera_id": "c1", "r2_key": "k1",
+                 "captured_at": datetime(2026, 9, 1), "module_code": "epi"}]
+        cur.fetchall.return_value = rows
+        repo, _ = _repo(cur)
+        result = repo.get_by_tenant_source_daterange(
+            uuid4(), "nvr", datetime(2026, 9, 1), datetime(2026, 9, 2)
+        )
+        assert result == rows
+
+    def test_filters_source_camera_and_captured_at_not_null(self):
+        cur = MagicMock()
+        cur.fetchall.return_value = []
+        repo, cur = _repo(cur)
+        repo.get_by_tenant_source_daterange(
+            uuid4(), "nvr", datetime(2026, 9, 1), datetime(2026, 9, 2)
+        )
+        query = cur.execute.call_args[0][0]
+        assert "source = %s" in query
+        assert "camera_id IS NOT NULL" in query
+        assert "captured_at IS NOT NULL" in query
+        assert "ORDER BY captured_at ASC" in query
+
+    def test_params_include_tenant_source_and_window(self):
+        tenant_id = uuid4()
+        date_from = datetime(2026, 9, 1)
+        date_to = datetime(2026, 9, 2)
+        cur = MagicMock()
+        cur.fetchall.return_value = []
+        repo, cur = _repo(cur)
+        repo.get_by_tenant_source_daterange(tenant_id, "nvr", date_from, date_to)
+        params = cur.execute.call_args[0][1]
+        assert params == (str(tenant_id), "nvr", date_from, date_to)
+
+    def test_module_code_appends_condition_and_param(self):
+        cur = MagicMock()
+        cur.fetchall.return_value = []
+        repo, cur = _repo(cur)
+        repo.get_by_tenant_source_daterange(
+            uuid4(), "nvr", datetime(2026, 9, 1), datetime(2026, 9, 2),
+            module_code="epi",
+        )
+        query, params = cur.execute.call_args[0]
+        assert "module_code = %s" in query
+        assert params[-1] == "epi"
+
+    def test_module_code_omitted_when_not_given(self):
+        cur = MagicMock()
+        cur.fetchall.return_value = []
+        repo, cur = _repo(cur)
+        repo.get_by_tenant_source_daterange(
+            uuid4(), "nvr", datetime(2026, 9, 1), datetime(2026, 9, 2)
+        )
+        query, params = cur.execute.call_args[0]
+        # `module_code` aparece no SELECT (é uma coluna devolvida) — só o
+        # FILTRO no WHERE é condicional a ter sido passado.
+        assert "module_code = %s" not in query
+        assert len(params) == 4
