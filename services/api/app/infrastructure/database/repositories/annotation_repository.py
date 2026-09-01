@@ -85,6 +85,28 @@ class AnnotationRepository(BaseRepository):
             ),
         )  # type: ignore[return-value]
 
+    def find_in_global_catalog(
+        self, module_code: str, name: str
+    ) -> "dict[str, Any] | None":
+        """Acha a classe do catálogo GLOBAL (module_classes) cujo `class_name`
+        OU `display_name` bate (case-insensitive) com `name`, no módulo dado.
+
+        Casa pelos DOIS nomes — mesmo critério de
+        `AlertRepository._NOMES_DO_CATALOGO` — porque é por aí que uma classe
+        nova do TENANT pode nascer homônima de uma classe do catálogo global
+        sem que quem cria perceba (achado de 01/09: 'Sem Óculos' já existia
+        como `display_name` de `no_glasses`; o INSERT do script só olhou
+        `class_name`). Usado por TenantClassService para bloquear a criação/
+        renomeação antes que aconteça de novo — ver ADR-0071.
+        """
+        return self._execute_one(
+            "SELECT class_name, display_name, is_violation FROM module_classes "
+            "WHERE module_code = %s "
+            "AND (lower(class_name) = lower(%s) OR lower(display_name) = lower(%s)) "
+            "LIMIT 1",
+            (module_code, name, name),
+        )
+
     def get_classes_by_user(self, user_id: UUID) -> list[dict[str, Any]]:
         """Lista classes do usuário (legado — preferir get_classes_for_tenant)."""
         return self._execute(

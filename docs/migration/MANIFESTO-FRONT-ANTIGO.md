@@ -14,11 +14,11 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 388 arquivos, 65.552 linhas
+## Situação — 389 arquivos, 65.589 linhas
 
 | status | arquivos |
 |---|---:|
-| `INFRA` | 228 |
+| `INFRA` | 229 |
 | `PENDENTE` | 143 |
 | `SEM-DESENHO` | 7 |
 | `SUBSTITUIDA` | 6 |
@@ -262,6 +262,7 @@ apagado não são a mesma coisa.
 | `src/types/monitoring.ts` | `INFRA` | — | 268 |
 | `src/types/operations.ts` | `INFRA` | — | 82 |
 | `src/types/scenario.ts` | `INFRA` | — | 34 |
+| `src/utils/classCatalogDuplicate.ts` | `INFRA` | — | 37 |
 | `src/utils/classImbalance.ts` | `INFRA` | — | 65 |
 | `src/utils/concurrencyQueue.ts` | `INFRA` | — | 39 |
 | `src/utils/errorTranslator.ts` | `INFRA` | — | 76 |

@@ -49,9 +49,14 @@ import {
 
 import { EmptyState } from '../../components/ui/EmptyState/EmptyState'
 import { useToast } from '../../components/ui/Toast/useToast'
-import { SeletorPolaridade, type Polaridade } from '../../components/shared/PolaridadeClasse'
+import {
+  ROTULO_POLARIDADE,
+  SeletorPolaridade,
+  type Polaridade,
+} from '../../components/shared/PolaridadeClasse'
 import { api } from '../../services/api'
 import type { ApiResponse } from '../../types'
+import { achaDuplicataNoCatalogo, type EntradaCatalogo } from '../../utils/classCatalogDuplicate'
 import { computeImbalance, imbalanceMessages } from '../../utils/classImbalance'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import { VALORES } from '../tokens/lk.css'
@@ -81,17 +86,27 @@ const caixas = (n: number) => `${n} caixa${n !== 1 ? 's' : ''}`
 
 // ─── linha arrastável (classe do tenant ativa) ───────────────────────────────
 
+/** Texto do aviso de duplicata — dizendo a verdade da ADR-0071 (união NÃO
+ * subtrai): a linha do tenant não substitui a do catálogo padrão, as duas
+ * passam a contar juntas. */
+const textoDuplicata = (nome: string, doCatalogo: EntradaCatalogo) =>
+  `"${nome}" também existe no catálogo padrão do sistema (${doCatalogo.display_name}), ` +
+  `com polaridade ${ROTULO_POLARIDADE[doCatalogo.polaridade ?? 'indefinida']}. As duas contam ` +
+  'juntas — esta classe não substitui a padrão, só duplica a linha na lista.'
+
 interface LinhaProps {
   cls: ClasseItem
   tecla: number | null
   maxUso: number
+  /** Entrada do catálogo padrão com o mesmo nome, se houver (ADR-0071). */
+  duplicata: EntradaCatalogo | null
   onRename: (cls: ClasseItem, name: string) => void
   onColor: (cls: ClasseItem, color: string) => void
   onArchive: (cls: ClasseItem) => void
   onPolaridade: (cls: ClasseItem, violacao: boolean) => void
 }
 
-function LinhaClasse({ cls, tecla, maxUso, onRename, onColor, onArchive, onPolaridade }: LinhaProps) {
+function LinhaClasse({ cls, tecla, maxUso, duplicata, onRename, onColor, onArchive, onPolaridade }: LinhaProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: String(cls.id),
   })
@@ -144,6 +159,15 @@ function LinhaClasse({ cls, tecla, maxUso, onRename, onColor, onArchive, onPolar
           <span className={s.nomeTexto}>{cls.display_name}</span>
           <Pencil size={11} className={s.nomeIcone} />
         </button>
+      )}
+      {duplicata && (
+        <span
+          className={s.duplicataBadge}
+          title={textoDuplicata(cls.display_name, duplicata)}
+          data-testid={`duplicata-${cls.id}`}
+        >
+          <AlertTriangle size={10} /> também no padrão
+        </span>
       )}
       <span data-testid={`polaridade-${cls.id}`}>
         <SeletorPolaridade
@@ -217,6 +241,18 @@ export function Classes() {
     [keyOrder],
   )
   const avisos = imbalanceMessages(imbalance)
+
+  /** ADR-0071: uma classe do tenant homônima de uma do catálogo padrão não
+   * substitui a global, só duplica — a tela precisa avisar disso na linha
+   * (achado de 01/09, ver Classes.css.ts/duplicataBadge). */
+  const duplicataDe = useCallback(
+    (cls: ClasseItem) => achaDuplicataNoCatalogo(cls.display_name, catalog),
+    [catalog],
+  )
+  const nomeNovaClasseDuplicado = useMemo(
+    () => achaDuplicataNoCatalogo(newName, catalog),
+    [newName, catalog],
+  )
 
   // ── mutações ────────────────────────────────────────────────────────────
   const patch = useCallback(
@@ -320,7 +356,11 @@ export function Classes() {
 
   const handleCreate = useCallback(() => {
     const name = newName.trim()
-    if (!name || newIsViolation === null) return
+    // ⛔ ADR-0071 — mesma regra que scripts/ops/aplicar_calibracao_rvb.py
+    // passou a aplicar depois do incidente de 01/09: nunca criar classe
+    // homônima do catálogo padrão (a API recusa com 409, mas bloquear aqui
+    // poupa a viagem e mostra o motivo na hora, no formulário).
+    if (!name || newIsViolation === null || nomeNovaClasseDuplicado) return
     setCreating(true)
     api
       .post<ApiResponse<{ class_id: number }>>('/classes', {
@@ -334,32 +374,47 @@ export function Classes() {
       })
       .catch((e: unknown) => toast.error(e instanceof Error ? e.message : 'Erro ao criar classe'))
       .finally(() => setCreating(false))
-  }, [newName, newColor, newIsViolation, carregar, toast])
+  }, [newName, newColor, newIsViolation, nomeNovaClasseDuplicado, carregar, toast])
 
   // ── render ────────────────────────────────────────────────────────────────
   const criarForm = (
-    <div className={s.criarForm}>
-      <input
-        className={s.criarInput}
-        value={newName}
-        placeholder="Nova classe (ex.: protetor auricular)"
-        onChange={(e) => setNewName(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') handleCreate()
-        }}
-      />
-      <input type="color" className={s.criarCor} value={newColor} onChange={(e) => setNewColor(e.target.value)} title="Cor da nova classe" />
-      {/* data-testid só para o teste desambiguar do SeletorPolaridade de cada linha já existente (mesmo rótulo de botão) */}
-      <span data-testid="nova-classe-polaridade">
-        <SeletorPolaridade
-          polaridade={newIsViolation === null ? 'indefinida' : newIsViolation ? 'violacao' : 'conformidade'}
-          editavel
-          onChange={(p) => setNewIsViolation(p === 'violacao')}
+    <div className={s.criarFormWrap}>
+      <div className={s.criarForm}>
+        <input
+          className={s.criarInput}
+          value={newName}
+          placeholder="Nova classe (ex.: protetor auricular)"
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleCreate()
+          }}
         />
-      </span>
-      <button className={s.criarBotao} disabled={!newName.trim() || newIsViolation === null || creating} onClick={handleCreate}>
-        {creating ? 'Criando…' : 'Nova classe'}
-      </button>
+        <input type="color" className={s.criarCor} value={newColor} onChange={(e) => setNewColor(e.target.value)} title="Cor da nova classe" />
+        {/* data-testid só para o teste desambiguar do SeletorPolaridade de cada linha já existente (mesmo rótulo de botão) */}
+        <span data-testid="nova-classe-polaridade">
+          <SeletorPolaridade
+            polaridade={newIsViolation === null ? 'indefinida' : newIsViolation ? 'violacao' : 'conformidade'}
+            editavel
+            onChange={(p) => setNewIsViolation(p === 'violacao')}
+          />
+        </span>
+        <button
+          className={s.criarBotao}
+          disabled={!newName.trim() || newIsViolation === null || !!nomeNovaClasseDuplicado || creating}
+          onClick={handleCreate}
+        >
+          {creating ? 'Criando…' : 'Nova classe'}
+        </button>
+      </div>
+      {/* ⛔ ADR-0071 — bloqueio no formulário, não só na API: nunca deixar
+       * nascer uma classe homônima do catálogo padrão (achado de 01/09). */}
+      {nomeNovaClasseDuplicado && (
+        <p className={s.criarErro} role="alert" data-testid="erro-nome-duplicado">
+          "{newName.trim()}" já existe no catálogo padrão do sistema ({nomeNovaClasseDuplicado.display_name}),
+          com polaridade {ROTULO_POLARIDADE[nomeNovaClasseDuplicado.polaridade ?? 'indefinida']}. Escolha outro
+          nome — criar aqui não substitui a padrão, as duas passariam a contar juntas.
+        </p>
+      )}
     </div>
   )
 
@@ -408,7 +463,7 @@ export function Classes() {
       )}
 
       <section>
-        <h2 className={s.secaoTitulo}>Suas classes ({tenantActive.length})</h2>
+        <h2 className={s.secaoTitulo}>Criadas por vocês ({tenantActive.length})</h2>
         <p className={s.secaoLegenda}>Arraste para reordenar — reordenar muda a tecla de atalho no estúdio.</p>
         {tenantActive.length > 0 && (
           <div className={s.lista}>
@@ -420,6 +475,7 @@ export function Classes() {
                     cls={cls}
                     tecla={teclaDe(cls)}
                     maxUso={maxUso}
+                    duplicata={duplicataDe(cls)}
                     onRename={handleRename}
                     onColor={handleColor}
                     onArchive={handleArchive}
@@ -442,21 +498,29 @@ export function Classes() {
           </button>
           {showArchived && (
             <div className={s.lista} style={{ marginTop: '8px' }}>
-              {tenantArchived.map((cls) => (
-                <div key={String(cls.id)} className={`${s.linha} ${s.linhaArquivada}`}>
-                  <span className={s.corSwatch} style={{ background: cls.color || VALORES.cianoVisao }} />
-                  <span className={s.nomeCatalogo}>{cls.display_name}</span>
-                  <span className={s.contagem}>{caixas(cls.usage_count ?? 0)}</span>
-                  <div className={s.acoes}>
-                    <button className={s.botaoRestaurar} onClick={() => handleRestore(cls)} title="As caixas continuam associadas">
-                      <ArchiveRestore size={12} /> Restaurar
-                    </button>
-                    <button className={s.botaoExcluir} onClick={() => handleDelete(cls)} title="Exclui de vez — recusa se houver anotações vinculadas">
-                      <Trash2 size={12} /> Excluir
-                    </button>
+              {tenantArchived.map((cls) => {
+                const duplicata = duplicataDe(cls)
+                return (
+                  <div key={String(cls.id)} className={`${s.linha} ${s.linhaArquivada}`}>
+                    <span className={s.corSwatch} style={{ background: cls.color || VALORES.cianoVisao }} />
+                    <span className={s.nomeCatalogo}>{cls.display_name}</span>
+                    {duplicata && (
+                      <span className={s.duplicataBadge} title={textoDuplicata(cls.display_name, duplicata)}>
+                        <AlertTriangle size={10} /> também no padrão
+                      </span>
+                    )}
+                    <span className={s.contagem}>{caixas(cls.usage_count ?? 0)}</span>
+                    <div className={s.acoes}>
+                      <button className={s.botaoRestaurar} onClick={() => handleRestore(cls)} title="As caixas continuam associadas">
+                        <ArchiveRestore size={12} /> Restaurar
+                      </button>
+                      <button className={s.botaoExcluir} onClick={() => handleDelete(cls)} title="Exclui de vez — recusa se houver anotações vinculadas">
+                        <Trash2 size={12} /> Excluir
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </section>
@@ -464,8 +528,8 @@ export function Classes() {
 
       {catalog.length > 0 && (
         <section>
-          <h2 className={s.secaoTitulo}>Catálogo do módulo ({catalog.length})</h2>
-          <p className={s.secaoLegenda}>Classes padrão do módulo — somente leitura.</p>
+          <h2 className={s.secaoTitulo}>Padrão do sistema ({catalog.length})</h2>
+          <p className={s.secaoLegenda}>Classes padrão do módulo, criadas pela plataforma — somente leitura.</p>
           <div className={s.lista}>
             {catalog.map((cls) => (
               <div key={`cat-${cls.class_id}`} className={s.linha} style={{ opacity: cls.is_active === false ? 0.5 : 1 }}>

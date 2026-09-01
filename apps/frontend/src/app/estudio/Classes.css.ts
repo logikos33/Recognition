@@ -63,6 +63,30 @@ export const avisoCorpo = style({
 
 export const avisoTitulo = style({ fontWeight: 700, color: lk.estado.atencao })
 
+// ── duplicata no catálogo padrão (ADR-0071) ──────────────────────────────────
+
+export const duplicataBadge = style({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '3px',
+  padding: '1px 6px',
+  fontSize: '10.5px',
+  fontWeight: 600,
+  color: lk.estado.atencao,
+  background: TINTA_ATENCAO,
+  border: `1px solid ${BORDA_ATENCAO}`,
+  borderRadius: '999px',
+  flexShrink: 0,
+  whiteSpace: 'nowrap',
+  cursor: 'help',
+})
+
+export const criarErro = style({
+  fontSize: '12px',
+  color: lk.estado.atencao,
+  lineHeight: 1.4,
+})
+
 // ── lista de classes do tenant ───────────────────────────────────────────────
 
 export const secaoTitulo = style({
@@ -250,11 +274,17 @@ export const botaoExcluir = style([botaoBase, { color: lk.estado.nc }])
 
 // ── criar classe ─────────────────────────────────────────────────────────────
 
+export const criarFormWrap = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '6px',
+  padding: '12px 14px',
+})
+
 export const criarForm = style({
   display: 'flex',
   gap: '8px',
   alignItems: 'center',
-  padding: '12px 14px',
 })
 
 export const criarInput = style({

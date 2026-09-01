@@ -113,6 +113,7 @@ class TenantClassService:
                 "Informe is_violation (true = violação, false = conformidade) "
                 "— toda classe precisa nascer com a polaridade decidida"
             )
+        self._reject_if_in_global_catalog(module, clean_name)
         try:
             return self._repo.create_class(
                 user_id,
@@ -138,6 +139,20 @@ class TenantClassService:
             raise ValidationError("Informe name e/ou color para atualizar")
         clean_name = self._validate_name(name) if name is not None else None
         clean_color = self._validate_color(color) if color is not None else None
+        if clean_name is not None:
+            # Mesmo guard de create/patch (ADR-0071): este é o PUT legado —
+            # sem isto, renomear por AQUI para um nome do catálogo global
+            # abria a mesma duplicata que já foi fechada nas outras duas
+            # portas de entrada (achado do veredito: só POST e PATCH tinham
+            # o guard, PUT continuava passando).
+            existing = self._repo.get_class_for_tenant(
+                int(class_id), str(tenant_id), user_id=user_id
+            )
+            if not existing:
+                raise NotFoundError("Classe", str(class_id))
+            self._reject_if_in_global_catalog(
+                existing.get("module_code", DEFAULT_MODULE), clean_name
+            )
         try:
             updated = self._repo.update_class(
                 int(class_id),
@@ -190,6 +205,11 @@ class TenantClassService:
         fields: dict[str, Any] = {}
         if name is not None:
             fields["name"] = self._validate_name(name)
+            # Mesma regra da criação (ADR-0071): renomear PARA um nome que já
+            # existe no catálogo global duplicaria a classe do mesmo jeito.
+            self._reject_if_in_global_catalog(
+                existing.get("module_code", DEFAULT_MODULE), fields["name"]
+            )
         if color is not None:
             fields["color"] = self._validate_color(color)
         if display_order is not None:
@@ -263,6 +283,30 @@ class TenantClassService:
         return existing
 
     # --- Validação -------------------------------------------------------
+
+    _ROTULO_POLARIDADE = {True: "violação", False: "conformidade", None: "indefinida"}
+
+    def _reject_if_in_global_catalog(self, module_code: str, name: str) -> None:
+        """ADR-0071 — a polaridade servida é a UNIÃO global ∪ tenant
+        (AlertRepository._nomes_por_polaridade), casando pelos DOIS nomes do
+        catálogo global. Criar (ou renomear para) um nome que já existe lá
+        NÃO substitui a linha global — a união nunca subtrai — só duplica a
+        classe na tela sem separar o uso: achado de 01/09, 'Sem Óculos' e
+        mais duas nasceram homônimas do global e ficaram com usage_count=0
+        para sempre, porque as anotações antigas continuam presas ao
+        class_id global. Mesma regra que
+        scripts/ops/aplicar_calibracao_rvb.py passou a aplicar depois do
+        incidente."""
+        global_row = self._repo.find_in_global_catalog(module_code, name)
+        if not global_row:
+            return
+        polaridade = self._ROTULO_POLARIDADE[global_row["is_violation"]]
+        raise ConflictError(
+            f"'{name}' já existe no catálogo padrão do sistema, com "
+            f"polaridade {polaridade}. Criar (ou renomear para) o mesmo "
+            "nome aqui não substitui o padrão — as duas passam a contar "
+            "juntas, e a tela mostra o nome duplicado. Escolha outro nome."
+        )
 
     @staticmethod
     def _validate_name(name: str) -> str:

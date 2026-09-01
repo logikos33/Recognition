@@ -64,6 +64,52 @@ class TestCreateClassTenantScoped:
         assert params[4] == "fueling"
 
 
+class TestFindInGlobalCatalog:
+    """ADR-0071 — achado de 01/09: 'Sem Óculos' é o `display_name` de
+    `no_glasses` no catálogo global; o `class_name` NUNCA bate com o que um
+    tenant digita na tela (tenant não escreve slug em inglês). Um mutante que
+    reduz o WHERE para casar só por `class_name` faz a query voltar None para
+    'Sem Óculos' — o guard em TenantClassService nunca dispara e a duplicata
+    nasce de novo, com a suíte inteira (que só mocka find_in_global_catalog
+    no nível do service) permanecendo verde. Este teste mora no nível do
+    REPOSITORY — o único lugar onde o SQL de verdade existe para ser checado."""
+
+    def test_query_matches_by_class_name_or_display_name(self) -> None:
+        cur = MagicMock()
+        cur.fetchone.return_value = None
+        repo, cur = _repo(cur)
+        repo.find_in_global_catalog("epi", "Sem Óculos")
+        query, params = cur.execute.call_args[0]
+        assert "lower(class_name) = lower(%s)" in query
+        assert "lower(display_name) = lower(%s)" in query
+        # OR, não AND — cada nome catalogado tem de bastar sozinho.
+        assert "OR lower(display_name)" in query
+        assert "module_code = %s" in query
+        # `name` aparece 2x — comparado contra os DOIS nomes do catálogo, não
+        # só contra class_name. Um mutante que apaga a cláusula do
+        # display_name também apaga este 3º parâmetro.
+        assert params == ("epi", "Sem Óculos", "Sem Óculos")
+
+    def test_finds_row_whose_display_name_matches_even_though_class_name_differs(
+        self,
+    ) -> None:
+        """Comportamental: o nome que o tenant digitou ('Sem Óculos') só bate
+        com o `display_name` da linha — o `class_name` real é 'no_glasses',
+        um slug que o tenant nunca escreveria. Sem o `OR lower(display_name)`
+        no SQL, esta chamada devolveria None e a classe duplicada voltaria a
+        nascer (é exatamente o mutante que sobreviveu no veredito)."""
+        cur = MagicMock()
+        cur.fetchone.return_value = {
+            "class_name": "no_glasses", "display_name": "Sem Óculos", "is_violation": True,
+        }
+        repo, cur = _repo(cur)
+        result = repo.find_in_global_catalog("epi", "Sem Óculos")
+        assert result is not None
+        assert result["class_name"] == "no_glasses"
+        query = cur.execute.call_args[0][0]
+        assert "display_name" in query
+
+
 class TestGetClassesForTenant:
     def test_tenant_with_user_fallback(self):
         """Fallback p/ linhas legadas: tenant_id IS NULL AND user_id = dono."""
