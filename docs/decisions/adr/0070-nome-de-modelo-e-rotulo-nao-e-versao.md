@@ -67,12 +67,15 @@ dataset disponível" ali).
   **`frame_count = 2362`** imagens (1702 train / 300 val / 360 test). É o
   número real que sustenta o exemplo do refinamento: `Logikos · 25/08 ·
   2.362 imagens`, não um número inventado.
-- Nenhum dos 11 `trained_models` do RVB tem `display_name` preenchido — não
-  é bug: todos foram criados entre 21/08 e 25/08, e a coluna só passou a
-  existir com a migration 129 (30/08). O cálculo em `training.py` roda para
-  todo modelo criado **depois** de 30/08; os 11 existentes ficam com
-  `display_name IS NULL`, o que o front já trata (`nomeParaCliente` cai para
-  `"Logikos"`).
+- Medição real, DB DEV (`public.trained_models`, tenant RVB
+  `63c219d8-fbef-4f3c-a7c9-058c742482e2`), 01/09/2026: dos 11
+  `trained_models`, **1 já tem `display_name` preenchido** —
+  `46a30ed9-9919-4718-9a24-b97ce6a0752e` ("RF-DETR - Job 3091cfc9", criado
+  21/08/2026 13:44) tem `display_name = 'Logikos V1'`. Esse valor **não tem**
+  o sufixo `· DD/MM` que `_build_display_name` sempre gera, e o modelo é
+  **anterior** à própria migration 129 (30/08) — foi gravado à mão, fora do
+  cálculo automático. Os outros 10 têm `display_name IS NULL` e caem no
+  fallback `"Logikos"` (`nomeParaCliente`).
 
 ---
 
@@ -111,13 +114,22 @@ dataset disponível" ali).
 ## O que fica pendente (pedido ao backend, não decidido aqui)
 
 **Como distinguir, no schema, "veio do cálculo" de "veio de atribuição
-humana".** Medido antes de decidir: hoje não há como, porque só existe UM
-escritor (o cálculo automático) — não existe ainda a rota que um humano
-usaria para atribuir manualmente. Sem um segundo escritor real, qualquer
-coluna de proveniência (`display_name_source enum('auto','human')`,
-`display_name_set_by`, timestamp) seria especulativa — exatamente o tipo de
-schema decidido sob pressão que a casa já lamentou uma vez (ADR-0069, mesmo
-padrão de erro). **Não foi inventada aqui.**
+humana".** Não existe hoje nenhuma rota PATCH/rename que grave `display_name`
+por atribuição humana — mas **já existe um caso real** de valor atribuído
+fora do cálculo: `46a30ed9…` tem `display_name = 'Logikos V1'`, um formato
+que `_build_display_name` não produz (sem `· DD/MM`) e anterior à própria
+migration 129, gravado à mão (ver "Os números que forçaram"). Isso
+**fortalece** o pedido de proveniência, não o enfraquece: uma recomputação
+automática futura poderia sobrescrever esse valor em silêncio — exatamente o
+que a regra "humano sempre vence" (ponto 2 da Decisão) proíbe, e hoje não
+existe mecanismo que impeça isso, porque não existe coluna que marque
+`'Logikos V1'` como diferente dos outros 10 (`NULL`, todos do cálculo). Isso
+não decide o desenho aqui — uma coluna de proveniência
+(`display_name_source enum('auto','human')`, `display_name_set_by`,
+timestamp) segue não decidida nesta rodada, para não repetir o schema
+decidido sob pressão que a casa já lamentou (ADR-0069, mesmo padrão de
+erro). **Não foi inventada aqui** — mas o caso real acima já é o segundo
+ponto de dado contra o qual desenhá-la, quando chegar a hora.
 
 Fica registrado como pré-requisito de quem construir a rota de renomeação
 manual: essa rota PRECISA nascer junto com a coluna de proveniência (ou
