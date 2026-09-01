@@ -28,6 +28,21 @@ export const cabecalho = style({
   flexWrap: 'wrap',
 })
 
+/** Link de saída da tela — mesmo recipe de `Qualidade.css.ts`. */
+export const voltar = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  padding: '0 12px 0 0',
+  borderRight: `1px solid ${lk.cor.borda}`,
+  fontSize: '13.5px',
+  color: lk.cor.cinzaNevoa,
+  textDecoration: 'none',
+  selectors: {
+    '&:hover': { color: lk.cor.brancoSinal },
+  },
+})
+
 export const titulo = style({
   margin: 0,
   fontFamily: lk.fonte.titulo,

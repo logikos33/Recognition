@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const auth = vi.hoisted(() => ({
   can: vi.fn((_p: string) => true),
   hasModule: vi.fn((_m: string) => true),
+  isSuperAdmin: false,
 }))
 vi.mock('../../hooks/useAuth', () => ({ useAuth: () => auth }))
 
@@ -124,6 +125,17 @@ describe('Qualidade · abas do módulo', () => {
     await screen.findByText('Retrabalho', { selector: 'h1' })
     fireEvent.click(screen.getByRole('button', { name: 'Config' }))
     expect(navegar).toHaveBeenCalledWith('/novo/quality/configuracao')
+  })
+
+  it('"Voltar" é o primeiro link da barra e leva à home do usuário', async () => {
+    // Sem barra lateral própria (SEM_BARRA_LATERAL), este é o único jeito de
+    // sair do módulo — regra global, ver app/shell/becoSemSaida.test.tsx.
+    responde()
+    montar()
+    const primeiro = (await screen.findAllByRole('link'))[0]
+    expect(primeiro.textContent?.trim()).toBe('Voltar')
+    // isSuperAdmin: false no dublê → home é a escolha de módulo.
+    expect(primeiro.getAttribute('href')).toBe('/novo/modules')
   })
 })
 

@@ -78,6 +78,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
+  ArrowLeft,
   CheckCircle2,
   CircleDashed,
   Clock,
@@ -86,9 +87,11 @@ import {
   RotateCcw,
   XCircle,
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import { useAuth } from '../../hooks/useAuth'
 import { ApiError, api } from '../../services/api'
+import { rotaNova } from '../RotasNovas'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import * as s from './GestaoQualidade.css'
 
@@ -1123,6 +1126,15 @@ export function GestaoQualidade() {
   return (
     <div className={s.raiz}>
       <div className={s.cabecalho}>
+        {/* Tela SEM barra lateral própria (`quality` está em SEM_BARRA_LATERAL,
+            e cobre `/quality/gestao`): sem este link não há caminho de volta
+            nenhum — regra global, ver app/shell/becoSemSaida.test.tsx. Volta
+            para o SHELL de Qualidade (abas), não direto para a home: é de lá
+            que se chega aqui (Dashboard/Peças/Relatórios de `Qualidade.tsx`). */}
+        <Link to={rotaNova('/quality')} className={s.voltar}>
+          <ArrowLeft size={16} strokeWidth={1.7} aria-hidden="true" />
+          Voltar
+        </Link>
         <h1 className={s.titulo}>Gestão</h1>
         <div className={s.abas} role="tablist" aria-label="Seções da gestão de qualidade">
           {ABAS.map(([chave, rotulo]) => (

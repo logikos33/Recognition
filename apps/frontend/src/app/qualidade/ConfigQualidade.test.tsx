@@ -9,6 +9,7 @@
  *  · repetir a legenda do desenho ("sem deploy"), que é falsa para limiar.
  */
 import { fireEvent, render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const auth = vi.hoisted(() => ({ can: vi.fn((_p: string) => true), hasModule: vi.fn((_m: string) => true) }))
@@ -66,15 +67,27 @@ beforeEach(() => {
 
 it('sem o módulo quality, a tela bloqueia e não chama rota nenhuma', () => {
   auth.hasModule.mockReturnValue(false)
-  render(<ConfigQualidade />)
+  render(<MemoryRouter><ConfigQualidade /></MemoryRouter>)
   expect(screen.getByText('Módulo não habilitado')).toBeTruthy()
   expect(get).not.toHaveBeenCalled()
+})
+
+// ── saída da tela (contrato C2 — nenhuma área é beco sem saída) ─────────────
+
+it('"Voltar" é um link real (não decoração) para o shell de Qualidade (/novo/quality)', async () => {
+  // Sem barra lateral própria aqui (`quality` está em SEM_BARRA_LATERAL, e
+  // cobre /quality/configuracao): sem este link não há caminho de volta
+  // nenhum — regra global, ver app/shell/becoSemSaida.test.tsx.
+  responde([estacao()], [camera()])
+  render(<MemoryRouter><ConfigQualidade /></MemoryRouter>)
+  const link = await screen.findByRole('link', { name: /voltar/i })
+  expect(link.getAttribute('href')).toBe('/novo/quality')
 })
 
 describe('configuração da qualidade — aba C1 (pontos & rotas)', () => {
   it('não inventa ponto de inspeção: diz que o objeto não existe no servidor', async () => {
     responde([estacao()], [camera()])
-    render(<ConfigQualidade />)
+    render(<MemoryRouter><ConfigQualidade /></MemoryRouter>)
     expect(await screen.findByText(/ainda não existe no servidor/i)).toBeTruthy()
     // Nada do desenho que pende do ponto pode aparecer.
     expect(screen.queryByText('P1')).toBeNull()
@@ -84,7 +97,7 @@ describe('configuração da qualidade — aba C1 (pontos & rotas)', () => {
 
   it('"Novo ponto" fica no lugar do desenho, DESABILITADO e dizendo por quê', async () => {
     responde([estacao()], [camera()])
-    render(<ConfigQualidade />)
+    render(<MemoryRouter><ConfigQualidade /></MemoryRouter>)
     const b = (await screen.findByRole('button', { name: /novo ponto/i })) as HTMLButtonElement
     expect(b.disabled).toBe(true)
     expect(b.title).toMatch(/sem rota|não existe/i)
@@ -92,7 +105,7 @@ describe('configuração da qualidade — aba C1 (pontos & rotas)', () => {
 
   it('"PUBLICAR ALTERAÇÃO" também fica desabilitado — não há o que publicar', async () => {
     responde([estacao()], [camera()])
-    render(<ConfigQualidade />)
+    render(<MemoryRouter><ConfigQualidade /></MemoryRouter>)
     const b = (await screen.findByRole('button', { name: /publicar/i })) as HTMLButtonElement
     expect(b.disabled).toBe(true)
     expect(b.title).toMatch(/ponto de inspeção/i)
@@ -102,7 +115,7 @@ describe('configuração da qualidade — aba C1 (pontos & rotas)', () => {
 describe('configuração da qualidade — aba C2 (limiares & estações)', () => {
   it('lista as estações que o servidor devolve, com o NOME da câmera', async () => {
     responde([estacao()], [camera()])
-    render(<ConfigQualidade />)
+    render(<MemoryRouter><ConfigQualidade /></MemoryRouter>)
     await screen.findByRole('tab', { name: /limiares/i })
     abrirC2()
     expect(await screen.findByText('Estação 1 — Anéis')).toBeTruthy()
@@ -115,7 +128,7 @@ describe('configuração da qualidade — aba C2 (limiares & estações)', () =>
 
   it('câmera que não resolve por nome NÃO vira UUID na célula', async () => {
     responde([estacao({ camera_ids: [CAM_ORFA] })], [camera()])
-    render(<ConfigQualidade />)
+    render(<MemoryRouter><ConfigQualidade /></MemoryRouter>)
     await screen.findByRole('tab', { name: /limiares/i })
     abrirC2()
     expect(await screen.findByText(/câmera não identificada/i)).toBeTruthy()
@@ -124,7 +137,7 @@ describe('configuração da qualidade — aba C2 (limiares & estações)', () =>
 
   it('mostra os dois limiares REAIS (por câmera), não as três faixas do desenho', async () => {
     responde([estacao()], [camera()])
-    render(<ConfigQualidade />)
+    render(<MemoryRouter><ConfigQualidade /></MemoryRouter>)
     await screen.findByRole('tab', { name: /limiares/i })
     abrirC2()
     expect(await screen.findByText('0,60')).toBeTruthy()
@@ -137,7 +150,7 @@ describe('configuração da qualidade — aba C2 (limiares & estações)', () =>
 
   it('limiar não gravado diz "não definido" — não vira 0,00', async () => {
     responde([estacao()], [camera({ ok_confidence_threshold: null })])
-    render(<ConfigQualidade />)
+    render(<MemoryRouter><ConfigQualidade /></MemoryRouter>)
     await screen.findByRole('tab', { name: /limiares/i })
     abrirC2()
     expect(await screen.findByText(/não definido/i)).toBeTruthy()
@@ -146,7 +159,7 @@ describe('configuração da qualidade — aba C2 (limiares & estações)', () =>
 
   it('"Editar limiar" fica desabilitado: a rota grava, mas ninguém lê o valor', async () => {
     responde([estacao()], [camera()])
-    render(<ConfigQualidade />)
+    render(<MemoryRouter><ConfigQualidade /></MemoryRouter>)
     await screen.findByRole('tab', { name: /limiares/i })
     abrirC2()
     const b = (await screen.findByRole('button', {
@@ -158,14 +171,14 @@ describe('configuração da qualidade — aba C2 (limiares & estações)', () =>
 
   it('não repete a legenda falsa do desenho ("sem deploy")', async () => {
     responde([estacao()], [camera()])
-    render(<ConfigQualidade />)
+    render(<MemoryRouter><ConfigQualidade /></MemoryRouter>)
     await screen.findByRole('tab', { name: /limiares/i })
     expect(screen.queryByText(/sem deploy/i)).toBeNull()
   })
 
   it('não mostra colunas que o servidor não tem: token e pontos atendidos', async () => {
     responde([estacao()], [camera()])
-    const { container } = render(<ConfigQualidade />)
+    const { container } = render(<MemoryRouter><ConfigQualidade /></MemoryRouter>)
     await screen.findByRole('tab', { name: /limiares/i })
     abrirC2()
     await screen.findByText('Estação 1 — Anéis')
@@ -178,7 +191,7 @@ describe('configuração da qualidade — aba C2 (limiares & estações)', () =>
 
   it('situação da estação é cor + ícone + PALAVRA, e somente leitura', async () => {
     responde([estacao({ is_active: false })], [camera()])
-    render(<ConfigQualidade />)
+    render(<MemoryRouter><ConfigQualidade /></MemoryRouter>)
     await screen.findByRole('tab', { name: /limiares/i })
     abrirC2()
     const estado = await screen.findByText('INATIVA')
@@ -187,7 +200,7 @@ describe('configuração da qualidade — aba C2 (limiares & estações)', () =>
 
   it('sem estação, o vazio é honesto e não promete cadastro que não foi desenhado', async () => {
     responde([], [camera()])
-    render(<ConfigQualidade />)
+    render(<MemoryRouter><ConfigQualidade /></MemoryRouter>)
     await screen.findByRole('tab', { name: /limiares/i })
     abrirC2()
     expect(await screen.findByText(/nenhuma estação cadastrada/i)).toBeTruthy()
@@ -196,7 +209,7 @@ describe('configuração da qualidade — aba C2 (limiares & estações)', () =>
 
   it('sem câmera no módulo, o vazio de limiares também é honesto', async () => {
     responde([estacao()], [])
-    render(<ConfigQualidade />)
+    render(<MemoryRouter><ConfigQualidade /></MemoryRouter>)
     await screen.findByRole('tab', { name: /limiares/i })
     abrirC2()
     expect(await screen.findByText(/nenhuma câmera atribuída/i)).toBeTruthy()
@@ -206,7 +219,7 @@ describe('configuração da qualidade — aba C2 (limiares & estações)', () =>
 describe('configuração da qualidade — estados de carga', () => {
   it('erro mostra a rota e o retry refaz a chamada', async () => {
     get.mockRejectedValue(new Error('timeout'))
-    render(<ConfigQualidade />)
+    render(<MemoryRouter><ConfigQualidade /></MemoryRouter>)
     expect(await screen.findByText(/GET \/api\/v1\/quality\/gate\/stations/)).toBeTruthy()
     responde([estacao()], [camera()])
     fireEvent.click(screen.getByRole('button', { name: /tentar novamente/i }))
@@ -216,7 +229,7 @@ describe('configuração da qualidade — estados de carga', () => {
   it('a faixa de lacuna dos limiares só aparece para quem pode configurar', async () => {
     auth.can.mockReturnValue(false)
     responde([estacao()], [camera()])
-    render(<ConfigQualidade />)
+    render(<MemoryRouter><ConfigQualidade /></MemoryRouter>)
     await screen.findByRole('tab', { name: /limiares/i })
     abrirC2()
     await screen.findByText('Estação 1 — Anéis')

@@ -51,6 +51,17 @@ export const itemAtivo = style({
   background: lk.cor.preto,
 })
 
+/** "← Voltar" no topo da lateral — mesmo tratamento do Estúdio
+ * (`estudio/Estudio.css.ts`): não é uma seção, é a saída. */
+export const voltar = style([
+  item,
+  {
+    marginBottom: '8px',
+    paddingBottom: '10px',
+    borderBottom: `1px solid ${lk.cor.borda}`,
+  },
+])
+
 export const conteudo = style({
   flex: 1,
   minWidth: 0,

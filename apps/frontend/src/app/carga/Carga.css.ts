@@ -21,6 +21,24 @@ export const cabecalho = style({
   flexWrap: 'wrap',
 })
 
+/** "← Voltar", primeiro item do cabeçalho — sem lateral própria
+ * (SEM_BARRA_LATERAL), é a única saída do módulo. */
+export const voltar = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  height: lk.medida.itemNav,
+  padding: '0 12px 0 0',
+  marginRight: '4px',
+  borderRight: `1px solid ${lk.cor.borda}`,
+  fontSize: '13.5px',
+  color: lk.cor.cinzaNevoa,
+  textDecoration: 'none',
+  selectors: {
+    '&:hover': { color: lk.cor.brancoSinal },
+  },
+})
+
 export const titulo = style({
   margin: 0,
   fontFamily: lk.fonte.titulo,

@@ -53,10 +53,12 @@
  * ⛔ Nada aqui é inventado: sem endpoint, sem dado; sem rota, sem ação.
  */
 import { useCallback, useEffect, useState } from 'react'
-import { AlertTriangle, CheckCircle2, CircleSlash, Lock, Plus, SlidersHorizontal } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CheckCircle2, CircleSlash, Lock, Plus, SlidersHorizontal } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import { useAuth } from '../../hooks/useAuth'
 import { api } from '../../services/api'
+import { rotaNova } from '../RotasNovas'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import { lk } from '../tokens/lk.css'
 import * as s from './ConfigQualidade.css'
@@ -190,6 +192,15 @@ export function ConfigQualidade() {
   return (
     <div className={s.raiz}>
       <div className={s.cabecalho}>
+        {/* Tela SEM barra lateral própria (`quality` está em SEM_BARRA_LATERAL,
+            e cobre `/quality/configuracao`): sem este link não há caminho de
+            volta nenhum — regra global, ver app/shell/becoSemSaida.test.tsx.
+            Volta para o SHELL de Qualidade (abas), de onde se chega aqui pela
+            aba Config de `Qualidade.tsx`. */}
+        <Link to={rotaNova('/quality')} className={s.voltar}>
+          <ArrowLeft size={16} strokeWidth={1.7} aria-hidden="true" />
+          Voltar
+        </Link>
         <h1 className={s.titulo}>Configuração</h1>
         <div className={s.abas} role="tablist" aria-label="Seções da configuração">
           <button

@@ -14,6 +14,7 @@
  *     rota e retry.
  */
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -228,9 +229,22 @@ beforeEach(() => {
 
 it('sem o módulo quality, a tela bloqueia e não chama rota nenhuma', () => {
   mocks.temModulo = false
-  render(<GestaoQualidade />)
+  render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
   expect(screen.getByText('Módulo não habilitado')).toBeTruthy()
   expect(mocks.get).not.toHaveBeenCalled()
+})
+
+// ── saída da tela (contrato C2 — nenhuma área é beco sem saída) ─────────────
+
+it('"Voltar" é um link real (não decoração) para o shell de Qualidade (/novo/quality)', () => {
+  // Sem barra lateral própria aqui (`quality` está em SEM_BARRA_LATERAL, e
+  // cobre /quality/gestao): sem este link não há caminho de volta nenhum —
+  // regra global, ver app/shell/becoSemSaida.test.tsx. Elemento REAL do DOM:
+  // um <button> sem href, ou o link removido, reprovam aqui.
+  responde()
+  render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
+  const link = screen.getByRole('link', { name: /voltar/i })
+  expect(link.getAttribute('href')).toBe('/novo/quality')
 })
 
 // ── D1 · Dashboard ──────────────────────────────────────────────────────────
@@ -238,7 +252,7 @@ it('sem o módulo quality, a tela bloqueia e não chama rota nenhuma', () => {
 describe('D1 — o painel mostra o que a rota devolveu, e só', () => {
   it('os KPIs saem de dashboard/summary e de inspections/summary', async () => {
     responde()
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
 
     expect(await screen.findByText('148')).toBeTruthy() // pieces_total
     expect(screen.getByText('87,2')).toBeTruthy() // ok_pct
@@ -250,7 +264,7 @@ describe('D1 — o painel mostra o que a rota devolveu, e só', () => {
 
   it('não inventa os KPIs que o backend não tem', async () => {
     responde()
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
     await screen.findByText('148')
 
     // "% DÚVIDA" não existe: quality_inspections.result só tem ok/nok.
@@ -265,7 +279,7 @@ describe('D1 — o painel mostra o que a rota devolveu, e só', () => {
 
   it('rotula o eixo pelo dado real (validação v1/v2/v3), não como "ponto"', async () => {
     responde()
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
     await screen.findByText('148')
 
     expect(screen.getByRole('img', { name: 'V1: 19' })).toBeTruthy()
@@ -276,7 +290,7 @@ describe('D1 — o painel mostra o que a rota devolveu, e só', () => {
 
   it('nomeia a categoria de defeito pela rota /defect-categories', async () => {
     responde()
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
 
     // slug cru ("visual") nunca chega à tela quando o rótulo existe
     expect(await screen.findByRole('img', { name: 'Visual (risco/arranhão/mancha): 14' })).toBeTruthy()
@@ -284,7 +298,7 @@ describe('D1 — o painel mostra o que a rota devolveu, e só', () => {
 
   it('o período vai como date_from/date_to para a única rota que o aceita', async () => {
     responde()
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
     await screen.findByText('148')
 
     fireEvent.change(screen.getByLabelText('Período das inspeções'), { target: { value: 'trinta' } })
@@ -302,7 +316,7 @@ describe('D1 — o painel mostra o que a rota devolveu, e só', () => {
 
   it('mostra o NOME do operador da estação, nunca o UUID', async () => {
     responde()
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
 
     expect(await screen.findByText(/Sandra Alves/)).toBeTruthy()
     expect(screen.queryByText(/e1d2c3b4/)).toBeNull()
@@ -310,7 +324,7 @@ describe('D1 — o painel mostra o que a rota devolveu, e só', () => {
 
   it('não exibe online nem shift_stats — são valores fixos no código do backend', async () => {
     responde()
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
     await screen.findByText('148')
 
     // nem selo "Online" (sempre true no backend) nem placar 0/0 do turno
@@ -322,7 +336,7 @@ describe('D1 — o painel mostra o que a rota devolveu, e só', () => {
 
   it('erro na rota principal: mostra a rota, o status e um retry', async () => {
     responde({ '/v1/quality/dashboard/summary': new ApiError('boom', 503) })
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
 
     expect(await screen.findByText(/dashboard\/summary · 503/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }))
@@ -331,7 +345,7 @@ describe('D1 — o painel mostra o que a rota devolveu, e só', () => {
 
   it('falha de um cartão não derruba o painel', async () => {
     responde({ '/v1/quality/gate/stats/rework': new ApiError('boom', 500) })
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
 
     expect(await screen.findByText('148')).toBeTruthy() // KPIs seguem de pé
     expect(screen.getByText(/gate\/stats\/rework · 500/)).toBeTruthy()
@@ -346,7 +360,7 @@ describe('D1 — o painel mostra o que a rota devolveu, e só', () => {
         data: { ...INSPECOES.data, defect_distribution: {} },
       },
     })
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
 
     expect(await screen.findByText('Nenhum retrabalho registrado.')).toBeTruthy()
     expect(screen.getByText(/Nenhuma inspeção com categoria de defeito/)).toBeTruthy()
@@ -354,7 +368,7 @@ describe('D1 — o painel mostra o que a rota devolveu, e só', () => {
 
   it('carregando: o loader da casa, não uma tela em branco', () => {
     mocks.get.mockImplementation(() => new Promise(() => {}))
-    const { container } = render(<GestaoQualidade />)
+    const { container } = render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
     expect(container.querySelector('[aria-busy="true"]')).toBeTruthy()
   })
 })
@@ -364,7 +378,7 @@ describe('D1 — o painel mostra o que a rota devolveu, e só', () => {
 describe('D2 — a lista de peças diz o que o backend realmente filtra', () => {
   it('traduz o status cru da máquina de estados, mantendo o enum no title', async () => {
     responde()
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
     await screen.findByText('148')
     abrirAba('Peças & OPs')
 
@@ -381,7 +395,7 @@ describe('D2 — a lista de peças diz o que o backend realmente filtra', () => 
 
   it('o tempo de ciclo é a subtração dos dois timestamps que a rota devolveu', async () => {
     responde()
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
     await screen.findByText('148')
     abrirAba('Peças & OPs')
 
@@ -393,7 +407,7 @@ describe('D2 — a lista de peças diz o que o backend realmente filtra', () => 
 
   it('não mostra a coluna "pontos" do desenho — não existe contador de etapas', async () => {
     responde()
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
     await screen.findByText('148')
     abrirAba('Peças & OPs')
     await screen.findByRole('group', { name: 'Peças' })
@@ -404,7 +418,7 @@ describe('D2 — a lista de peças diz o que o backend realmente filtra', () => 
 
   it('avisa que data e tipo de produto são descartados pela rota', async () => {
     responde()
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
     await screen.findByText('148')
     abrirAba('Peças & OPs')
 
@@ -417,7 +431,7 @@ describe('D2 — a lista de peças diz o que o backend realmente filtra', () => 
 
   it('status e OP vão para a query da rota', async () => {
     responde()
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
     await screen.findByText('148')
     abrirAba('Peças & OPs')
     await screen.findByRole('group', { name: 'Peças' })
@@ -436,7 +450,7 @@ describe('D2 — a lista de peças diz o que o backend realmente filtra', () => 
 
   it('a paginação não mente: sem contagem total, só "página N"', async () => {
     responde()
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
     await screen.findByText('148')
     abrirAba('Peças & OPs')
 
@@ -448,7 +462,7 @@ describe('D2 — a lista de peças diz o que o backend realmente filtra', () => 
 
   it('o detalhe traz os retrabalhos da peça e a foto que não há como servir', async () => {
     responde()
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
     await screen.findByText('148')
     abrirAba('Peças & OPs')
     await screen.findByRole('group', { name: 'Peças' })
@@ -470,7 +484,7 @@ describe('D2 — a lista de peças diz o que o backend realmente filtra', () => 
 
   it('trocar de peça troca o piece_id da consulta de retrabalhos', async () => {
     responde()
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
     await screen.findByText('148')
     abrirAba('Peças & OPs')
 
@@ -482,7 +496,7 @@ describe('D2 — a lista de peças diz o que o backend realmente filtra', () => 
 
   it('vazio honesto e erro com rota + retry', async () => {
     responde({ '/v1/quality/gate/pieces': { data: { pieces: [], total: 0, page: 1, per_page: 20 } } })
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
     await screen.findByText('148')
     abrirAba('Peças & OPs')
     expect(await screen.findByText('Nenhuma peça neste recorte')).toBeTruthy()
@@ -500,7 +514,7 @@ describe('D2 — a lista de peças diz o que o backend realmente filtra', () => 
 describe('D3 — o relatório do turno, e os dois botões que não têm rota', () => {
   it('Exportar WISER e CSV ficam no lugar, desabilitados, dizendo por quê', async () => {
     responde()
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
     await screen.findByText('148')
     abrirAba('Relatórios')
 
@@ -515,7 +529,7 @@ describe('D3 — o relatório do turno, e os dois botões que não têm rota', (
 
   it('os números vêm de /reports/shift — nok_rate é fração e vira percentual', async () => {
     responde()
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
     await screen.findByText('148')
     abrirAba('Relatórios')
 
@@ -527,7 +541,7 @@ describe('D3 — o relatório do turno, e os dois botões que não têm rota', (
 
   it('a tabela é o pareto por classe — não as colunas por ponto do desenho', async () => {
     responde()
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
     await screen.findByText('148')
     abrirAba('Relatórios')
 
@@ -542,7 +556,7 @@ describe('D3 — o relatório do turno, e os dois botões que não têm rota', (
 
   it('turno, data e câmera entram na query; a câmera aparece por NOME', async () => {
     responde()
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
     await screen.findByText('148')
     abrirAba('Relatórios')
     await screen.findByText('152')
@@ -562,7 +576,7 @@ describe('D3 — o relatório do turno, e os dois botões que não têm rota', (
   it('sem reports:export a tela diz que a permissão faltará quando a rota existir', async () => {
     mocks.permissoes = new Set(['reports:read'])
     responde()
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
     await screen.findByText('148')
     abrirAba('Relatórios')
 
@@ -574,7 +588,7 @@ describe('D3 — o relatório do turno, e os dois botões que não têm rota', (
     responde({
       '/v1/quality/reports/shift': { data: { ...TURNO.data, defect_pareto: [] } },
     })
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
     await screen.findByText('148')
     abrirAba('Relatórios')
 
@@ -583,7 +597,7 @@ describe('D3 — o relatório do turno, e os dois botões que não têm rota', (
 
   it('erro: rota, status e retry', async () => {
     responde({ '/v1/quality/reports/shift': new ApiError('boom', 500) })
-    render(<GestaoQualidade />)
+    render(<MemoryRouter><GestaoQualidade /></MemoryRouter>)
     await screen.findByText('148')
     abrirAba('Relatórios')
 
