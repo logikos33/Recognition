@@ -54,6 +54,12 @@ const h = vi.hoisted(() => ({
   /** Só a faixa falha — distinto de `falhar` (que derruba /alerts também),
    *  pra QUEBRA 3 provar que a faixa erra sem quebrar a lista abaixo. */
   falharTimeline: false,
+  /** QUEBRA 4: a faixa responde 200 mas com `data: {}` — sem o campo
+   *  `timeline`. Reproduz o mock catch-all do e2e task-078 (regressão real,
+   *  não flake): `res.data ?? default` deixa passar, `timelinePontos` vira
+   *  `undefined`, `fillBuckets` estoura `rows is not iterable` NO RENDER
+   *  (não num efeito) e derruba a árvore inteira — inclusive a lista. */
+  timelineMalformada: false,
   /** Espelha o `ApiError` real: a tela lê `.status` para dizer o que falhou. */
   ApiErroFalso: class ApiErroFalso extends Error {
     status: number
@@ -73,6 +79,7 @@ vi.mock('../../services/api', () => ({
       if (h.falhar) return Promise.reject(new h.ApiErroFalso(500))
       if (p.startsWith('/v1/events/timeline')) {
         if (h.falharTimeline) return Promise.reject(new h.ApiErroFalso(500))
+        if (h.timelineMalformada) return Promise.resolve({ success: true, data: {} })
         return Promise.resolve({ success: true, data: { timeline: h.timeline, bucket: 'hour' } })
       }
       return Promise.resolve({ success: true, data: h.pagina })
@@ -215,6 +222,7 @@ beforeEach(() => {
   h.timeline = []
   h.falhar = false
   h.falharTimeline = false
+  h.timelineMalformada = false
   h.pagina = { alerts: EVENTOS, total: 4, page: 1, per_page: 20, pages: 1 }
 })
 
@@ -642,6 +650,19 @@ describe('linha do tempo — distribuição clicável no período (item 2)', () 
     // A lista de eventos (rota separada) segue funcionando — falha da faixa
     // não derruba a tela inteira.
     expect(screen.queryByRole('group', { name: /distribuição de eventos/i })).toBeNull()
+  })
+
+  // QUEBRA 4 (regressão real do PR #645, achada pelo e2e task-078): a faixa é
+  // SECUNDÁRIA — um agregado quebrado/vazio nunca pode levar a LISTA junto.
+  // Antes do fix em eventsService.ts, `data: {}` (sem `timeline`) passava
+  // direto pelo `res.data ?? default`, e `fillBuckets` estourava no RENDER
+  // (não num efeito capturável por try/catch de fetch) — React descartava a
+  // árvore inteira, lista incluída. Este teste falha-antes/passa-depois.
+  it('agregado da faixa vem malformado (sem `timeline`) — a lista de eventos continua de pé', async () => {
+    h.timelineMalformada = true
+    montar()
+    await screen.findByText('CAM-04 Expedição')
+    expect(screen.getByRole('table')).toBeTruthy()
   })
 })
 

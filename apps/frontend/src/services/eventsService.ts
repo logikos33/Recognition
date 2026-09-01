@@ -75,17 +75,32 @@ function buildQuery(params: EventsRangeParams, bucket?: string): string {
 }
 
 export const eventsService = {
+  // `res.data ?? default` só protege contra `data` ausente — não contra um
+  // `data` presente porém incompleto (`{}`, visto num mock de teste e
+  // plausível num hiccup de rede/backend). `timeline` sempre-array é o
+  // contrato que `fillBuckets` (utils/timeBuckets.ts) assume sem checar —
+  // sem isto, `for (const row of rows)` explode em render (não em efeito) e
+  // derruba a ÁRVORE INTEIRA de quem chama, lista de eventos incluída.
   async getTimeline(params: TimelineParams): Promise<TimelineData> {
     const res = await api.get<Envelope<TimelineData>>(
       `/v1/events/timeline?${buildQuery(params, params.bucket)}`
     )
-    return res.data ?? { timeline: [], bucket: params.bucket ?? 'hour' }
+    const timeline = res.data?.timeline
+    return {
+      timeline: Array.isArray(timeline) ? timeline : [],
+      bucket: res.data?.bucket ?? params.bucket ?? 'hour',
+    }
   },
 
   async getSummary(params: EventsRangeParams): Promise<SummaryData> {
     const res = await api.get<Envelope<SummaryData>>(
       `/v1/events/summary?${buildQuery(params)}`
     )
-    return res.data ?? { total: 0, by_class: [], by_camera: [] }
+    const d = res.data
+    return {
+      total: d?.total ?? 0,
+      by_class: Array.isArray(d?.by_class) ? d.by_class : [],
+      by_camera: Array.isArray(d?.by_camera) ? d.by_camera : [],
+    }
   },
 }
