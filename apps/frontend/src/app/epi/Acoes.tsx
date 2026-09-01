@@ -207,6 +207,12 @@ export function Acoes() {
   // o total de linhas nos usos abaixo, nunca 500 nem NaN na tela).
   const [situacoesAbertas, setSituacoesAbertas] = useState<number | null>(null)
   const [situacoesFeitas, setSituacoesFeitas] = useState<number | null>(null)
+  // QUEBRA 3 (rodada de correção): NÃO é `situacoesAbertas + situacoesFeitas`
+  // — uma rajada parcialmente reconhecida (parte ack=false, parte ack=true)
+  // conta 1 sessão em CADA recorte isolado e infla a soma. Este é o
+  // `total_situacoes` de um TERCEIRO pedido sem filtro `acknowledged` — a
+  // MESMA rajada, vista sobre a união dos dois estados, conta 1 vez só.
+  const [situacoesTotal, setSituacoesTotal] = useState<number | null>(null)
   const [reconhecendo, setReconhecendo] = useState<string | null>(null)
   const [julgando, setJulgando] = useState<string | null>(null)
   // Cartões/linhas de rajada expandidos (id do representante) — nunca
@@ -222,11 +228,16 @@ export function Acoes() {
 
   const carregar = useCallback(async () => {
     setFase('carregando')
-    const base = `kind=violation&start_date=${encodeURIComponent(desde(DIAS))}&per_page=${POR_PAGINA}`
+    const baseFiltro = `kind=violation&start_date=${encodeURIComponent(desde(DIAS))}`
     try {
-      const [aberto, feito] = await Promise.all([
-        api.get<Envelope>(`/alerts?${base}&acknowledged=false`),
-        api.get<Envelope>(`/alerts?${base}&acknowledged=true`),
+      // QUEBRA 3: o terceiro pedido (sem `acknowledged`, `per_page=1` — só
+      // o envelope importa, não os itens) devolve `total_situacoes` sobre a
+      // UNIÃO dos dois estados. Fonte do denominador — nunca a soma dos
+      // outros dois recortes (dupla-conta rajada parcialmente reconhecida).
+      const [aberto, feito, todos] = await Promise.all([
+        api.get<Envelope>(`/alerts?${baseFiltro}&per_page=${POR_PAGINA}&acknowledged=false`),
+        api.get<Envelope>(`/alerts?${baseFiltro}&per_page=${POR_PAGINA}&acknowledged=true`),
+        api.get<Envelope>(`/alerts?${baseFiltro}&per_page=1`),
       ])
       setAbertas(aberto.data?.alerts ?? [])
       setFeitas(feito.data?.alerts ?? [])
@@ -234,6 +245,7 @@ export function Acoes() {
       setTotalFeitas(feito.data?.total ?? 0)
       setSituacoesAbertas(aberto.data?.total_situacoes ?? null)
       setSituacoesFeitas(feito.data?.total_situacoes ?? null)
+      setSituacoesTotal(todos.data?.total_situacoes ?? null)
       setFase('pronto')
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'falha desconhecida')
@@ -335,7 +347,12 @@ export function Acoes() {
   // chave nova (nunca NaN, nunca 500).
   const situAbertasN = situacoesAbertas ?? totalAbertas
   const situFeitasN = situacoesFeitas ?? totalFeitas
-  const situTotal = situAbertasN + situFeitasN
+  // QUEBRA 3: NÃO `situAbertasN + situFeitasN` — cada termo vem de um
+  // recorte isolado (ack=false / ack=true) regrupado à parte, e uma rajada
+  // que atravessa os dois estados conta 1 sessão em CADA um, inflando a
+  // soma. `situacoesTotal` é o `total_situacoes` da UNIÃO (3º pedido, sem
+  // filtro `acknowledged`) — a mesma rajada, vista inteira, conta 1 vez.
+  const situTotal = situacoesTotal ?? (totalAbertas + totalFeitas)
   const taxa = situTotal === 0 ? 0 : Math.round((situFeitasN / situTotal) * 100)
 
   const cartao = (grupo: Rajada<Evento>, concluida: boolean) => {
