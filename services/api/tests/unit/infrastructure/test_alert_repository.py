@@ -63,6 +63,57 @@ class TestCreate:
         params = cur.execute.call_args[0][1]
         assert params[0] == str(camera_id)
 
+    def test_timestamp_omitted_when_not_given(self):
+        """Caminho ao vivo: sem `timestamp`, a coluna nem entra no INSERT —
+        o DEFAULT NOW() do schema decide, comportamento inalterado."""
+        cur = MagicMock()
+        cur.fetchone.return_value = {"id": "x"}
+        repo, cur = _repo(cur)
+        repo.create(uuid4(), [], 0.5, "k")
+        query = cur.execute.call_args[0][0]
+        assert "timestamp" not in query
+
+    def test_timestamp_included_when_given(self):
+        """Inferência retroativa: `timestamp` grava a hora REAL da captura,
+        não a hora do INSERT — é o par que ProcedenciaBadge lê no front."""
+        captured = datetime(2026, 8, 20, 12, 0, 0)
+        cur = MagicMock()
+        cur.fetchone.return_value = {"id": "x"}
+        repo, cur = _repo(cur)
+        repo.create(uuid4(), [], 0.5, "k", timestamp=captured)
+        query, params = cur.execute.call_args[0]
+        assert "timestamp" in query
+        assert params[-1] == captured
+
+
+# ---------------------------------------------------------------------------
+# exists_at_capture
+# ---------------------------------------------------------------------------
+
+class TestExistsAtCapture:
+
+    def test_true_when_row_found(self):
+        cur = MagicMock()
+        cur.fetchone.return_value = {"?column?": 1}
+        repo, cur = _repo(cur)
+        assert repo.exists_at_capture(uuid4(), datetime(2026, 8, 20, 12, 0, 0)) is True
+
+    def test_false_when_no_row(self):
+        cur = MagicMock()
+        cur.fetchone.return_value = None
+        repo, cur = _repo(cur)
+        assert repo.exists_at_capture(uuid4(), datetime(2026, 8, 20, 12, 0, 0)) is False
+
+    def test_queries_by_camera_and_timestamp(self):
+        camera_id = uuid4()
+        captured = datetime(2026, 8, 20, 12, 0, 0)
+        cur = MagicMock()
+        cur.fetchone.return_value = None
+        repo, cur = _repo(cur)
+        repo.exists_at_capture(camera_id, captured)
+        params = cur.execute.call_args[0][1]
+        assert params == (str(camera_id), captured)
+
 
 # ---------------------------------------------------------------------------
 # get_by_camera

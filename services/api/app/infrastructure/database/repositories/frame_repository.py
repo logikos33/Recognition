@@ -144,6 +144,45 @@ class FrameRepository(BaseRepository):
             (str(video_id),),
         )
 
+    def get_by_tenant_source_daterange(
+        self,
+        tenant_id: "UUID | str",
+        source: str,
+        date_from: datetime,
+        date_to: datetime,
+        module_code: "str | None" = None,
+    ) -> "list[dict[str, Any]]":
+        """Frames de UMA fonte (ex.: `FrameSource.NVR`) do tenant, com câmera e
+        captura conhecidas, numa janela `[date_from, date_to)`.
+
+        Alimenta a inferência RETROATIVA (Nível 1 — frames já na nuvem, sem
+        tocar no box): é o "o que já está armazenado" que
+        `tasks.inference.retroactive_inference` varre. `camera_id`/
+        `captured_at` NOT NULL de propósito — sem câmera não há detector para
+        resolver, sem `captured_at` não há como carimbar a hora real da
+        captura no alerta (ver `AlertRepository.create(timestamp=...)` e
+        `ProcedenciaBadge`), e um frame assim nunca produziria alerta mesmo
+        que entrasse na lista.
+
+        Ordenado por `captured_at ASC` — mesma ordem em que os eventos
+        aconteceram no site, útil para acompanhar o progresso de um lote
+        grande pelos logs.
+        """
+        conditions = [
+            "tenant_id = %s", "source = %s", "camera_id IS NOT NULL",
+            "captured_at IS NOT NULL", "captured_at >= %s", "captured_at < %s",
+        ]
+        params: list[Any] = [str(tenant_id), str(source), date_from, date_to]
+        if module_code:
+            conditions.append("module_code = %s")
+            params.append(module_code)
+        return self._execute(
+            "SELECT id, camera_id, r2_key, captured_at, module_code "
+            "FROM training_frames WHERE " + " AND ".join(conditions) +  # noqa: S608
+            " ORDER BY captured_at ASC",
+            tuple(params),
+        )
+
     def get_next_unannotated(self, video_id: UUID) -> dict[str, Any] | None:
         """Busca próximo frame não anotado (FIFO)."""
         return self._execute_one(
