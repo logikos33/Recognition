@@ -93,22 +93,41 @@ câmeras ativas, zero alertas nas últimas 24h (nenhum desde 25/08) → score 10
 ### 3. Eventos (o catálogo, a repetição, a régua "em observação")
 
 - **URL:** `/novo/epi/eventos` — se veio do CTA, o filtro de período já chega em **30 dias**; se
-  não, trocar manualmente o seletor de período para "30 dias".
+  não, trocar manualmente. A tela abre em **"hoje"** por padrão, que fica **vazia** (não há evento
+  novo desde 25/08) — trocar para "30 dias" antes de mostrar qualquer coisa. A tela também abre
+  com o filtro de tipo fixo em **"Violações"** (`kind='violation'` é o default do código,
+  `Eventos.tsx:190,308` — não é escolha do presenter): ⛔ não prometa ver vermelho, verde e cinza
+  já na abertura — é preciso trocar o seletor de tipo manualmente para ver conformidade e "não
+  definida".
 - **Mostrar:** a lista. Cada linha tem uma etiqueta colorida: **vermelho** = violação de verdade,
   **verde** = equipamento em uso (conformidade), **cinza** = "não definida". Usar o filtro de tipo
-  de evento para mostrar as três: "Violações", "Conformidade", e "Não definida (ninguém
+  de evento para passar pelas três: "Violações", "Conformidade", e "Não definida (ninguém
   classificou)".
+- **Mostrar (julgar uma detecção — com o filtro em "Conformidade"):** cada linha ainda não revisada
+  mostra dois botões, **"Procedente"** e **"Falso positivo"** (`Eventos.tsx:663-679`, condicionados
+  a `veredito === 'nao-revisado'`). Clicar chama o **mesmo endpoint**
+  `POST /api/verification/<id>/review` que a fila de Verificação usaria — mesma verdade gravada,
+  aqui é só onde ela aparece clicável hoje (ver Passo 4).
 - **Dizer (catálogo com dois níveis de confiança):** "O sistema não trata toda falta de
   equipamento do mesmo jeito. Pra luva e pra máscara, a régua de acerto já é firme, e essas duas
-  ACUSAM — entram na lista como violação de verdade. Pra óculos, protetor de ouvido e o jeito de
-  usar a máscara, o sistema ainda está no período de aprendizado: ele REGISTRA o que viu, mas não
-  acusa ninguém — fica com a etiqueta cinza. É de propósito: a gente prefere mostrar menos avisos
-  de verdade do que acusar quem está cumprindo."
+  ACUSAM — entram na lista como violação de verdade. Pro jeito de usar a máscara e pro protetor de
+  ouvido, o sistema ainda está no período de aprendizado: ele REGISTRA o que viu, mas não acusa
+  ninguém — fica com a etiqueta cinza. É de propósito: a gente prefere mostrar menos avisos de
+  verdade do que acusar quem está cumprindo."
+- **Cuidado (óculos — não citar como exemplo do parágrafo acima):** ⛔ não diga "óculos não acusa
+  ninguém". Hoje "Sem Óculos" tem um comportamento inconsistente: o filtro "Violações" conta as 23
+  ocorrências como violação (bate um item do catálogo GLOBAL do sistema, fora do controle deste
+  tenant — achado registrado, não corrigido nesta rodada), enquanto o selo colorido da própria
+  linha pinta essas mesmas 23 de cinza "não definida". Se o cliente reparar numa linha cinza dentro
+  do filtro "Violações", a resposta honesta é: "esse item específico ainda tem uma inconsistência
+  interna de calibração já identificada — a contagem está certa, a cor da etiqueta é que ainda não
+  bateu com ela."
 - **Dizer (se o cliente estranhar a lista comprida/repetitiva):** "Reparem que às vezes a mesma
   pessoa aparece várias vezes seguidas em poucos segundos — é a câmera registrando de novo
-  enquanto a situação continua, não é o sistema contando errado. São por volta de 180 situações
-  reais ali dentro, só que hoje cada segundo de uma mesma situação ainda vira uma linha própria — é
-  o próximo ajuste da lista, já identificado."
+  enquanto a situação continua, não é o sistema contando errado. Pela própria regra do produto
+  (mesma câmera e mesmo item dentro de 60 segundos = a mesma situação), são 72 situações reais ali
+  dentro, só que hoje cada segundo de uma mesma situação ainda vira uma linha própria — é o
+  próximo ajuste da lista, já identificado."
 - **Dizer (sobre a coluna de confiança, se perguntarem "o que quer dizer esse número/aquela
   frase"):** hoje, com este login, a coluna mostra **"precisão ainda não medida"** — não mostrar
   isso como se fosse a resposta final. A resposta é falada, com o número que já medimos por fora:
@@ -119,45 +138,74 @@ câmeras ativas, zero alertas nas últimas 24h (nenhum desde 25/08) → score 10
   diretamente um evento por ID conhecido, `/novo/epi/eventos/<id>`, usando qualquer ID copiado
   do banco antes da demo.
 
-**Verifiquei:** código lido em `Eventos.tsx` (três eixos e paletas, linhas 8-19; filtro "Não
-definida", linhas 473-483). Banco DEV confirma a régua atual do catálogo do RVB — `is_violation`
-em `public.yolo_classes`: **true** (acusa) em Sem Luvas / Sem mascara / Sem botas; **NULL** (em
-observação) em Sem Óculos / Sem protetor de ouvido / Uso incorreto de mascara; **false**
-(conformidade) em Protetor auditivo / Óculos / Botas / mascara — bate exatamente com os números do
-Vitor (66 violação + 55 observação + 302 conformidade = 423). A frase "precisão ainda não medida"
-vem de `confidenceDisplay.ts` (linha 42) — nenhuma tela hoje passa o parâmetro de precisão medida
-por classe (grep confirma zero call sites), então é isso que vai aparecer, não um percentual.
+**Verifiquei (reconferido 01/09 — os números do Passo 3 estavam errados numa rodada anterior,
+corrigidos aqui):** código lido em `Eventos.tsx` (três eixos e paletas, linhas 8-19; filtro "Não
+definida", linhas 473-483; botões de julgar, linhas 663-679; `kind` default, linhas 190 e 308).
+A polaridade real que a tela usa NÃO é `yolo_classes.is_violation` puro — é
+`AlertRepository._nomes_por_polaridade` (linhas 125-146), que UNE o catálogo GLOBAL
+(`module_classes`, casado por `class_name` OU `display_name`) com as classes do tenant, SEM
+subtração. `module_classes` tem `no_glasses` com `display_name='Sem Óculos'` e `is_violation=TRUE`
+globalmente — então mesmo o tenant tendo `is_violation IS NULL` (observação) pra "Sem Óculos" em
+`yolo_classes`, ela continua contando como violação pela união. Reproduzi a classificação real
+(mesmo predicado `_IS_COMPLIANCE_SQL`/`_IS_VIOLATION_SQL` do código) sobre os 423 alertas do
+tenant: **violação 89** (Sem Luvas 33 + Sem mascara 33 + Sem Óculos 23) · **observação 32** (Sem
+protetor de ouvido 22 + Uso incorreto de mascara 10) · **conformidade 302** — bate 89+32+302=423.
+Os números antigos (66/55) vieram de ler `yolo_classes.is_violation` isolado, ignorando essa união
+com o catálogo global — esse foi o erro. "Sem botas" está no catálogo do tenant como violação
+(`is_violation=TRUE`) mas **arquivada** (`archived_at` 22/08) e **zero alertas reais** têm essa
+classe — não citar como exemplo ativo. A frase "precisão ainda não medida" vem de
+`confidenceDisplay.ts` (linha 42) — nenhuma tela hoje passa o parâmetro de precisão medida por
+classe (grep confirma zero call sites), então é isso que vai aparecer, não um percentual.
 `curl … /api/v1/events/timeline` sem token → `401` (rota existe, exige login).
 
 ---
 
-### 4. Verificação (revisar uma detecção)
+### 4. Corrigir uma caixa (no detalhe do evento — a Verificação dedicada é parada opcional, ver
+   abaixo)
 
-- **URL:** `/novo/epi/verificacao`
-- **Mostrar:** a fila. Abrir o primeiro item. Mostrar a lupa (roda do mouse ou pinça = zoom,
-  arrastar = mover a imagem) e o botão "Corrigir caixa" (arrastar a caixa se ela pegou a pessoa
-  errada). Confirmar ou rejeitar o item: se **rejeitar**, a tela pede um motivo antes de deixar
-  salvar (dropdown: "O EPI está presente" / "Não dá para ver a pessoa" / "O sistema confundiu com
-  outra coisa" / "Outro motivo").
+- **URL:** `/novo/epi/eventos/<id>` — clicar em qualquer linha da lista do Passo 3 abre o detalhe.
+- **Mostrar:** a lupa (roda do mouse ou pinça = zoom, arrastar = mover a imagem) e o botão
+  "Corrigir caixa" (`EventoDetalhe.tsx:765`) — arrastar a caixa se ela pegou a pessoa errada. Se
+  ainda não tiver julgado nenhum item no Passo 3, o mesmo par de botões **"Procedente"/"Falso
+  positivo"** existe aqui também; **rejeitar** pede um motivo antes de salvar (dropdown: "O EPI
+  está presente" / "Não dá para ver a pessoa" / "O sistema confundiu com outra coisa" / "Outro
+  motivo").
 - **Dizer:** "Aqui a pessoa da segurança bate o olho na imagem que gerou o evento. Pode dar zoom,
   pode arrastar a caixinha se ela pegou meio torto. E se ela disser que o sistema errou, a gente
   pede o motivo — isso é o que alimenta o sistema aprender a não errar de novo."
-- **Nota (verificado no banco, honesta se perguntarem "quais faltam revisar"):** hoje a fila que
-  está pendente (302 itens) é toda de imagens de **conformidade** — equipamento em uso — porque as
-  violações já foram todas revisadas nesta calibração. Não afeta a demonstração (o mecanismo de
-  zoom/caixa/motivo é idêntico para qualquer tipo de imagem), mas não prometer "vamos revisar uma
-  violação de sem-luvas" — o item que vai aparecer é de alguém usando o equipamento certo.
-- **Se não funcionar** (fila mostra "Fila zerada" — improvável, mas o dado muda todo dia): usar o
-  mesmo recurso dentro de um evento específico, em `/novo/epi/eventos/<id>` — é a mesma lupa e a
-  mesma correção de caixa, só que dentro do detalhe do evento em vez da fila.
+- **Se não funcionar:** voltar para a lista de Eventos e abrir outra linha — o mecanismo é o mesmo
+  em qualquer evento com caixa desenhável.
 
-**Verifiquei:** código lido em `Verificacao.tsx` (lupa+correção de caixa, linhas 82-134; motivo
-obrigatório ao rejeitar, linhas 543-547 e 1182-1206). Banco DEV: `verification_verdict IS NULL`
-para o tenant RVB = **302 linhas**, todas com `is_violation = false` (conformidade) — as 121
-alertas de violação/observação já têm veredito humano registrado. `curl -X POST …
-/api/verification/<id>/review` sem token → `401` (rota existe). Fallback (`EventoDetalhe.tsx`)
-testado da mesma forma: rota `/novo/epi/eventos/<id>` → `200`, mesma lupa reaproveitada (comentário
-linha 94 do próprio arquivo confirma a origem compartilhada).
+**Verifiquei:** código lido em `EventoDetalhe.tsx` (correção de caixa, linhas 197-530; botão
+"Corrigir caixa", linha 765). `curl -X POST … /api/verification/<id>/review` sem token → `401`
+(rota existe).
+
+---
+
+### 4b. Verificação dedicada (opcional, ~10 segundos — hoje mostra fila zerada, e está certo)
+
+- **URL:** `/novo/epi/verificacao`.
+- **Mostrar (só se sobrar tempo ou o cliente perguntar "onde vocês revisam"):** a tela abre em
+  **"Fila zerada"** — e isso é o estado certo hoje, não um imprevisto para contornar. **⛔ Nunca
+  prometer que vai aparecer um item.**
+- **Dizer (o porquê, medido no banco agora):** "essa fila junta só o que ainda está em dúvida — ela
+  deixa de fora, de propósito, o que o sistema já considera equipamento em uso. O Vitor acabou de
+  revisar os 121 alertas que estavam em dúvida nesta calibração; o que sobra no banco (302
+  registros) é tudo conformidade, então a fila fica vazia. É a régua funcionando, não travando."
+- **Se o cliente quiser ver o mecanismo de julgar de qualquer forma:** voltar para Eventos (Passo
+  3), filtrar por "Conformidade" — lá tem itens ainda não revisados de verdade, com os mesmos
+  botões.
+
+**Verifiquei (reconferido 01/09 — meça de novo antes de apresentar, o Vitor pode ter julgado mais
+itens entre agora e a demo):** código lido em `verification_service.py`
+(`_candidatos_sql`, linhas 102-138: `verification_verdict IS NULL AND NOT
+_IS_COMPLIANCE_SQL`). Reproduzi o predicado exato no banco DEV para o tenant RVB: fila
+(`verdict IS NULL AND NOT compliance`) = **0 itens**. `verdict IS NULL` sozinho = **302 linhas**,
+e as 302 são **100% conformidade** — bate com a fila vazia. `curl -X POST …
+/api/verification/<id>/review` sem token → `401` (rota existe). Fallback confirmado:
+`EventoDetalhe.tsx` (Passo 4) usa o mesmo mecanismo de lupa/correção de caixa —
+`Verificacao.tsx:91` afirma no próprio comentário que `PATCH /alerts/<id>/violations` "é o MESMO
+endpoint de `EventoDetalhe.tsx`".
 
 ---
 
@@ -182,8 +230,9 @@ cor próprios, linhas 13-22). `curl -o /dev/null -w '%{http_code}' … /novo/epi
 
 ## NÃO PROMETER (setembro)
 
-- Contar como "1 situação" as ~238 linhas repetidas da mesma câmera+item em poucos segundos —
-  hoje cada repetição é uma linha própria (achado já registrado, não entrou nesta rodada).
+- Contar como "1 situação" as ~351 linhas repetidas da mesma câmera+item dentro da janela de 60s
+  de rajada (423 alertas − 72 situações reais, ver Passo 3) — hoje cada repetição é uma linha
+  própria (achado já registrado, não entrou nesta rodada).
 - Mostrar o percentual de acerto medido por item diretamente na tela — hoje a coluna diz
   "precisão ainda não medida" para qualquer login que não seja superadmin; o número é falado pelo
   apresentador, não lido da tela.
