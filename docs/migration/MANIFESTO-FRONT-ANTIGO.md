@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 388 arquivos, 65.512 linhas
+## Situação — 388 arquivos, 65.521 linhas
 
 | status | arquivos |
 |---|---:|
@@ -231,7 +231,7 @@ apagado não são a mesma coisa.
 | `src/services/edgeService.ts` | `INFRA` | — | 197 |
 | `src/services/eventsService.ts` | `INFRA` | — | 85 |
 | `src/services/impersonation.ts` | `INFRA` | — | 93 |
-| `src/services/modelDisplay.ts` | `INFRA` | — | 33 |
+| `src/services/modelDisplay.ts` | `INFRA` | — | 42 |
 | `src/services/moduleService.ts` | `INFRA` | — | 54 |
 | `src/services/monitoringService.ts` | `INFRA` | — | 108 |
 | `src/services/propagationService.ts` | `INFRA` | — | 157 |
