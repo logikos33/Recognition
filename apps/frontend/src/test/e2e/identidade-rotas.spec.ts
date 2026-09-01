@@ -409,4 +409,78 @@ test.describe('evidência visual (F5-LEVE, rodada única)', () => {
     expect(cor, `chip ativo saiu ${cor} — família roxa do tema legado`).toBe('rgb(0, 145, 173)')
     await evidencia(page, 'estudio-chip-ativo-galeria')
   })
+
+  /**
+   * F5-LEVE (identidade, rodada 2): as réguas acima só visitam rota em
+   * ESTADO NORMAL — nenhuma nunca abriu modal/dropdown/popover, então nunca
+   * inspecionaram o que um `Dialog.Portal`/`Popover.Portal` do Radix (Modal,
+   * ConfirmDialog, CameraFilterSelector) monta fora da árvore de `.raiz`
+   * (anexado a `document.body`) — exatamente onde `paletaLkSobreTemaLegado`
+   * (Shell.css.ts) não alcançava antes desta rodada. Este teste ABRE essas
+   * camadas de verdade (achado do Vitor: "Arquivar câmera" saía roxo) — é a
+   * prova de que a régua agora INSPECIONA o portal, não só a rota estática.
+   */
+  test('Camadas flutuantes (modal, popover) via Portal saem ciano, não roxo', async ({ page }) => {
+    await entrarComoSuperadmin(page)
+    // Mais específico DEPOIS do catch-all — mesmo motivo do teste do live view.
+    await page.route('**/api/cameras**', (rota) => {
+      if (rota.request().method() !== 'GET') return rota.fallback()
+      return rota.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            cameras: [{
+              id: 'cam-1', name: 'CAM-01', manufacturer: 'intelbras', host: '10.0.0.9',
+              port: 554, channel: 1, is_active: true, created_at: '2026-08-01T00:00:00Z',
+              location: 'DOCA', fps_target: 12, site_id: null,
+            }],
+          },
+        }),
+      })
+    })
+
+    await page.goto('/novo/epi/cameras')
+
+    // "Adicionar câmera" (CameraOnboardingWizard, dentro de `Modal`/
+    // `Dialog.Portal`) — o disparo mais barato: sem seleção prévia, só a
+    // permissão de superadmin que a fixture já concede.
+    await page.getByRole('button', { name: 'Adicionar câmera' }).click()
+    const dialogoAdicionar = page.getByRole('dialog')
+    await expect(dialogoAdicionar).toBeVisible({ timeout: 10_000 })
+    const proximo = dialogoAdicionar.getByRole('button', { name: /Próximo/ })
+    const corProximo = await proximo.evaluate((el) => getComputedStyle(el).backgroundColor)
+    expect(corProximo, `botão "Próximo" do modal saiu ${corProximo} — família roxa do tema legado`).toBe('rgb(0, 229, 255)')
+    let m = await page.evaluate(medir)
+    expect(m.roxos, `roxo do tema legado com o modal de cadastro aberto —\n${m.roxos.join('\n')}`).toEqual([])
+    await dialogoAdicionar.getByRole('button', { name: 'Fechar' }).click()
+    await expect(dialogoAdicionar).toBeHidden()
+
+    // ConfirmDialog "Arquivar câmera" — a evidência ORIGINAL do Vitor (botão
+    // "Arquivar" saindo roxo). Mesma família de componente (`Modal`), gatilho
+    // diferente: exige uma câmera já selecionada (a primeira da lista, por
+    // `Cameras.tsx`).
+    await page.getByRole('button', { name: 'Arquivar', exact: true }).click()
+    const dialogoArquivar = page.getByRole('dialog')
+    await expect(dialogoArquivar).toBeVisible({ timeout: 10_000 })
+    const arquivar = dialogoArquivar.getByRole('button', { name: 'Arquivar' })
+    const corArquivar = await arquivar.evaluate((el) => getComputedStyle(el).backgroundColor)
+    expect(corArquivar, `botão "Arquivar" do modal saiu ${corArquivar} — família roxa do tema legado`).toBe('rgb(0, 229, 255)')
+    m = await page.evaluate(medir)
+    expect(m.roxos, `roxo do tema legado com o modal de arquivar aberto —\n${m.roxos.join('\n')}`).toEqual([])
+    await evidencia(page, 'cameras-modal-arquivar-portal')
+
+    // CameraFilterSelector (Popover/`Popover.Portal`) — mesma família de
+    // escape (Radix Portal), mecanismo diferente do Dialog.
+    await page.goto('/novo/estudio/dados')
+    await page.getByRole('button', { name: 'Câmera: todas' }).click()
+    const popover = page.getByRole('button', { name: 'Todas', exact: true }).last()
+    await expect(popover).toBeVisible({ timeout: 10_000 })
+    const corPopoverAcao = await popover.evaluate((el) => getComputedStyle(el).color)
+    expect(corPopoverAcao, `ação "Todas" do popover saiu ${corPopoverAcao} — família roxa do tema legado`).toBe('rgb(0, 229, 255)')
+    m = await page.evaluate(medir)
+    expect(m.roxos, `roxo do tema legado com o popover de câmera aberto —\n${m.roxos.join('\n')}`).toEqual([])
+    await evidencia(page, 'estudio-popover-camera')
+  })
 })

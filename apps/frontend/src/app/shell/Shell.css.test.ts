@@ -62,4 +62,24 @@ describe('paletaLkSobreTemaLegado — remap do shell novo sobre o tema legado', 
     const raiz = fonte.slice(fonte.indexOf('export const raiz'))
     expect(raiz).toContain('vars: paletaLkSobreTemaLegado')
   })
+
+  /**
+   * F5-LEVE (identidade, rodada 2): `.raiz` só cobre quem está DENTRO da
+   * árvore DOM do shell — Radix Portal (Modal/Popover/Tooltip) e o
+   * `ToastProvider` escapam pra fora dela (ver Shell.tsx/`identidade-rotas.
+   * spec.ts`, achado: "Arquivar câmera" saía roxo mesmo com `.raiz` remapado).
+   * Guarda que o alcance pro `documentElement` também não fica órfão — é
+   * exatamente esse buraco que reabriu a régua da vez passada.
+   */
+  it('o remap TAMBÉM alcança document.documentElement (portais escapam de .raiz)', () => {
+    const aqui = path.dirname(fileURLToPath(import.meta.url))
+    const fonte = fs.readFileSync(path.join(aqui, 'Shell.css.ts'), 'utf-8')
+    expect(fonte).toContain("globalStyle('html[data-lk-shell]'")
+
+    const shellTsx = fs.readFileSync(path.join(aqui, 'Shell.tsx'), 'utf-8')
+    expect(shellTsx).toContain("setAttribute('data-lk-shell'")
+    // Sem remover no unmount, o front antigo herdaria ciano depois de
+    // navegar de volta — a limpeza é parte do contrato, não um detalhe.
+    expect(shellTsx).toContain("removeAttribute('data-lk-shell')")
+  })
 })
