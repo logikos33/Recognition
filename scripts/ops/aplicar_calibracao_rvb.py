@@ -77,8 +77,29 @@ def main() -> int:
                 return 1
             tenant_id = row["id"]
 
+            # `yolo_classes.user_id` é NOT NULL (migration 003) e não tem default.
+            # Herdamos o dono das classes que o tenant já tem, em vez de chumbar
+            # um id: assim o script não inventa autoria nem quebra em outro banco.
+            cur.execute(
+                "SELECT user_id FROM public.yolo_classes"
+                " WHERE tenant_id = %s AND user_id IS NOT NULL LIMIT 1",
+                (tenant_id,),
+            )
+            dono = cur.fetchone()
+            if not dono:
+                print(
+                    f"tenant '{TENANT_SLUG}' não tem nenhuma classe com dono — sem user_id para"
+                    " herdar, e este script não inventa autoria. Cadastre a primeira classe pela"
+                    " tela e rode de novo.",
+                    file=sys.stderr,
+                )
+                return 1
+            user_id = dono["user_id"]
+
             print(f"\ntenant {TENANT_SLUG} ({tenant_id})  módulo {MODULE_CODE}")
             print(f"modo: {'APLICAR' if args.aplicar else 'só mostrar (use --aplicar para valer)'}\n")
+
+            erodiveis: list[str] = []  # conformidade gravada no TENANT — a 127 apaga essas
 
             for nome, alvo, porque in DECISOES:
                 cur.execute(
@@ -90,17 +111,51 @@ def main() -> int:
                 rotulo = {True: "acusa", False: "conformidade", None: "indecisa"}
 
                 if atual is None:
+                    # ⛔ NUNCA criar classe cujo nome já exista na UNIÃO. A polaridade
+                    # servida é global(class_name) ∪ global(display_name) ∪ tenant, e o
+                    # catálogo global casa pelos DOIS nomes. Criar uma linha de tenant
+                    # homônima não muda nada na leitura e ainda PARTE a tela de Classes em
+                    # duas entradas com o mesmo nome — uma com as anotações, outra zerada.
+                    # Foi exatamente o que este script fez em 01/09 (ids 15/16/17, removidos):
+                    # olhei só `class_name` do global e não vi que `display_name` já trazia
+                    # 'Sem Óculos', 'Sem Luvas' e 'Óculos'.
+                    cur.execute(
+                        "SELECT class_name, display_name, is_violation"
+                        "  FROM public.module_classes"
+                        " WHERE module_code = %s"
+                        "   AND (lower(class_name) = lower(%s) OR lower(display_name) = lower(%s))",
+                        (MODULE_CODE, nome, nome),
+                    )
+                    global_ = cur.fetchone()
+                    if global_:
+                        print(
+                            f"pular   {nome:<26} já vem do catálogo GLOBAL"
+                            f" ({global_['class_name']} → {rotulo[global_['is_violation']]})"
+                        )
+                        if global_["is_violation"] is not alvo:
+                            print(
+                                f"        ⚠️  o global diz {rotulo[global_['is_violation']]} e a régua"
+                                f" pede {rotulo[alvo]} — a união NÃO subtrai, então criar aqui não"
+                                " resolveria. Rebaixar no global é ato de plataforma (ADR-0071)."
+                            )
+                        continue
+
+                    if alvo is False:
+                        erodiveis.append(nome)
                     acao = f"CRIAR   {nome:<26} → {rotulo[alvo]}"
                     if args.aplicar:
                         cur.execute(
-                            "INSERT INTO public.yolo_classes (tenant_id, module_code, name, is_violation)"
-                            " VALUES (%s, %s, %s, %s)",
-                            (tenant_id, MODULE_CODE, nome, alvo),
+                            "INSERT INTO public.yolo_classes"
+                            " (tenant_id, user_id, module_code, name, is_violation)"
+                            " VALUES (%s, %s, %s, %s, %s)",
+                            (tenant_id, user_id, MODULE_CODE, nome, alvo),
                         )
                 elif atual["is_violation"] is alvo:
                     print(f"ok      {nome:<26} já está em {rotulo[alvo]}")
                     continue
                 else:
+                    if alvo is False:
+                        erodiveis.append(nome)
                     acao = (f"MUDAR   {nome:<26} {rotulo[atual['is_violation']]} → {rotulo[alvo]}")
                     if args.aplicar:
                         cur.execute(
@@ -110,8 +165,10 @@ def main() -> int:
                         )
                 print(f"{acao}\n        porque: {porque}")
 
-        # Aviso de erosão: só CONFORMIDADE (False) em linha nova é apagada pela 127.
-        erodiveis = [nome for nome, alvo, _ in DECISOES if alvo is False]
+        # Aviso de erosão: só CONFORMIDADE (False) gravada NO TENANT é apagada pela 127.
+        # Classe que veio do catálogo global não passa por aqui — a 127 só toca
+        # `yolo_classes`. Por isso a lista sai do que o loop realmente gravaria,
+        # não das DECISOES: senão o script avisa de um risco que não corre.
         if erodiveis:
             print("\n⚠️  NÃO SOBREVIVE AO PRÓXIMO DEPLOY — a migration 127 roda a cada boot e faz")
             print(f"    is_violation=FALSE → NULL para classe criada a partir de {EROSAO_127_A_PARTIR_DE}:")
