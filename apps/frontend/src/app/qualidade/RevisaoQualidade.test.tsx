@@ -21,6 +21,7 @@
  *     lacuna some do radar de quem decide o roadmap.
  */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -125,7 +126,7 @@ const clicar = (el: HTMLElement) => fireEvent.click(el)
 const tecla = (key: string) => fireEvent.keyDown(window, { key })
 
 async function abrirDetalhe(nome = /Madeira exposta na alma/) {
-  render(<RevisaoQualidade />)
+  render(<MemoryRouter><RevisaoQualidade /></MemoryRouter>)
   clicar(await screen.findByRole('button', { name: nome }))
   return screen.findByRole('button', { name: /^CONFORME/ })
 }
@@ -147,9 +148,22 @@ beforeEach(() => {
 it('sem o módulo quality, a fila bloqueia e não chama rota nenhuma', () => {
   get.mockReset()
   temModulo = false
-  render(<RevisaoQualidade />)
+  render(<MemoryRouter><RevisaoQualidade /></MemoryRouter>)
   expect(screen.getByText('Módulo não habilitado')).toBeTruthy()
   expect(get).not.toHaveBeenCalled()
+})
+
+// ── saída da tela (contrato C2 — nenhuma área é beco sem saída) ─────────────
+
+it('R1 (fila) tem "Voltar" — link real (não decoração) para o shell de Qualidade (/novo/quality)', async () => {
+  // Sem barra lateral própria aqui (`quality` está em SEM_BARRA_LATERAL, e
+  // cobre /quality/revisao): sem este link não há caminho de volta nenhum —
+  // regra global, ver app/shell/becoSemSaida.test.tsx. NÃO é o mesmo `s.voltar`
+  // do botão "← Fila" do detalhe (R2): aquele fecha o painel, este sai da
+  // área — a ambiguidade que a própria docstring do teste global alerta.
+  render(<MemoryRouter><RevisaoQualidade /></MemoryRouter>)
+  const link = await screen.findByRole('link', { name: /voltar/i })
+  expect(link.getAttribute('href')).toBe('/novo/quality')
 })
 
 // ── 1 · A inversão ──────────────────────────────────────────────────────────
@@ -206,7 +220,7 @@ describe('semântica do feedback (a inversão que morde)', () => {
 
 describe('rate limit de 60 URLs assinadas por hora', () => {
   it('a FILA não pede nenhuma URL de evidência', async () => {
-    render(<RevisaoQualidade />)
+    render(<MemoryRouter><RevisaoQualidade /></MemoryRouter>)
     await screen.findByText('Madeira exposta na alma')
     expect(get.mock.calls.filter((c) => String(c[0]).includes('evidence-url'))).toEqual([])
   })
@@ -232,7 +246,7 @@ describe('rate limit de 60 URLs assinadas por hora', () => {
 
 describe('lacunas do desenho sem rota', () => {
   it('ponto de inspeção e estação ficam desabilitados e dizem por quê', async () => {
-    render(<RevisaoQualidade />)
+    render(<MemoryRouter><RevisaoQualidade /></MemoryRouter>)
     await screen.findByText('Madeira exposta na alma')
     const ponto = screen.getByLabelText('Ponto de inspeção')
     const estacao = screen.getByLabelText('Estação')
@@ -286,7 +300,7 @@ describe('lacunas do desenho sem rota', () => {
 
 describe('só dado servido', () => {
   it('nenhum UUID cru na tela — camera_id vira nome', async () => {
-    render(<RevisaoQualidade />)
+    render(<MemoryRouter><RevisaoQualidade /></MemoryRouter>)
     await screen.findByText('Madeira exposta na alma')
     expect(document.body.textContent).not.toMatch(
       /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
@@ -295,7 +309,7 @@ describe('só dado servido', () => {
   })
 
   it('chips contam ok/nok reais — não "suspeita de NC" e "dúvida", que não existem', async () => {
-    render(<RevisaoQualidade />)
+    render(<MemoryRouter><RevisaoQualidade /></MemoryRouter>)
     expect(await screen.findByText(/1 apontados NOK/)).toBeTruthy()
     expect(screen.getByText(/1 apontados OK/)).toBeTruthy()
     expect(document.body.textContent).not.toMatch(/dúvida/i)
@@ -311,13 +325,13 @@ describe('só dado servido', () => {
 
   it('a idade máxima só aparece quando a fila INTEIRA veio', async () => {
     servir({}, listaDe([A, B], 2))
-    const { unmount } = render(<RevisaoQualidade />)
+    const { unmount } = render(<MemoryRouter><RevisaoQualidade /></MemoryRouter>)
     expect(await screen.findByText(/mais antigo há/)).toBeTruthy()
     unmount()
 
     // Truncada: o mais antigo real está numa página que não foi lida.
     servir({}, listaDe([A, B], 240))
-    render(<RevisaoQualidade />)
+    render(<MemoryRouter><RevisaoQualidade /></MemoryRouter>)
     await screen.findByText('Madeira exposta na alma')
     expect(screen.queryByText(/mais antigo há/)).toBeNull()
     expect(screen.getByText(/Mostrando os 2 mais recentes de 240/)).toBeTruthy()
@@ -338,14 +352,14 @@ describe('só dado servido', () => {
 describe('estados da tela', () => {
   it('sem permissão de leitura, diz qual chave falta e não chama a API', async () => {
     permissoes = new Set()
-    render(<RevisaoQualidade />)
+    render(<MemoryRouter><RevisaoQualidade /></MemoryRouter>)
     expect(await screen.findByText('Sem permissão')).toBeTruthy()
     expect(get).not.toHaveBeenCalled()
   })
 
   it('erro mostra a ROTA e oferece nova tentativa', async () => {
     servir({ '/v1/quality/inspections?': new Error('HTTP 500') })
-    render(<RevisaoQualidade />)
+    render(<MemoryRouter><RevisaoQualidade /></MemoryRouter>)
     expect(await screen.findByText(/GET \/api\/v1\/quality\/inspections/)).toBeTruthy()
     expect(screen.getByText(/HTTP 500/)).toBeTruthy()
 
@@ -356,7 +370,7 @@ describe('estados da tela', () => {
 
   it('fila vazia é vazio honesto, não zero fingindo métrica', async () => {
     servir({}, listaDe([]))
-    render(<RevisaoQualidade />)
+    render(<MemoryRouter><RevisaoQualidade /></MemoryRouter>)
     expect(await screen.findByText('Fila vazia')).toBeTruthy()
   })
 
@@ -369,7 +383,7 @@ describe('estados da tela', () => {
   })
 
   it('o filtro de turno usa os valores REAIS do backend', async () => {
-    render(<RevisaoQualidade />)
+    render(<MemoryRouter><RevisaoQualidade /></MemoryRouter>)
     await screen.findByText('Madeira exposta na alma')
     fireEvent.change(screen.getByLabelText('Turno'), { target: { value: 'afternoon' } })
     await waitFor(() =>

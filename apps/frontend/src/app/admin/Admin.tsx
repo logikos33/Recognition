@@ -21,10 +21,16 @@
  * `rotaHomeDoUsuario()`, não caminho chumbado: quem entra aqui é sempre
  * superadmin (o gate abaixo garante), então a home É `/admin` — "Voltar"
  * devolve à Visão geral a partir de qualquer sub-rota (Tenants, Usuários...).
+ *
+ * NA PRÓPRIA Visão geral (a home), "Voltar" fica de fora: apontar para
+ * `rotaHomeDoUsuario()` ali seria um link para a PRÓPRIA rota montada — clique
+ * que não navega para lugar nenhum, controle morto com cara de saída (achado
+ * do cético, rodada 2 de C2). Nas sub-rotas o link continua real: leva a um
+ * lugar DIFERENTE de onde se está.
  */
 import { Suspense } from 'react'
 import { ArrowLeft, Building2, HardDrive, LayoutDashboard, ScrollText, Users } from 'lucide-react'
-import { Link, NavLink, Outlet } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 
 import { useAuth } from '../../hooks/useAuth'
 import { rotaHomeDoUsuario } from '../RotasNovas'
@@ -41,16 +47,22 @@ const ITENS = [
 
 export function Admin() {
   const { can, isSuperAdmin } = useAuth()
+  const { pathname } = useLocation()
 
   if (!can('admin:panel')) return <SemPermissao permissao="admin:panel" />
+
+  const home = rotaHomeDoUsuario(isSuperAdmin)
+  const naPropriaHome = pathname === home
 
   return (
     <div className={s.raiz}>
       <nav className={s.lateral} aria-label="Seções do Admin">
-        <Link to={rotaHomeDoUsuario(isSuperAdmin)} className={s.voltar}>
-          <ArrowLeft size={16} strokeWidth={1.7} aria-hidden="true" />
-          Voltar
-        </Link>
+        {!naPropriaHome && (
+          <Link to={home} className={s.voltar}>
+            <ArrowLeft size={16} strokeWidth={1.7} aria-hidden="true" />
+            Voltar
+          </Link>
+        )}
         <span className={s.lateralTitulo}>Plataforma · Admin</span>
         {ITENS.map(({ rota, rotulo, Icone }) => (
           <NavLink

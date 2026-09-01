@@ -91,11 +91,13 @@
  * pedido ao backend.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Check, ChevronRight, ImageOff, Lock, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Check, ChevronRight, ImageOff, Lock, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import { useAuth } from '../../hooks/useAuth'
 import { api } from '../../services/api'
 import { confiancaBruta, confiancaHonesta } from '../../services/confidenceDisplay'
+import { rotaNova } from '../RotasNovas'
 import { useToast } from '../../components/ui/Toast/useToast'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import * as s from './RevisaoQualidade.css'
@@ -594,6 +596,16 @@ export function RevisaoQualidade() {
   return (
     <div className={`${s.raiz} ${s.larguraFila}`}>
       <div className={s.cabecalho}>
+        {/* Tela SEM barra lateral própria (`quality` está em SEM_BARRA_LATERAL,
+            e cobre `/quality/revisao`): sem este link não há caminho de volta
+            nenhum — regra global, ver app/shell/becoSemSaida.test.tsx. Volta
+            para o SHELL de Qualidade (abas), de onde se chega aqui pela aba
+            Inspeções de `Qualidade.tsx`. NÃO é o mesmo `s.voltar` do botão
+            "← Fila" do R2 acima — aquele fecha o detalhe, este sai da área. */}
+        <Link to={rotaNova('/quality')} className={s.voltarArea}>
+          <ArrowLeft size={16} strokeWidth={1.7} aria-hidden="true" />
+          Voltar
+        </Link>
         <h1 className={s.titulo}>Fila de revisão</h1>
         <span className={s.contagem}>{total} itens</span>
         {nok > 0 && (

@@ -36,6 +36,25 @@ export const cabecalho = style({
   flexWrap: 'wrap',
 })
 
+/**
+ * Link de saída da ÁREA (R1, cabeçalho) — mesmo recipe de `Qualidade.css.ts`.
+ * Nome diferente de `voltar` abaixo de propósito: aquele é o botão que fecha
+ * o painel de detalhe (R2), navegação DENTRO da tela; este sai da tela.
+ */
+export const voltarArea = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  padding: '0 12px 0 0',
+  borderRight: `1px solid ${lk.cor.borda}`,
+  fontSize: '13.5px',
+  color: lk.cor.cinzaNevoa,
+  textDecoration: 'none',
+  selectors: {
+    '&:hover': { color: lk.cor.brancoSinal },
+  },
+})
+
 export const titulo = style({
   margin: 0,
   fontFamily: lk.fonte.titulo,

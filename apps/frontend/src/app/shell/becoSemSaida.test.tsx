@@ -106,12 +106,17 @@ const ABRE_AREA: Record<string, AberturaArea | null> = {
     espera: `${PREFIXO_NOVO}/epi/dashboard`,
   },
   admin: {
+    // Monta numa SUB-rota (Tenants), não na Visão geral: na própria home o
+    // link de saída (Voltar) é retirado de propósito, porque lá apontaria
+    // para a rota JÁ montada — controle morto com cara de saída (achado do
+    // cético, rodada 2 de C2; a régua anterior aceitava isso como válido). Ver
+    // o describe dedicado abaixo, que cobre exatamente esse caso ausente.
     montar: () =>
       render(
-        <MemoryRouter initialEntries={[`${PREFIXO_NOVO}/admin`]}>
+        <MemoryRouter initialEntries={[`${PREFIXO_NOVO}/admin/tenants`]}>
           <Routes>
             <Route path={`${PREFIXO_NOVO}/admin`} element={<Admin />}>
-              <Route index element={<div />} />
+              <Route path="tenants" element={<div />} />
             </Route>
           </Routes>
         </MemoryRouter>,
@@ -177,6 +182,23 @@ describe('nenhuma área do front novo é beco sem saída', () => {
     // usuário") — não duplicado aqui.
     expect(rotaHomeDoUsuario(true)).toBe(`${PREFIXO_NOVO}/admin`)
     expect(rotaHomeDoUsuario(false)).toBe(`${PREFIXO_NOVO}/modules`)
+  })
+
+  describe('Admin: a própria Visão geral (raiz) não mostra "Voltar"', () => {
+    it('link para a rota já montada seria controle morto, não saída — por isso some, e a nav segue navegável', () => {
+      auth.isSuperAdmin = true
+      render(
+        <MemoryRouter initialEntries={[`${PREFIXO_NOVO}/admin`]}>
+          <Routes>
+            <Route path={`${PREFIXO_NOVO}/admin`} element={<Admin />}>
+              <Route index element={<div />} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      )
+      expect(screen.queryByRole('link', { name: /voltar/i })).toBeNull()
+      expect(screen.getByRole('navigation', { name: 'Seções do Admin' })).toBeTruthy()
+    })
   })
 
   // Os testes acima mockam `can`/`hasModule` sempre abertos: cegos para os
