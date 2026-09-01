@@ -36,6 +36,16 @@ from psycopg2.extras import RealDictCursor
 TENANT_SLUG = "rvb"
 MODULE_CODE = "epi"
 
+# A migration 127 (`polaridade_nao_erode`) faz, a cada boot em modo LEGADO:
+#     UPDATE yolo_classes SET is_violation = NULL
+#      WHERE is_violation IS FALSE AND created_at >= '2026-08-25'
+# Ela existe para desfazer o backfill cego da 125, e o próprio cabeçalho dela
+# avisa: "no dia em que existir uma rota que grave is_violation, esta migration
+# passa a apagar decisão humana". Este script É essa rota. Então marcar uma
+# classe nova como CONFORMIDADE (False) não sobrevive ao próximo deploy — e
+# falhar em silêncio é justamente o que a casa não aceita. Avisamos.
+EROSAO_127_A_PARTIR_DE = "2026-08-25"
+
 # (nome, is_violation, porquê) — o porquê fica no banco? Não: fica aqui e no relatório.
 # NULL = indecisa (registra, não acusa). True = acusa. False = conformidade.
 DECISOES = [
@@ -99,6 +109,17 @@ def main() -> int:
                             (alvo, tenant_id, nome),
                         )
                 print(f"{acao}\n        porque: {porque}")
+
+        # Aviso de erosão: só CONFORMIDADE (False) em linha nova é apagada pela 127.
+        erodiveis = [nome for nome, alvo, _ in DECISOES if alvo is False]
+        if erodiveis:
+            print("\n⚠️  NÃO SOBREVIVE AO PRÓXIMO DEPLOY — a migration 127 roda a cada boot e faz")
+            print(f"    is_violation=FALSE → NULL para classe criada a partir de {EROSAO_127_A_PARTIR_DE}:")
+            for nome in erodiveis:
+                print(f"   · {nome} volta a 'indecisa' (registra, não acusa — não vira violação)")
+            print("    A própria 127 previu isto: ela precisa ganhar a condição \"e ninguém decidiu")
+            print("    explicitamente\" agora que existe um escritor de polaridade. Até lá, o efeito")
+            print("    é degradação para indecisa, não acusação falsa — mas é silencioso, então fica dito.")
 
         if args.aplicar:
             conn.commit()
