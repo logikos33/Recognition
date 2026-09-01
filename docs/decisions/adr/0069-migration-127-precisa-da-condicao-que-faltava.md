@@ -1,4 +1,4 @@
-# ADR-0068 — Migration 127 já apaga o dia que ela mesma previu
+# ADR-0069 — Migration 127 já apaga o dia que ela mesma previu
 
 - **Status:** Proposta
 - **Data:** 2026-08-31
