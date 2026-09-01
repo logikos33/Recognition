@@ -547,12 +547,16 @@ class CameraService:
         tem frames de treino.
 
         NÃO apaga nem tira frame algum do treino (task B4, corrige claim
-        falsa deste docstring): a fila de Classificar e o export de dataset
-        (versioning_v2._snapshot_labeled_frames/_fetch_annotations) servem
-        e exportam normalmente o material já minerado/anotado de câmera
-        arquivada — descartar veredito humano já dado não protege o modelo
-        de nada, só desperdiça o trabalho. Arquivar só impede CAPTURA NOVA
-        dessa câmera (ela para de aparecer como fonte ativa de coleta).
+        falsa deste docstring): a fila de Classificar, a galeria de Anotar e
+        o export de dataset (versioning_v2._snapshot_labeled_frames/
+        _fetch_annotations) servem e exportam normalmente o material já
+        minerado/anotado de câmera arquivada — descartar veredito humano já
+        dado (ou impedir que ele aconteça) não protege o modelo de nada, só
+        desperdiça o trabalho. Arquivar só impede CAPTURA NOVA dessa câmera
+        (ela para de aparecer como fonte ativa de coleta) — nenhuma das três
+        superfícies acima filtra mais por `is_active` (rodada 3, mesma causa
+        raiz do `is_active` sobrecarregado entre arquivada e rascunho de
+        import: ver frame_repository.list_images_filtered).
         """
         camera = self._camera_repo.get_by_id(camera_id)
         if not camera or str(camera["tenant_id"]) != str(tenant_id):

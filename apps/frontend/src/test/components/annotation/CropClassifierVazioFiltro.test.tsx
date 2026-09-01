@@ -99,4 +99,41 @@ describe('CropClassifier — vazio revela o filtro que esvaziou a fila', () => {
     await screen.findByText('Nenhum recorte não anotado disponível — recarregue para buscar mais.')
     expect(screen.queryByRole('button', { name: 'Limpar filtros' })).toBeNull()
   })
+
+  // RODADA 3 (veredito do cético, QUEBRA 3): metade "classe" do mesmo
+  // contrato acima nunca tinha teste de comportamento — uma mutação que
+  // fazia tipoFilterLabel voltar sempre `null` E clearFilters parar de
+  // limpar tiposSel passava a suíte inteira (1249/1249) em silêncio. Este
+  // teste é o gabarito dessa mutação: precisa reprovar se qualquer uma das
+  // duas quebrar de novo.
+  it('filtro de CLASSE + fila vazia: mostra QUAL classe e oferece "Limpar filtros"; limpar tira o filtro (proposal_classes) da próxima busca E desmarca de volta', async () => {
+    render(<CropClassifier onOpenAdjust={vi.fn()} />)
+
+    await screen.findByText('Nenhum recorte não anotado disponível — recarregue para buscar mais.')
+
+    const mascara = screen.getByRole('checkbox', { name: /Máscara/ }) as HTMLInputElement
+    expect(mascara.checked).toBe(true) // conjunto vazio = tudo marcado (sem filtro)
+    fireEvent.click(mascara) // desmarca só "Máscara" -> tiposSel vira {demais 4 tipos}
+
+    // Mata a mutação "tipoFilterLabel sempre null": sem o rótulo "Classe: …"
+    // este findByText nunca resolve e o teste estoura por timeout.
+    await screen.findByText(/Nenhum recorte com estes filtros:.*Classe:/)
+    expect(mascara.checked).toBe(false)
+
+    const limpar = screen.getByRole('button', { name: 'Limpar filtros' })
+    getMock.mockClear()
+    fireEvent.click(limpar)
+
+    // Mata a mutação "clearFilters não chama setTiposSel": sem isso o
+    // checkbox continua desmarcado e o próximo /training/images continua
+    // levando ?proposal_classes=.
+    await waitFor(() => expect(mascara.checked).toBe(true))
+    await waitFor(() => {
+      const chamada = getMock.mock.calls
+        .map(c => String(c[0]))
+        .find(u => u.startsWith('/training/images?'))
+      expect(chamada).toBeDefined()
+      expect(chamada).not.toContain('proposal_classes')
+    })
+  })
 })

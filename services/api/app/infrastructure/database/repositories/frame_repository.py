@@ -582,25 +582,28 @@ class FrameRepository(BaseRepository):
         conditions = ["tf.tenant_id = %s"]
         params: "list[Any]" = [str(tenant_id)]
 
-        # Câmera arquivada some da galeria/export: material de câmera que saiu
-        # do reconhecimento não deve mais consumir tempo de anotação nem
-        # alimentar o modelo. Frame sem camera_id (upload/vídeo) não é afetado.
+        # Filtro por `cameras.is_active` REMOVIDO da galeria (task B4, rodada
+        # 3 — fecha a QUEBRA 2 do veredito do cético).
         #
-        # A fila de CLASSIFICAÇÃO (only_crops=True) fica DE FORA desta
-        # condição: o recorte já existe e já foi MINERADO antes de a câmera
-        # ser arquivada ou ficar inativa — negar o veredito humano sobre um
-        # recorte que já está no banco não protege o modelo de nada, só
-        # descarta trabalho feito. Medido no DEV (task B4): das 8 câmeras
-        # is_active=false do tenant RVB, 100% (159/159) dos recortes com
-        # proposta pendente pertenciam a elas — a interseção com câmera ativa
-        # era ZERO, fila vazia por construção assim que qualquer filtro de
-        # classe entrava (proposal_classes exige proposta pendente).
-        if not only_crops:
-            conditions.append(
-                "(tf.camera_id IS NULL OR EXISTS ("
-                "  SELECT 1 FROM public.cameras cam"
-                "   WHERE cam.id = tf.camera_id AND cam.is_active = TRUE))"
-            )
+        # `is_active=false` é SOBRECARREGADO: cobre tanto câmera ARQUIVADA
+        # (archive_camera, intencional) quanto câmera RASCUNHO de import em
+        # lote (create_draft, nunca foi ativada). As duas já podem ter frame
+        # de treino antes de qualquer decisão humana sobre a câmera — o
+        # gravador ONVIF aceita snapshot de câmera draft para a tela de
+        # triagem (snapshot_handlers.py) sem passar por `set_active`. Um
+        # filtro por `is_active` escondia da galeria de Anotar justamente o
+        # material de uma câmera ainda em triagem, nunca arquivada.
+        #
+        # Mesma causa raiz já corrigida na fila de Classificar e no export de
+        # dataset (versioning_v2.py): negar o veredito humano (ou impedir que
+        # ele aconteça) sobre um frame já minerado não protege o modelo de
+        # nada, só descarta trabalho. Arquivar/desativar uma câmera é
+        # responsabilidade da INGESTÃO (parar de capturar), não de um filtro
+        # retroativo sobre material já no banco — as três superfícies
+        # (fila, export, galeria) agora tratam `is_active` do mesmo jeito.
+        # `only_crops` segue existindo como parâmetro (heurística de dimensão
+        # mais abaixo), só não decide mais este filtro — não há mais filtro
+        # de câmera aqui para decidir.
 
         if source is not None:
             conditions.append("tf.source = %s")
