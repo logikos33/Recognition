@@ -122,12 +122,19 @@ câmeras ativas, zero alertas nas últimas 24h (nenhum desde 25/08) → score 10
   do filtro "Violações", a resposta honesta é: "esse item específico ainda tem uma inconsistência
   interna de calibração já identificada — a contagem está certa, a cor da etiqueta é que ainda não
   bateu com ela."
-- **Dizer (se o cliente estranhar a lista comprida/repetitiva):** "Reparem que às vezes a mesma
-  pessoa aparece várias vezes seguidas em poucos segundos — é a câmera registrando de novo
-  enquanto a situação continua, não é o sistema contando errado. Pela própria regra do produto
-  (mesma câmera e mesmo item dentro de 60 segundos = a mesma situação), são 72 situações reais ali
-  dentro, só que hoje cada segundo de uma mesma situação ainda vira uma linha própria — é o
-  próximo ajuste da lista, já identificado."
+- **Dizer (se o cliente estranhar a lista comprida/repetitiva):** "Reparem que a mesma pessoa
+  aparece várias vezes seguidas em poucos segundos — é a câmera registrando de novo enquanto a
+  situação continua, não é o sistema contando errado. Pela própria regra do produto (mesma câmera e
+  mesmo item dentro de 60 segundos = a mesma situação), **estas 89 linhas de violação são 3
+  situações**, todas de uma câmera só, num intervalo de dois minutos. Hoje cada registro ainda vira
+  uma linha própria — é o próximo ajuste da lista, já identificado."
+
+  > ⚠️ **Apresentador — o número MUDA com o recorte da tela.** Medido em 01/09 com a janela de 60s
+  > do produto: **Violações 89 linhas → 3 situações** (é aqui que a tela abre) · Observação
+  > 32 → 27 · Conformidade 302 → 120 · Todos os tipos 423 → 150.
+  > ⛔ Nunca dizer "150 situações" com a lista de **Violações** na tela: erra por ordem de grandeza
+  > e ainda desmonta o próprio argumento — "89 linhas = 3 situações" é a prova da repetição;
+  > "89 ≈ 72" soaria como se não houvesse repetição nenhuma.
 - **Dizer (sobre a coluna de confiança, se perguntarem "o que quer dizer esse número/aquela
   frase"):** hoje, com este login, a coluna mostra **"precisão ainda não medida"** — não mostrar
   isso como se fosse a resposta final. A resposta é falada, com o número que já medimos por fora:
@@ -230,9 +237,10 @@ cor próprios, linhas 13-22). `curl -o /dev/null -w '%{http_code}' … /novo/epi
 
 ## NÃO PROMETER (setembro)
 
-- Contar como "1 situação" as ~351 linhas repetidas da mesma câmera+item dentro da janela de 60s
-  de rajada (423 alertas − 72 situações reais, ver Passo 3) — hoje cada repetição é uma linha
-  própria (achado já registrado, não entrou nesta rodada).
+- Contar como "1 situação" as linhas repetidas da mesma câmera+item dentro da janela de 60s de
+  rajada (medido em 01/09: 423 alertas → 150 situações no total; e, no recorte que a tela abre,
+  89 violações → 3 situações — ver Passo 3) — hoje cada repetição é uma linha própria (achado já
+  registrado, não entrou nesta rodada).
 - Mostrar o percentual de acerto medido por item diretamente na tela — hoje a coluna diz
   "precisão ainda não medida" para qualquer login que não seja superadmin; o número é falado pelo
   apresentador, não lido da tela.
