@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 388 arquivos, 65.512 linhas
+## Situação — 388 arquivos, 65.552 linhas
 
 | status | arquivos |
 |---|---:|
@@ -47,7 +47,7 @@ apagado não são a mesma coisa.
 | `src/components/annotation/boxGeometry.ts` | `INFRA` | — | 81 |
 | `src/components/annotation/boxHistory.ts` | `INFRA` | — | 117 |
 | `src/components/annotation/CropClassifier.css.ts` | `INFRA` | — | 288 |
-| `src/components/annotation/CropClassifier.tsx` | `INFRA` | — | 1167 |
+| `src/components/annotation/CropClassifier.tsx` | `INFRA` | — | 1207 |
 | `src/components/annotation/cropClassifierLogic.ts` | `INFRA` | — | 883 |
 | `src/components/annotation/guidelinesContent.ts` | `INFRA` | — | 58 |
 | `src/components/annotation/PropagationStatusBar.css.ts` | `INFRA` | — | 164 |
