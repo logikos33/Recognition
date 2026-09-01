@@ -694,6 +694,21 @@ class TestModelTrainingMetricsRepository:
         assert "LEFT JOIN trained_models tm ON tm.name = m.model_name" in query
         assert "tm.display_name" in query
         assert result[0]["display_name"] == "Logikos V3 · 20/08"
+        # Q3 (veredito rodada 2, D3-nomes.md): sem estas duas linhas, a
+        # query podia perder o escopo de tenant sem nenhum teste reprovar
+        # (mutações M6/M7 do cético passavam verde) — pega isolamento sem
+        # depender de Postgres real:
+        # M6 trocava `WHERE m.tenant_id = %s` por `WHERE %s IS NOT NULL`
+        # (aceita qualquer linha do banco inteiro, não só do tenant).
+        assert "WHERE m.tenant_id = %s" in query
+        # M7 removia o `AND COALESCE(tm.tenant_id, ...) = m.tenant_id` do
+        # LEFT JOIN (trained_models de OUTRO tenant com o mesmo nome de
+        # modelo vazava o display_name errado).
+        assert (
+            "AND COALESCE(tm.tenant_id, (SELECT u.tenant_id FROM users u"
+            in query
+        )
+        assert "WHERE u.id = tm.user_id)) = m.tenant_id" in query
 
 
 class TestAlertRepository:
