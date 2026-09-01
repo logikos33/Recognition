@@ -20,6 +20,7 @@ import { Button } from '../ui/Button/Button'
 import type { ApiResponse } from '../../types'
 import { groupFindings } from './searchContentUi'
 import * as s from './SearchFindingsPanel.css'
+import { SeletorPolaridade, type Polaridade } from '../shared/PolaridadeClasse'
 
 // Mesma convenção de ModuleClassesPage.tsx — módulo único hoje (EPI); os
 // termos prontos desta feature também são todos de EPI.
@@ -67,6 +68,9 @@ export function SearchFindingsPanel({ jobId, onClose }: SearchFindingsPanelProps
   const [newClassName, setNewClassName] = useState('')
   const [newClassColor, setNewClassColor] = useState('#22c55e')
   const [creatingClass, setCreatingClass] = useState(false)
+  /* Nasce 'indefinida': o Criar fica travado até alguém decidir. Classe que
+     nasce muda some do produto — detectada a tarde inteira, nada vira evento. */
+  const [newClassPolaridade, setNewClassPolaridade] = useState<Polaridade>('indefinida')
 
   useEffect(() => {
     let cancelled = false
@@ -158,17 +162,20 @@ export function SearchFindingsPanel({ jobId, onClose }: SearchFindingsPanelProps
     async (term: string) => {
       const name = newClassName.trim()
       if (!name) return
+      if (newClassPolaridade === 'indefinida') return
       setCreatingClass(true)
       try {
         await api.post<ApiResponse<{ class_id: number }>>('/classes', {
           name,
           color: newClassColor,
           module: MODULE_CODE,
+          is_violation: newClassPolaridade === 'violacao',
         })
         setClasses(prev => [...prev, { class_name: name, display_name: name, is_active: true, source: 'tenant' }])
         setGroupClass(prev => ({ ...prev, [term]: name }))
         setCreatingForTerm(null)
         setNewClassName('')
+        setNewClassPolaridade('indefinida')
         toast.success(`Classe "${name}" criada`)
       } catch (err: unknown) {
         toast.error(err instanceof Error ? err.message : 'Erro ao criar classe')
@@ -176,7 +183,7 @@ export function SearchFindingsPanel({ jobId, onClose }: SearchFindingsPanelProps
         setCreatingClass(false)
       }
     },
-    [newClassName, newClassColor, toast],
+    [newClassName, newClassColor, newClassPolaridade, toast],
   )
 
   return (
@@ -269,12 +276,22 @@ export function SearchFindingsPanel({ jobId, onClose }: SearchFindingsPanelProps
                       style={{ width: 28, height: 26, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}
                       title="Cor da classe"
                     />
+                    <SeletorPolaridade
+                      polaridade={newClassPolaridade}
+                      editavel
+                      onChange={setNewClassPolaridade}
+                    />
                     <Button
                       size="sm"
                       variant="primary"
                       loading={creatingClass}
-                      disabled={!newClassName.trim()}
+                      disabled={!newClassName.trim() || newClassPolaridade === 'indefinida'}
                       onClick={() => void handleCreateClass(group.term)}
+                      title={
+                        newClassPolaridade === 'indefinida'
+                          ? 'Escolha se um evento desta classe é violação ou conformidade'
+                          : undefined
+                      }
                     >
                       Criar
                     </Button>
