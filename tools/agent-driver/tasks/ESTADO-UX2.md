@@ -168,9 +168,24 @@ mostra acerta 6 em 10, em vez de acusar quem cumpre em 7 de 10.
 
 ## PLACAR (31/08 fim de noite)
 
-**MERGEADOS na develop:** #631 C1 · #632 D1 · #633 B2 · #634 A1c · #635 base (régua + ADR-0068 +
-pranchas E1/E3).
-**Em CI aguardando merge:** #636 A1 · #637 B1 · #638 C2 · #639 B4 · #640 D3.
+**RODADA FECHADA — os 11 PRs mergeados na develop:**
+#631 C1 navegação · #632 D1 câmeras · #633 B2 motivo · #634 A1c confiança · #635 régua+ADR-0068+
+pranchas E1/E3 · #636 A1 polaridade (`event_kind` observação) · #637 B1 pan+caixa · #638 C2 saída ·
+#639 B4 fila Classificar · #640 D3 nomes · #641 relatório.
+
+**Pendências que são do Vitor, não da pista:**
+1. `scripts/ops/aplicar_calibracao_rvb.py --aplicar` no DEV — sem isso `Sem protetor de ouvido`
+   (27,3%) e `Uso incorreto de mascara` (20,0%) SEGUEM acusando. O #636 tirou 68 alertas do balde
+   "violação", mas quem rebaixa classe é ato humano.
+2. Política do `display_name`: `training.py` calcula "Logikos V<n>", a migration 129 e o
+   `modelDisplay.ts` dizem que nunca deveria inferir. Manter o cálculo e atualizar a política, OU
+   remover e voltar ao nome cru.
+3. Roteiro da demo: último evento é 25/08. Sem evento novo, o dashboard abre na janela de 30 dias.
+
+**Débitos declarados (não escondidos):** early returns sem saída nas 3 telas de Qualidade
+(`ConfigQualidade.tsx:156-188`, `GestaoQualidade.tsx:1110-1121`, `RevisaoQualidade.tsx:377-423`) ·
+migration 127 apagando decisão humana (ADR-0069) · **3ª família de flaky** da casa
+(`Modulos.test.tsx`, junto de #618 e #627 — a suíte precisa de uma rodada de isolamento).
 
 ### Lições desta rodada (para a próxima sessão)
 1. 🔴 **Teste que não reprova a mutação não prova nada** — os céticos reprovaram os 8 temas na 1ª
