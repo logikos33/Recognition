@@ -169,6 +169,7 @@ class TestClassWriteReadUnderAssumedTenant:
             tenant_id=target_b,
             name=class_name,
             module_code="epi",
+            is_violation=True,
         )
 
         # ESCRITA: a tag gravada no banco é o tenant do CONTEXTO (B), nunca

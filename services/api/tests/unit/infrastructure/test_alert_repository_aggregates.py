@@ -106,30 +106,32 @@ class TestViolationsByClass:
         assert malicious not in sql
         assert [malicious] in params
 
-    def test_presence_class_is_not_counted_as_violation(self):
-        """ADR-0065: "Protetor auditivo" (presença) não é linha de violação.
-
-        Mesmo defeito de polaridade de `violation_hours_by_class` — este
-        agregado alimenta o `by_class` de /events/summary e o drift monitor.
-        """
+    def test_only_true_violation_class_counted(self):
+        """Contrato A1: só quem é VIOLAÇÃO DE VERDADE (`violation_class_names`)
+        forma linha aqui — nem presença ("Protetor auditivo"), nem classe
+        INDECIDIDA (fora do catálogo, `is_violation IS NULL`). Antes filtrava
+        só `<> presence` — o que ainda deixava a classe indecidida contar como
+        violação (o MESMO alerta que `/epi/eventos` mostra como "Não
+        definida"). Este agregado alimenta o `by_class` de `/events/summary`
+        e o drift monitor."""
         repo, pool = _make_repo()
-        pool.mock_cursor.fetchall.return_value = [{"n": "protetor auditivo"}]
+        pool.mock_cursor.fetchall.return_value = [{"n": "sem protetor de ouvido"}]
         repo.violations_by_class(str(uuid4()), FROM_TS, TO_TS, module_code="epi")
         sql, params = _last_call(pool)
-        assert "lower(v->>'class') <> ALL(%s::text[])" in sql
-        assert ["protetor auditivo"] in params
+        assert "lower(v->>'class') = ANY(%s::text[])" in sql
+        assert ["sem protetor de ouvido"] in params
 
-    def test_presence_catalog_is_module_scoped(self):
-        """A consulta de presença que precede o agregado leva o módulo junto."""
+    def test_violation_catalog_is_module_scoped(self):
+        """A consulta de violação que precede o agregado leva o módulo junto."""
         repo, pool = _make_repo()
         repo.violations_by_class(str(uuid4()), FROM_TS, TO_TS, module_code="epi")
         sql, params = _call_at(pool, 0)
-        assert "is_violation IS FALSE" in sql
+        assert "is_violation IS TRUE" in sql
         assert "module_code = %s" in sql
         assert "epi" in params
 
     def test_params_follow_condition_order(self):
-        """A lista de presença entra ANTES do filtro de class_names no WHERE."""
+        """A lista de violação entra ANTES do filtro de class_names no WHERE."""
         repo, pool = _make_repo()
         pool.mock_cursor.fetchall.return_value = [{"n": "capacete"}]
         tenant = str(uuid4())
@@ -137,7 +139,7 @@ class TestViolationsByClass:
             tenant, FROM_TS, TO_TS, module_code="epi", class_names=["no_helmet"]
         )
         sql, params = _last_call(pool)
-        assert sql.index("<> ALL(%s::text[])") < sql.index("= ANY(%s)")
+        assert sql.index("= ANY(%s::text[])") < sql.index("= ANY(%s)")
         assert list(params) == [tenant, FROM_TS, TO_TS, "epi", ["capacete"], ["no_helmet"]]
 
 
@@ -212,12 +214,13 @@ class TestComplianceAggregates:
         sql, params = _last_call(pool)
         assert "a.tenant_id = %s" in sql
         assert "jsonb_array_elements" in sql
-        # ADR-0065: classe de presença não forma grupo de "violação por classe".
-        assert "lower(v->>'class') <> ALL(%s::text[])" in sql
+        # Contrato A1: só violação DE VERDADE forma grupo (nem presença, nem
+        # classe indecidida — `violation_class_names`, não `<> presença`).
+        assert "lower(v->>'class') = ANY(%s::text[])" in sql
         assert params[:3] == (tenant, "epi", FROM_TS)
         assert params[3] == []
 
-    def test_presence_catalog_is_module_scoped_in_both_aggregates(self):
+    def test_violation_catalog_is_module_scoped_in_both_aggregates(self):
         """O catálogo consultado é o do MÓDULO do agregado, não o de todos."""
         for chamada in (
             lambda r: r.camera_hours_with_violation(str(uuid4()), "epi", FROM_TS),
@@ -226,7 +229,7 @@ class TestComplianceAggregates:
             repo, pool = _make_repo()
             chamada(repo)
             sql, params = _call_at(pool, 0)
-            assert "is_violation IS FALSE" in sql
+            assert "is_violation IS TRUE" in sql
             assert "module_code = %s" in sql
             assert "epi" in params
 

@@ -48,7 +48,7 @@ def _mock_repo(items=None, total=0, areas=None):
 
 class TestKindFilterReachesRepository:
 
-    @pytest.mark.parametrize("kind", ["violation", "compliance"])
+    @pytest.mark.parametrize("kind", ["violation", "compliance", "observacao"])
     def test_valid_kind_forwarded(self, client, auth_headers, kind):
         repo = _mock_repo()
         with patch(_GET_REPO, return_value=repo):
@@ -125,9 +125,11 @@ class TestUsageRate:
 
 class TestParseKind:
 
-    def test_only_the_two_known_values_pass(self):
+    def test_only_the_three_known_values_pass(self):
+        """Contrato A1: terceiro valor 'observacao' — a classe INDECIDIDA."""
         from app.api.v1.alerts.routes import _parse_kind
         assert _parse_kind("violation") == "violation"
         assert _parse_kind("compliance") == "compliance"
+        assert _parse_kind("observacao") == "observacao"
         for bad in (None, "", "all", "VIOLATION", "1; DROP TABLE alerts"):
             assert _parse_kind(bad) is None

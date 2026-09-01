@@ -51,6 +51,35 @@ class AlertRepository(BaseRepository):
         )
     )"""
 
+    # ── Contrato A1 — a classe INDECIDIDA não pode ser chamada de violação ──
+    #
+    # Refina ADR-0065 §4: o predicado acima só sabe dizer "não é conformidade"
+    # — e por isso empurrava pra dentro do mesmo balde "violação" três coisas
+    # bem diferentes: (a) classe de violação de verdade, (b) entrada sem
+    # `class` (`camera_gap` do liveness) e (c) classe INDECIDIDA
+    # (`is_violation IS NULL`, ou fora do catálogo — ninguém decidiu).
+    # `_nomes_por_polaridade`/`violation_class_names` já tratam (c) como um
+    # terceiro estado (nem presença nem violação); esta query que lê o alerta
+    # que precisa passar a concordar.
+    #
+    # ANY, não ALL: espelha `_has_violation` (infrastructure/queue/tasks/
+    # inference.py) — lá UMA detecção de classe violação já basta pra
+    # `has_violation=True`, mesmo com outras entradas de presença no MESMO
+    # alerta. Aqui é o mesmo critério, pro `event_kind` da leitura nunca
+    # discordar do que decidiu criar o alerta.
+    #
+    # Entrada SEM `class` (camera_gap) conta como violação de propósito — ADR-
+    # 0065 é explícita que ela "precisa continuar visível", e não é uma
+    # detecção de classe (não tem polaridade pra ser indecidida). Por isso o
+    # OR com `= ''`: câmera offline nunca vira "observação".
+    _IS_VIOLATION_SQL = """(
+        EXISTS (
+            SELECT 1 FROM jsonb_array_elements(a.violations) v
+             WHERE COALESCE(lower(v->>'class'), '') = ''
+                OR COALESCE(lower(v->>'class'), '') = ANY(%s::text[])
+        )
+    )"""
+
     def presence_class_names(
         self, tenant_id: str, module_code: str | None = None
     ) -> list[str]:
@@ -354,10 +383,14 @@ class AlertRepository(BaseRepository):
     ) -> dict:
         """Lista alertas com filtros e paginação, isolado por tenant (P0-03 fix).
 
-        `kind` (ADR-0065): 'violation' | 'compliance' | None (= todos, default
-        do backend — nenhum consumidor existente muda de comportamento). Cada
-        item sai com a coluna derivada `event_kind`, calculada pelo MESMO
-        predicado usado no filtro.
+        `kind` (ADR-0065, TRÊS estados — contrato A1): 'violation' |
+        'compliance' | 'observacao' | None (= todos, default do backend —
+        nenhum consumidor existente muda de comportamento). Cada item sai com
+        a coluna derivada `event_kind`, calculada pelo MESMO predicado usado
+        no filtro — 'observacao' é a classe INDECIDIDA (`is_violation IS
+        NULL`, ou fora do catálogo): nem presença, nem violação. Ela CONTINUA
+        aparecendo em `kind=None` (não some), só não mente mais como
+        'violation'.
         """
         conditions = ["1=1", "a.tenant_id = %s"]
         params: list = [tenant_id]
@@ -378,15 +411,23 @@ class AlertRepository(BaseRepository):
             conditions.append("a.acknowledged = %s")
             params.append(acknowledged)
 
-        # ADR-0065 — filtro e coluna derivada usam o MESMO predicado, para o
-        # `event_kind` mostrado nunca discordar do recorte paginado.
+        # ADR-0065 (contrato A1) — filtro e coluna derivada usam os MESMOS
+        # predicados, para o `event_kind` mostrado nunca discordar do recorte
+        # paginado. Ordem de prioridade IDÊNTICA nos dois: compliance vence,
+        # depois violação de verdade, o resto é observação.
         presence_names = self.presence_class_names(tenant_id)
+        violation_names = self.violation_class_names(tenant_id)
         if kind == "compliance":
             conditions.append(self._IS_COMPLIANCE_SQL)
             params.append(presence_names)
         elif kind == "violation":
-            conditions.append(f"NOT {self._IS_COMPLIANCE_SQL}")
+            conditions.append(f"{self._IS_VIOLATION_SQL} AND NOT {self._IS_COMPLIANCE_SQL}")
+            params.append(violation_names)
             params.append(presence_names)
+        elif kind == "observacao":
+            conditions.append(f"NOT {self._IS_COMPLIANCE_SQL} AND NOT {self._IS_VIOLATION_SQL}")
+            params.append(presence_names)
+            params.append(violation_names)
 
         where = " AND ".join(conditions)
 
@@ -399,15 +440,17 @@ class AlertRepository(BaseRepository):
         total = total_row["count"] if total_row else 0
 
         # Items with camera name join (best-effort — camera table may vary).
-        # O %s do CASE aparece no SELECT, ANTES do WHERE, no texto da query ⇒
-        # `presence_names` tem de ser o PRIMEIRO param aqui (e NÃO entra no
-        # COUNT acima quando `kind` é None).
-        page_params = [presence_names] + list(params) + [limit, offset]
+        # Os `%s` do CASE aparecem no SELECT, ANTES do WHERE, no texto da
+        # query ⇒ `presence_names`/`violation_names` (NESSA ordem — é a ordem
+        # em que os dois WHEN aparecem no texto) vêm ANTES do resto aqui (e
+        # NÃO entram no COUNT acima quando `kind` é None).
+        page_params = [presence_names, violation_names] + list(params) + [limit, offset]
         items = self._execute(
             f"""SELECT a.*,
                COALESCE(i.name, 'Unknown') as camera_name,
-               CASE WHEN {self._IS_COMPLIANCE_SQL}
-                    THEN 'compliance' ELSE 'violation' END AS event_kind
+               CASE WHEN {self._IS_COMPLIANCE_SQL} THEN 'compliance'
+                    WHEN {self._IS_VIOLATION_SQL} THEN 'violation'
+                    ELSE 'observacao' END AS event_kind
             FROM alerts a
             LEFT JOIN cameras i ON a.camera_id = i.id
             WHERE {where}
@@ -757,13 +800,21 @@ class AlertRepository(BaseRepository):
         `/events/summary` e na distribuição do drift monitor — o MESMO defeito
         de polaridade já corrigido em `violation_hours_by_class`. Classe de
         presença não forma grupo aqui.
+
+        Contrato A1: só forma linha quem é VIOLAÇÃO DE VERDADE
+        (`violation_class_names`) — classe indecidida (`observacao`, fora do
+        catálogo ou `is_violation IS NULL`) não conta mais aqui, mesmo
+        predicado de `list_with_filters(kind="violation")`. Antes disto o
+        painel "Violações por classe" do Dashboard nomeava como violação o
+        MESMO alerta que `/epi/eventos` já mostrava como "Não definida" —
+        duas telas se desmentindo sobre o mesmo dado.
         """
         conditions, params = self._window_conditions(
             tenant_id, from_ts, to_ts, module_code, camera_ids
         )
         conditions.append("v->>'class' IS NOT NULL")
-        conditions.append("lower(v->>'class') <> ALL(%s::text[])")
-        params.append(self.presence_class_names(tenant_id, module_code))
+        conditions.append("lower(v->>'class') = ANY(%s::text[])")
+        params.append(self.violation_class_names(tenant_id, module_code))
         if class_names:
             conditions.append("v->>'class' = ANY(%s)")
             params.append(list(class_names))
@@ -806,24 +857,31 @@ class AlertRepository(BaseRepository):
     def camera_hours_with_violation(
         self, tenant_id: str, module_code: str, since: datetime
     ) -> int:
-        """Horas-câmera com ≥1 violação desde `since`.
+        """Horas-câmera com ≥1 violação DE VERDADE desde `since`.
 
         ADR-0065: contava TODO alerta, inclusive EPI PRESENTE — o que invertia
         o `compliance_rate` que se apoia neste número (quanto mais gente usava
-        EPI, menor a "conformidade"). Agora só conta hora-câmera com ≥1 evento
-        que NÃO é conformidade.
+        EPI, menor a "conformidade").
+
+        Contrato A1: `NOT compliance` sozinho ainda empurrava classe
+        INDECIDIDA (`observacao`) pro balde de violação — o MESMO alerta que
+        `/epi/eventos` mostra como "Não definida" derrubava o
+        `compliance_rate` do Dashboard como se fosse violação confirmada.
+        Mesmo predicado de `list_with_filters(kind="violation")`:
+        `_IS_VIOLATION_SQL AND NOT _IS_COMPLIANCE_SQL`.
         """
         row = self._execute_one(
             f"""
             SELECT COUNT(DISTINCT (a.camera_id, date_trunc('hour', a.created_at))) AS count
             FROM alerts a
             WHERE a.tenant_id = %s AND a.module_code = %s AND a.created_at >= %s
-              AND NOT {self._IS_COMPLIANCE_SQL}
+              AND {self._IS_VIOLATION_SQL} AND NOT {self._IS_COMPLIANCE_SQL}
             """,  # noqa: S608 — só literais internos; valores via %s
             (
                 str(tenant_id),
                 module_code,
                 since,
+                self.violation_class_names(tenant_id, module_code),
                 self.presence_class_names(tenant_id, module_code),
             ),
         )
@@ -832,11 +890,16 @@ class AlertRepository(BaseRepository):
     def violation_hours_by_class(
         self, tenant_id: str, module_code: str, since: datetime
     ) -> list[dict[str, Any]]:
-        """Horas-câmera com violação por classe desde `since`.
+        """Horas-câmera com violação DE VERDADE por classe desde `since`.
 
         ADR-0065: agrupava por TODA classe detectada, então "Protetor
         auditivo" (presença) virava uma linha de "violação por classe" no
-        `compliance_by_class`. Classes de presença agora não formam grupo.
+        `compliance_by_class`.
+
+        Contrato A1: só forma linha quem é violação de verdade
+        (`violation_class_names`) — classe indecidida (fora do catálogo,
+        `is_violation IS NULL`) não conta mais aqui, mesmo critério de
+        `violations_by_class`/`list_with_filters(kind="violation")`.
         """
         return self._execute(
             """
@@ -846,7 +909,7 @@ class AlertRepository(BaseRepository):
             FROM alerts a, jsonb_array_elements(a.violations) v
             WHERE a.tenant_id = %s AND a.module_code = %s AND a.created_at >= %s
               AND v->>'class' IS NOT NULL
-              AND lower(v->>'class') <> ALL(%s::text[])
+              AND lower(v->>'class') = ANY(%s::text[])
             GROUP BY v->>'class'
             ORDER BY hours DESC
             """,
@@ -854,7 +917,7 @@ class AlertRepository(BaseRepository):
                 str(tenant_id),
                 module_code,
                 since,
-                self.presence_class_names(tenant_id, module_code),
+                self.violation_class_names(tenant_id, module_code),
             ),
         )
 
@@ -872,11 +935,24 @@ class AlertRepository(BaseRepository):
         escopo de outra decisão. A DIVISÃO fica na tela: aqui só saem
         contagens, para o painel mostrar "3 de 4" junto do percentual sem uma
         segunda chamada.
+
+        Contrato A1: `violation` usava `NOT compliance` — empurrava classe
+        INDECIDIDA pro numerador de violação (`compliance`+`violation` somava
+        o total, então "observação" inflava silenciosamente o lado errado).
+        Mesmo predicado de `list_with_filters(kind="violation")`:
+        `_IS_VIOLATION_SQL AND NOT _IS_COMPLIANCE_SQL`. `compliance` +
+        `violation` pode agora somar MENOS que o total do período — a
+        diferença é observação (indecidida), que este painel binário não
+        reparte; não some, só não é chamada de violação.
         """
         presence_names = self.presence_class_names(tenant_id, module_code)
+        violation_names = self.violation_class_names(tenant_id, module_code)
         conditions = ["a.tenant_id = %s", "a.created_at >= %s", "a.created_at <= %s"]
-        # Os dois %s do predicado aparecem no SELECT, antes do WHERE.
-        params: list[Any] = [presence_names, presence_names, str(tenant_id), from_ts, to_ts]
+        # Os três %s do predicado aparecem no SELECT, antes do WHERE.
+        params: list[Any] = [
+            presence_names, violation_names, presence_names,
+            str(tenant_id), from_ts, to_ts,
+        ]
         if module_code:
             conditions.append("a.module_code = %s")
             params.append(module_code)
@@ -884,8 +960,10 @@ class AlertRepository(BaseRepository):
         return self._execute(
             f"""SELECT
                 COALESCE(NULLIF(c.location, ''), c.name, 'Sem área') AS area,
-                COUNT(*) FILTER (WHERE {self._IS_COMPLIANCE_SQL})     AS compliance,
-                COUNT(*) FILTER (WHERE NOT {self._IS_COMPLIANCE_SQL}) AS violation
+                COUNT(*) FILTER (WHERE {self._IS_COMPLIANCE_SQL})
+                    AS compliance,
+                COUNT(*) FILTER (WHERE {self._IS_VIOLATION_SQL} AND NOT {self._IS_COMPLIANCE_SQL})
+                    AS violation
             FROM alerts a
             LEFT JOIN cameras c ON a.camera_id = c.id AND c.tenant_id = a.tenant_id
             WHERE {where}

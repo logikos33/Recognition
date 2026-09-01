@@ -132,7 +132,7 @@ class TestCreateClass:
         with patch(f"{_HANDLERS}.get_tenant_class_service", return_value=mock_svc):
             res = client.post(
                 "/api/classes",
-                json={"name": "Luva", "color": "#3b82f6", "module": "epi"},
+                json={"name": "Luva", "color": "#3b82f6", "module": "epi", "is_violation": True},
                 headers=_headers(token),
             )
 
@@ -144,6 +144,7 @@ class TestCreateClass:
         assert kwargs["tenant_id"] == tid
         assert str(kwargs["user_id"]) == str(uid)
         assert kwargs["module_code"] == "epi"
+        assert kwargs["is_violation"] is True
 
     def test_create_validation_error_400(self, client, app):
         token, _uid, _tid = _make_token(app, role="admin")

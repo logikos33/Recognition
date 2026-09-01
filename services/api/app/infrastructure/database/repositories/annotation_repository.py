@@ -42,6 +42,7 @@ class AnnotationRepository(BaseRepository):
         *,
         tenant_id: "UUID | str",
         module_code: "str | None" = None,
+        is_violation: "bool | None" = None,
     ) -> dict[str, Any]:
         """Cria classe YOLO, tenant-scoped (migration 093).
 
@@ -60,16 +61,27 @@ class AnnotationRepository(BaseRepository):
         module_code omitido → 'epi' (default do schema) — isso NÃO é o mesmo
         anti-padrão: não deriva identidade de tenant, só um valor de
         categoria.
+
+        `is_violation` (migration 125/contrato A1): omitido grava NULL —
+        continua existindo para quem chama este repository diretamente sem
+        decidir (caller morto `AnnotationService.create_class`, testes de
+        repository). O caller VIVO (`TenantClassService.create_class`) EXIGE
+        o valor antes de chegar aqui — uma classe nova pelo Estúdio não pode
+        mais nascer indecidida (achado: toda classe nascia com a coluna NULL,
+        porque este INSERT nunca a incluía; NULL é o estado de nascimento, não
+        caso de borda).
         """
         return self._execute_mutation(
-            "INSERT INTO yolo_classes (user_id, name, color, tenant_id, module_code) "
-            "VALUES (%s, %s, %s, %s, COALESCE(%s, 'epi')) RETURNING *",
+            "INSERT INTO yolo_classes "
+            "(user_id, name, color, tenant_id, module_code, is_violation) "
+            "VALUES (%s, %s, %s, %s, COALESCE(%s, 'epi'), %s) RETURNING *",
             (
                 str(user_id),
                 name,
                 color,
                 str(tenant_id),
                 module_code,
+                is_violation,
             ),
         )  # type: ignore[return-value]
 

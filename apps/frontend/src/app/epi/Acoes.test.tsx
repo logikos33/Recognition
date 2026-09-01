@@ -102,6 +102,20 @@ describe('de onde vem o dado', () => {
     expect(caminhos.every((p) => p.includes('start_date='))).toBe(true)
   })
 
+  it('QUEBRA 3 — fila de ação não pede a classe indecidida por padrão (decisão registrada)', async () => {
+    // Contrato A1 também tira 'observacao' (classe indecidida) da fila —
+    // decisão escrita no topo de Acoes.tsx: o backend não tem um `kind`
+    // "violação + indecidida, sem conformidade", e trocar para '' (todos)
+    // reabriria a fila de AÇÃO com conformidade dentro de novo. O indecidido
+    // não some do produto — tem filtro próprio em /epi/eventos.
+    servir([evento('1111aaaa-0000-0000-0000-000000000000', false)], [])
+    render(<Acoes />)
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(2))
+    const caminhos = get.mock.calls.map((c) => c[0] as string)
+    expect(caminhos.every((p) => !p.includes('kind=observacao'))).toBe(true)
+    expect(caminhos.every((p) => !p.includes('kind=compliance'))).toBe(true)
+  })
+
   it('a taxa sai do total do envelope, não do tamanho da página', async () => {
     // 1 cartão em cada coluna, mas 3.000 abertos e 1.000 reconhecidos no total.
     servir([evento('a1111111-0000-0000-0000-000000000000', false)],

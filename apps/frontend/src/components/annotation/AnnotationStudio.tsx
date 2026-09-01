@@ -44,6 +44,11 @@ import { api } from '../../services/api'
 import { precisaDeReabastecimento } from './studioQueue'
 import { useToast } from '../ui/Toast/useToast'
 import { vars } from '../../styles/theme.css'
+import {
+  EXPLICACAO_POLARIDADE,
+  SeletorPolaridade,
+  type Polaridade,
+} from '../shared/PolaridadeClasse'
 import type { ApiResponse } from '../../types'
 import type { Box, RawAnnotation, StudioClass, StudioFrame } from './studioTypes'
 import { boxToPayload, nextBoxId, proposalLabelSuffix, rawToBox } from './studioTypes'
@@ -895,16 +900,22 @@ export function AnnotationStudio({
   const [newClassName, setNewClassName] = useState('')
   const [newClassColor, setNewClassColor] = useState('#22c55e')
   const [creatingClass, setCreatingClass] = useState(false)
+  /* Nasce 'indefinida' e o Criar fica travado até alguém decidir — é o ponto de
+     o cadastro exigir polaridade. Classe que nasce muda some do produto: o
+     modelo pode detectá-la a tarde inteira e nada vira evento. */
+  const [newClassPolaridade, setNewClassPolaridade] = useState<Polaridade>('indefinida')
 
   const createClass = useCallback(async () => {
     const name = newClassName.trim()
     if (!name) return
+    if (newClassPolaridade === 'indefinida') return
     setCreatingClass(true)
     try {
       const res = await api.post<ApiResponse<{ class_id: number }>>('/classes', {
         name,
         color: newClassColor,
         module: moduleCode,
+        is_violation: newClassPolaridade === 'violacao',
       })
       const createdId = res?.data?.class_id
       const mapped = await loadClasses()
@@ -912,6 +923,7 @@ export function AnnotationStudio({
         setActiveClassId(createdId)
       }
       setNewClassName('')
+      setNewClassPolaridade('indefinida')
       setOverlay(null)
       toast.success(`Classe "${name}" criada`)
     } catch (err: unknown) {
@@ -919,7 +931,7 @@ export function AnnotationStudio({
     } finally {
       setCreatingClass(false)
     }
-  }, [loadClasses, moduleCode, newClassColor, newClassName, toast])
+  }, [loadClasses, moduleCode, newClassColor, newClassName, newClassPolaridade, toast])
 
   // ── scroll automático da fila ─────────────────────────────────────────────
   const currentQueueItemRef = useRef<HTMLButtonElement>(null)
@@ -1440,10 +1452,27 @@ export function AnnotationStudio({
                   onChange={e => setNewClassColor(e.target.value)}
                 />
               </label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <span style={{ fontSize: 13, color: vars.color.textSecondary }}>
+                  Um evento desta classe é o quê?
+                </span>
+                <SeletorPolaridade
+                  polaridade={newClassPolaridade}
+                  editavel
+                  onChange={setNewClassPolaridade}
+                />
+                <span style={{ fontSize: 11, color: vars.color.textMuted }}>
+                  {EXPLICACAO_POLARIDADE[newClassPolaridade]}
+                </span>
+              </div>
               <button
                 className={s.iconButton}
                 style={{ justifyContent: 'center' }}
-                disabled={creatingClass || !newClassName.trim()}
+                disabled={
+                  creatingClass ||
+                  !newClassName.trim() ||
+                  newClassPolaridade === 'indefinida'
+                }
                 onClick={() => void createClass()}
               >
                 {creatingClass ? 'Criando…' : 'Criar classe'}

@@ -79,8 +79,11 @@ interface Evento {
   created_at: string
   /** Hora REAL da captura no edge — pode divergir de `created_at`. */
   timestamp?: string
-  /** ADR-0065: 'compliance' = EPI em uso (telemetria); 'violation' = alertável. */
-  event_kind?: 'violation' | 'compliance'
+  /** ADR-0065 (contrato A1, três estados): 'compliance' = EPI em uso
+   *  (telemetria); 'violation' = classe de violação de verdade; 'observacao'
+   *  = classe indecidida (não decide `polaridadeDoEvento` sozinho — quem
+   *  desempata é o catálogo, ver abaixo). */
+  event_kind?: 'violation' | 'compliance' | 'observacao'
   /** Veredito bruto — a IA grava o MESMO 'approve'/'reject'; sozinho não prova gente. */
   verification_verdict?: string | null
   /** 'user:<id>' (gente) ou 'claude-haiku' (IA) — a prova de procedência do veredito. */
@@ -107,7 +110,28 @@ interface Filtros {
   classe: string
   /** '' = todos · 'false' = novo · 'true' = reconhecido (`?acknowledged=`). */
   status: string
-  /** ADR-0065 — a tela abre em VIOLAÇÕES: EPI presente é telemetria, não alerta. */
+  /** ADR-0065 — a tela abre em VIOLAÇÕES: EPI presente é telemetria, não alerta.
+   *
+   *  DECISÃO (rodada de correção UX, contrato A1): o default CONTINUA
+   *  'violation' e NÃO passa a incluir 'observacao' (a classe indecidida).
+   *  Não é omissão — é escolha registrada, com dois motivos:
+   *
+   *  1. O backend não tem um `kind` que signifique "tudo que não é
+   *     conformidade" — só os quatro valores testados (violation· compliance
+   *     ·observacao·todos). Abrir em '' (todos) para pegar observação junto
+   *     traria de volta a CONFORMIDADE (telemetria de EPI em uso) misturada
+   *     na lista — exatamente o ruído que a ADR-0065 existe para tirar da
+   *     tela padrão. Trocar "indecidido escondido" por "conformidade
+   *     poluindo a fila" não é ganho.
+   *  2. 'observacao' não é beco sem saída: tem opção PRÓPRIA e visível no
+   *     MESMO seletor desta tela ("Não definida (ninguém classificou)"), ao
+   *     lado de "Todos os tipos" — quem abre a tela vê as quatro opções.
+   *     Some da ABERTURA padrão, não da tela.
+   *
+   *  Se um dia o backend ganhar um `kind` combinado ("tudo que não é
+   *  conformidade"), a revisão certa é trocar o default para ele — não para
+   *  '' (todos). Ver teste "abertura padrão pede kind=violation, não
+   *  observação" abaixo, que trava esta decisão. */
   kind: string
   pagina: number
 }
@@ -439,7 +463,13 @@ export function Eventos() {
         </select>
 
         {/* Fora do desenho, preservado da tela antiga (ADR-0065): sem isto a
-            lista abriria misturando telemetria de EPI em uso com violação. */}
+            lista abriria misturando telemetria de EPI em uso com violação.
+            Contrato A1: 'observacao' é o TERCEIRO balde do backend — classe
+            que ninguém classificou ainda (nem presença, nem violação). Sem
+            esta opção, quem quisesse ACHAR essas detecções só teria
+            "Todos os tipos" (misturado com violação/conformidade de
+            verdade) — o filtro dedicado é o que torna o indecidido
+            achável. */}
         <select
           className={s.filtro}
           aria-label="Tipo de evento"
@@ -448,6 +478,7 @@ export function Eventos() {
         >
           <option value="violation">Violações</option>
           <option value="compliance">Conformidade (EPI em uso)</option>
+          <option value="observacao">Não definida (ninguém classificou)</option>
           <option value="">Todos os tipos</option>
         </select>
 

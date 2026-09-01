@@ -260,6 +260,10 @@ export default function ModuleClassesPage() {
   const [newName, setNewName] = useState('')
   const [newColor, setNewColor] = useState('#22c55e')
   const [creating, setCreating] = useState(false)
+  /** Contrato A1: toda classe nasce com polaridade decidida — sem default,
+   * `null` até o operador escolher (o INSERT nunca gravava a coluna antes
+   * disto, e toda classe nova nascia `is_violation IS NULL` para sempre). */
+  const [newIsViolation, setNewIsViolation] = useState<boolean | null>(null)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
@@ -461,15 +465,17 @@ export default function ModuleClassesPage() {
 
   const handleCreate = useCallback(async () => {
     const name = newName.trim()
-    if (!name) return
+    if (!name || newIsViolation === null) return
     setCreating(true)
     try {
       await api.post<ApiResponse<{ class_id: number }>>('/classes', {
         name,
         color: newColor,
         module: MODULE_CODE,
+        is_violation: newIsViolation,
       })
       setNewName('')
+      setNewIsViolation(null)
       toast.success(`Classe "${name}" criada`)
       void loadClasses()
     } catch (err: unknown) {
@@ -477,7 +483,7 @@ export default function ModuleClassesPage() {
     } finally {
       setCreating(false)
     }
-  }, [newName, newColor, loadClasses, toast])
+  }, [newName, newColor, newIsViolation, loadClasses, toast])
 
   // ── render ────────────────────────────────────────────────────────────────
   if (loading) {
@@ -603,11 +609,16 @@ export default function ModuleClassesPage() {
             style={{ width: 34, height: 34, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}
             title="Cor da nova classe"
           />
+          <SeletorPolaridade
+            polaridade={newIsViolation === null ? 'indefinida' : newIsViolation ? 'violacao' : 'conformidade'}
+            editavel
+            onChange={p => setNewIsViolation(p === 'violacao')}
+          />
           <Button
             size="sm"
             variant="primary"
             loading={creating}
-            disabled={!newName.trim()}
+            disabled={!newName.trim() || newIsViolation === null}
             onClick={() => void handleCreate()}
           >
             Criar classe

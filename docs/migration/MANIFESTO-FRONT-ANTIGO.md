@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 388 arquivos, 65.447 linhas
+## Situação — 388 arquivos, 65.504 linhas
 
 | status | arquivos |
 |---|---:|
@@ -43,7 +43,7 @@ apagado não são a mesma coisa.
 | `src/App.tsx` | `INFRA` | — | 112 |
 | `src/AppRoutes.tsx` | `INFRA` | — | 188 |
 | `src/components/annotation/AnnotationStudio.css.ts` | `INFRA` | — | 514 |
-| `src/components/annotation/AnnotationStudio.tsx` | `INFRA` | — | 1458 |
+| `src/components/annotation/AnnotationStudio.tsx` | `INFRA` | — | 1487 |
 | `src/components/annotation/boxGeometry.ts` | `INFRA` | — | 81 |
 | `src/components/annotation/boxHistory.ts` | `INFRA` | — | 117 |
 | `src/components/annotation/CropClassifier.css.ts` | `INFRA` | — | 288 |
@@ -57,7 +57,7 @@ apagado não são a mesma coisa.
 | `src/components/annotation/SearchContentPanel.tsx` | `INFRA` | — | 281 |
 | `src/components/annotation/searchContentUi.ts` | `INFRA` | — | 332 |
 | `src/components/annotation/SearchFindingsPanel.css.ts` | `INFRA` | — | 217 |
-| `src/components/annotation/SearchFindingsPanel.tsx` | `INFRA` | — | 325 |
+| `src/components/annotation/SearchFindingsPanel.tsx` | `INFRA` | — | 342 |
 | `src/components/annotation/SearchStatusBar.tsx` | `INFRA` | — | 142 |
 | `src/components/annotation/SimilarSearchPanel.css.ts` | `INFRA` | — | 141 |
 | `src/components/annotation/SimilarSearchPanel.tsx` | `INFRA` | — | 211 |
@@ -268,7 +268,7 @@ apagado não são a mesma coisa.
 | `src/utils/labels.ts` | `INFRA` | — | 253 |
 | `src/utils/statusColors.ts` | `INFRA` | — | 18 |
 | `src/utils/timeBuckets.ts` | `INFRA` | — | 106 |
-| `src/pages/ModuleClassesPage.tsx` | `MIGRADO` | src/app/estudio/Classes.tsx | 765 |
+| `src/pages/ModuleClassesPage.tsx` | `MIGRADO` | src/app/estudio/Classes.tsx | 776 |
 | `src/pages/ReportsPage.tsx` | `MIGRADO` | src/app/epi/Relatorios.tsx | 31 |
 | `src/pages/TrainingPage.css.ts` | `MIGRADO` | src/app/estudio/*.css.ts | 361 |
 | `src/pages/TrainingPage.tsx` | `MIGRADO` | src/app/estudio/* | 1075 |

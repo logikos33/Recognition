@@ -92,11 +92,27 @@ class TenantClassService:
         name: str,
         color: str = DEFAULT_COLOR,
         module_code: str = DEFAULT_MODULE,
+        is_violation: "bool | None" = None,
     ) -> dict[str, Any]:
-        """Cria classe tenant-scoped. 409 se nome duplicado (UNIQUE user+name)."""
+        """Cria classe tenant-scoped. 409 se nome duplicado (UNIQUE user+name).
+
+        `is_violation` é OBRIGATÓRIO (achado da revisão adversarial, contrato
+        A1): o INSERT nunca gravava a coluna, então TODA classe criada pelo
+        Estúdio nascia com `is_violation IS NULL` — 'observação' não era caso
+        de borda, era o estado de nascimento de 100% das classes do tenant.
+        Migration 127 já documentava o dia em que uma rota passaria a gravar
+        isto; este é esse dia — exigir aqui, na única porta de entrada viva,
+        fecha a lacuna sem tocar a coluna nullable (uma classe do catálogo
+        global legado ou uma linha antiga sem decisão continuam existindo,
+        só não é mais possível CRIAR uma nova indecidida)."""
         clean_name = self._validate_name(name)
         clean_color = self._validate_color(color)
         module = self._normalize_module(module_code)
+        if is_violation is None:
+            raise ValidationError(
+                "Informe is_violation (true = violação, false = conformidade) "
+                "— toda classe precisa nascer com a polaridade decidida"
+            )
         try:
             return self._repo.create_class(
                 user_id,
@@ -104,6 +120,7 @@ class TenantClassService:
                 clean_color,
                 tenant_id=tenant_id,
                 module_code=module,
+                is_violation=bool(is_violation),
             )
         except psycopg2.errors.UniqueViolation as exc:
             raise ConflictError(f"Classe '{clean_name}' já existe") from exc

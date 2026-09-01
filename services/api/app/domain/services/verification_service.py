@@ -19,6 +19,14 @@ representante mais incerto de cada rajada aparece primeiro, os irmãos vêm
 depois. `total`/`get_queue_count` conta TODO o trabalho real (candidatos
 únicos, sem dedup) — ver `_candidatos_sql` e `get_human_queue`.
 
+Contrato A1: o CONJUNTO aqui não muda — classe de polaridade INDECIDIDA
+(`is_violation IS NULL`, ou fora do catálogo) CONTINUA na fila, é justamente
+o que precisa de um humano decidindo. Só a leitura de `AlertRepository.
+list_with_filters` deixou de chamá-la de 'violation' (virou 'observacao',
+ver `_IS_VIOLATION_SQL`); esta fila não devolve `event_kind` nenhum, então
+não havia rótulo pra corrigir aqui — o item chega com a classe crua
+(`violations[0].class`) e cabe à tela não afirmar polaridade que não veio.
+
 ⚠️ Decisão de produto PENDENTE (não implementada aqui — perguntar ao Vitor):
 julgar o representante de uma rajada deveria decidir a rajada inteira
 (propagar o veredito pros irmãos)? Isso tornaria "quantos EVENTOS distintos"
