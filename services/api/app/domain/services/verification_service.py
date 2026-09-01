@@ -224,7 +224,17 @@ class VerificationService:
         with pool.get_connection() as conn:
             cur = conn.cursor()
             cur.execute(query, tuple(params))
-            return [dict(row) for row in cur.fetchall()]
+            itens = [dict(row) for row in cur.fetchall()]
+
+        # `a.*` já traz `violations_historico` (migration 126) — projeta a
+        # MESMA autoria que GET/PATCH de alerts expõem (ADR-0066). Sem isto o
+        # badge "corrigido por X" só sobrevivia na sessão do PATCH e sumia da
+        # tela ao recarregar a fila (achado do cético, rodada 2).
+        for item in itens:
+            item["correcao_ultima"] = AlertRepository.ultima_correcao(
+                item.get("violations_historico")
+            )
+        return itens
 
     def human_review(
         self,

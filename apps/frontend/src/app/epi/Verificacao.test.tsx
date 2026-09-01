@@ -29,12 +29,28 @@ import { Verificacao, incertezaDe, ordenarPorIncerteza, type ItemVerificacao } f
 
 const get = vi.fn()
 const post = vi.fn()
+const patch = vi.fn()
 vi.mock('../../services/api', () => ({
   api: {
     get: (...a: unknown[]) => get(...a),
     post: (...a: unknown[]) => post(...a),
+    patch: (...a: unknown[]) => patch(...a),
   },
 }))
+
+// jsdom não implementa PointerEvent: sem isto o fireEvent cai num Event cru e
+// clientX/clientY chegam undefined — a conversão daria NaN e os testes de
+// pan/correção de caixa passariam a medir nada (mesmo stub de EventoDetalhe.test.tsx).
+if (!('PointerEvent' in window)) {
+  class PointerEventStub extends MouseEvent {
+    pointerId: number
+    constructor(tipo: string, init: PointerEventInit = {}) {
+      super(tipo, init)
+      this.pointerId = init.pointerId ?? 1
+    }
+  }
+  Object.defineProperty(window, 'PointerEvent', { value: PointerEventStub, configurable: true })
+}
 
 let permissoes = new Set(['verification:read', 'verification:write'])
 vi.mock('../../hooks/useAuth', () => ({
@@ -98,6 +114,7 @@ function montar() {
 beforeEach(() => {
   get.mockReset()
   post.mockReset()
+  patch.mockReset()
   toastErro.mockReset()
   toastInfo.mockReset()
   permissoes = new Set(['verification:read', 'verification:write'])
@@ -639,5 +656,373 @@ describe('"N RESTANTES" usa a verdade do servidor (bug: "Fila zerada" com centen
     get.mockResolvedValue(fila([A], 0))
     montar()
     expect(await screen.findByText('Fila zerada')).toBeTruthy()
+  })
+})
+
+// ── 7 · Contrato B1 — lupa (pan+zoom) e correção de caixa ───────────────────
+
+/** Item com evidência — helper local (os `item()` de cima não trazem bbox). */
+function itemComEvidencia(id: string, extra: Partial<ItemVerificacao> = {}): ItemVerificacao {
+  return item(id, 'no_helmet', 0.6, { evidence_key: `tenant/${id}.jpg`, ...extra })
+}
+
+const respostaEvidencia = (url: string) => Promise.resolve({ data: { snapshot_url: url } })
+
+describe('lupa: pan respeita o limite (contrato B1)', () => {
+  it('arrasto além do limite não desloca além do clamp calculado — só zoom não bastava', async () => {
+    // Código ANTES deste contrato: zoom era só `transform: scale(zoom)`, sem
+    // pan nenhum — não havia `translate()` para clampar, e este teste falhava
+    // (não existia `data-testid="camada-zoom"` nem arrasto que movesse nada).
+    get.mockImplementation((rota: string) =>
+      rota.includes('/snapshot') ? respostaEvidencia('https://r2.example/p.jpg') : Promise.resolve(fila([itemComEvidencia('p')])),
+    )
+    montar()
+    await screen.findByAltText(/Evidência de/)
+
+    const palco = screen.getByRole('group')
+    Object.defineProperty(palco, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({
+        left: 0, top: 0, right: 800, bottom: 600, width: 800, height: 600, x: 0, y: 0, toJSON: () => ({}),
+      }),
+    })
+
+    // Zoom in (duplo clique = fator 2, ancorado no ponto clicado).
+    fireEvent.doubleClick(palco, { clientX: 400, clientY: 300 })
+
+    // Arrasto bem além do limite de pan possível nesta escala.
+    fireEvent.pointerDown(palco, { clientX: 0, clientY: 0, pointerId: 1 })
+    fireEvent.pointerMove(palco, { clientX: 5000, clientY: 0, pointerId: 1 })
+    fireEvent.pointerUp(palco, { clientX: 5000, clientY: 0, pointerId: 1 })
+
+    const camada = screen.getByTestId('camada-zoom')
+    // limitePan(2, 800) = 800*(2-1)/2 = 400 — o arrasto de 5000px é MORDIDO ali,
+    // nunca refletido cru na tela (senão a imagem sumiria da vista).
+    expect(camada.style.transform).toContain('translate(400px, 0px)')
+    expect(camada.style.transform).toContain('scale(2)')
+  })
+
+  it('em escala 1 (sem zoom) o pan fica em 0 — arrastar não desloca nada', async () => {
+    get.mockImplementation((rota: string) =>
+      rota.includes('/snapshot') ? respostaEvidencia('https://r2.example/p2.jpg') : Promise.resolve(fila([itemComEvidencia('p2')])),
+    )
+    montar()
+    await screen.findByAltText(/Evidência de/)
+    const palco = screen.getByRole('group')
+    Object.defineProperty(palco, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ left: 0, top: 0, right: 800, bottom: 600, width: 800, height: 600, x: 0, y: 0, toJSON: () => ({}) }),
+    })
+
+    fireEvent.pointerDown(palco, { clientX: 0, clientY: 0, pointerId: 1 })
+    fireEvent.pointerMove(palco, { clientX: 300, clientY: 200, pointerId: 1 })
+    fireEvent.pointerUp(palco, { clientX: 300, clientY: 200, pointerId: 1 })
+
+    expect(screen.getByTestId('camada-zoom').style.transform).toContain('translate(0px, 0px)')
+  })
+})
+
+describe('correção de caixa: salva e volta do servidor (contrato B1)', () => {
+  beforeEach(() => {
+    permissoes.add('alerts:feedback')
+  })
+
+  it('botão só aparece com alerts:feedback', async () => {
+    permissoes.delete('alerts:feedback')
+    get.mockImplementation((rota: string) =>
+      rota.includes('/snapshot') ? respostaEvidencia('https://r2.example/n.jpg') : Promise.resolve(fila([itemComEvidencia('n')])),
+    )
+    montar()
+    await screen.findByAltText(/Evidência de/)
+    expect(screen.queryByRole('button', { name: /Corrigir caixa/i })).toBeNull()
+  })
+
+  it('arrasto grava bbox em PIXELS do frame ORIGINAL e a tela mostra a caixa que o SERVIDOR devolveu', async () => {
+    // Código ANTES deste contrato: não havia botão "Corrigir caixa" nem PATCH
+    // nenhum — este teste falhava por `getByRole('button', {name: /Corrigir/})`
+    // não existir.
+    get.mockImplementation((rota: string) =>
+      rota.includes('/snapshot')
+        ? respostaEvidencia('https://r2.example/c.jpg')
+        : Promise.resolve(
+            fila([
+              itemComEvidencia('cx', {
+                violations: [
+                  { class: 'no_helmet', confidence: 0.6, bbox: [100, 50, 200, 400], bbox_unidade: 'pixels_xywh_frame_original' },
+                ],
+              }),
+            ]),
+          ),
+    )
+    // O servidor CARIMBA a unidade e devolve a caixa CORRIGIDA + autoria —
+    // a tela não pode continuar mostrando o rascunho local, tem que refletir
+    // o que voltou da rota.
+    patch.mockResolvedValue({
+      data: {
+        violations: [
+          { class: 'no_helmet', confidence: 0.6, bbox: [200, 100, 400, 200], bbox_unidade: 'pixels_xywh_frame_original' },
+        ],
+        correcao_ultima: { por: 'u-1', por_nome: 'Ana Souza', em: '2026-08-30T10:00:00Z' },
+      },
+    })
+    montar()
+
+    const img = (await screen.findByAltText(/Evidência de/)) as HTMLImageElement
+    Object.defineProperty(img, 'naturalWidth', { value: 1920, configurable: true })
+    Object.defineProperty(img, 'naturalHeight', { value: 1080, configurable: true })
+    img.getBoundingClientRect = () => ({
+      left: 0, top: 0, right: 960, bottom: 540, width: 960, height: 540, x: 0, y: 0, toJSON: () => ({}),
+    }) as DOMRect
+    fireEvent.load(img)
+
+    fireEvent.click(screen.getByRole('button', { name: /Corrigir caixa/i }))
+    const palco = screen.getByRole('group')
+    fireEvent.pointerDown(palco, { clientX: 100, clientY: 50, pointerId: 1 })
+    fireEvent.pointerMove(palco, { clientX: 300, clientY: 150, pointerId: 1 })
+    fireEvent.pointerUp(palco, { clientX: 300, clientY: 150, pointerId: 1 })
+
+    fireEvent.click(screen.getByRole('button', { name: /Salvar caixa/i }))
+    await waitFor(() => expect(patch).toHaveBeenCalled())
+    // 100→200, 50→100, 300→300 vira largura 400, 150→150 vira altura 200:
+    // fator 2 do rect exibido (960×540) para o natural (1920×1080). Só o
+    // bbox vai ao servidor — nem classe, nem confiança, nem `bbox_unidade`.
+    expect(patch).toHaveBeenCalledWith('/alerts/cx/violations', {
+      correcoes: [{ index: 0, bbox: [200, 100, 400, 200] }],
+    })
+
+    // Volta ao modo de leitura com a caixa e a autoria que o SERVIDOR mandou —
+    // não com o rascunho local (o servidor pode corrigir/clampar o valor).
+    const badge = await screen.findByTestId('badge-autoria')
+    expect(badge.textContent).toContain('Ana Souza')
+    const caixa = screen.getByTestId('caixa-violacao')
+    expect(caixa.getAttribute('style')).toContain('left: 10.4167%') // 200/1920
+  })
+
+  it('falha do PATCH mostra erro e mantém o modo de correção — nada se perde em silêncio', async () => {
+    get.mockImplementation((rota: string) =>
+      rota.includes('/snapshot')
+        ? respostaEvidencia('https://r2.example/e.jpg')
+        : Promise.resolve(
+            fila([
+              itemComEvidencia('e', {
+                violations: [
+                  { class: 'no_helmet', confidence: 0.6, bbox: [10, 10, 20, 20], bbox_unidade: 'pixels_xywh_frame_original' },
+                ],
+              }),
+            ]),
+          ),
+    )
+    patch.mockRejectedValue(new Error('500'))
+    montar()
+    const img = (await screen.findByAltText(/Evidência de/)) as HTMLImageElement
+    Object.defineProperty(img, 'naturalWidth', { value: 1000, configurable: true })
+    Object.defineProperty(img, 'naturalHeight', { value: 1000, configurable: true })
+    fireEvent.load(img)
+
+    fireEvent.click(screen.getByRole('button', { name: /Corrigir caixa/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Salvar caixa/i }))
+
+    await waitFor(() => expect(patch).toHaveBeenCalled())
+    expect(screen.getByText(/Não foi possível salvar a caixa/i)).toBeTruthy()
+    // Continua em modo de correção — "Salvar caixa" ainda visível, o rascunho não sumiu.
+    expect(screen.getByRole('button', { name: /Salvar caixa/i })).toBeTruthy()
+  })
+
+  it('Escape cancela a correção sem chamar o servidor', async () => {
+    get.mockImplementation((rota: string) =>
+      rota.includes('/snapshot')
+        ? respostaEvidencia('https://r2.example/esc.jpg')
+        : Promise.resolve(
+            fila([
+              itemComEvidencia('esc', {
+                violations: [
+                  { class: 'no_helmet', confidence: 0.6, bbox: [10, 10, 20, 20], bbox_unidade: 'pixels_xywh_frame_original' },
+                ],
+              }),
+            ]),
+          ),
+    )
+    montar()
+    const img = (await screen.findByAltText(/Evidência de/)) as HTMLImageElement
+    Object.defineProperty(img, 'naturalWidth', { value: 1000, configurable: true })
+    Object.defineProperty(img, 'naturalHeight', { value: 1000, configurable: true })
+    fireEvent.load(img)
+
+    fireEvent.click(screen.getByRole('button', { name: /Corrigir caixa/i }))
+    expect(screen.getByRole('button', { name: /Salvar caixa/i })).toBeTruthy()
+
+    tecla('Escape')
+    expect(screen.queryByRole('button', { name: /Salvar caixa/i })).toBeNull()
+    expect(screen.getByRole('button', { name: /Corrigir caixa/i })).toBeTruthy()
+    expect(patch).not.toHaveBeenCalled()
+  })
+
+  it('em modo de correção, C/R/← → ficam mudos — só Escape cancela', async () => {
+    // Editar é modo EXPLÍCITO: um "C" digitado no meio de um arrasto não pode
+    // carimbar veredito e abandonar a correção em curso.
+    get.mockImplementation((rota: string) =>
+      rota.includes('/snapshot')
+        ? respostaEvidencia('https://r2.example/k.jpg')
+        : Promise.resolve(
+            fila([
+              itemComEvidencia('k', {
+                violations: [
+                  { class: 'no_helmet', confidence: 0.6, bbox: [10, 10, 20, 20], bbox_unidade: 'pixels_xywh_frame_original' },
+                ],
+              }),
+            ]),
+          ),
+    )
+    montar()
+    const img = (await screen.findByAltText(/Evidência de/)) as HTMLImageElement
+    Object.defineProperty(img, 'naturalWidth', { value: 1000, configurable: true })
+    Object.defineProperty(img, 'naturalHeight', { value: 1000, configurable: true })
+    fireEvent.load(img)
+
+    fireEvent.click(screen.getByRole('button', { name: /Corrigir caixa/i }))
+    tecla('c')
+    tecla('r')
+    tecla('ArrowRight')
+
+    expect(post).not.toHaveBeenCalled()
+    // Ainda em modo de correção — a fila não avançou.
+    expect(screen.getByRole('button', { name: /Salvar caixa/i })).toBeTruthy()
+  })
+
+  it('Anterior/Próximo desabilitam durante a correção — navegar não pode descartar o rascunho em silêncio', async () => {
+    // O teclado já é mudo em modo de correção (teste acima) — mas o MOUSE
+    // não tinha guarda nenhuma: Anterior/Próximo só desabilitavam pela
+    // POSIÇÃO na fila (índice 0 / último item), nunca por `emCorrecao`. Fila
+    // de 3 pra ficar no meio (Y, índice 1), onde NENHUM dos dois já estaria
+    // desabilitado por posição — só o modo de correção pode explicar.
+    const X = itemComEvidencia('x', {
+      violations: [{ class: 'no_helmet', confidence: 0.6, bbox: [10, 10, 20, 20], bbox_unidade: 'pixels_xywh_frame_original' }],
+    })
+    const Y = itemComEvidencia('y', {
+      violations: [{ class: 'no_helmet', confidence: 0.6, bbox: [50, 50, 100, 100], bbox_unidade: 'pixels_xywh_frame_original' }],
+    })
+    const Z = itemComEvidencia('z', {
+      violations: [{ class: 'no_helmet', confidence: 0.6, bbox: [80, 80, 120, 120], bbox_unidade: 'pixels_xywh_frame_original' }],
+    })
+    get.mockImplementation((rota: string) =>
+      rota.includes('/snapshot') ? respostaEvidencia('https://r2.example/xyz2.jpg') : Promise.resolve(fila([X, Y, Z])),
+    )
+    montar()
+    const carregaImagem = async () => {
+      const img = (await screen.findByAltText(/Evidência de/)) as HTMLImageElement
+      Object.defineProperty(img, 'naturalWidth', { value: 1000, configurable: true })
+      Object.defineProperty(img, 'naturalHeight', { value: 1000, configurable: true })
+      fireEvent.load(img)
+    }
+    await carregaImagem()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Próximo item' })) // X → Y, índice 1
+    await carregaImagem()
+    // Fora do modo de correção, os dois estão HABILITADOS nesta posição.
+    expect(screen.getByRole('button', { name: 'Item anterior' })).toHaveProperty('disabled', false)
+    expect(screen.getByRole('button', { name: 'Próximo item' })).toHaveProperty('disabled', false)
+
+    fireEvent.click(screen.getByRole('button', { name: /Corrigir caixa/i }))
+    expect(screen.getByRole('button', { name: 'Item anterior' })).toHaveProperty('disabled', true)
+    expect(screen.getByRole('button', { name: 'Próximo item' })).toHaveProperty('disabled', true)
+
+    // Clique num botão desabilitado não dispara nada (nem o jsdom entrega o
+    // evento) — a tela segue em correção, o rascunho não foi descartado.
+    fireEvent.click(screen.getByRole('button', { name: 'Próximo item' }))
+    expect(screen.getByRole('button', { name: /Salvar caixa/i })).toBeTruthy()
+  })
+
+  it('PATCH em voo grava por ID, não por posição: a fila pode reordenar enquanto o servidor responde', async () => {
+    // Achado do revisor cético (contrato B1): `salvarCaixa` carimbava a
+    // resposta do PATCH pelo ÍNDICE congelado antes do `await`. Fila [X,Y,Z],
+    // operador corrige Y (índice 1); enquanto o PATCH está em voo, outro
+    // revisor decide X por fora (poll de 15s) — X sai, Y desce pro índice 0,
+    // Z desce pro 1. Com índice cru, a resposta de Y era escrita em Z: caixa
+    // errada e autoria de alguém que nunca tocou naquele alerta.
+    vi.useFakeTimers()
+    const X = itemComEvidencia('x', {
+      violations: [{ class: 'no_helmet', confidence: 0.6, bbox: [10, 10, 20, 20], bbox_unidade: 'pixels_xywh_frame_original' }],
+    })
+    const Y = itemComEvidencia('y', {
+      violations: [{ class: 'no_helmet', confidence: 0.6, bbox: [100, 50, 200, 400], bbox_unidade: 'pixels_xywh_frame_original' }],
+    })
+    const Z = itemComEvidencia('z', {
+      violations: [{ class: 'no_helmet', confidence: 0.6, bbox: [50, 50, 100, 100], bbox_unidade: 'pixels_xywh_frame_original' }],
+    })
+    get.mockImplementation((rota: string) =>
+      rota.includes('/snapshot')
+        ? respostaEvidencia('https://r2.example/xyz.jpg')
+        : Promise.resolve(fila([X, Y, Z])),
+    )
+
+    let liberarPatch: (v: unknown) => void = () => {}
+    patch.mockImplementation(() => new Promise((resolve) => { liberarPatch = resolve }))
+
+    // Sob `vi.useFakeTimers()`, `waitFor`/`findBy*` do testing-library ficam
+    // presos (dependem de timers reais) — o resto do arquivo já usa
+    // `vi.waitFor` + `getBy*` neste regime (ver "reabastecimento ANEXA" etc.).
+    const disparaLoad = async () => {
+      await vi.waitFor(() => expect(screen.getByAltText(/Evidência de/)).toBeTruthy())
+      const img = screen.getByAltText(/Evidência de/) as HTMLImageElement
+      Object.defineProperty(img, 'naturalWidth', { value: 1920, configurable: true })
+      Object.defineProperty(img, 'naturalHeight', { value: 1080, configurable: true })
+      fireEvent.load(img)
+      return img
+    }
+
+    montar()
+    await disparaLoad() // X, índice 0
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Próximo item' }).click()
+    })
+    await disparaLoad() // Y, índice 1 — onde o operador corrige
+
+    fireEvent.click(screen.getByRole('button', { name: /Corrigir caixa/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Salvar caixa/i }))
+    expect(patch).toHaveBeenCalledWith('/alerts/y/violations', expect.anything())
+
+    // PATCH de Y em voo. Outro revisor decide X por fora: no próximo poll,
+    // X some, Y desce pro índice 0, Z desce pro índice 1 — o índice ONDE Y
+    // ESTAVA quando o PATCH partiu.
+    get.mockImplementation((rota: string) =>
+      rota.includes('/snapshot')
+        ? respostaEvidencia('https://r2.example/xyz.jpg')
+        : Promise.resolve(fila([Y, Z])),
+    )
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000)
+    })
+    // `get` também serve o `/snapshot` de cada item — conta só os polls da fila.
+    const chamadasDaFila = () => get.mock.calls.filter((c) => String(c[0]).includes('/verification/queue')).length
+    await vi.waitFor(() => expect(chamadasDaFila()).toBe(2))
+
+    // Só agora o PATCH de Y responde.
+    await act(async () => {
+      liberarPatch({
+        data: {
+          violations: [
+            { class: 'no_helmet', confidence: 0.6, bbox: [800, 100, 200, 400], bbox_unidade: 'pixels_xywh_frame_original' },
+          ],
+          correcao_ultima: { por: 'u-1', por_nome: 'Ana Souza', em: '2026-08-30T10:00:00Z' },
+        },
+      })
+    })
+    await vi.waitFor(() => expect(screen.queryByRole('button', { name: /Salvar caixa/i })).toBeNull())
+
+    // A tela voltou pro Y (recalculado por ID no poll, regra 1 do docblock) —
+    // a correção e a autoria têm que estar NELE.
+    await disparaLoad()
+    await vi.waitFor(() => expect(screen.getByTestId('badge-autoria')).toBeTruthy())
+    expect(screen.getByTestId('badge-autoria').textContent).toContain('Ana Souza')
+    expect(screen.getByTestId('caixa-violacao').getAttribute('style')).toContain('left: 41.6667%') // 800/1920
+
+    // Z — que ninguém corrigiu — não pode ter ganho a caixa nem a autoria de Y.
+    await act(async () => {
+      screen.getByRole('button', { name: 'Próximo item' }).click()
+    })
+    await disparaLoad()
+    expect(screen.queryByTestId('badge-autoria')).toBeNull()
+    expect(screen.getByTestId('caixa-violacao').getAttribute('style')).toContain('left: 2.6042%') // 50/1920, bbox original de Z
   })
 })

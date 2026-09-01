@@ -94,6 +94,8 @@ export const palco = style({
   alignItems: 'stretch',
 })
 
+/** Palco da lupa (pan+zoom, contrato B1). `touchAction: none` não é enfeite:
+ *  sem ele o navegador rouba a pinça e o zoom fica preso ao mouse. */
 export const evidencia = style({
   flex: 1,
   minWidth: 0,
@@ -105,6 +107,8 @@ export const evidencia = style({
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
+  touchAction: 'none',
+  userSelect: 'none',
 })
 
 /** Camada que recebe o zoom: <img> e caixas JUNTAS, senão a marcação
@@ -379,6 +383,168 @@ export const nota = style({
   color: lk.cor.cinzaNevoa,
   textAlign: 'center',
   lineHeight: 1.5,
+})
+
+// ── correção de caixa (contrato B1 — mesma matemática de EventoDetalhe.css.ts) ─
+
+/** "ONDE A IA MARCOU" — tracejada, cinza. Só a leitura do que o modelo gravou. */
+export const caixaIA = style({
+  position: 'absolute',
+  pointerEvents: 'none',
+  borderStyle: 'dashed',
+  borderColor: lk.cor.cinzaNevoa,
+  borderRadius: '2px',
+})
+
+export const rotuloCaixaIA = style({
+  position: 'absolute',
+  bottom: '100%',
+  left: 0,
+  marginBottom: '4px',
+  transformOrigin: '0 100%',
+  fontFamily: lk.fonte.mono,
+  fontSize: '10px',
+  color: lk.cor.cinzaNevoa,
+  whiteSpace: 'nowrap',
+})
+
+/** "SUA CORREÇÃO" — sólida, ciano. Única caixa desta tela que É alvo de
+ *  clique: arrastar move, alças redimensionam. Vinheta escurece tudo FORA
+ *  dela, recortada pelo `overflow:hidden` do palco. */
+export const caixaCorrecao = style({
+  position: 'absolute',
+  cursor: 'move',
+  borderStyle: 'solid',
+  borderColor: lk.cor.cianoVisao,
+  borderRadius: '2px',
+  boxShadow: `0 0 0 9999px color-mix(in srgb, ${lk.cor.preto} 45%, transparent)`,
+})
+
+export const rotuloCaixaCorrecao = style({
+  position: 'absolute',
+  bottom: '100%',
+  left: 0,
+  marginBottom: '4px',
+  pointerEvents: 'none',
+  fontFamily: lk.fonte.mono,
+  fontSize: '10px',
+  fontWeight: 700,
+  color: lk.cor.cianoVisao,
+  whiteSpace: 'nowrap',
+})
+
+/** Alça de resize — tamanho e posição vêm inline (contra-escala do zoom + 8 cantos). */
+export const alca = style({
+  position: 'absolute',
+  background: lk.cor.cianoVisao,
+  borderRadius: '2px',
+})
+
+export const dicaCorrecao = style({
+  margin: 0,
+  position: 'absolute',
+  bottom: '10px',
+  left: '10px',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
+  background: `color-mix(in srgb, ${lk.cor.preto} 75%, transparent)`,
+  padding: '4px 9px',
+  borderRadius: '5px',
+  fontFamily: lk.fonte.mono,
+  fontSize: '10px',
+  letterSpacing: '0.1em',
+  color: lk.cor.cinzaNevoa,
+})
+
+export const botaoCorrigir = style({
+  height: '30px',
+  padding: '0 11px',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '6px',
+  alignSelf: 'flex-start',
+  background: 'transparent',
+  border: `1px solid ${lk.cor.borda}`,
+  borderRadius: lk.raio.s,
+  color: lk.cor.cinzaNevoa,
+  fontFamily: lk.fonte.mono,
+  fontSize: '10.5px',
+  letterSpacing: '0.06em',
+  textTransform: 'uppercase',
+  cursor: 'pointer',
+  selectors: {
+    '&:hover:not(:disabled)': { borderColor: lk.cor.cianoVisao, color: lk.cor.cianoVisao },
+  },
+})
+
+/** Autoria da correção (ADR-0066: "a caixa diz quem a desenhou") — NOME,
+ *  nunca UUID cru. */
+export const badgeAutoria = style({
+  display: 'flex',
+  gap: lk.espaco.x1,
+  padding: '10px',
+  borderRadius: lk.raio.s,
+  background: lk.cor.preto,
+  border: `1px solid ${lk.cor.borda}`,
+})
+
+export const badgeAutoriaTexto = style({
+  margin: 0,
+  fontSize: '11.5px',
+  lineHeight: 1.5,
+  color: lk.cor.cinzaNevoa,
+})
+
+export const gradeCoordenadas = style({
+  display: 'grid',
+  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  gap: lk.espaco.x1,
+})
+
+export const campoCoordenada = style({ display: 'flex', flexDirection: 'column', gap: '5px' })
+
+export const rotuloCoordenada = style({
+  fontFamily: lk.fonte.mono,
+  fontSize: '10px',
+  letterSpacing: OVERLINE_TRACKING,
+  color: lk.cor.cinzaNevoa,
+})
+
+export const inputCoordenada = style({
+  height: '40px',
+  width: '100%',
+  boxSizing: 'border-box',
+  padding: '0 11px',
+  borderRadius: lk.raio.s,
+  border: `1px solid ${lk.cor.borda}`,
+  background: lk.cor.preto,
+  color: lk.cor.brancoSinal,
+  fontFamily: lk.fonte.mono,
+  fontSize: '14px',
+  outline: 'none',
+  selectors: {
+    '&:focus': { borderColor: lk.cor.cianoVisao },
+    '&:disabled': { color: lk.cor.cinzaNevoa },
+  },
+})
+
+/** Mesma forma de `confirmar`/`rejeitar` (56px, piso desta tela) — cor muda:
+ *  "Salvar caixa" é ação, não confirmação/descarte de veredito. */
+export const botaoSalvarCaixa = style({
+  ...botaoVeredito,
+  border: 'none',
+  background: lk.cor.cianoVisao,
+  color: lk.cor.preto,
+  selectors: { '&:disabled': { opacity: 0.5, cursor: 'not-allowed' } },
+})
+
+export const botaoCancelarCaixa = style({
+  ...botaoVeredito,
+  background: 'transparent',
+  border: `1px solid ${lk.cor.borda}`,
+  color: lk.cor.brancoSinal,
+  selectors: { '&:disabled': { opacity: 0.5, cursor: 'not-allowed' } },
 })
 
 export const navegacao = style({
