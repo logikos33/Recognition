@@ -295,6 +295,28 @@ julgou. **É proposta da pista aguardando refino oficial.**
   data e nada de inventado.
 - **P3** — o job de treino gravar métrica real, e o backend distinguir NULL de 0.
 
+## 17. Classificar — NÃO precisa de prancha nova (medido, e o achado é outro)
+
+O pedido era "Classificar no mesmo padrão da Verificação (frame grande + recorte lateral + atalhos
++ contador), porque hoje é um formulário de filtros com fila vazia".
+
+**Medido, e a premissa não se confirma:** a tela **já tem o padrão inteiro** — frame grande
+(`CropClassifier.tsx` ~1043), painel lateral (~1085), atalhos pelo hook compartilhado
+`useStudioKeyboard` (~858), contador de restantes (~898-913) e confirmar/rejeitar/motivo. ⛔ Nada a
+importar da Verificação, ⛔ nada a redesenhar.
+
+**O defeito real é de critério, não de desenho** — e é a mesma família do "critério fantasma" da
+rodada #1: sem filtro há **2.499 recortes elegíveis**; ao marcar qualquer classe (inclusive pelo
+botão de atalho "só prioritárias", o clique óbvio de quem chega), o backend passa a exigir
+**proposta de IA pendente E câmera ativa ao mesmo tempo** — e dos 159 recortes com proposta,
+**159/159 pertencem a câmeras arquivadas**. Interseção zero: vazio por construção.
+
+Tratado em código (não em desenho), com o padrão de vazio honesto já estabelecido na Fila de
+Propostas: o vazio revela o filtro que o causou e oferece limpá-lo.
+
+**Fica para o design apenas**: o modo intercalado (normais × propostas) em linguagem leiga, se e
+quando o pipeline de pré-anotação for religado — decisão de GPU do Vitor, hoje flag OFF.
+
 ---
 
 # ⚪ POLIMENTO — não bloqueia fase nenhuma
