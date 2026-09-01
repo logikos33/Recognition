@@ -25,7 +25,13 @@ import { MemoryRouter, Route, Routes, useParams, useSearchParams } from 'react-r
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+
+// jsdom não implementa scrollIntoView (usado no auto-scroll até a linha
+// destacada pelo deep-link do sino, `?highlight=`).
+beforeAll(() => {
+  Element.prototype.scrollIntoView = vi.fn()
+})
 
 /** `vi.mock` é içado acima das constantes do módulo — daí o `vi.hoisted`. */
 const h = vi.hoisted(() => ({
@@ -45,6 +51,9 @@ const h = vi.hoisted(() => ({
    *  diferente (ver `routeGet` abaixo, mesmo padrão de `CropClassifier...test.tsx`). */
   timeline: [] as { bucket: string; count: number }[],
   falhar: false,
+  /** Só a faixa falha — distinto de `falhar` (que derruba /alerts também),
+   *  pra QUEBRA 3 provar que a faixa erra sem quebrar a lista abaixo. */
+  falharTimeline: false,
   /** Espelha o `ApiError` real: a tela lê `.status` para dizer o que falhou. */
   ApiErroFalso: class ApiErroFalso extends Error {
     status: number
@@ -63,6 +72,7 @@ vi.mock('../../services/api', () => ({
       h.gets.push(p)
       if (h.falhar) return Promise.reject(new h.ApiErroFalso(500))
       if (p.startsWith('/v1/events/timeline')) {
+        if (h.falharTimeline) return Promise.reject(new h.ApiErroFalso(500))
         return Promise.resolve({ success: true, data: { timeline: h.timeline, bucket: 'hour' } })
       }
       return Promise.resolve({ success: true, data: h.pagina })
@@ -204,6 +214,7 @@ beforeEach(() => {
   h.downloads.length = 0
   h.timeline = []
   h.falhar = false
+  h.falharTimeline = false
   h.pagina = { alerts: EVENTOS, total: 4, page: 1, per_page: 20, pages: 1 }
 })
 
@@ -565,6 +576,17 @@ describe('período — deep-link e propagação (item 3 e item 4)', () => {
   })
 })
 
+describe('deep-link do sino — highlight sobrevive ao mount (QUEBRA 2)', () => {
+  it('?highlight=e1 continua na URL depois do efeito que escreve period/filtros', async () => {
+    // O efeito de período (item 4) reescreve a querystring INTEIRA a cada
+    // render — ele roda logo no mount. Sem preservar `highlight`, o link do
+    // sino perderia o param antes mesmo de a pessoa ver o realce.
+    montar('/epi/eventos?highlight=e1')
+    await screen.findByText('CAM-04 Expedição')
+    expect(screen.getByTestId('sonda').textContent).toContain('highlight=e1')
+  })
+})
+
 describe('linha do tempo — distribuição clicável no período (item 2)', () => {
   it('clicar numa barra vira o novo intervalo — scrub, extensão do padrão do handoff', async () => {
     // Bucket relativo a "agora" (não uma data fixa): 'hoje' é [meia-noite
@@ -594,6 +616,32 @@ describe('linha do tempo — distribuição clicável no período (item 2)', () 
     expect(
       screen.getByText(/conta violação \+ conformidade, todo status/i),
     ).toBeTruthy()
+  })
+
+  // QUEBRA 1 (rodada de correção): a faixa somava demo_events, mas `/alerts`
+  // (a lista abaixo) NUNCA soma demo — clicar num bucket só-demo levava a
+  // uma lista vazia. Provar a causa (o parâmetro) prova o beco sem saída:
+  // sem demo na faixa, todo bucket clicável tem contrapartida real na lista.
+  it('pede a faixa SEM demo_events — beco sem saída morto: bucket clicável nunca some da lista real', async () => {
+    montar()
+    await screen.findByText('CAM-04 Expedição')
+    const chamadaTimeline = h.gets.find((g) => g.startsWith('/v1/events/timeline'))
+    expect(chamadaTimeline).toContain('include_demo=false')
+  })
+
+  // QUEBRA 3: falha ao buscar a faixa não pode parecer "zero eventos" — a
+  // mesma família de defeito de "zero é uma afirmação" (rodada #1).
+  it('falha ao buscar a faixa diz que falhou — não vira faixa de "zero eventos"', async () => {
+    h.falharTimeline = true
+    montar()
+    await screen.findByText('CAM-04 Expedição')
+    expect(screen.getByText(/não foi possível carregar a distribuição/i)).toBeTruthy()
+    // A nota "conta violação + conformidade" é o estado de SUCESSO — some
+    // quando o estado é erro, senão as duas mensagens convivem contraditórias.
+    expect(screen.queryByText(/conta violação \+ conformidade/i)).toBeNull()
+    // A lista de eventos (rota separada) segue funcionando — falha da faixa
+    // não derruba a tela inteira.
+    expect(screen.queryByRole('group', { name: /distribuição de eventos/i })).toBeNull()
   })
 })
 

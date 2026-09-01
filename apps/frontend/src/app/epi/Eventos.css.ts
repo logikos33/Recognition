@@ -394,6 +394,11 @@ export const cabecalhoTempo = style({
  *  kind/acknowledged, então ela pode discordar da tabela abaixo. */
 export const notaTempo = style({ fontSize: '11px', color: lk.cor.cinzaNevoa })
 
+/** "Falha ao buscar" ≠ "zero eventos" — mesma família de defeito de "zero é
+ *  uma afirmação". Cor de atenção (a mesma de "Novo"/retroativo), nunca a
+ *  cor neutra de `notaTempo`, senão a falha se disfarça de nota comum. */
+export const notaTempoErro = style({ fontSize: '11px', color: lk.estado.atencao })
+
 export const linhaDoTempo = style({
   display: 'flex',
   alignItems: 'flex-end',

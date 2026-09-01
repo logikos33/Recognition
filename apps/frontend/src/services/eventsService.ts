@@ -50,6 +50,12 @@ export interface EventsRangeParams {
   moduleCode?: string
   cameraIds?: string[]
   classNames?: string[]
+  /** false exclui `demo_events` — o backend inclui por padrão (`include_demo`
+   *  default true), mas `GET /alerts` (a lista real) NUNCA soma demo. Quem
+   *  cruza este agregado com a lista (ex.: faixa clicável de Eventos.tsx)
+   *  precisa disto: sem excluir, uma barra pode contar só evento demo e o
+   *  clique cai numa lista vazia — beco sem saída. */
+  includeDemo?: boolean
 }
 
 export interface TimelineParams extends EventsRangeParams {
@@ -62,6 +68,7 @@ function buildQuery(params: EventsRangeParams, bucket?: string): string {
   qs.set('to', params.to)
   if (bucket) qs.set('bucket', bucket)
   if (params.moduleCode) qs.set('module_code', params.moduleCode)
+  if (params.includeDemo === false) qs.set('include_demo', 'false')
   for (const id of params.cameraIds ?? []) qs.append('camera_id[]', id)
   for (const cls of params.classNames ?? []) qs.append('class_name[]', cls)
   return qs.toString()

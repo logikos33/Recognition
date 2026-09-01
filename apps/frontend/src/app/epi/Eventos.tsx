@@ -278,12 +278,19 @@ export function Eventos() {
    * (`consulta()`), mas quem lê de volta prioriza `period` (ver o `useState`
    * acima) e recalcula "os últimos 30 dias" na hora, não a partir de datas
    * velhas do dia em que o link foi copiado.
+   *
+   * `highlight` (deep-link do sino) NÃO é filtro — `consulta()` não o carrega
+   * — então sem preservá-lo aqui este mesmo efeito o apagava da URL logo no
+   * mount, antes de a pessoa nem rolar até a linha. `destaque` é a mesma
+   * cópia local que decide o realce/scroll abaixo; solta sozinha em 4s, e a
+   * URL solta junto — não perpetua um highlight morto.
    */
   useEffect(() => {
     const p = consulta()
     p.set('period', filtros.intervalo ? 'personalizado' : filtros.periodo)
+    if (destaque) p.set('highlight', destaque)
     setParametros(p, { replace: true })
-  }, [consulta, filtros.intervalo, filtros.periodo, setParametros])
+  }, [consulta, filtros.intervalo, filtros.periodo, destaque, setParametros])
 
   // Nomes de câmera para o filtro do desenho ("CAM-04 Expedição"). Degrada em
   // silêncio: sem a lista, o filtro some — nunca vira campo de digitar UUID.
@@ -357,6 +364,12 @@ export function Eventos() {
   const bucketTipo: FillBucket = Number.isFinite(spanMs) && spanMs > 2 * 86_400_000 ? 'day' : 'hour'
 
   const [timelinePontos, setTimelinePontos] = useState<TimelinePoint[]>([])
+  // erroTimeline distingue "falha ao buscar" de "zero eventos" — sem isto o
+  // catch abaixo faz as duas coisas parecerem a MESMA faixa vazia, e "zero é
+  // uma afirmação" é a mesma família de defeito que a rodada #1 já corrigiu
+  // (confiança/precisão) — não inventar "não houve evento" quando o dado é
+  // que a busca falhou.
+  const [erroTimeline, setErroTimeline] = useState(false)
   useEffect(() => {
     if (!podeLer) return
     let vivo = true
@@ -368,9 +381,14 @@ export function Eventos() {
         moduleCode: MODULO,
         cameraIds: filtros.cameraId ? [filtros.cameraId] : undefined,
         classNames: filtros.classe ? [filtros.classe] : undefined,
+        // `/alerts` (a lista abaixo) NUNCA soma demo_events — sem excluir
+        // aqui, uma barra pode contar só evento demo, virar intervalo ao
+        // clicar (`escolherBucketTimeline`) e a lista real vir vazia: beco
+        // sem saída. Ver comentário de `includeDemo` em eventsService.ts.
+        includeDemo: false,
       })
-      .then((d) => { if (vivo) setTimelinePontos(d.timeline) })
-      .catch(() => { if (vivo) setTimelinePontos([]) })
+      .then((d) => { if (vivo) { setTimelinePontos(d.timeline); setErroTimeline(false) } })
+      .catch(() => { if (vivo) { setTimelinePontos([]); setErroTimeline(true) } })
     return () => { vivo = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [podeLer, efetivo.from, efetivo.to, bucketTipo, filtros.cameraId, filtros.classe])
@@ -643,35 +661,46 @@ export function Eventos() {
       <div className={s.cartaoTempo}>
         <div className={s.cabecalhoTempo}>
           <span className={s.overlineLegenda}>Distribuição no período</span>
-          <span className={s.notaTempo}>
-            conta violação + conformidade, todo status — não só o que a tabela mostra
+          {!erroTimeline && (
+            <span className={s.notaTempo}>
+              conta violação + conformidade, todo status — não só o que a tabela mostra
+            </span>
+          )}
+        </div>
+        {erroTimeline ? (
+          // Falha do fetch é ESTADO PRÓPRIO — nunca a mesma faixa achatada de
+          // "zero eventos" (a barra de 2px abaixo mentiria "não houve
+          // evento" quando o dado real é "não foi possível saber").
+          <span className={s.notaTempoErro} role="alert">
+            Não foi possível carregar a distribuição — os eventos abaixo continuam confiáveis.
           </span>
-        </div>
-        <div
-          className={s.linhaDoTempo}
-          role="group"
-          aria-label="Distribuição de eventos no período — clique numa barra para ver aquele intervalo"
-        >
-          {pontosDensos.map((p) => (
-            <button
-              key={p.bucket}
-              type="button"
-              className={s.colunaTempo}
-              title={`${p.rotulo} · ${p.count} evento(s) no total`}
-              aria-label={`${p.rotulo} · ${p.count} evento(s) · ver este intervalo`}
-              onClick={() => escolherBucketTimeline(p.bucket)}
-            >
-              <span
-                className={s.barraTempo}
-                style={{
-                  height: picoTimeline > 0
-                    ? `${Math.max(2, Math.round((p.count / picoTimeline) * 100))}%`
-                    : '2px',
-                }}
-              />
-            </button>
-          ))}
-        </div>
+        ) : (
+          <div
+            className={s.linhaDoTempo}
+            role="group"
+            aria-label="Distribuição de eventos no período — clique numa barra para ver aquele intervalo"
+          >
+            {pontosDensos.map((p) => (
+              <button
+                key={p.bucket}
+                type="button"
+                className={s.colunaTempo}
+                title={`${p.rotulo} · ${p.count} evento(s) no total`}
+                aria-label={`${p.rotulo} · ${p.count} evento(s) · ver este intervalo`}
+                onClick={() => escolherBucketTimeline(p.bucket)}
+              >
+                <span
+                  className={s.barraTempo}
+                  style={{
+                    height: picoTimeline > 0
+                      ? `${Math.max(2, Math.round((p.count / picoTimeline) * 100))}%`
+                      : '2px',
+                  }}
+                />
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {selecionados.length > 0 && (
