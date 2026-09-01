@@ -245,6 +245,80 @@ backend".
 
 ---
 
+## 15. Arquitetura de administração — o admin do cliente tem a chave e não tem a porta
+
+**Como está, medido em 31/08:** o produto tem **dois papéis administrativos** e só um tem
+painel. O papel `admin` do tenant já possui `admin:users`, `admin:roles` e `branding:write`
+(`services/api/app/core/permissions.py`) — pode gerir a própria equipe, os papéis e a marca.
+Mas a única porta administrativa é gateada por `admin:panel`, que é **superadmin-only**, e no
+blueprint admin há **59 rotas `@require_superadmin` e zero `@require_admin`**.
+
+Isso explica o relato de "dois admins convivendo": o cliente não tem onde administrar a própria
+casa, e o superadmin vê tudo. Não é vazamento de menu por papel (o menu já respeita `admin:panel`)
+— era vazamento por **link**: três `href` absolutos para o front antigo, corrigidos nesta rodada.
+
+**Proposta da pista:** `docs/design/handoff-f5/Arquitetura de Administração.dc.html` +
+`… — Conexões.dc.html` — quem vê o quê, como se troca de chapéu (assumir contexto com o banner
+âmbar sempre visível), o princípio de nenhum menu vazado, e o de-para completo elemento × endpoint
+× existe/insuficiente/não-existe. **É proposta da pista aguardando refino oficial.**
+
+**Pedidos ao backend, nesta ordem:**
+- **P1 (BLOQUEIA a tela Equipe)** — rotas de usuário passam a aceitar `admin:users` e, nesse caso,
+  respondem apenas com gente do tenant do token. Cross-tenant → **404**, nunca 403.
+- **P2** — auditoria escopada ao próprio tenant (`audit:read` é superadmin-only hoje; o cliente não
+  vê quem desativou uma câmera na casa dele).
+- **P3 (registro, não pedido)** — marca e papéis **já aceitam** admin de tenant (`/v1/roles`,
+  `PUT /v1/admin/branding`): é só construir a tela. Anotado para ninguém criar endpoint por engano.
+
+## 16. Catálogo de modelos — a métrica que existe não é a que a tela mostra
+
+**Como está, medido em 31/08 no DEV:** os **8 modelos** do RVB têm `map50`, `precision` e `recall`
+iguais a **zero literal** (nunca gravados — por isso o guard `!= null` da rodada #1 os deixava
+passar como "0,0%"), e **7 dos 8** estão sem `display_name`, então o cliente lê
+"RF-DETR - Job 3091cfc9".
+
+**O que mudou nesta rodada:** passou a existir uma métrica real — **121 vereditos humanos** na
+fila de verificação. Ela mede o que o supervisor quer saber ("quantos avisos valeram a pena"),
+não o que o treino registrou. Precisão global medida: **48,8%** (59 confirmados / 62 falsos); por
+classe vai de 69,7% (Sem luvas) a 30,4% (Sem óculos).
+
+**Proposta da pista:** `docs/design/handoff-f5/Catálogo de Modelos.dc.html` — o card diz
+"de cada 10 avisos, ~5 são reais" com o `n` ao lado, quebra por classe, três estados
+(em produção × em observação × disponível), linhagem e dataset, e "—" com dignidade onde ninguém
+julgou. **É proposta da pista aguardando refino oficial.**
+
+**Pedidos ao backend:**
+- **P1 (é o número central do card)** — precisão por classe/modelo agregada a partir de
+  `alerts.verification_verdict`. O cálculo já existe fora da API em
+  `scripts/ops/calibracao_classes.py`; falta promover a endpoint.
+- **P2** — "o que mudou" entre versões (delta de imagens/classes). Sem ele o card entrega alias +
+  data e nada de inventado.
+- **P3** — o job de treino gravar métrica real, e o backend distinguir NULL de 0.
+
+## 17. Classificar — NÃO precisa de prancha nova (medido, e o achado é outro)
+
+O pedido era "Classificar no mesmo padrão da Verificação (frame grande + recorte lateral + atalhos
++ contador), porque hoje é um formulário de filtros com fila vazia".
+
+**Medido, e a premissa não se confirma:** a tela **já tem o padrão inteiro** — frame grande
+(`CropClassifier.tsx` ~1043), painel lateral (~1085), atalhos pelo hook compartilhado
+`useStudioKeyboard` (~858), contador de restantes (~898-913) e confirmar/rejeitar/motivo. ⛔ Nada a
+importar da Verificação, ⛔ nada a redesenhar.
+
+**O defeito real é de critério, não de desenho** — e é a mesma família do "critério fantasma" da
+rodada #1: sem filtro há **2.499 recortes elegíveis**; ao marcar qualquer classe (inclusive pelo
+botão de atalho "só prioritárias", o clique óbvio de quem chega), o backend passa a exigir
+**proposta de IA pendente E câmera ativa ao mesmo tempo** — e dos 159 recortes com proposta,
+**159/159 pertencem a câmeras arquivadas**. Interseção zero: vazio por construção.
+
+Tratado em código (não em desenho), com o padrão de vazio honesto já estabelecido na Fila de
+Propostas: o vazio revela o filtro que o causou e oferece limpá-lo.
+
+**Fica para o design apenas**: o modo intercalado (normais × propostas) em linguagem leiga, se e
+quando o pipeline de pré-anotação for religado — decisão de GPU do Vitor, hoje flag OFF.
+
+---
+
 # ⚪ POLIMENTO — não bloqueia fase nenhuma
 
 ## 11. Chat flutuante

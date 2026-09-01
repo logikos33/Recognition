@@ -1,0 +1,184 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+  <style>
+    body { margin: 0; background: #0A0A0F; color: #F4F6F8;
+           font-family: Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #00E5FF; } a:hover { color: #0091AD; }
+    .ov { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px;
+          text-transform: uppercase; letter-spacing: .18em; color: #8A8F98; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    .h { font-family: 'Space Grotesk', system-ui, sans-serif; }
+  </style>
+</helmet>
+
+<div style="padding: 40px 48px; max-width: 1344px; box-sizing: border-box;">
+
+  <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 30px;">
+    <div class="ov">E3 · Catálogo de modelos · medido em 31/08/2026</div>
+    <h1 class="h" style="margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -.01em;">O card do modelo diz o que o modelo faz</h1>
+    <p style="margin: 4px 0 0; font-size: 13.5px; color: #8A8F98; max-width: 820px; line-height: 1.55;">
+      Hoje o catálogo mostra três números que <strong style="color:#F4F6F8">nunca foram gravados</strong>.
+      Esta prancha troca a métrica que não existe pela única que existe — e a diz em língua de gente.
+    </p>
+  </div>
+
+  <!-- O PROBLEMA MEDIDO -->
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 18px; margin-bottom: 30px;">
+    <div style="background:#14141C; border:1px solid #23242F; border-radius:12px; padding:18px 20px;">
+      <div class="h" style="font-size:28px; font-weight:700; color:#E5484D;">8 / 8</div>
+      <div style="font-size:12px; color:#8A8F98; margin-top:4px; line-height:1.5;">modelos do RVB com <span class="mono">map50</span>, <span class="mono">precision</span> e <span class="mono">recall</span> = <strong style="color:#F4F6F8">zero literal</strong>, não nulo</div>
+    </div>
+    <div style="background:#14141C; border:1px solid #23242F; border-radius:12px; padding:18px 20px;">
+      <div class="h" style="font-size:28px; font-weight:700; color:#E8A13C;">7 / 8</div>
+      <div style="font-size:12px; color:#8A8F98; margin-top:4px; line-height:1.5;">sem <span class="mono">display_name</span> — o cliente vê "RF-DETR - Job 3091cfc9"</div>
+    </div>
+    <div style="background:#14141C; border:1px solid #23242F; border-radius:12px; padding:18px 20px;">
+      <div class="h" style="font-size:28px; font-weight:700; color:#3ECF8E;">121</div>
+      <div style="font-size:12px; color:#8A8F98; margin-top:4px; line-height:1.5;">vereditos humanos em produção — a métrica que <strong style="color:#F4F6F8">existe de verdade</strong></div>
+    </div>
+  </div>
+
+  <!-- O CARD -->
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 30px;">
+
+    <!-- CARD PROPOSTO -->
+    <div>
+      <div class="ov" style="margin-bottom: 10px;">Proposta — o card</div>
+      <div style="background:#14141C; border:1px solid #23242F; border-radius:12px; overflow:hidden;">
+        <div style="padding:18px 20px; border-bottom:1px solid #23242F;">
+          <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
+            <div>
+              <div class="h" style="font-size:17px; font-weight:700;">Logikos V2</div>
+              <div style="font-size:12px; color:#8A8F98; margin-top:3px;">25 de agosto · +340 imagens de Expedição</div>
+            </div>
+            <span class="mono" style="font-size:10px; padding:4px 9px; border-radius:5px;
+                  background:rgba(0,229,255,.10); color:#00E5FF; border:1px solid rgba(0,229,255,.28); white-space:nowrap;">EM PRODUÇÃO</span>
+          </div>
+        </div>
+
+        <div style="padding:18px 20px; border-bottom:1px solid #23242F;">
+          <div class="ov" style="margin-bottom:10px;">O que esperar dele</div>
+          <div style="display:flex; flex-direction:column; gap:12px;">
+            <div>
+              <div style="font-size:14px; color:#F4F6F8; line-height:1.5;">De cada 10 avisos que ele dá, <strong>cerca de 5 são reais</strong>.</div>
+              <div style="font-size:11.5px; color:#8A8F98; margin-top:3px;">medido em 121 avisos que a sua equipe já julgou · atualizado hoje</div>
+            </div>
+            <div style="height:6px; background:#0A0A0F; border-radius:3px; overflow:hidden; display:flex;">
+              <div style="width:49%; background:#3ECF8E;"></div>
+              <div style="width:51%; background:#E5484D; opacity:.55;"></div>
+            </div>
+            <div style="display:flex; gap:18px; font-size:11px; color:#8A8F98;">
+              <span><span style="display:inline-block;width:8px;height:8px;background:#3ECF8E;border-radius:2px;margin-right:5px;"></span>59 confirmados</span>
+              <span><span style="display:inline-block;width:8px;height:8px;background:#E5484D;opacity:.55;border-radius:2px;margin-right:5px;"></span>62 falso positivo</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="padding:18px 20px; border-bottom:1px solid #23242F;">
+          <div class="ov" style="margin-bottom:10px;">Por classe</div>
+          <div style="display:flex; flex-direction:column; gap:9px; font-size:12.5px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span>Sem luvas</span>
+              <span style="color:#3ECF8E;">7 em 10 · <span style="color:#8A8F98;">33 julgados</span></span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span>Sem máscara</span>
+              <span style="color:#3ECF8E;">6 em 10 · <span style="color:#8A8F98;">33 julgados</span></span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="color:#8A8F98;">Sem óculos</span>
+              <span style="color:#E8A13C;">3 em 10 · <span style="color:#8A8F98;">23 julgados</span></span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; padding-top:7px; border-top:1px solid #23242F;">
+              <span style="color:#8A8F98;">Botas</span>
+              <span style="color:#8A8F98;">— <span style="font-size:11px;">ninguém julgou ainda</span></span>
+            </div>
+          </div>
+        </div>
+
+        <div style="padding:16px 20px; display:flex; gap:24px;">
+          <div>
+            <div class="ov" style="margin-bottom:4px;">Aprendeu com</div>
+            <div style="font-size:12.5px;">2.827 imagens · 6 classes</div>
+          </div>
+          <div>
+            <div class="ov" style="margin-bottom:4px;">Veio de</div>
+            <div style="font-size:12.5px;">Logikos V1 · 21/08</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- REGRAS -->
+    <div>
+      <div class="ov" style="margin-bottom: 10px;">As regras que o card obedece</div>
+      <div style="display:flex; flex-direction:column; gap:14px;">
+
+        <div style="background:#14141C; border:1px solid #23242F; border-radius:10px; padding:16px 18px;">
+          <div class="h" style="font-size:13.5px; font-weight:700; color:#00E5FF; margin-bottom:6px;">A métrica é a de campo, não a do treino</div>
+          <div style="font-size:12.5px; color:#8A8F98; line-height:1.6;">
+            <span class="mono">map50</span> é <strong style="color:#F4F6F8">0 em todos os 8 modelos</strong> — nunca foi gravado.
+            Mostrar 0,0% seria afirmar que o modelo erra tudo. A precisão dos vereditos humanos é o único número real, e é o
+            número que o supervisor entende: <em>quantos avisos valeram a pena</em>.
+          </div>
+        </div>
+
+        <div style="background:#14141C; border:1px solid #23242F; border-radius:10px; padding:16px 18px;">
+          <div class="h" style="font-size:13.5px; font-weight:700; color:#00E5FF; margin-bottom:6px;">Sem <span class="mono" style="font-size:12px;">n</span>, não é medida</div>
+          <div style="font-size:12.5px; color:#8A8F98; line-height:1.6;">
+            Toda porcentagem vem com quantos julgamentos a sustentam. "100% em 1 aviso" é sorte, não evidência —
+            é a regra da ADR-0067, e é por isso que classe sem julgamento mostra <strong style="color:#F4F6F8">"—"</strong>,
+            nunca 0.
+          </div>
+        </div>
+
+        <div style="background:#14141C; border:1px solid #23242F; border-radius:10px; padding:16px 18px;">
+          <div class="h" style="font-size:13.5px; font-weight:700; color:#00E5FF; margin-bottom:6px;">Três estados, não dois</div>
+          <div style="font-size:12.5px; color:#8A8F98; line-height:1.6;">
+            <strong style="color:#F4F6F8">Em produção</strong> gera aviso para a equipe ·
+            <strong style="color:#F4F6F8">Em observação</strong> roda e registra, sem incomodar ninguém ·
+            <strong style="color:#F4F6F8">Disponível</strong> está pronto e não foi ligado. Hoje a tela dizia
+            "nenhum modelo ativo" com 14 rodando em sombra.
+          </div>
+        </div>
+
+        <div style="background:#14141C; border:1px solid #23242F; border-radius:10px; padding:16px 18px;">
+          <div class="h" style="font-size:13.5px; font-weight:700; color:#00E5FF; margin-bottom:6px;">O nome é do cliente</div>
+          <div style="font-size:12.5px; color:#8A8F98; line-height:1.6;">
+            "Logikos V2 · 25/08 · +340 imagens de Expedição" — alias, data e o que mudou.
+            ⛔ Nunca framework, ⛔ nunca <span class="mono">Job 3091cfc9</span>. O id técnico existe, e vive no detalhe,
+            para o superadmin.
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- CONEXOES -->
+  <div style="background:#14141C; border:1px solid #23242F; border-left:2px solid #00E5FF; border-radius:10px; padding:20px 24px;">
+    <div class="ov" style="margin-bottom: 12px;">Mapa de conexões e pedidos ao backend</div>
+    <div style="display:flex; flex-direction:column; gap:11px; font-size:12.5px; line-height:1.6;">
+      <div><span class="mono" style="color:#3ECF8E;">EXISTE</span> &nbsp;<strong>Nome, data, linhagem, dataset</strong> —
+        <span style="color:#8A8F98;"><span class="mono">trained_models</span> tem <span class="mono">display_name</span> (migration 129), <span class="mono">created_at</span>, <span class="mono">dataset_version_id</span>. <span class="mono">map50</span> já vem servido em <span class="mono">GET /v1/models</span>.</span></div>
+      <div><span class="mono" style="color:#E8A13C;">INSUFICIENTE</span> &nbsp;<strong>Métricas do treino</strong> —
+        <span style="color:#8A8F98;">as colunas existem e valem <strong style="color:#F4F6F8">zero literal</strong> nos 8 modelos. Enquanto o job não gravar métrica real, o card mostra "—" e usa a de campo. Backend precisa distinguir NULL de 0.</span></div>
+      <div><span class="mono" style="color:#E5484D;">NÃO EXISTE</span> &nbsp;<strong>P1 — precisão por classe a partir dos vereditos</strong> —
+        <span style="color:#8A8F98;">o dado está em <span class="mono">alerts.verification_verdict</span> (121 julgados), mas nenhum endpoint o agrega por classe/modelo. <strong style="color:#F4F6F8">É o número central deste card.</strong> Cálculo já existe fora da API em <span class="mono">scripts/ops/calibracao_classes.py</span> — promover a endpoint.</span></div>
+      <div><span class="mono" style="color:#E5484D;">NÃO EXISTE</span> &nbsp;<strong>P2 — "o que mudou" entre versões</strong> —
+        <span style="color:#8A8F98;">o delta de imagens/classes contra o modelo anterior. Sem ele o card entrega alias + data, e nada de inventado.</span></div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>
