@@ -59,6 +59,7 @@ import {
 
 import { useAuth } from '../../hooks/useAuth'
 import { api } from '../../services/api'
+import { confiancaInternaOuCliente } from '../../services/confidenceDisplay'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import { lk } from '../tokens/lk.css'
 import * as s from './Carga.css'
@@ -258,7 +259,7 @@ function Situacao({ dentro, meta }: { dentro: boolean; meta?: number }) {
 }
 
 export function Carga() {
-  const { can, hasModule } = useAuth()
+  const { can, hasModule, isSuperAdmin } = useAuth()
   const podeLer = can('counting:read')
   const podeEscrever = can('counting:write')
   const temModuloCarga = hasModule('counting')
@@ -688,7 +689,7 @@ export function Carga() {
                 <td className={s.td}>{nomeDaCamera(ev.camera_id) ?? '—'}</td>
                 <td className={s.td}>{ev.class_name || '—'}</td>
                 <td className={s.tdMono}>
-                  {ev.confidence == null ? '—' : `${Math.round(ev.confidence * 100)}%`}
+                  {confiancaInternaOuCliente(ev.confidence, isSuperAdmin)}
                 </td>
               </tr>
             ))}

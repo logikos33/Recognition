@@ -95,6 +95,7 @@ import { AlertTriangle, Check, ChevronRight, ImageOff, Lock, X } from 'lucide-re
 
 import { useAuth } from '../../hooks/useAuth'
 import { api } from '../../services/api'
+import { confiancaBruta, confiancaHonesta } from '../../services/confidenceDisplay'
 import { useToast } from '../../components/ui/Toast/useToast'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import * as s from './RevisaoQualidade.css'
@@ -186,7 +187,7 @@ export function rotuloDaClasse(
 }
 
 export function RevisaoQualidade() {
-  const { can, hasModule } = useAuth()
+  const { can, hasModule, isSuperAdmin } = useAuth()
   const toast = useToast()
   const podeLer = can('verification:read')
   const podeDecidir = can('verification:write')
@@ -480,7 +481,9 @@ export function RevisaoQualidade() {
                   de tempo de inferência em lugar nenhum do módulo. */}
               <span className={s.legendaPalco}>
                 {typeof selecionado.confidence === 'number'
-                  ? `confiança ${Math.round(selecionado.confidence * 100)}%`
+                  ? isSuperAdmin
+                    ? `confiança ${confiancaBruta(selecionado.confidence)}`
+                    : confiancaHonesta(selecionado.confidence)
                   : 'sem confiança registrada'}
               </span>
             </div>

@@ -30,6 +30,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 /** `vi.mock` é içado acima das constantes do módulo — daí o `vi.hoisted`. */
 const h = vi.hoisted(() => ({
   permissoes: ['alerts:read', 'alerts:feedback', 'alerts:export'] as string[],
+  isSuperAdmin: false,
   gets: [] as string[],
   posts: [] as string[],
   pagina: {
@@ -68,7 +69,7 @@ vi.mock('../../services/api', () => ({
 }))
 
 vi.mock('../../hooks/useAuth', () => ({
-  useAuth: () => ({ can: (p: string) => h.permissoes.includes(p) }),
+  useAuth: () => ({ can: (p: string) => h.permissoes.includes(p), isSuperAdmin: h.isSuperAdmin }),
 }))
 
 /** Catálogo REAL do módulo (GET /api/modules/epi/classes) — com polaridade. */
@@ -173,6 +174,7 @@ const seloVeredito = (texto: string) =>
 
 beforeEach(() => {
   h.permissoes = ['alerts:read', 'alerts:feedback', 'alerts:export']
+  h.isSuperAdmin = false
   h.gets.length = 0
   h.posts.length = 0
   h.falhar = false
@@ -272,8 +274,25 @@ describe('polaridade em três estados', () => {
   })
 })
 
-describe('confiança da detecção (§9 paridade)', () => {
-  it('mostra a confiança da primeira violação em NN%', async () => {
+describe('confiança da detecção (§9 paridade / contrato A1c)', () => {
+  // Contrato A1c: medido no DEV (vereditos humanos reais, tenant RVB), a
+  // confiança crua NÃO prevê acerto — "100%" acerta 58,3% das vezes, plano em
+  // toda a faixa. Mostrar o número cru ao cliente é o selo de certeza que o
+  // contrato proíbe (mesma família do "zero é uma afirmação" da casa).
+  it('NÃO mostra o número cru de confiança ao cliente', async () => {
+    montar()
+    await screen.findByText('CAM-04 Expedição')
+    expect(linhaDe('CAM-04 Expedição').textContent).not.toContain('87%')
+  })
+
+  it('sem precisão medida por classe, diz isso — nunca inventa nem mostra 0', async () => {
+    montar()
+    await screen.findByText('CAM-04 Expedição')
+    expect(linhaDe('CAM-04 Expedição').textContent).toContain('precisão ainda não medida')
+  })
+
+  it('superadmin (visão de engenharia) continua vendo o número cru', async () => {
+    h.isSuperAdmin = true
     montar()
     await screen.findByText('CAM-04 Expedição')
     expect(linhaDe('CAM-04 Expedição').textContent).toContain('87%')
