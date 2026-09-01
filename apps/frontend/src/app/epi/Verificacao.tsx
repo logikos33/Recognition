@@ -147,6 +147,7 @@ import { api } from '../../services/api'
 import { confiancaInternaOuCliente } from '../../services/confidenceDisplay'
 import { useToast } from '../../components/ui/Toast/useToast'
 import { labelForClass, MOTIVOS_VERIFICACAO, type MotivoVerificacao } from '../../utils/labels'
+import { agruparPorRajada } from '../../utils/rajadas'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import * as s from './Verificacao.css'
 import { rotaNova } from '../RotasNovas'
@@ -811,6 +812,27 @@ export function Verificacao() {
     }
   }
 
+  // ux2/dedup — INFORMATIVO, não filtra nem reordena (regras 1/2/3 do
+  // cabeçalho do arquivo continuam intactas: a fila renderiza `fila` na
+  // ordem exata que o servidor mandou, `restantes`/`total` continuam
+  // "trabalho real" — decisão de NÃO propagar veredito entre irmãos de
+  // rajada está pendente, ver docblock do módulo `verification_service.py`).
+  // Só avisa: "este item é 1 de N detecções da mesma câmera+classe em <60s",
+  // pra o operador não achar que são N situações distintas.
+  const gruposRajada = useMemo(
+    () =>
+      agruparPorRajada(fila, {
+        cameraId: (i) => i.camera_id ?? '',
+        classe: (i) => classeDe(i),
+        criadoEm: (i) => i.created_at ?? i.timestamp ?? '',
+      }),
+    [fila],
+  )
+  const rajadaDoAtual = useMemo(
+    () => gruposRajada.find((g) => g.repeticoes.some((i) => i.id === atual?.id)),
+    [gruposRajada, atual?.id],
+  )
+
   if (!podeLer) {
     return (
       <div className={s.centro}>
@@ -1047,6 +1069,26 @@ export function Verificacao() {
             <AlertTriangle size={20} strokeWidth={1.7} aria-hidden />
             <span className={s.classeNome}>{rotuloClasse}</span>
           </div>
+
+          {/* ux2/dedup — informativo, não decide nada por conta própria (ver
+              docblock do módulo verification_service.py): a fila continua
+              julgando item por item, só avisa que este item é UM de N
+              detecções da mesma câmera+classe redetectadas em <60s. */}
+          {rajadaDoAtual && rajadaDoAtual.tamanho > 1 && (
+            <details className={s.rajadaAviso}>
+              <summary>
+                Rajada de {rajadaDoAtual.tamanho} · mesma câmera+classe em &lt;60s
+              </summary>
+              <ul className={s.rajadaListaHorarios}>
+                {rajadaDoAtual.repeticoes.map((i) => (
+                  <li key={i.id}>
+                    {horaDe(i)}
+                    {i.id === atual.id ? ' (este)' : ''}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
 
           <div className={s.ficha}>
             <span className={s.fichaRotulo}>Câmera</span>

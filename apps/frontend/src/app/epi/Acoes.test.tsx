@@ -48,7 +48,15 @@ import { Acoes } from './Acoes'
 const evento = (
   id: string,
   acknowledged: boolean,
-  extra: Partial<{ evidence_key: string | null; verification_verdict: string | null; verified_by: string | null }> = {},
+  extra: Partial<{
+    evidence_key: string | null
+    verification_verdict: string | null
+    verified_by: string | null
+    /** ux2/dedup: sobrescrever pra montar rajadas (mesma câmera+classe, gap
+     *  específico) ou provar que gap > 60s NÃO agrupa. */
+    created_at: string
+    camera_id: string
+  }> = {},
 ) => ({
   id,
   camera_id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
@@ -63,20 +71,23 @@ const evento = (
 })
 
 /** Responde por recorte: o snapshot de UM alerta, ou o que a tela pedir com
- *  acknowledged=false vs true. */
+ *  acknowledged=false vs true. `situacoes` (ux2/dedup) default = `totais` —
+ *  sem passar nada, o comportamento é IDÊNTICO ao de antes desta rodada
+ *  (situTotal === total, texto "N/M RECONHECIDAS" sem "SITUAÇÕES"). */
 function servir(
   abertas: unknown[],
   feitas: unknown[],
   totais = [abertas.length, feitas.length],
   snapshots: Record<string, string | null> = {},
+  situacoes: [number, number] = totais as [number, number],
 ) {
   get.mockImplementation((path: string) => {
     const m = path.match(/^\/alerts\/([^/]+)\/snapshot$/)
     if (m) return Promise.resolve({ data: { snapshot_url: snapshots[m[1]] ?? null } })
     return Promise.resolve(
       path.includes('acknowledged=false')
-        ? { data: { alerts: abertas, total: totais[0] } }
-        : { data: { alerts: feitas, total: totais[1] } },
+        ? { data: { alerts: abertas, total: totais[0], total_situacoes: situacoes[0] } }
+        : { data: { alerts: feitas, total: totais[1], total_situacoes: situacoes[1] } },
     )
   })
 }
@@ -291,5 +302,82 @@ describe('nada de dado inventado', () => {
     servir([], [])
     screen.getByRole('button', { name: /tentar novamente/i }).click()
     await screen.findByText('Nenhuma ação aberta')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// ux2/dedup — "cartões repetem a mesma cena; o contador ('1/66
+// reconhecidas') tem de contar situações, não linhas".
+// ---------------------------------------------------------------------------
+
+describe('rajada (ux2/dedup) — cartão não repete a mesma cena', () => {
+  it('2 eventos da MESMA câmera+classe (mesmo minuto) viram 1 cartão + alternador "+1 repetição"', async () => {
+    servir(
+      [
+        evento('11111111-0000-0000-0000-000000000001', false),
+        evento('11111111-0000-0000-0000-000000000002', false),
+      ],
+      [],
+    )
+    render(<Acoes />)
+    await screen.findByText(/\+1 repetiç/)
+    // Só 1 cartão de verdade na tela, não 2 — "EVENTO <id>" só aparece 1x.
+    expect(screen.getAllByText(/^EVENTO 1{8}/)).toHaveLength(1)
+  })
+
+  it('expandir revela a repetição, e ela mantém a PRÓPRIA ação de reconhecer', async () => {
+    servir(
+      [
+        evento('22222222-0000-0000-0000-000000000001', false),
+        evento('22222222-0000-0000-0000-000000000002', false),
+      ],
+      [],
+    )
+    render(<Acoes />)
+    const alternador = await screen.findByText(/\+1 repetiç/)
+    alternador.click()
+    // Representante ("Marcar reconhecida") + repetição ("Reconhecer", sem o
+    // texto "Marcar") — as DUAS ações continuam disponíveis, nada escondido.
+    await waitFor(() => expect(screen.getByRole('button', { name: /^reconhecer$/i })).toBeTruthy())
+    expect(screen.getByRole('button', { name: /marcar reconhecida/i })).toBeTruthy()
+  })
+
+  it('gap > 60s NÃO agrupa — cada evento continua com o próprio cartão', async () => {
+    servir(
+      [
+        evento('44444444-0000-0000-0000-000000000001', false, { created_at: '2026-08-25T13:00:00Z' }),
+        evento('44444444-0000-0000-0000-000000000002', false, { created_at: '2026-08-25T13:05:00Z' }),
+      ],
+      [],
+    )
+    render(<Acoes />)
+    await screen.findAllByText(/^EVENTO 44444444/)
+    expect(screen.getAllByText(/^EVENTO 44444444/)).toHaveLength(2)
+    expect(screen.queryByText(/repetiç/)).toBeNull()
+  })
+
+  it('badge da coluna e taxa contam SITUAÇÕES (total_situacoes), não linhas', async () => {
+    servir(
+      [evento('33333333-0000-0000-0000-000000000001', false)],
+      [evento('33333333-0000-0000-0000-000000000002', true)],
+      [66, 10],
+      {},
+      [2, 1],
+    )
+    render(<Acoes />)
+    await screen.findByText('1/3 SITUAÇÕES RECONHECIDAS · 10/76 eventos')
+  })
+
+  it('sem total_situacoes no payload (backend/mock antigo), cai pro texto de linhas de sempre', async () => {
+    get.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.includes('acknowledged=false')
+          ? { data: { alerts: [evento('55555555-0000-0000-0000-000000000001', false)], total: 1 } }
+          : { data: { alerts: [], total: 0 } },
+      ),
+    )
+    render(<Acoes />)
+    await screen.findByText('0/1 RECONHECIDAS')
+    expect(screen.queryByText(/SITUAÇÕES/)).toBeNull()
   })
 })

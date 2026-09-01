@@ -11,7 +11,7 @@
  * divergir do tema do tenant no primeiro white-label (mesma decisão de
  * `PaletaComandos.css.ts`).
  */
-import { style } from '@vanilla-extract/css'
+import { globalStyle, style } from '@vanilla-extract/css'
 
 import { lk, OVERLINE_TRACKING } from '../tokens/lk.css'
 
@@ -252,6 +252,37 @@ export const ficha = style({
 
 export const fichaRotulo = style({ color: lk.cor.cinzaNevoa })
 export const fichaDado = style({ fontFamily: lk.fonte.mono, wordBreak: 'break-word' })
+
+/**
+ * Rajada (ux2/dedup) — este item é UM entre N detecções da mesma câmera+
+ * classe em <60s (a mesma cena redetectada, não N situações). Informativo:
+ * a fila NÃO filtra nem propaga veredito entre irmãos (decisão pendente,
+ * ver docblock do módulo `verification_service.py`) — só avisa quem está
+ * olhando, e deixa expandir pra ver os horários das outras detecções.
+ */
+export const rajadaAviso = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '4px',
+  fontSize: '11.5px',
+  color: lk.cor.cinzaNevoa,
+  border: `1px solid ${lk.cor.borda}`,
+  borderRadius: lk.raio.s,
+  padding: `6px ${lk.espaco.x1}`,
+})
+
+globalStyle(`${rajadaAviso} summary`, {
+  cursor: 'pointer',
+  fontFamily: lk.fonte.mono,
+  color: lk.cor.cianoVisao,
+})
+
+export const rajadaListaHorarios = style({
+  margin: '4px 0 0',
+  paddingLeft: lk.espaco.x2,
+  fontFamily: lk.fonte.mono,
+  fontSize: '11px',
+})
 
 export const recorte = style({
   position: 'relative',

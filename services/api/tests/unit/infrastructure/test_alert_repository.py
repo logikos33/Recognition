@@ -307,6 +307,73 @@ class TestListWithFilters:
 
 
 # ---------------------------------------------------------------------------
+# total_situacoes — ux2/dedup: rajadas (câmera+classe em <60s), não linhas.
+#
+# Teste de MUTAÇÃO: sem banco real, prova que a query de rajada existe e usa
+# a MESMA janela de `VerificationService` — se alguém apagar o bloco de
+# `total_situacoes` (ou trocar a janela), `total_situacoes` volta a ser
+# igual a `total` (linhas) e este teste reprova.
+# ---------------------------------------------------------------------------
+
+class TestListWithFiltersTotalSituacoes:
+
+    def _call(self, count_row, situacoes_row, **kwargs):
+        cur = MagicMock()
+        # A ordem real de `execute` é: presence_class_names, violation_class_names,
+        # COUNT(*) (linhas), total_situacoes (rajadas), itens. `fetchone` só é lido
+        # pelas DUAS contagens (as outras usam `fetchall`) — por isso side_effect
+        # de 2 valores já basta, na ORDEM em que aparecem no código-fonte.
+        cur.fetchone.side_effect = [count_row, situacoes_row]
+        cur.fetchall.return_value = []
+        repo, cur = _repo(cur)
+        return repo.list_with_filters("tenant-1", **kwargs), cur
+
+    @staticmethod
+    def _busca_query(cur, pedaco: str):
+        """Acha a chamada de `execute` cujo SQL contém `pedaco` — a suíte não
+        depende da ORDEM exata das 5 queries de `list_with_filters`, só de
+        que a query de rajada exista e carregue o filtro certo."""
+        for call in cur.execute.call_args_list:
+            sql, params = call[0]
+            if pedaco in sql:
+                return sql, params
+        raise AssertionError(f"nenhuma query continha {pedaco!r}")
+
+    def test_total_situacoes_no_payload(self):
+        result, _ = self._call({"count": 66}, {"total_situacoes": 2})
+        assert result["total"] == 66
+        assert result["total_situacoes"] == 2
+
+    def test_situacoes_query_usa_mesma_janela_do_dedup_de_verificacao(self):
+        """Fonte única: `DEDUP_WINDOW_SECONDS` (app.core.rajada), a MESMA
+        constante de `VerificationService._DEDUP_WINDOW_SECONDS` — não pode
+        haver uma segunda janela hardcoded aqui."""
+        from app.core.rajada import DEDUP_WINDOW_SECONDS
+
+        _, cur = self._call({"count": 66}, {"total_situacoes": 2})
+        sql, params = self._busca_query(cur, "LAG(created_at)")
+        assert "PARTITION BY camera_id, classe" in sql
+        assert DEDUP_WINDOW_SECONDS in params
+
+    def test_situacoes_respeita_o_mesmo_where_do_count(self):
+        """O filtro (câmera, período, kind…) tem de ser o MESMO nas duas
+        contagens — total_situacoes de um recorte diferente do `total`
+        mentiria sobre o MESMO texto na tela (achado #14 do padrão do
+        projeto: contagem e lista com WHERE divergente)."""
+        _, cur = self._call({"count": 1}, {"total_situacoes": 1}, camera_id="cam-42")
+        sql_count, params_count = self._busca_query(cur, "SELECT COUNT(*) as count")
+        sql_situacoes, params_situacoes = self._busca_query(cur, "LAG(created_at)")
+        assert "camera_id" in sql_count and "cam-42" in params_count
+        assert "camera_id" in sql_situacoes and "cam-42" in params_situacoes
+
+    def test_fallback_para_total_sem_a_chave_nova(self):
+        """Mock/repo antigo sem `total_situacoes` na linha: cai para `total`
+        (linhas) em vez de KeyError — nunca 500 por causa de um campo novo."""
+        result, _ = self._call({"count": 9}, {"count": 9})
+        assert result["total_situacoes"] == 9
+
+
+# ---------------------------------------------------------------------------
 # event_kind — TRÊS estados (contrato A1, refina ADR-0065 §4)
 #
 # Teste de MUTAÇÃO: sem banco real (roda em qualquer CI), lê o TEXTO da query

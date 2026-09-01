@@ -480,3 +480,77 @@ describe('terceiro estado do filtro — contrato A1', () => {
     expect(h.gets[0]).toContain('kind=observacao')
   })
 })
+
+// ---------------------------------------------------------------------------
+// ux2/dedup — 66 linhas de UMA câmera em 2min eram 2 situações reais. O
+// operador não pode ver 65 "aguardando" que são o MESMO fato.
+// ---------------------------------------------------------------------------
+
+/** Mesma câmera+classe, gap de 20s (< janela de 60s) — UMA rajada. */
+const RAJADA = [
+  {
+    id: 'r1', camera_id: 'cam-9', camera_name: 'CAM-09 Rajada',
+    violations: [{ class: 'no_helmet', confidence: 0.8 }], acknowledged: false,
+    created_at: '2026-08-25T13:39:00', timestamp: '2026-08-25T13:39:00',
+    event_kind: 'violation' as const, verification_verdict: null, verified_by: null,
+  },
+  {
+    id: 'r2', camera_id: 'cam-9', camera_name: 'CAM-09 Rajada',
+    violations: [{ class: 'no_helmet', confidence: 0.81 }], acknowledged: false,
+    created_at: '2026-08-25T13:39:20', timestamp: '2026-08-25T13:39:20',
+    event_kind: 'violation' as const, verification_verdict: null, verified_by: null,
+  },
+  {
+    id: 'r3', camera_id: 'cam-9', camera_name: 'CAM-09 Rajada',
+    violations: [{ class: 'no_helmet', confidence: 0.79 }], acknowledged: false,
+    created_at: '2026-08-25T13:39:40', timestamp: '2026-08-25T13:39:40',
+    event_kind: 'violation' as const, verification_verdict: null, verified_by: null,
+  },
+]
+
+describe('rajada (ux2/dedup) — representante + N repetições, nunca esconde', () => {
+  beforeEach(() => {
+    h.pagina = { alerts: RAJADA, total: 3, total_situacoes: 1, page: 1, per_page: 20, pages: 1 } as never
+  })
+
+  it('mostra só o representante por padrão, com alternador "+2 repetições"', async () => {
+    montar()
+    await screen.findByText(/\+2 repetiç/)
+    expect(screen.getAllByText('CAM-09 Rajada')).toHaveLength(1)
+  })
+
+  it('expandir revela as N linhas originais — o dado nunca fica escondido', async () => {
+    montar()
+    fireEvent.click(await screen.findByText(/\+2 repetiç/))
+    await waitFor(() => expect(screen.getAllByText('CAM-09 Rajada')).toHaveLength(3))
+  })
+
+  it('recolher esconde de novo — é um alternador, não uma perda de dado', async () => {
+    montar()
+    const alternador = await screen.findByText(/\+2 repetiç/)
+    fireEvent.click(alternador)
+    await waitFor(() => expect(screen.getAllByText('CAM-09 Rajada')).toHaveLength(3))
+    fireEvent.click(screen.getByText(/\+2 repetiç/))
+    await waitFor(() => expect(screen.getAllByText('CAM-09 Rajada')).toHaveLength(1))
+  })
+
+  it('cada repetição expandida mantém sua PRÓPRIA ação — nada oculto de ação', async () => {
+    montar()
+    fireEvent.click(await screen.findByText(/\+2 repetiç/))
+    await waitFor(() => expect(screen.getAllByText('CAM-09 Rajada')).toHaveLength(3))
+    // Nenhuma das 3 está reconhecida — as 3 continuam com o próprio botão.
+    expect(screen.getAllByText('Reconhecer')).toHaveLength(3)
+  })
+
+  it('badge do cabeçalho conta SITUAÇÕES (total_situacoes), não linhas', async () => {
+    montar()
+    await screen.findByText('1 SITUAÇÕES NO PERÍODO · 3 EVENTOS')
+    expect(screen.queryByText('3 NO PERÍODO')).toBeNull()
+  })
+
+  it('sem total_situacoes (backend/mock antigo), o badge cai para o total de linhas', async () => {
+    h.pagina = { alerts: RAJADA, total: 3, page: 1, per_page: 20, pages: 1 } as never
+    montar()
+    await screen.findByText('3 NO PERÍODO')
+  })
+})

@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
 
+from app.core.rajada import DEDUP_WINDOW_SECONDS
 from app.infrastructure.database.repositories.base import BaseRepository
 
 
@@ -467,6 +468,46 @@ class AlertRepository(BaseRepository):
         )
         total = total_row["count"] if total_row else 0
 
+        # `total_situacoes` — quantas RAJADAS (câmera+classe repetida em
+        # `DEDUP_WINDOW_SECONDS`) existem no MESMO recorte filtrado, não
+        # quantas linhas. Achado ux2/dedup: o filtro de Violações de Eventos
+        # mostrava 66 linhas que eram 2 situações reais (mesma câmera, mesmo
+        # minuto) — "1/66 reconhecidas" media repetição, não trabalho. Mesma
+        # janela/critério de sessão de `VerificationService.get_human_queue`
+        # (LAG + gap>janela, partição por camera_id+classe), só que aqui é
+        # SÓ contagem — não reordena nem filtra `items` abaixo, e nenhuma
+        # tela deve tratar isto como "quantas linhas existem", só como "quantas
+        # situações distintas". `classe` usa a MESMA extração
+        # (`violations->0->>'class'`) do dedup original — alertas com >1
+        # violação por linha continuam contados pela primeira classe, igual
+        # ao resto do sistema.
+        situacoes_params = list(params) + [DEDUP_WINDOW_SECONDS]
+        situacoes_row = self._execute_one(
+            f"""
+            WITH candidatos AS (
+                SELECT a.camera_id, COALESCE(a.violations->0->>'class', '') AS classe,
+                       a.created_at
+                FROM alerts a WHERE {where}
+            ), com_gap AS (
+                SELECT *,
+                       LAG(created_at) OVER (
+                           PARTITION BY camera_id, classe ORDER BY created_at
+                       ) AS anterior
+                FROM candidatos
+            )
+            SELECT COUNT(*) FILTER (
+                WHERE anterior IS NULL
+                   OR EXTRACT(EPOCH FROM (created_at - anterior)) > %s
+            ) AS total_situacoes
+            FROM com_gap
+            """,
+            tuple(situacoes_params),
+        )
+        # `.get(..., total)`: mock/teste que só devolve `{"count": N}` (formato
+        # antigo) cai para `total` em vez de KeyError — nunca menos honesto que
+        # antes, só não-diferenciado até o teste real mockar a chave nova.
+        total_situacoes = situacoes_row.get("total_situacoes", total) if situacoes_row else total
+
         # Items with camera name join (best-effort — camera table may vary).
         # Os `%s` do CASE aparecem no SELECT, ANTES do WHERE, no texto da
         # query ⇒ `presence_names`/`violation_names` (NESSA ordem — é a ordem
@@ -487,7 +528,7 @@ class AlertRepository(BaseRepository):
             tuple(page_params),
         )
 
-        return {"items": items, "total": total}
+        return {"items": items, "total": total, "total_situacoes": total_situacoes}
 
     def list_for_camera_scenario(self, tenant_id: str, camera_id: str) -> list[dict[str, Any]]:
         """Lista regras de alerta aplicáveis a uma câmera: específicas + globais do tenant.

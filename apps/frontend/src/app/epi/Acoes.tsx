@@ -58,16 +58,18 @@
  * produto, só não entra nesta fila de ação enquanto o backend não tiver um
  * recorte que junte violação+observação sem trazer conformidade junto.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Check, Clock, ClipboardCheck, ImageOff, LayoutGrid, List, TriangleAlert, X,
+  Check, ChevronDown, ChevronRight, Clock, ClipboardCheck, ImageOff, LayoutGrid, List,
+  TriangleAlert, X,
 } from 'lucide-react'
 
 import { vereditoHumano } from '../../components/shared/VereditoHumano'
 import { useAuth } from '../../hooks/useAuth'
 import { api } from '../../services/api'
 import { labelForClass } from '../../utils/labels'
+import { agruparPorRajada, type Rajada } from '../../utils/rajadas'
 import { rotaNova } from '../RotasNovas'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import * as s from './Acoes.css'
@@ -105,7 +107,7 @@ interface Evento {
 type VeredictoAcao = 'approve' | 'reject'
 
 interface Envelope {
-  data?: { alerts: Evento[]; total: number }
+  data?: { alerts: Evento[]; total: number; total_situacoes?: number }
 }
 
 type Vista = 'kanban' | 'lista'
@@ -200,8 +202,23 @@ export function Acoes() {
   const [feitas, setFeitas] = useState<Evento[]>([])
   const [totalAbertas, setTotalAbertas] = useState(0)
   const [totalFeitas, setTotalFeitas] = useState(0)
+  // ux2/dedup: rajadas (câmera+classe em <60s) do MESMO filtro, não linhas —
+  // `null` até o primeiro sync OK (backend/mock antigo sem a chave cai para
+  // o total de linhas nos usos abaixo, nunca 500 nem NaN na tela).
+  const [situacoesAbertas, setSituacoesAbertas] = useState<number | null>(null)
+  const [situacoesFeitas, setSituacoesFeitas] = useState<number | null>(null)
   const [reconhecendo, setReconhecendo] = useState<string | null>(null)
   const [julgando, setJulgando] = useState<string | null>(null)
+  // Cartões/linhas de rajada expandidos (id do representante) — nunca
+  // esconde: expandir revela as N repetições da mesma cena.
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set())
+  const alternarExpandido = (id: string) =>
+    setExpandidos((atual) => {
+      const novo = new Set(atual)
+      if (novo.has(id)) novo.delete(id)
+      else novo.add(id)
+      return novo
+    })
 
   const carregar = useCallback(async () => {
     setFase('carregando')
@@ -215,6 +232,8 @@ export function Acoes() {
       setFeitas(feito.data?.alerts ?? [])
       setTotalAbertas(aberto.data?.total ?? 0)
       setTotalFeitas(feito.data?.total ?? 0)
+      setSituacoesAbertas(aberto.data?.total_situacoes ?? null)
+      setSituacoesFeitas(feito.data?.total_situacoes ?? null)
       setFase('pronto')
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'falha desconhecida')
@@ -223,6 +242,27 @@ export function Acoes() {
   }, [])
 
   useEffect(() => { void carregar() }, [carregar])
+
+  // ux2/dedup: agrupa CADA coluna por câmera+classe+60s — mesma janela do
+  // backend. Colunas separadas de propósito (aguardando/reconhecida É o
+  // eixo do kanban): uma rajada parcialmente reconhecida aparece como um
+  // representante em cada coluna, nunca mistura os dois estados num cartão só.
+  const gruposAbertas = useMemo(
+    () => agruparPorRajada(abertas, {
+      cameraId: (e: Evento) => e.camera_id,
+      classe: (e: Evento) => e.violations?.[0]?.class ?? '',
+      criadoEm: (e: Evento) => e.created_at,
+    }),
+    [abertas],
+  )
+  const gruposFeitas = useMemo(
+    () => agruparPorRajada(feitas, {
+      cameraId: (e: Evento) => e.camera_id,
+      classe: (e: Evento) => e.violations?.[0]?.class ?? '',
+      criadoEm: (e: Evento) => e.created_at,
+    }),
+    [feitas],
+  )
 
   const reconhecer = async (id: string) => {
     setReconhecendo(id)
@@ -289,13 +329,23 @@ export function Acoes() {
     )
   }
 
-  const taxa = Math.round((totalFeitas / total) * 100)
+  // ux2/dedup: "1/66 reconhecidas" media repetição, não trabalho — a taxa e
+  // os contadores de coluna usam SITUAÇÕES (`total_situacoes`), com
+  // fallback pro total de linhas quando o backend/mock ainda não manda a
+  // chave nova (nunca NaN, nunca 500).
+  const situAbertasN = situacoesAbertas ?? totalAbertas
+  const situFeitasN = situacoesFeitas ?? totalFeitas
+  const situTotal = situAbertasN + situFeitasN
+  const taxa = situTotal === 0 ? 0 : Math.round((situFeitasN / situTotal) * 100)
 
-  const cartao = (e: Evento, concluida: boolean) => {
+  const cartao = (grupo: Rajada<Evento>, concluida: boolean) => {
+    const e = grupo.representante
     // Veredito é eixo independente de reconhecimento — não some quando o
     // filtro de coluna é `acknowledged`, então checa nos dois grupos.
     const veredito = vereditoHumano(e.verification_verdict, e.verified_by)
     const abrirEvento = () => abrir(e.id)
+    const expandido = expandidos.has(e.id)
+    const repeticoes = grupo.repeticoes.filter((r) => r.id !== e.id)
     return (
       <div
         key={e.id}
@@ -327,6 +377,49 @@ export function Acoes() {
             {horario(e.created_at)}
           </span>
         </div>
+
+        {/* Rajada (ux2/dedup) — cartão repetia a mesma cena; nunca esconde,
+         *  só recolhe. Expandir revela as N repetições, cada uma com a
+         *  própria ação de reconhecer. */}
+        {repeticoes.length > 0 && (
+          <button
+            type="button"
+            className={s.rajadaToggle}
+            onClick={(ev) => { ev.stopPropagation(); alternarExpandido(e.id) }}
+          >
+            {expandido
+              ? <ChevronDown size={11} {...ICONE} aria-hidden />
+              : <ChevronRight size={11} {...ICONE} aria-hidden />}
+            +{repeticoes.length} repetiç{repeticoes.length === 1 ? 'ão' : 'ões'} da mesma cena
+          </button>
+        )}
+        {expandido && repeticoes.length > 0 && (
+          <div className={s.rajadaLista} onClick={(ev) => ev.stopPropagation()}>
+            {repeticoes.map((r) => (
+              <div key={r.id} className={s.rajadaItem}>
+                <span><Clock size={11} {...ICONE} aria-hidden /> {horario(r.created_at)}</span>
+                {r.acknowledged ? (
+                  <span className={s.estado.reconhecida}>
+                    <Check size={12} {...ICONE} aria-hidden /> Reconhecida
+                  </span>
+                ) : podeReconhecer ? (
+                  <button
+                    type="button"
+                    className={s.botaoCartao}
+                    disabled={reconhecendo === r.id}
+                    onClick={() => void reconhecer(r.id)}
+                  >
+                    {reconhecendo === r.id ? 'Reconhecendo…' : 'Reconhecer'}
+                  </button>
+                ) : (
+                  <span className={s.estado.aguardando}>
+                    <Clock size={12} {...ICONE} aria-hidden /> Aguardando
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Tratativa (título/responsável/prazo) do desenho: sem tabela, sem
          *  endpoint (ver cabeçalho do arquivo). Controle desenhado e
@@ -380,7 +473,10 @@ export function Acoes() {
     )
   }
 
-  const todos = [...abertas, ...feitas]
+  const linhasLista = [
+    ...gruposAbertas.map((grupo) => ({ grupo, concluida: false })),
+    ...gruposFeitas.map((grupo) => ({ grupo, concluida: true })),
+  ]
 
   return (
     <div className={s.pagina}>
@@ -420,7 +516,13 @@ export function Acoes() {
         <div className={s.taxaTrilho}>
           <div className={s.taxaBarra} style={{ width: `${taxa}%` }} />
         </div>
-        <span className={s.taxaContagem}>{totalFeitas}/{total} RECONHECIDAS</span>
+        <span className={s.taxaContagem}>
+          {/* ux2/dedup: SITUAÇÕES, não linhas — "1/66 reconhecidas" media
+              repetição, não trabalho. Mostra o raw só quando diverge. */}
+          {situTotal !== total
+            ? `${situFeitasN}/${situTotal} SITUAÇÕES RECONHECIDAS · ${totalFeitas}/${total} eventos`
+            : `${totalFeitas}/${total} RECONHECIDAS`}
+        </span>
       </div>
 
       {vista === 'kanban' ? (
@@ -428,16 +530,16 @@ export function Acoes() {
           <div className={s.coluna}>
             <div className={s.colunaTopo}>
               <span className={s.overline}>Aguardando</span>
-              <span className={s.contador}>{totalAbertas}</span>
+              <span className={s.contador}>{situAbertasN}</span>
             </div>
-            {abertas.map((e) => cartao(e, false))}
+            {gruposAbertas.map((g) => cartao(g, false))}
           </div>
           <div className={s.coluna}>
             <div className={s.colunaTopo}>
               <span className={s.overline}>Reconhecidas</span>
-              <span className={s.contador}>{totalFeitas}</span>
+              <span className={s.contador}>{situFeitasN}</span>
             </div>
-            {feitas.map((e) => cartao(e, true))}
+            {gruposFeitas.map((g) => cartao(g, true))}
           </div>
         </div>
       ) : (
@@ -446,21 +548,55 @@ export function Acoes() {
           <div className={s.th}>ORIGEM</div>
           <div className={s.th}>QUANDO</div>
           <div className={s.th}>ESTADO</div>
-          {todos.map((e) => (
-            <div key={e.id} style={{ display: 'contents' }}>
-              <span className={s.td}>{descrever(e)}</span>
-              <span className={s.tdMono}>{e.id.slice(0, 8)} · {referencia(e)}</span>
-              <span className={s.tdMono}>{horario(e.created_at)}</span>
-              <span className={s.td}>
-                <span className={e.acknowledged ? s.estado.reconhecida : s.estado.aguardando}>
-                  {e.acknowledged
-                    ? <Check size={13} {...ICONE} aria-hidden />
-                    : <Clock size={13} {...ICONE} aria-hidden />}
-                  {e.acknowledged ? 'Reconhecida' : 'Aguardando'}
-                </span>
-              </span>
-            </div>
-          ))}
+          {linhasLista.map(({ grupo }) => {
+            const e = grupo.representante
+            const expandido = expandidos.has(e.id)
+            const repeticoes = grupo.repeticoes.filter((r) => r.id !== e.id)
+            return (
+              <Fragment key={e.id}>
+                <div style={{ display: 'contents' }}>
+                  <span className={s.td}>{descrever(e)}</span>
+                  <span className={s.tdMono}>{e.id.slice(0, 8)} · {referencia(e)}</span>
+                  <span className={s.tdMono}>{horario(e.created_at)}</span>
+                  <span className={s.td}>
+                    <span className={e.acknowledged ? s.estado.reconhecida : s.estado.aguardando}>
+                      {e.acknowledged
+                        ? <Check size={13} {...ICONE} aria-hidden />
+                        : <Clock size={13} {...ICONE} aria-hidden />}
+                      {e.acknowledged ? 'Reconhecida' : 'Aguardando'}
+                    </span>
+                    {repeticoes.length > 0 && (
+                      <button
+                        type="button"
+                        className={s.rajadaToggle}
+                        onClick={() => alternarExpandido(e.id)}
+                      >
+                        {expandido
+                          ? <ChevronDown size={11} {...ICONE} aria-hidden />
+                          : <ChevronRight size={11} {...ICONE} aria-hidden />}
+                        +{repeticoes.length}
+                      </button>
+                    )}
+                  </span>
+                </div>
+                {expandido && repeticoes.map((r) => (
+                  <div key={r.id} style={{ display: 'contents' }}>
+                    <span className={s.tdRepeticao}>{descrever(r)}</span>
+                    <span className={s.tdRepeticao}>{r.id.slice(0, 8)} · {referencia(r)}</span>
+                    <span className={s.tdRepeticao}>{horario(r.created_at)}</span>
+                    <span className={s.tdRepeticao}>
+                      <span className={r.acknowledged ? s.estado.reconhecida : s.estado.aguardando}>
+                        {r.acknowledged
+                          ? <Check size={13} {...ICONE} aria-hidden />
+                          : <Clock size={13} {...ICONE} aria-hidden />}
+                        {r.acknowledged ? 'Reconhecida' : 'Aguardando'}
+                      </span>
+                    </span>
+                  </div>
+                ))}
+              </Fragment>
+            )
+          })}
         </div>
       )}
     </div>

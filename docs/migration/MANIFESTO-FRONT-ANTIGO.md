@@ -14,11 +14,11 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 389 arquivos, 65.589 linhas
+## Situação — 390 arquivos, 65.812 linhas
 
 | status | arquivos |
 |---|---:|
-| `INFRA` | 229 |
+| `INFRA` | 230 |
 | `PENDENTE` | 143 |
 | `SEM-DESENHO` | 7 |
 | `SUBSTITUIDA` | 6 |
@@ -184,8 +184,8 @@ apagado não são a mesma coisa.
 | `src/components/ui/Input/Input.tsx` | `INFRA` | — | 63 |
 | `src/components/ui/Modal/Modal.css.ts` | `INFRA` | — | 95 |
 | `src/components/ui/Modal/Modal.tsx` | `INFRA` | — | 42 |
-| `src/components/ui/NotificationBell/NotificationBell.css.ts` | `INFRA` | — | 161 |
-| `src/components/ui/NotificationBell/NotificationBell.tsx` | `INFRA` | — | 171 |
+| `src/components/ui/NotificationBell/NotificationBell.css.ts` | `INFRA` | — | 194 |
+| `src/components/ui/NotificationBell/NotificationBell.tsx` | `INFRA` | — | 241 |
 | `src/components/ui/PageHeader/PageHeader.css.ts` | `INFRA` | — | 45 |
 | `src/components/ui/PageHeader/PageHeader.tsx` | `INFRA` | — | 24 |
 | `src/components/ui/Panel/Panel.css.ts` | `INFRA` | — | 68 |
@@ -267,6 +267,7 @@ apagado não são a mesma coisa.
 | `src/utils/concurrencyQueue.ts` | `INFRA` | — | 39 |
 | `src/utils/errorTranslator.ts` | `INFRA` | — | 76 |
 | `src/utils/labels.ts` | `INFRA` | — | 253 |
+| `src/utils/rajadas.ts` | `INFRA` | — | 120 |
 | `src/utils/statusColors.ts` | `INFRA` | — | 18 |
 | `src/utils/timeBuckets.ts` | `INFRA` | — | 106 |
 | `src/pages/ModuleClassesPage.tsx` | `MIGRADO` | src/app/estudio/Classes.tsx | 776 |

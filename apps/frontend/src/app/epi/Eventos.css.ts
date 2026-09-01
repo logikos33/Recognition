@@ -366,3 +366,23 @@ export const confianca = style({
   fontSize: '12px',
   color: lk.cor.cinzaNevoa,
 })
+
+/**
+ * Rajada (ux2/dedup) — o representante vem seguido de UMA linha "+N
+ * repetições" quando a câmera+classe se repetiu em <60s. Clicável, nunca
+ * esconde: expandir revela as N linhas originais.
+ */
+export const linhaRajadaToggle = style({
+  padding: `8px 14px`,
+  borderBottom: `1px solid ${DIVISOR}`,
+  cursor: 'pointer',
+  fontFamily: lk.fonte.mono,
+  fontSize: '11px',
+  letterSpacing: '0.04em',
+  color: lk.cor.cianoVisao,
+  background: `color-mix(in srgb, ${lk.cor.cianoVisao} 4%, transparent)`,
+  ':hover': { background: `color-mix(in srgb, ${lk.cor.cianoVisao} 9%, transparent)` },
+})
+
+/** Linhas-repetição reveladas — mesma célula, tom apagado (não é evento novo). */
+export const linhaRepeticao = style({ opacity: 0.72 })

@@ -389,6 +389,45 @@ export const botaoCartao = style({
   '@media': { [TELA_ESTREITA]: { height: '44px' } },
 })
 
+/**
+ * Rajada (ux2/dedup) — "cartões repetem a mesma cena" era o achado: 33+33
+ * detecções da MESMA câmera em 2min viravam 66 cartões idênticos. O cartão
+ * mostra só o representante + este alternador; nunca esconde — expandir
+ * revela as N repetições, cada uma com a própria ação.
+ */
+export const rajadaToggle = style({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '4px',
+  alignSelf: 'flex-start',
+  border: 'none',
+  background: 'transparent',
+  padding: 0,
+  fontFamily: lk.fonte.mono,
+  fontSize: '10.5px',
+  color: lk.cor.cianoVisao,
+  cursor: 'pointer',
+})
+
+export const rajadaLista = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '5px',
+  marginTop: '2px',
+  paddingLeft: lk.espaco.x1,
+  borderLeft: `2px solid ${lk.cor.borda}`,
+})
+
+export const rajadaItem = style({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: lk.espaco.x1,
+  fontFamily: lk.fonte.mono,
+  fontSize: '11px',
+  color: lk.cor.cinzaNevoa,
+})
+
 // ── Lista ───────────────────────────────────────────────────────────────────
 
 export const tabela = style({
@@ -444,6 +483,10 @@ export const td = style({
 })
 
 export const tdMono = style([td, { fontFamily: lk.fonte.mono, fontSize: '12px' }])
+
+/** Linha de repetição revelada ao expandir (ux2/dedup) — mesma estrutura,
+ *  tom apagado (não é uma situação nova, é o mesmo fato redetectado). */
+export const tdRepeticao = style([td, { opacity: 0.7 }])
 
 // ── Estados da rota ─────────────────────────────────────────────────────────
 
