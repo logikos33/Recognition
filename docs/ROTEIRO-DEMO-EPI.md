@@ -114,27 +114,26 @@ câmeras ativas, zero alertas nas últimas 24h (nenhum desde 25/08) → score 10
   ouvido, o sistema ainda está no período de aprendizado: ele REGISTRA o que viu, mas não acusa
   ninguém — fica com a etiqueta cinza. É de propósito: a gente prefere mostrar menos avisos de
   verdade do que acusar quem está cumprindo."
-- **Cuidado (óculos — não citar como exemplo do parágrafo acima):** ⛔ não diga "óculos não acusa
-  ninguém". Hoje "Sem Óculos" tem um comportamento inconsistente: o filtro "Violações" conta as 23
-  ocorrências como violação (bate um item do catálogo GLOBAL do sistema, fora do controle deste
-  tenant — achado registrado, não corrigido nesta rodada), enquanto o selo colorido da própria
-  linha pinta essas mesmas 23 de cinza "não definida". Se o cliente reparar numa linha cinza dentro
-  do filtro "Violações", a resposta honesta é: "esse item específico ainda tem uma inconsistência
-  interna de calibração já identificada — a contagem está certa, a cor da etiqueta é que ainda não
-  bateu com ela."
+- **Óculos — pode citar, a inconsistência foi CORRIGIDA em 01/09 (ADR-0071).** "Sem Óculos" era
+  contada como violação por um item do catálogo GLOBAL do sistema, enquanto o selo da linha a
+  pintava de cinza — filtro e etiqueta se contradizendo. A polaridade do catálogo global passou a
+  `NULL` ("o catálogo não decide, o tenant decide"), e agora as 23 ocorrências saem do filtro
+  "Violações" e ficam **em observação**, coerentes com o selo.
+  Serve, inclusive, como bom exemplo do parágrafo acima: o sistema mediu 3 acertos em cada 10
+  avisos de óculos e **tirou a classe do gatilho sozinho**, em vez de continuar acusando.
 - **Dizer (se o cliente estranhar a lista comprida/repetitiva):** "Reparem que a mesma pessoa
   aparece várias vezes seguidas em poucos segundos — é a câmera registrando de novo enquanto a
   situação continua, não é o sistema contando errado. Pela própria regra do produto (mesma câmera e
-  mesmo item dentro de 60 segundos = a mesma situação), **estas 89 linhas de violação são 3
-  situações**, todas de uma câmera só, num intervalo de dois minutos. Hoje cada registro ainda vira
+  mesmo item dentro de 60 segundos = a mesma situação), **estas 66 linhas de violação são 2
+  situações**, ambas de uma câmera só, num intervalo de dois minutos. Hoje cada registro ainda vira
   uma linha própria — é o próximo ajuste da lista, já identificado."
 
-  > ⚠️ **Apresentador — o número MUDA com o recorte da tela.** Medido em 01/09 com a janela de 60s
-  > do produto: **Violações 89 linhas → 3 situações** (é aqui que a tela abre) · Observação
-  > 32 → 27 · Conformidade 302 → 120 · Todos os tipos 423 → 150.
-  > ⛔ Nunca dizer "150 situações" com a lista de **Violações** na tela: erra por ordem de grandeza
-  > e ainda desmonta o próprio argumento — "89 linhas = 3 situações" é a prova da repetição;
-  > "89 ≈ 72" soaria como se não houvesse repetição nenhuma.
+  > ⚠️ **Apresentador — o número MUDA com o recorte da tela.** Medido em 01/09 (pós-ADR-0071) com a
+  > janela de 60s do produto: **Violações 66 linhas → 2 situações** (é aqui que a tela abre) ·
+  > Observação 55 → 28 · Conformidade 302 → 120.
+  > ⛔ Nunca usar o número do "Todos os tipos" com a lista de **Violações** na tela: erra por ordem
+  > de grandeza e desmonta o próprio argumento — "66 linhas = 2 situações" é a prova da repetição;
+  > um número próximo de 66 soaria como se não houvesse repetição nenhuma.
 - **Dizer (sobre a coluna de confiança, se perguntarem "o que quer dizer esse número/aquela
   frase"):** hoje, com este login, a coluna mostra **"precisão ainda não medida"** — não mostrar
   isso como se fosse a resposta final. A resposta é falada, com o número que já medimos por fora:
@@ -151,14 +150,16 @@ definida", linhas 473-483; botões de julgar, linhas 663-679; `kind` default, li
 A polaridade real que a tela usa NÃO é `yolo_classes.is_violation` puro — é
 `AlertRepository._nomes_por_polaridade` (linhas 125-146), que UNE o catálogo GLOBAL
 (`module_classes`, casado por `class_name` OU `display_name`) com as classes do tenant, SEM
-subtração. `module_classes` tem `no_glasses` com `display_name='Sem Óculos'` e `is_violation=TRUE`
-globalmente — então mesmo o tenant tendo `is_violation IS NULL` (observação) pra "Sem Óculos" em
-`yolo_classes`, ela continua contando como violação pela união. Reproduzi a classificação real
-(mesmo predicado `_IS_COMPLIANCE_SQL`/`_IS_VIOLATION_SQL` do código) sobre os 423 alertas do
-tenant: **violação 89** (Sem Luvas 33 + Sem mascara 33 + Sem Óculos 23) · **observação 32** (Sem
-protetor de ouvido 22 + Uso incorreto de mascara 10) · **conformidade 302** — bate 89+32+302=423.
-Os números antigos (66/55) vieram de ler `yolo_classes.is_violation` isolado, ignorando essa união
-com o catálogo global — esse foi o erro. "Sem botas" está no catálogo do tenant como violação
+subtração. `module_classes` tinha `no_glasses` (`display_name='Sem Óculos'`) com
+`is_violation=TRUE` globalmente — então, mesmo com o tenant marcando `NULL`, ela continuava
+contando como violação pela união, e o filtro contradizia o selo da linha.
+**Corrigido em 01/09 (ADR-0071)**: a polaridade global de `no_glasses` passou a `NULL` — "o
+catálogo não decide, o tenant decide". Reproduzi a classificação real (mesmo predicado
+`_IS_COMPLIANCE_SQL`/`_IS_VIOLATION_SQL` do código, união global+tenant) sobre os 423 alertas:
+**violação 66** (Sem Luvas 33 + Sem mascara 33) · **observação 55** (Sem Óculos 23 + Sem protetor
+de ouvido 22 + Uso incorreto de mascara 10) · **conformidade 302** — bate 66+55+302=423.
+Precisão das violações: **66,7%**. Houve um momento intermediário em que a medição deu 89/32: era o
+estado com o TRUE global ainda em pé, antes da ADR-0071. "Sem botas" está no catálogo do tenant como violação
 (`is_violation=TRUE`) mas **arquivada** (`archived_at` 22/08) e **zero alertas reais** têm essa
 classe — não citar como exemplo ativo. A frase "precisão ainda não medida" vem de
 `confidenceDisplay.ts` (linha 42) — nenhuma tela hoje passa o parâmetro de precisão medida por
@@ -238,8 +239,8 @@ cor próprios, linhas 13-22). `curl -o /dev/null -w '%{http_code}' … /novo/epi
 ## NÃO PROMETER (setembro)
 
 - Contar como "1 situação" as linhas repetidas da mesma câmera+item dentro da janela de 60s de
-  rajada (medido em 01/09: 423 alertas → 150 situações no total; e, no recorte que a tela abre,
-  89 violações → 3 situações — ver Passo 3) — hoje cada repetição é uma linha própria (achado já
+  rajada (medido em 01/09: 423 alertas → 150 situações no total (pré-ADR-0071 o recorte de violação era outro); e, no recorte que a tela abre,
+  66 violações → 2 situações — ver Passo 3) — hoje cada repetição é uma linha própria (achado já
   registrado, não entrou nesta rodada).
 - Mostrar o percentual de acerto medido por item diretamente na tela — hoje a coluna diz
   "precisão ainda não medida" para qualquer login que não seja superadmin; o número é falado pelo
