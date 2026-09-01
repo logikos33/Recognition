@@ -86,13 +86,33 @@ describe('front novo e front antigo convivem', () => {
     // `navigate('/...')` / `navegar(`/...`)` (qualquer nome de variável do
     // `useNavigate()` termina em "nav"/"navegar"/"navigate" neste código).
     //
+    // C1 (31/08): terceiro furo achado — `<a href="/admin/...">` (âncora HTML
+    // pura, não componente de rota) driblava os dois anteriores por completo:
+    // `to=` só olha `<Link>`/`<NavLink>`, e não existe `navigate()` num `<a>`.
+    // Três lugares vazavam assim pro front antigo (`Usuarios.tsx`, painel de
+    // permissões do usuário; `Modulos.tsx` e `Treino.tsx`, atalhos de
+    // superadmin) — o pior era dentro do PRÓPRIO admin novo. `href="/..."`
+    // entra na mesma varredura abaixo, com as mesmas regras.
+    //
     // Todo link/navegação interna passa por `rotaNova()`. Este teste é quem cobra.
     const infratores: string[] = []
-    // Exceção conhecida: `/login` é o portão deslogado, comum aos dois fronts
-    // — `App.tsx` troca a árvore INTEIRA pro Router sem Shell ao desautenticar
-    // (ver `aoSair` em `Shell.tsx`), então não é "cair no front antigo", é
-    // onde QUALQUER usuário deslogado cai, migrado ou não.
-    const EXCECOES = ['/login']
+    // Exceções conhecidas, por lista explícita — nunca por silêncio:
+    const EXCECOES = [
+      // `/login` é o portão deslogado, comum aos dois fronts — `App.tsx` troca
+      // a árvore INTEIRA pro Router sem Shell ao desautenticar (ver `aoSair`
+      // em `Shell.tsx`), então não é "cair no front antigo", é onde QUALQUER
+      // usuário deslogado cai, migrado ou não.
+      '/login',
+      // Sem equivalente no front novo (C1, 31/08) — mantidos APONTANDO pro
+      // front antigo de propósito (não existe tela nova de observabilidade
+      // nem de integrações), mas honestos: texto e `title` avisam que é a
+      // área técnica antiga, e ambos são visíveis só para `isSuperAdmin`
+      // (`Modulos.tsx`, `Treino.tsx`). Um link "escapando calado" é o que
+      // este teste reprova — um link honesto, gated por papel, apontando de
+      // propósito pro antigo, é o comportamento certo até a tela nova existir.
+      '/admin/observability',
+      '/admin/integrations?type=vast_ai',
+    ]
     const varre = (dir: string) => {
       for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
         const p = path.join(dir, e.name)
@@ -100,8 +120,10 @@ describe('front novo e front antigo convivem', () => {
         if (!/\.tsx?$/.test(e.name) || /\.test\.tsx?$/.test(e.name)) continue
         if (path.relative(SRC, p) === 'app/RotasNovas.tsx') continue
         fs.readFileSync(p, 'utf-8').split('\n').forEach((linha, i) => {
-          // `to="/..."` ou to={`/...`} com caminho absoluto que não é o prefixo
-          const mLink = linha.match(/to=(?:"(\/[^"]*)"|\{`(\/[^`]*)`\})/)
+          // `to="/..."` / `to={`/...`}` (Link/NavLink) OU `href="/..."` /
+          // `href={`/...`}` (âncora HTML pura) com caminho absoluto que não é
+          // o prefixo — os dois jeitos de "linkar" existentes neste código.
+          const mLink = linha.match(/(?:to|href)=(?:"(\/[^"]*)"|\{`(\/[^`]*)`\})/)
           // `navigate('/...')` / `navegar('/...')` / `nav(`/...`)` imperativo
           const mNav = linha.match(
             /\b(?:navigate|navegar|nav)\(\s*(?:"(\/[^"]*)"|'(\/[^']*)'|`(\/[^`]*)`)/,
@@ -116,7 +138,8 @@ describe('front novo e front antigo convivem', () => {
     varre(path.join(SRC, 'app'))
     expect(
       infratores,
-      'link/navigate absoluto sai do front novo e cai no antigo — use rotaNova():\n' +
+      'link/navigate/href absoluto sai do front novo e cai no antigo — use rotaNova() ' +
+        '(ou, se for exceção legítima pro front antigo, liste em EXCECOES, nunca por silêncio):\n' +
         infratores.join('\n'),
     ).toEqual([])
   })

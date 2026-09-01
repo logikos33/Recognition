@@ -147,6 +147,17 @@ export const tenantNome = style({
 
 export const mono = style({ fontFamily: lk.fonte.mono, fontSize: '12px', color: lk.cor.cinzaNevoa })
 
+export const linkPermissoes = style([
+  mono,
+  {
+    background: 'none',
+    border: 'none',
+    padding: 0,
+    cursor: 'pointer',
+    selectors: { '&:hover': { color: lk.cor.cianoVisao } },
+  },
+])
+
 export const acoes = style({
   display: 'flex',
   gap: '8px',

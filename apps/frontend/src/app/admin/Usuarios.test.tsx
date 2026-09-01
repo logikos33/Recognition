@@ -8,7 +8,14 @@
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const navigateMock = vi.hoisted(() => vi.fn())
+vi.mock('react-router-dom', async () => {
+  const real = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
+  return { ...real, useNavigate: () => navigateMock }
+})
 
 const getUsers = vi.fn()
 const getTenants = vi.fn()
@@ -42,7 +49,9 @@ function montar() {
   const cliente = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={cliente}>
-      <Usuarios />
+      <MemoryRouter>
+        <Usuarios />
+      </MemoryRouter>
     </QueryClientProvider>,
   )
 }
@@ -54,6 +63,7 @@ beforeEach(() => {
   resetPassword.mockReset()
   deactivateUser.mockReset().mockResolvedValue({ deactivated: true })
   reactivateUser.mockReset().mockResolvedValue({ reactivated: true })
+  navigateMock.mockReset()
   vi.spyOn(window, 'confirm').mockReturnValue(true)
 })
 afterEach(() => vi.clearAllMocks())
@@ -143,5 +153,12 @@ describe('Usuarios', () => {
     expect(await screen.findByText('LK-AAAA-BBBB')).toBeTruthy()
     // O token "de convite" não é exibido como link — é infra morta (ver cabeçalho do arquivo).
     expect(screen.queryByText('tok-morto-sem-rota')).toBeNull()
+  })
+
+  it('"Ver tenant" navega para o front NOVO via rotaNova, nunca para /admin/tenants/<id> do front antigo (C1)', async () => {
+    montar()
+    await screen.findByText('Carlos M.')
+    fireEvent.click(screen.getAllByText('Ver tenant →')[0])
+    expect(navigateMock).toHaveBeenCalledWith('/novo/admin/tenants/t-rvb')
   })
 })

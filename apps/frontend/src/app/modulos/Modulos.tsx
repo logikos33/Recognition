@@ -294,9 +294,16 @@ export function Modulos() {
             </div>
 
             {isSuperAdmin && (
-              <a className={s.admin} href="/admin/observability">
+              // Sem equivalente no front novo (C1) — honesto sobre o destino em vez
+              // de teleportar calado: só superadmin vê, e o texto avisa que é a
+              // área técnica antiga. Ver EXCECOES em coexistencia.test.tsx.
+              <a
+                className={s.admin}
+                href="/admin/observability"
+                title="Abre a área técnica do front antigo — sem equivalente novo ainda"
+              >
                 <ShieldCheck size={15} strokeWidth={1.8} aria-hidden="true" />
-                Painel Admin — plataforma
+                Painel Admin — plataforma (área técnica antiga)
               </a>
             )}
 
