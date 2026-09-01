@@ -166,6 +166,24 @@ Violações hoje: 121. Depois do fix do `event_kind`: 53. Depois de rodar
 **66 violações, todas com precisão medida ≥63%**. A demo continua tendo o que mostrar — e o que
 mostra acerta 6 em 10, em vez de acusar quem cumpre em 7 de 10.
 
+## PRs desta pista e ORDEM DE MERGE (medida por colisão de arquivo)
+
+| PR | tema | veredito | colide em |
+|---|---|---|---|
+| #631 | C1 · vazamento de navegação p/ front antigo | ✅ verificado por mim (mutação reprova) | — |
+| #632 | D1 · "29 câmeras online" | APROVADO_COM_RESSALVA | — |
+| #633 | B2 · motivo ao rejeitar | **APROVADO** | `Verificacao.tsx`, `Eventos.tsx` |
+| #634 | A1c · confiança deixa de ser selo | APROVADO_COM_RESSALVA | `Verificacao.tsx`, `Eventos.tsx`, `Carga.tsx` |
+| #635 | base · régua + ADR-0068 + pranchas E1/E3 | — (docs/scripts) | — |
+| — | A1 · `event_kind` observação | rodada 3 | `Eventos.tsx`, `verification_service.py` |
+| — | B1 · pan + caixa | rodada 3 | `Verificacao.tsx` |
+| — | C2 · saída global | rodada 3 | `Carga.tsx` |
+| — | B4 · fila Classificar · D3 · nomes | rodada 3 | manifesto |
+
+**Ordem:** #631 → #632 → #635 (não colidem) → #633 → #634 → A1 → B1 → C2 → B4/D3, **rebasando cada
+um após o anterior**. `MANIFESTO-FRONT-ANTIGO.md` colide em 5 branches, mas é **gerado**: resolver
+sempre com `npm run manifesto`, ⛔ nunca à mão.
+
 ## Delta (mais recente primeiro)
 - 31/08 lote 1 despachado: 8 consertos em worktrees próprios (`wt-ux2-{a1,a1c,c2,b1,b2,d1,b4,d3}`)
   + C1 em `wt-ux2-c1`, cada um com cético opus por cima. Adendo do Vitor incorporado (A1 ampliado,
