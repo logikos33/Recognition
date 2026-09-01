@@ -46,6 +46,17 @@
  * `kind=violation` (ADR-0065): evento de CONFORMIDADE é telemetria de EPI em
  * uso — não é coisa sobre a qual se age. Uma tela de AGIR que listasse
  * conformidade estaria pedindo ação sobre quem está certo.
+ *
+ * DECISÃO (rodada de correção UX, contrato A1): isto também deixa de fora a
+ * classe INDECIDIDA ('observacao' — is_violation NULL, ou fora do catálogo),
+ * e a fila continua com `kind=violation` mesmo assim. Registrado, não
+ * esquecido: o backend não tem um `kind` "tudo que não é conformidade" (só
+ * os quatro valores testados em test_alert_event_kind.py), e trocar para ''
+ * (todos) reabriria esta fila de AÇÃO com conformidade dentro — o mesmo
+ * ruído que este filtro existe para excluir. O indecidido tem tela própria
+ * para achar (`/epi/eventos`, filtro "Não definida") — não desaparece do
+ * produto, só não entra nesta fila de ação enquanto o backend não tiver um
+ * recorte que junte violação+observação sem trazer conformidade junto.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'

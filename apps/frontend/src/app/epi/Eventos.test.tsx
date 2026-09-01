@@ -449,6 +449,22 @@ describe('deep-link do sino continua valendo', () => {
 })
 
 describe('terceiro estado do filtro — contrato A1', () => {
+  it('abertura padrão pede kind=violation, não observação — decisão registrada', async () => {
+    // QUEBRA 3 (rodada de correção UX): sem isto, nada travava o default —
+    // trocar 'violation' por '' silenciosamente reabriria a tela com
+    // CONFORMIDADE misturada (o ruído que ADR-0065 tira daqui); trocar por
+    // 'observacao' faria o indecidido dominar a abertura. A decisão (ver
+    // comentário da interface `Filtros` em Eventos.tsx) é manter
+    // 'violation': o indecidido tem opção própria e visível no MESMO
+    // seletor ("Não definida"), não desaparece da tela, só da ABERTURA.
+    montar()
+    await waitFor(() => expect(h.gets.length).toBeGreaterThan(0))
+    expect(h.gets[0]).toContain('kind=violation')
+    expect(h.gets[0]).not.toContain('kind=observacao')
+    expect(h.gets[0]).not.toContain('kind=compliance')
+    expect((screen.getByLabelText('Tipo de evento') as HTMLSelectElement).value).toBe('violation')
+  })
+
   it('"Não definida" é uma opção selecionável e pede kind=observacao', async () => {
     montar()
     await screen.findByText('CAM-04 Expedição')

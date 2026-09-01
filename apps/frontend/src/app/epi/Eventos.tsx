@@ -110,7 +110,28 @@ interface Filtros {
   classe: string
   /** '' = todos · 'false' = novo · 'true' = reconhecido (`?acknowledged=`). */
   status: string
-  /** ADR-0065 — a tela abre em VIOLAÇÕES: EPI presente é telemetria, não alerta. */
+  /** ADR-0065 — a tela abre em VIOLAÇÕES: EPI presente é telemetria, não alerta.
+   *
+   *  DECISÃO (rodada de correção UX, contrato A1): o default CONTINUA
+   *  'violation' e NÃO passa a incluir 'observacao' (a classe indecidida).
+   *  Não é omissão — é escolha registrada, com dois motivos:
+   *
+   *  1. O backend não tem um `kind` que signifique "tudo que não é
+   *     conformidade" — só os quatro valores testados (violation· compliance
+   *     ·observacao·todos). Abrir em '' (todos) para pegar observação junto
+   *     traria de volta a CONFORMIDADE (telemetria de EPI em uso) misturada
+   *     na lista — exatamente o ruído que a ADR-0065 existe para tirar da
+   *     tela padrão. Trocar "indecidido escondido" por "conformidade
+   *     poluindo a fila" não é ganho.
+   *  2. 'observacao' não é beco sem saída: tem opção PRÓPRIA e visível no
+   *     MESMO seletor desta tela ("Não definida (ninguém classificou)"), ao
+   *     lado de "Todos os tipos" — quem abre a tela vê as quatro opções.
+   *     Some da ABERTURA padrão, não da tela.
+   *
+   *  Se um dia o backend ganhar um `kind` combinado ("tudo que não é
+   *  conformidade"), a revisão certa é trocar o default para ele — não para
+   *  '' (todos). Ver teste "abertura padrão pede kind=violation, não
+   *  observação" abaixo, que trava esta decisão. */
   kind: string
   pagina: number
 }
