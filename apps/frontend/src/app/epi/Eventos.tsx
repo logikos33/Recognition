@@ -53,6 +53,7 @@ import { vereditoHumano, type Veredito } from '../../components/shared/VereditoH
 import {
   EXPLICACAO_POLARIDADE, ROTULO_POLARIDADE, type Polaridade,
 } from '../../components/shared/PolaridadeClasse'
+import { labelForVerificationReason } from '../../utils/labels'
 import { rangeForPeriod } from '../../utils/timeBuckets'
 import type { Camera } from '../../types'
 import { LogikosLoader } from '../shell/LogikosLoader'
@@ -623,8 +624,8 @@ export function Eventos() {
                         {/* MOTIVO do veredito: o que separa "estava de máscara"
                             de "a caixa pegou a luva do outro". */}
                         {ev.verification_reason && (
-                          <span className={s.motivo} title={ev.verification_reason}>
-                            {ev.verification_reason}
+                          <span className={s.motivo} title={labelForVerificationReason(ev.verification_reason)}>
+                            {labelForVerificationReason(ev.verification_reason)}
                           </span>
                         )}
                         {veredito === 'nao-revisado' && podeJulgar && (

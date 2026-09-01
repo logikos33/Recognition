@@ -207,14 +207,18 @@ describe('avanço da fila (PRs 496, 500, 487)', () => {
     expect(post).toHaveBeenCalledTimes(1)
   })
 
-  it('a tecla R rejeita', async () => {
+  it('a tecla R rejeita com o motivo escolhido', async () => {
     get.mockResolvedValue(fila([B]))
     montar()
     await screen.findByText('Sem colete')
 
+    fireEvent.change(screen.getByLabelText(/Motivo/), { target: { value: 'epi_presente' } })
     tecla('r')
     await waitFor(() =>
-      expect(post).toHaveBeenCalledWith('/verification/b/review', { verdict: 'reject' }),
+      expect(post).toHaveBeenCalledWith('/verification/b/review', {
+        verdict: 'reject',
+        reason: 'epi_presente',
+      }),
     )
   })
 
@@ -285,6 +289,86 @@ describe('avanço da fila (PRs 496, 500, 487)', () => {
     await waitFor(() => expect(toastErro).toHaveBeenCalled())
     expect(screen.getByText('Sem colete')).toBeTruthy()
     expect(screen.queryByText('Confirmado')).toBeNull()
+  })
+})
+
+// ── 2.1 · Motivo estruturado do veredito (contrato B2) ──────────────────────
+
+describe('motivo do veredito (contrato B2)', () => {
+  it('rejeitar sem motivo NÃO envia — o motivo alimenta a calibração e não pode faltar', async () => {
+    get.mockResolvedValue(fila([B]))
+    montar()
+    await screen.findByText('Sem colete')
+
+    clicar(screen.getByRole('button', { name: /Rejeitar/ }))
+
+    expect(post).not.toHaveBeenCalled()
+    expect(toastErro).toHaveBeenCalled()
+    expect(screen.getByText('Selecione um motivo para rejeitar.')).toBeTruthy()
+  })
+
+  it('motivo escolhido chega ao backend no POST que já aceita `reason`', async () => {
+    get.mockResolvedValue(fila([B]))
+    montar()
+    await screen.findByText('Sem colete')
+
+    fireEvent.change(screen.getByLabelText(/Motivo/), {
+      target: { value: 'nao_da_pra_ver' },
+    })
+    clicar(screen.getByRole('button', { name: /Rejeitar/ }))
+
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith('/verification/b/review', {
+        verdict: 'reject',
+        reason: 'nao_da_pra_ver',
+      }),
+    )
+  })
+
+  it('confirmar sem motivo funciona — motivo é opcional pra aprovar', async () => {
+    get.mockResolvedValue(fila([B]))
+    montar()
+    await screen.findByText('Sem colete')
+
+    clicar(screen.getByRole('button', { name: /Confirmar/ }))
+
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith('/verification/b/review', { verdict: 'approve' }),
+    )
+  })
+
+  it('motivo do item decidido não vaza pro próximo item da fila', async () => {
+    get.mockResolvedValue(fila([B, A]))
+    montar()
+    await screen.findByText('Sem colete')
+
+    fireEvent.change(screen.getByLabelText(/Motivo/), { target: { value: 'epi_presente' } })
+    clicar(screen.getByRole('button', { name: /Rejeitar/ }))
+    expect(await screen.findByText('Sem capacete')).toBeTruthy() // avançou pra A
+
+    expect(screen.getByLabelText<HTMLSelectElement>(/Motivo/).value).toBe('')
+  })
+
+  it('motivo escolhido e NÃO decidido some ao navegar pra "Próximo item" — não vaza pro veredito de outro alerta', async () => {
+    // O teste acima só cobre o vazamento via `decidir()` (que já limpa o
+    // motivo no sucesso). Aqui é NAVEGAÇÃO sem decidir — o operador escolhe um
+    // motivo em B, muda de ideia e vai para A com ← →, sem clicar em
+    // Rejeitar/Confirmar. Sem o efeito que reseta por `atual?.id`, o motivo de
+    // B viaja no POST de A: dado de calibração gravado no alerta errado.
+    get.mockResolvedValue(fila([B, A]))
+    montar()
+    await screen.findByText('Sem colete')
+
+    fireEvent.change(screen.getByLabelText(/Motivo/), { target: { value: 'epi_presente' } })
+    clicar(screen.getByRole('button', { name: 'Próximo item' }))
+    expect(await screen.findByText('Sem capacete')).toBeTruthy() // A, sem decidir B
+
+    expect(screen.getByLabelText<HTMLSelectElement>(/Motivo/).value).toBe('')
+
+    clicar(screen.getByRole('button', { name: /Confirmar/ }))
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith('/verification/a/review', { verdict: 'approve' }),
+    )
   })
 })
 

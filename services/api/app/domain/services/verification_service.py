@@ -271,7 +271,15 @@ class VerificationService:
                 # A justificativa é o que alimenta a recalibração de limiar
                 # depois ("errou porque a caixa pegou a luva do outro"). A rota
                 # já aceitava `reason` no corpo e o descartava em silêncio.
-                "verification_reason = %s "
+                # COALESCE, não sobrescrita direta: re-julgar (mudança de
+                # ideia é permitida de propósito, ver docstring) sem motivo é
+                # o atalho de lista (Eventos.tsx, Acoes.tsx,
+                # AlertsHistoryPage.tsx) — NUNCA manda `reason`. Sobrescrever
+                # com `%s` puro apagava (NULL) um motivo estruturado já
+                # gravado pela tela de Verificação a cada re-julgamento pelo
+                # atalho — dado de calibração perdido em silêncio (achado do
+                # cético). `reason` só troca o valor quando de fato vem um.
+                "verification_reason = COALESCE(%s, verification_reason) "
                 "WHERE id = %s AND tenant_id = %s",
                 (status, verdict, f"user:{user_id}", reason or None,
                  alert_id, tenant_id),
