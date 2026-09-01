@@ -166,6 +166,30 @@ Violações hoje: 121. Depois do fix do `event_kind`: 53. Depois de rodar
 **66 violações, todas com precisão medida ≥63%**. A demo continua tendo o que mostrar — e o que
 mostra acerta 6 em 10, em vez de acusar quem cumpre em 7 de 10.
 
+## PLACAR (31/08 fim de noite)
+
+**MERGEADOS na develop:** #631 C1 · #632 D1 · #633 B2 · #634 A1c · #635 base (régua + ADR-0068 +
+pranchas E1/E3).
+**Em CI aguardando merge:** #636 A1 · #637 B1 · #638 C2 · #639 B4 · #640 D3.
+
+### Lições desta rodada (para a próxima sessão)
+1. 🔴 **Teste que não reprova a mutação não prova nada** — os céticos reprovaram os 8 temas na 1ª
+   volta, e **eu mesmo caí nisso**: minha régua `classeNasceComPolaridade` passou VERDE com o campo
+   removido (regex ancorado em `.post<...>`, e o genérico real é aninhado). Só a mutação revelou.
+   ⇒ **Toda régua nova nasce com a mutação rodada, sem exceção.**
+2. 🔴 **Consertar a leitura em UMA tela cria contradição** — o A1 corrigiu `event_kind` só em
+   `list_with_filters`; Dashboard seguia binário. Duas telas se desmentindo é pior que uma mentira
+   coerente. ⇒ ao mudar predicado, **grep TODOS os leitores antes**.
+3. 🔴 **Conserto de fila sem conserto de export gasta gente** — B4 arrumou a fila e o
+   `versioning_v2.py` continuava descartando o trabalho. ⇒ seguir o dado até o fim do caminho.
+4. **Agentes não commitam sozinhos**: B1 e C2 entregaram aprovados com a árvore suja. ⇒ conferir
+   `git log origin/develop..HEAD` antes de acreditar em "pronto".
+5. **Vários agentes devolveram relatório vazio** ("Done.", "Nada novo por aqui") tendo feito o
+   trabalho. ⇒ verificar o worktree, nunca o relatório.
+6. `MANIFESTO-FRONT-ANTIGO.md` conflita em toda branch que toca o front antigo — resolver **sempre**
+   com `npm run manifesto`, nunca à mão.
+7. **docs-gate pegou colisão de ADR 0068** (máscara × migration 127). O segundo virou **ADR-0069**.
+
 ## PRs desta pista e ORDEM DE MERGE (medida por colisão de arquivo)
 
 | PR | tema | veredito | colide em |
