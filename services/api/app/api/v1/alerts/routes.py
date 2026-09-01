@@ -69,17 +69,9 @@ def _iso_utc(value):  # type: ignore[no-untyped-def]
 
 
 def _ultima_correcao(hist):  # type: ignore[no-untyped-def]
-    """Última entrada do ledger, só `por`/`por_nome`/`em`.
-
-    O array de violações anterior não precisa trafegar para a tela dizer
-    "caixa corrigida por X em Y". `por_nome` é None em entradas gravadas
-    antes dele existir — o front mostra travessão nesse caso, nunca o UUID
-    de `por`.
-    """
-    if not hist:
-        return None
-    ultima = hist[-1]
-    return {"por": ultima.get("por"), "por_nome": ultima.get("por_nome"), "em": ultima.get("em")}
+    """Compat: delega para `AlertRepository.ultima_correcao` (fonte única —
+    o mesmo ledger também é projetado em GET /verification/queue)."""
+    return AlertRepository.ultima_correcao(hist)
 
 
 def _nome_usuario_atual() -> str | None:

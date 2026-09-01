@@ -1108,7 +1108,7 @@ export function Verificacao() {
               type="button"
               className={s.navBotao}
               onClick={voltar}
-              disabled={indice === 0}
+              disabled={indice === 0 || emCorrecao}
               aria-label="Item anterior"
             >
               <ArrowLeft size={14} strokeWidth={1.7} aria-hidden /> Anterior
@@ -1118,7 +1118,7 @@ export function Verificacao() {
               type="button"
               className={s.navBotao}
               onClick={avancar}
-              disabled={indice >= fila.length - 1}
+              disabled={indice >= fila.length - 1 || emCorrecao}
               aria-label="Próximo item"
             >
               Próximo <ArrowRight size={14} strokeWidth={1.7} aria-hidden />

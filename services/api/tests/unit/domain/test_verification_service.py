@@ -189,6 +189,43 @@ class TestGetHumanQueue:
         assert "a.tenant_id = %s" in query
         assert "tenant-1" in params
 
+    def test_projeta_correcao_ultima_do_ledger(self):
+        """Achado do cético (rodada 2, QUEBRA 3): a fila reprojetava do zero e
+        não expunha `correcao_ultima` — a autoria (ADR-0066) só sobrevivia na
+        sessão do PATCH e sumia da tela ao recarregar. `a.*` já traz
+        `violations_historico` (migration 126); a projeção é a MESMA que
+        GET/PATCH de alerts fazem via `AlertRepository.ultima_correcao`."""
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.side_effect = [
+            [],
+            [{
+                "id": "a1",
+                "camera_name": "Cam A",
+                "violations_historico": [
+                    {"por": "u-1", "por_nome": "Ana Souza", "em": "2026-08-24T10:00:00+00:00"},
+                ],
+            }],
+        ]
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
+            result = _make_service().get_human_queue(tenant_id="tenant-1")
+        assert result[0]["correcao_ultima"] == {
+            "por": "u-1", "por_nome": "Ana Souza", "em": "2026-08-24T10:00:00+00:00",
+        }
+
+    def test_sem_historico_correcao_ultima_e_none(self):
+        """Sem `violations_historico` (nunca corrigido) ⇒ `correcao_ultima`
+        None, nunca ausente — a tela decide o badge por presença da chave."""
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.side_effect = [
+            [],
+            [{"id": "a1", "camera_name": "Cam A", "violations_historico": []}],
+        ]
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
+            result = _make_service().get_human_queue(tenant_id="tenant-1")
+        assert result[0]["correcao_ultima"] is None
+
     def test_camera_join_usa_public_cameras_qualificado(self):
         """Duas regressões na mesma asserção:
 

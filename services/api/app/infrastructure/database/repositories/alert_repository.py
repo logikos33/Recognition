@@ -13,6 +13,23 @@ class AlertRepository(BaseRepository):
     # Única unidade de bbox que o domínio grava (domain/detectors/base.py).
     BBOX_PIXELS = "pixels_xywh_frame_original"
 
+    @staticmethod
+    def ultima_correcao(hist: Optional[list]) -> Optional[dict]:
+        """Última entrada do ledger `violations_historico`, só `por`/`por_nome`/`em`.
+
+        Fonte única (ADR-0066): o array de violações anterior não precisa
+        trafegar para a tela dizer "caixa corrigida por X em Y" — nem aqui
+        nem em `GET /verification/queue`, que projeta o MESMO campo em cima
+        do MESMO ledger (achado do cético: a fila reprojetava do zero e a
+        autoria sumia da tela ao recarregar). `por_nome` é None em entradas
+        gravadas antes dele existir — quem chama mostra travessão nesse caso,
+        nunca o UUID cru de `por`.
+        """
+        if not hist:
+            return None
+        ultima = hist[-1]
+        return {"por": ultima.get("por"), "por_nome": ultima.get("por_nome"), "em": ultima.get("em")}
+
     # ── Polaridade do evento (ADR-0065) ───────────────────────────────────
     #
     # CONFORMIDADE = o alerta tem ≥1 entrada E TODA classe está explicitamente

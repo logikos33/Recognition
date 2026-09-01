@@ -889,6 +889,49 @@ describe('correção de caixa: salva e volta do servidor (contrato B1)', () => {
     expect(screen.getByRole('button', { name: /Salvar caixa/i })).toBeTruthy()
   })
 
+  it('Anterior/Próximo desabilitam durante a correção — navegar não pode descartar o rascunho em silêncio', async () => {
+    // O teclado já é mudo em modo de correção (teste acima) — mas o MOUSE
+    // não tinha guarda nenhuma: Anterior/Próximo só desabilitavam pela
+    // POSIÇÃO na fila (índice 0 / último item), nunca por `emCorrecao`. Fila
+    // de 3 pra ficar no meio (Y, índice 1), onde NENHUM dos dois já estaria
+    // desabilitado por posição — só o modo de correção pode explicar.
+    const X = itemComEvidencia('x', {
+      violations: [{ class: 'no_helmet', confidence: 0.6, bbox: [10, 10, 20, 20], bbox_unidade: 'pixels_xywh_frame_original' }],
+    })
+    const Y = itemComEvidencia('y', {
+      violations: [{ class: 'no_helmet', confidence: 0.6, bbox: [50, 50, 100, 100], bbox_unidade: 'pixels_xywh_frame_original' }],
+    })
+    const Z = itemComEvidencia('z', {
+      violations: [{ class: 'no_helmet', confidence: 0.6, bbox: [80, 80, 120, 120], bbox_unidade: 'pixels_xywh_frame_original' }],
+    })
+    get.mockImplementation((rota: string) =>
+      rota.includes('/snapshot') ? respostaEvidencia('https://r2.example/xyz2.jpg') : Promise.resolve(fila([X, Y, Z])),
+    )
+    montar()
+    const carregaImagem = async () => {
+      const img = (await screen.findByAltText(/Evidência de/)) as HTMLImageElement
+      Object.defineProperty(img, 'naturalWidth', { value: 1000, configurable: true })
+      Object.defineProperty(img, 'naturalHeight', { value: 1000, configurable: true })
+      fireEvent.load(img)
+    }
+    await carregaImagem()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Próximo item' })) // X → Y, índice 1
+    await carregaImagem()
+    // Fora do modo de correção, os dois estão HABILITADOS nesta posição.
+    expect(screen.getByRole('button', { name: 'Item anterior' })).toHaveProperty('disabled', false)
+    expect(screen.getByRole('button', { name: 'Próximo item' })).toHaveProperty('disabled', false)
+
+    fireEvent.click(screen.getByRole('button', { name: /Corrigir caixa/i }))
+    expect(screen.getByRole('button', { name: 'Item anterior' })).toHaveProperty('disabled', true)
+    expect(screen.getByRole('button', { name: 'Próximo item' })).toHaveProperty('disabled', true)
+
+    // Clique num botão desabilitado não dispara nada (nem o jsdom entrega o
+    // evento) — a tela segue em correção, o rascunho não foi descartado.
+    fireEvent.click(screen.getByRole('button', { name: 'Próximo item' }))
+    expect(screen.getByRole('button', { name: /Salvar caixa/i })).toBeTruthy()
+  })
+
   it('PATCH em voo grava por ID, não por posição: a fila pode reordenar enquanto o servidor responde', async () => {
     // Achado do revisor cético (contrato B1): `salvarCaixa` carimbava a
     // resposta do PATCH pelo ÍNDICE congelado antes do `await`. Fila [X,Y,Z],
