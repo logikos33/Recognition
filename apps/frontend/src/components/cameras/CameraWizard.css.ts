@@ -138,7 +138,7 @@ export const manufacturerBtn = recipe({
     selected: {
       true: {
         border: `2px solid ${vars.color.primary}`,
-        background: 'rgba(139, 92, 246, 0.12)',
+        background: vars.color.primaryAlpha,
       },
       false: {
         border: `2px solid ${vars.color.borderDefault}`,

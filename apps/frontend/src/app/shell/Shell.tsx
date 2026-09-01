@@ -22,7 +22,7 @@
  * · **Expiração da sessão.** `getSessionTokenExpMs()` lê o claim `exp` do JWT
  *   corrente. Decodificar token aqui de novo divergiria no primeiro refresh.
  */
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { Menu, Search } from 'lucide-react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
@@ -78,6 +78,18 @@ export function Shell({ carregando }: ShellProps) {
   const comBarraLateral = !SEM_BARRA_LATERAL.some((r) => pathname.startsWith(r))
   // Publica --lk-marca clampada; os tokens leem dela. Ver DECISÃO v2 item 3.
   useMarcaDoTenant()
+  // F5-LEVE (identidade, rodada 2): estende o remap de `Shell.css.ts` até o
+  // que Radix portaliza pra `document.body` (Modal, Popover, Tooltip) e até
+  // o `ToastProvider` (irmão de `<App/>`, fora de `.raiz`) — nenhum dos dois
+  // é descendente da raiz do shell, então só um marcador no documentElement
+  // alcança os dois (ver comentário em `Shell.css.ts` e em `AppShell.tsx`,
+  // mesma técnica pro tema legado). `useLayoutEffect`: aplica antes do
+  // primeiro paint, sem flash de roxo caso algo portalize de cara.
+  useLayoutEffect(() => {
+    const el = document.documentElement
+    el.setAttribute('data-lk-shell', '1')
+    return () => el.removeAttribute('data-lk-shell')
+  }, [])
   const navegar = useNavigate()
   const [colapsada, setColapsada] = useState(false)
   const [paletaAberta, setPaletaAberta] = useState(false)

@@ -453,7 +453,7 @@ function StepClasses({
                 borderRadius: 8,
                 cursor: 'pointer',
                 border: `1px solid ${isSelected ? vars.color.primary : vars.color.borderDefault}`,
-                background: isSelected ? 'rgba(124,58,237,0.12)' : 'transparent',
+                background: isSelected ? vars.color.primaryAlpha : 'transparent',
                 userSelect: 'none',
               }}
             >
@@ -463,7 +463,7 @@ function StepClasses({
                 onChange={() => onToggle(opt.value)}
                 style={{ accentColor: vars.color.primaryDark, width: 14, height: 14, flexShrink: 0 }}
               />
-              <span style={{ fontSize: 13, color: isSelected ? '#c4b5fd' : vars.color.textSecondary }}>
+              <span style={{ fontSize: 13, color: isSelected ? vars.color.primaryLight : vars.color.textSecondary }}>
                 {opt.label}
               </span>
             </label>

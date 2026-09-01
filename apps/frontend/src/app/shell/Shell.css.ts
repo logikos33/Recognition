@@ -2,7 +2,7 @@
  * Shell Logikos Vision — TopBar 56 · sidebar 236/64 · banner admin 42+2.
  * Medidas do README do handoff, via token. Zero hex solto.
  */
-import { assignVars, style } from '@vanilla-extract/css'
+import { assignVars, globalStyle, style } from '@vanilla-extract/css'
 
 import { vars } from '../../styles/theme.css'
 import { lk } from '../tokens/lk.css'
@@ -44,6 +44,27 @@ export const raiz = style({
   color: lk.cor.brancoSinal,
   fontFamily: lk.fonte.ui,
 })
+
+/**
+ * F5-LEVE (identidade, rodada 2): o remap acima só alcança quem está DENTRO
+ * da árvore DOM de `.raiz`. Radix (`Dialog.Portal` do Modal/ConfirmDialog,
+ * `Popover.Portal` do CameraFilterSelector, `Tooltip.Portal`) anexa direto em
+ * `document.body`, e o `ToastProvider` (main.tsx) monta como IRMÃO de
+ * `<App/>` — os dois escapam da árvore de `.raiz` e herdam puro do tema
+ * legado aplicado em `document.documentElement` (mesmo raciocínio do
+ * comentário em `AppShell.tsx`: só o que está no documentElement alcança
+ * portal). Resultado medido: botão "Arquivar" do ConfirmDialog e o
+ * "Ver todos os alertas" do sino saíam roxo mesmo com o remap de `.raiz` no
+ * lugar.
+ *
+ * `Shell.tsx` publica `data-lk-shell` em `document.documentElement` enquanto
+ * o shell novo está montado (e remove ao desmontar — sem isto o front antigo
+ * herdaria ciano depois de navegar de volta). Esta regra repete o MESMO
+ * remap ali: `<html>` é ancestral de QUALQUER coisa anexada a `document.body`
+ * (portal ou não) e do `#root` inteiro (ToastProvider incluso), então alcança
+ * as duas fugas de uma vez, sem tocar nos componentes legados em si.
+ */
+globalStyle('html[data-lk-shell]', { vars: paletaLkSobreTemaLegado })
 
 export const topbar = style({
   position: 'sticky',
