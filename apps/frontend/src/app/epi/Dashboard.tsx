@@ -4,7 +4,7 @@
  * Desenho: `EPI Dashboard.dc.html`. Layout, medidas e copy são do handoff.
  *
  * ⛔ ZERO DADO INVENTADO — e neste dashboard isso custa caro, porque o desenho
- * pede três coisas que o backend HOJE não tem. Cada uma aparece como vazio
+ * pede coisas que o backend HOJE não tem. Cada uma aparece como vazio
  * honesto, nunca como número plausível:
  *
  *  1. **Delta e curva de 7 dias do score.** `/api/modules/epi/stats` devolve o
@@ -23,6 +23,18 @@
  *     site (`/modules/epi/stats` é do tenant; `/v1/events/*` filtra por câmera).
  *     → o seletor não entra. Um filtro que não filtra é pior que filtro nenhum:
  *     o operador acha que está olhando a doca e está olhando a fábrica toda.
+ *
+ *  4. **Conectividade por câmera ("online").** `public.cameras.last_seen`
+ *     existe na tabela mas nunca recebe UPDATE em lugar nenhum do código —
+ *     o sistema não sabe se uma câmera está transmitindo, só sabe se ela
+ *     está cadastrada como ativa (não arquivada). O cartão dizia "Câmeras
+ *     online" e derivava "N fora do ar" de `total − ativas`, mas `total`
+ *     incluía câmeras ARQUIVADAS (29 = 19 ativas + 10 arquivadas na RVB) —
+ *     dois erros empilhados fabricando uma métrica de disponibilidade que
+ *     não existe. → cartão agora diz "Câmeras ativas", um número só, com a
+ *     legenda admitindo a falta de telemetria. PEDIDO-AO-BACKEND: heartbeat
+ *     real por câmera (writer de `last_seen`) para um "online" que signifique
+ *     algo.
  *
  * O seletor de TURNO entra porque é real: recorta `from`/`to` dos dois painéis
  * de evento. Os KPIs do topo NÃO são recortáveis por turno (o backend fixa
@@ -437,7 +449,6 @@ export function Dashboard() {
   const media7d = eventosSemana / 7
   const deltaEventos = media7d > 0 ? Math.round(((eventosHoje - media7d) / media7d) * 100) : null
 
-  const camerasFora = Math.max(0, camerasTotal - camerasAtivas)
 
   const pontos = fillBuckets(janela.de, janela.ate, 'hour', linhaDoTempo.data?.timeline ?? []).map(
     (p) => ({ ...p, rotulo: formatBucketLabel(p.bucket, 'hour') }),
@@ -852,24 +863,23 @@ export function Dashboard() {
           <span className={s.legenda}>ações ainda não são registradas no sistema</span>
         </section>
 
-        {/* Câmeras online */}
+        {/* Câmeras ativas — não existe telemetria de conectividade por câmera
+            (ver cabeçalho, item 4): "online" prometeria um dado que o
+            sistema não mede. O que existe é status de cadastro. */}
         <section
-          className={`${s.cartaoKpi} ${camerasFora > 0 ? s.acento.atencao : s.acento.ok}`}
-          aria-label="Câmeras online"
+          className={`${s.cartaoKpi} ${camerasAtivas > 0 ? s.acento.ok : s.acento.atencao}`}
+          aria-label="Câmeras ativas"
         >
-          <span className={s.overline}>Câmeras online</span>
-          <span className={s.kpiValor}>
-            {numero(camerasAtivas)}
-            <span className={s.kpiValorSufixo}>/{numero(camerasTotal)}</span>
-          </span>
-          {camerasFora > 0 ? (
-            <Estado nivel="atencao" palavra={`${numero(camerasFora)} fora do ar`} />
-          ) : (
-            <Estado nivel="ok" palavra="Todas online" />
-          )}
+          <span className={s.overline}>Câmeras ativas</span>
+          <span className={s.kpiValor}>{numero(camerasAtivas)}</span>
+          <Estado
+            nivel={camerasAtivas > 0 ? 'ok' : 'atencao'}
+            palavra={camerasAtivas > 0 ? 'Cadastradas e ativas' : 'Nenhuma câmera ativa'}
+          />
+          <span className={s.legenda}>sem telemetria de conectividade por câmera ainda</span>
           {can('cameras:read') && (
             <Link to={rotaNova('/epi/cameras')} className={s.atalho}>
-              ver saúde →
+              ver câmeras →
             </Link>
           )}
         </section>

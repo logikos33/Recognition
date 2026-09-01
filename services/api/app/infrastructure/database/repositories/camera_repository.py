@@ -203,9 +203,16 @@ class CameraRepository(BaseRepository):
         )
 
     def count_by_module(self, tenant_id: str, module_code: str) -> int:
-        """Conta câmeras de um tenant por módulo."""
+        """Conta câmeras ATIVAS de um tenant por módulo.
+
+        Câmera arquivada (is_active=false) não conta — mesmo filtro que
+        count_by_status já usa. Antes desta correção o COUNT(*) sem filtro
+        somava arquivadas ao total, inflando o denominador de "câmeras
+        ativas" mostrado no dashboard (ex.: 29 = 19 ativas + 10 arquivadas).
+        """
         row = self._execute_one(
-            "SELECT COUNT(*) AS count FROM public.cameras WHERE tenant_id = %s AND module_code = %s",
+            "SELECT COUNT(*) AS count FROM public.cameras "
+            "WHERE tenant_id = %s AND module_code = %s AND is_active = true",
             (tenant_id, module_code),
         )
         return row["count"] if row else 0
