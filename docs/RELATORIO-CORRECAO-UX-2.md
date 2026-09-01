@@ -123,6 +123,48 @@ públicos distintos.
 
 ---
 
+---
+
+## O que os céticos pegaram — e por que valeu três rodadas
+
+**A primeira volta dos 8 temas foi integralmente REPROVADA.** Nenhuma reprovação foi por estilo;
+todas com quebra rodada e provada. As que mais importam:
+
+| tema | quebra provada | por que era grave |
+|---|---|---|
+| B1 | `salvarCaixa()` carimbava por **posição na fila**, não por id (índice congelado antes do `await`) | correção **e autoria** cairiam **no alerta errado** se a fila reordenasse — dado de auditoria na tela do cliente |
+| B4 | fila consertada, mas o **export** (`versioning_v2.py`) seguia descartando o que ela passou a servir | o anotador trabalharia e o dataset perderia: **pior que o bug original, porque gasta gente** |
+| A1 | `event_kind` corrigido em **uma tela só** | Eventos diria "Não definida" e o Dashboard "violação" sobre **68 alertas reais** — trocaria uma mentira coerente por duas telas que se desmentem |
+| C2 | Carga com **2 ramos sem saída nenhuma** | um deles é o **estado real do tenant da demo** |
+| D1 | o teste não travava o "sem fração" | a mutação reintroduzindo-a passava **verde** |
+| D3 | `display_name` servido no JSON e **ignorado pela tela** | servir no backend e o front ignorar não conserta nada para o cliente |
+| A1c, B2 | **CI vermelho** (manifesto) | medi na develop limpa: passa 8/8 → era dos PRs |
+
+### O erro que eu mesmo cometi, e como apareceu
+A régua que escrevi para impedir classe sem polaridade **passou verde com o campo removido** — o
+regex ancorava em `.post<...>` e o genérico real é aninhado (`ApiResponse<{ class_id: number }>`).
+Só a **mutação** revelou. É exatamente o defeito que os céticos apontaram nos outros: teste que não
+reprova não prova nada. Corrigido: ancora na rota e reprova apontando `arquivo:linha`.
+
+### Onde eu refutei um cético
+Ele afirmou que o conserto do A1 teria "magnitude zero" no DEV. Medi com o predicado real:
+**68 dos 423 alertas** mudam de balde (`Sem Luvas` 33, `Sem Óculos` 23, `Óculos` 12) — 56% das
+violações atuais. Isso torna a quebra dele **mais grave**, não menos. (Ele acertou num ponto em que
+eu errei primeiro: `_IS_COMPLIANCE_SQL` lê o **jsonb `violations`**, não `class_name`.)
+A regra "não alegar sem evidência" vale para os nossos documentos também.
+
+### Regressão que um conserto criou — e que o gate seguinte pegou
+Exigir `is_violation` no cadastro **quebrou o botão "Criar classe"** no anotador vivo (400 em
+`AnnotationStudio` e `SearchFindingsPanel`) — o elo do flywheel derrubado por um campo. Consertado
+com o `SeletorPolaridade` que já existia, travado até alguém decidir. ⛔ Nenhum default inventado:
+adivinhar polaridade é a decisão mais cara da tela.
+
+E o **docs-gate** pegou uma colisão de numeração de ADR (dois `0068` — o de máscara mergeou
+enquanto o outro era escrito). É para isso que ele existe: a ADR-0021 registra que colisão de
+numeração já derrubou o startup da API.
+
+---
+
 ## Dívidas, pedidos e ressalvas
 
 - **Pedido-ao-backend**: telemetria real de conectividade por câmera — `cameras.last_seen` existe
@@ -134,3 +176,32 @@ públicos distintos.
 - **Régua que já existia**: `training/classificador_recorte/regua.py` mede o **dataset**;
   `scripts/ops/calibracao_classes.py` mede a **produção**. São complementares — registrado para
   ninguém fundir por engano.
+- **Migration 127** (`ADR-0069`): faz `is_violation=FALSE → NULL` a cada boot para classe criada a
+  partir de 25/08. O cabeçalho dela previu este dia por escrito — *"no dia em que existir uma rota
+  que grave `is_violation`, esta migration passa a apagar decisão humana"* — e esse dia chegou.
+  ⛔ Não inventamos schema na véspera: registrado em ADR, e o script de calibração **avisa** qual
+  decisão não sobrevive ao próximo deploy.
+- **Qualidade (débito declarado, não consertado)**: `GestaoQualidade.tsx:1110-1121`,
+  `RevisaoQualidade.tsx:377-423` e `ConfigQualidade.tsx:156-188` têm *early returns* **antes** do
+  cabeçalho onde o "Voltar" vive — nos estados "módulo desligado", "erro de rede" e loading ainda
+  não há saída. Corrigir exige mover o cabeçalho nos 3 arquivos: refactor estrutural que não se faz
+  a um dia do embarque.
+- **Decisão pendente do Vitor (D3)**: `training.py:313-323` gera "Logikos V\<n\> · DD/MM"
+  automaticamente, mas a migration 129 e o `modelDisplay.ts` documentam o oposto ("nunca inferido —
+  NÃO EXISTE V\<n\> calculado"). Ou mantém o cálculo e atualiza a política (7 de 8 modelos estão sem
+  nome porque ninguém atribui à mão), ou remove e o cliente volta a ver UUID. É política de produto.
+
+---
+
+## Placar
+
+**Mergeados:** #631 (C1 navegação) · #632 (D1 câmeras) · #633 (B2 motivo) · #635 (régua + ADR-0068 +
+pranchas E1/E3).
+**Em CI:** #634 (A1c confiança) · #636 (A1 polaridade) · #637 (B1 pan+caixa) · #638 (C2 saída) ·
+#639 (B4 fila) · #640 (D3 nomes).
+
+**Pranchas novas** em `docs/design/handoff-f5/`: `Arquitetura de Administração` (+ Conexões) e
+`Catálogo de Modelos`, ambas registradas na LISTA-PARA-O-DESIGN com pedidos-ao-backend numerados.
+
+**E4 dispensado com medição**, não desenhado: a tela Classificar **já tem** o padrão aprovado
+(frame grande, painel lateral, atalhos, contador). O defeito era de critério, e foi para o código.
