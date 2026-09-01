@@ -255,7 +255,8 @@ def test_read_training_curves_grouped(client, operator_headers):
 def test_read_models_summary(client, operator_headers):
     rows = [
         {"model_name": "yolox-tiny-ppe", "framework": "yolox", "last_epoch": 10,
-         "ap5095": "0.712", "ap_small": "0.385", "epoch_count": 10},
+         "ap5095": "0.712", "ap_small": "0.385", "epoch_count": 10,
+         "display_name": "Logikos V2 · 20/08"},
     ]
     pool, _ = _mock_pool(fetchall=rows)
     with patch("app.api.v1.dashboard_edge.routes.DatabasePool") as mock_dp:
@@ -267,6 +268,13 @@ def test_read_models_summary(client, operator_headers):
     models = resp.get_json()["data"]["models"]
     assert models[0]["ap_small"] == 0.385  # string JSONB → float
     assert models[0]["epoch_count"] == 10
+    # Q2 (veredito rodada 2, D3-nomes.md): display_name servido tal-qual do
+    # repo — a linha do service que decide o nome-cliente é a única coisa
+    # que este teste não tocava antes; sem este assert, trocar
+    # `row.get("display_name")` por `row.get("model_name")` no service
+    # (o nome interno cru) passava verde.
+    assert models[0]["display_name"] == "Logikos V2 · 20/08"
+    assert models[0]["display_name"] != models[0]["model_name"]
 
 
 def test_read_telemetry_invalid_window(client, operator_headers):

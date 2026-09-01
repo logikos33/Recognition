@@ -18,11 +18,15 @@ from app.infrastructure.database.repositories.base import BaseRepository
 
 logger = logging.getLogger(__name__)
 
-# Colunas do registry (003 + 052 + 090 + 098) — constante interna, nunca input
-# de usuário (mesmo padrão _COLS de model_rollout_repository.py).
+# Colunas do registry (003 + 052 + 090 + 098 + 129) — constante interna, nunca
+# input de usuário (mesmo padrão _COLS de model_rollout_repository.py).
+# tm.display_name (129, task D3 "job/treino aparece com nome cru"): sem essa
+# coluna aqui, GET /api/v1/models e /api/v1/models/<id> só devolviam o `name`
+# interno ("RF-DETR - Job <uuid>") — o front (modelDisplay.ts) já sabia
+# preferir display_name, mas o backend nunca o servia nesta query.
 _REGISTRY_COLS = (
-    "tm.id, tm.user_id, tm.job_id, tm.name, tm.model_path, tm.map50, "
-    "tm.precision, tm.recall, tm.is_active, tm.created_at, tm.created_by, "
+    "tm.id, tm.user_id, tm.job_id, tm.name, tm.display_name, tm.model_path, "
+    "tm.map50, tm.precision, tm.recall, tm.is_active, tm.created_at, tm.created_by, "
     "tm.origin, tm.tenant_id, tm.framework, tm.r2_onnx_key, tm.r2_weights_key, "
     "tm.metrics, tm.dataset_version_id, tm.module_code"
 )

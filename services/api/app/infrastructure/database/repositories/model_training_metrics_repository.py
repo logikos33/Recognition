@@ -81,17 +81,30 @@ class ModelTrainingMetricsRepository(BaseRepository):
 
         Resumo = ap5095/ap_small da maior época (DISTINCT ON) + total de épocas.
         Alimenta o dropdown multi-seleção e os cards de comparação.
+
+        `display_name` (task D3 — "job/treino aparece com nome cru"): LEFT
+        JOIN em trained_models por nome (mesmo padrão de
+        TrainingRepository.model_name_exists_for_tenant, que já valida que
+        `model_name` aqui É `trained_models.name` antes de aceitar o ingest)
+        + tenant, cobrindo linhas legadas com tenant_id NULL (mesmo COALESCE
+        de ModelRegistryRepository.list_for_tenant). NULL quando não há
+        correspondência — o caller decide o fallback ("Logikos"), nunca
+        inventado aqui.
         """
         query = (
-            "SELECT DISTINCT ON (model_name) "
-            "  model_name, framework, epoch AS last_epoch, "
-            "  metrics->>'ap5095'   AS ap5095, "
-            "  metrics->>'ap_small' AS ap_small, "
+            "SELECT DISTINCT ON (m.model_name) "
+            "  m.model_name, m.framework, m.epoch AS last_epoch, "
+            "  m.metrics->>'ap5095'   AS ap5095, "
+            "  m.metrics->>'ap_small' AS ap_small, "
             "  (SELECT COUNT(*) FROM public.model_training_metrics m2 "
             "     WHERE m2.tenant_id = m.tenant_id "
-            "       AND m2.model_name = m.model_name) AS epoch_count "
+            "       AND m2.model_name = m.model_name) AS epoch_count, "
+            "  tm.display_name "
             "FROM public.model_training_metrics m "
-            "WHERE tenant_id = %s "
-            "ORDER BY model_name, epoch DESC"
+            "LEFT JOIN trained_models tm ON tm.name = m.model_name "
+            "  AND COALESCE(tm.tenant_id, (SELECT u.tenant_id FROM users u "
+            "                              WHERE u.id = tm.user_id)) = m.tenant_id "
+            "WHERE m.tenant_id = %s "
+            "ORDER BY m.model_name, m.epoch DESC"
         )
         return self._execute(query, (tenant_id,))

@@ -635,6 +635,82 @@ class TestTrainingRepository:
         assert len(result) == 1
 
 
+class TestModelRegistryRepository:
+    """Task D3 ("job/treino aparece com nome cru"): GET /api/v1/models
+    (list_for_tenant/get_for_tenant) precisa servir tm.display_name — sem
+    essa coluna o front só recebia o `name` interno."""
+
+    def setup_method(self) -> None:
+        self.pool = MockPool()
+        from app.infrastructure.database.repositories.model_registry_repository import (
+            ModelRegistryRepository,
+        )
+        self.repo = ModelRegistryRepository(self.pool)  # type: ignore[arg-type]
+
+    def test_list_for_tenant_selects_display_name(self) -> None:
+        tenant_id = uuid4()
+        self.pool.mock_cursor.fetchall.return_value = [
+            {"id": uuid4(), "name": "RF-DETR - Job abc12345", "display_name": "Logikos V1 · 25/08"},
+        ]
+        result = self.repo.list_for_tenant(str(tenant_id))
+        query = self.pool.mock_cursor.execute.call_args[0][0]
+        assert "tm.display_name" in query
+        assert result[0]["display_name"] == "Logikos V1 · 25/08"
+
+    def test_get_for_tenant_selects_display_name(self) -> None:
+        model_id = uuid4()
+        tenant_id = uuid4()
+        self.pool.mock_cursor.fetchone.return_value = {
+            "id": model_id, "name": "YOLOX - Job def67890", "display_name": None,
+        }
+        self.repo.get_for_tenant(model_id, str(tenant_id))
+        query = self.pool.mock_cursor.execute.call_args[0][0]
+        assert "tm.display_name" in query
+
+
+class TestModelTrainingMetricsRepository:
+    """Task D3: models_summary() (Dashboard Integrado /epi/edge-observability)
+    junta trained_models por nome para servir display_name — antes só
+    devolvia model_name cru (o `name` interno gravado por dispatch_training)."""
+
+    def setup_method(self) -> None:
+        self.pool = MockPool()
+        from app.infrastructure.database.repositories.model_training_metrics_repository import (  # noqa: E501
+            ModelTrainingMetricsRepository,
+        )
+        self.repo = ModelTrainingMetricsRepository(self.pool)  # type: ignore[arg-type]
+
+    def test_models_summary_joins_trained_models_for_display_name(self) -> None:
+        tenant_id = str(uuid4())
+        self.pool.mock_cursor.fetchall.return_value = [
+            {
+                "model_name": "RF-DETR - Job abc12345", "framework": "rfdetr",
+                "last_epoch": 10, "ap5095": "0.5", "ap_small": "0.3",
+                "epoch_count": 10, "display_name": "Logikos V3 · 20/08",
+            },
+        ]
+        result = self.repo.models_summary(tenant_id)
+        query = self.pool.mock_cursor.execute.call_args[0][0]
+        assert "LEFT JOIN trained_models tm ON tm.name = m.model_name" in query
+        assert "tm.display_name" in query
+        assert result[0]["display_name"] == "Logikos V3 · 20/08"
+        # Q3 (veredito rodada 2, D3-nomes.md): sem estas duas linhas, a
+        # query podia perder o escopo de tenant sem nenhum teste reprovar
+        # (mutações M6/M7 do cético passavam verde) — pega isolamento sem
+        # depender de Postgres real:
+        # M6 trocava `WHERE m.tenant_id = %s` por `WHERE %s IS NOT NULL`
+        # (aceita qualquer linha do banco inteiro, não só do tenant).
+        assert "WHERE m.tenant_id = %s" in query
+        # M7 removia o `AND COALESCE(tm.tenant_id, ...) = m.tenant_id` do
+        # LEFT JOIN (trained_models de OUTRO tenant com o mesmo nome de
+        # modelo vazava o display_name errado).
+        assert (
+            "AND COALESCE(tm.tenant_id, (SELECT u.tenant_id FROM users u"
+            in query
+        )
+        assert "WHERE u.id = tm.user_id)) = m.tenant_id" in query
+
+
 class TestAlertRepository:
     """Testes para AlertRepository."""
 

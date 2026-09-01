@@ -33,6 +33,11 @@ export type TrainingCurves = Record<string, EpochPoint[]>
 
 export interface ModelSummary {
   model_name: string
+  /** Alias voltado ao cliente (migration 129, task D3) — NULL até alguém
+   *  rebatizar. Renderizar SEMPRE via `nomeParaCliente`/`nomeInternoOuCliente`
+   *  (services/modelDisplay.ts), nunca `model_name` cru — é jargão interno
+   *  (nome de job/framework/UUID). */
+  display_name: string | null
   framework: string | null
   last_epoch: number | null
   epoch_count: number
