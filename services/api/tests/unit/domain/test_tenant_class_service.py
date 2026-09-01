@@ -65,6 +65,10 @@ class TestListClasses:
 class TestCreateClass:
     def setup_method(self) -> None:
         self.repo = MagicMock()
+        # Sem isto, o MagicMock devolvido por find_in_global_catalog() é
+        # verdadeiro por padrão (é um MagicMock, não None) e todo teste desta
+        # classe quebraria contra o guard novo (_reject_if_in_global_catalog).
+        self.repo.find_in_global_catalog.return_value = None
         self.service = TenantClassService(self.repo)
 
     def test_create_passes_tenant_and_module(self) -> None:
@@ -114,10 +118,50 @@ class TestCreateClass:
             self.service.create_class(uuid4(), str(uuid4()), "Capacete", is_violation=True)
         assert exc_info.value.status_code == 409
 
+    def test_create_name_in_global_catalog_raises_409_no_insert(self) -> None:
+        """ADR-0071 — incidente de 01/09: 'Sem Óculos' já existia como
+        display_name de no_glasses no catálogo global; o create tem de
+        recusar ANTES do INSERT (nunca deixar nascer a duplicata)."""
+        self.repo.find_in_global_catalog.return_value = {
+            "class_name": "no_glasses", "display_name": "Sem Óculos", "is_violation": True,
+        }
+        with pytest.raises(ConflictError, match="catálogo padrão") as exc_info:
+            self.service.create_class(
+                uuid4(), str(uuid4()), "Sem Óculos", module_code="epi", is_violation=True,
+            )
+        assert exc_info.value.status_code == 409
+        self.repo.create_class.assert_not_called()
+
+    def test_create_name_in_global_catalog_message_names_the_polarity(self) -> None:
+        self.repo.find_in_global_catalog.return_value = {
+            "class_name": "no_glasses", "display_name": "Sem Óculos", "is_violation": True,
+        }
+        with pytest.raises(ConflictError, match="violação"):
+            self.service.create_class(
+                uuid4(), str(uuid4()), "sem óculos", is_violation=False,
+            )
+
+    def test_create_name_in_global_catalog_checked_case_insensitive(self) -> None:
+        """O casamento é case-insensitive (mesma regra do script ops) — o
+        repo é quem faz o lower(); o service só precisa repassar o nome
+        como veio (trimado) e reagir a qualquer resultado não-None."""
+        self.repo.find_in_global_catalog.return_value = {
+            "class_name": "no_gloves", "display_name": "Sem Luvas", "is_violation": None,
+        }
+        with pytest.raises(ConflictError, match="indefinida"):
+            self.service.create_class(
+                uuid4(), str(uuid4()), "SEM LUVAS", is_violation=True,
+            )
+        self.repo.find_in_global_catalog.assert_called_once_with("epi", "SEM LUVAS")
+
 
 class TestUpdateClass:
     def setup_method(self) -> None:
         self.repo = MagicMock()
+        # Mesmo motivo do setup de TestCreateClass/TestPatchClass: sem isto
+        # o MagicMock devolvido por find_in_global_catalog() é verdadeiro por
+        # padrão e dispara o guard novo em todo teste que passa `name`.
+        self.repo.find_in_global_catalog.return_value = None
         self.service = TenantClassService(self.repo)
 
     def test_update_rename_success(self) -> None:
@@ -161,6 +205,45 @@ class TestUpdateClass:
         self.repo.update_class.side_effect = psycopg2.errors.UniqueViolation()
         with pytest.raises(ConflictError):
             self.service.update_class(5, str(uuid4()), name="Capacete")
+
+    def test_update_rename_to_global_catalog_name_raises_409_no_update(self) -> None:
+        """(b) do veredito: mesmo guard de create/patch, agora no PUT legado
+        (update_class) — a lacuna que sobrava depois do POST/PATCH fecharem
+        a porta e o PUT continuar deixando renomear para um nome do catálogo
+        global."""
+        tenant = str(uuid4())
+        self.repo.get_class_for_tenant.return_value = {
+            "id": 5, "name": "Colete", "module_code": "epi",
+        }
+        self.repo.find_in_global_catalog.return_value = {
+            "class_name": "no_glasses", "display_name": "Sem Óculos", "is_violation": True,
+        }
+        with pytest.raises(ConflictError, match="catálogo padrão") as exc_info:
+            self.service.update_class(5, tenant, name="Sem Óculos")
+        assert exc_info.value.status_code == 409
+        self.repo.update_class.assert_not_called()
+        self.repo.find_in_global_catalog.assert_called_once_with("epi", "Sem Óculos")
+
+    def test_update_color_only_does_not_check_global_catalog(self) -> None:
+        """Sem `name` no payload não há nome novo para colidir — o guard não
+        deve nem consultar a classe existente nem o catálogo global (mesmo
+        contrato de patch_class)."""
+        tenant = str(uuid4())
+        self.repo.update_class.return_value = {"id": 5, "color": "#ff0000"}
+        self.service.update_class(5, tenant, color="#ff0000")
+        self.repo.get_class_for_tenant.assert_not_called()
+        self.repo.find_in_global_catalog.assert_not_called()
+
+    def test_update_rename_other_tenant_raises_404_before_catalog_check(self) -> None:
+        """Classe de outro tenant (ou só do catálogo global): get_class_for_
+        tenant já escopa — 404 antes mesmo de consultar o catálogo (C-01,
+        mesmo contrato de patch_class)."""
+        self.repo.get_class_for_tenant.return_value = None
+        with pytest.raises(NotFoundError) as exc_info:
+            self.service.update_class(99, str(uuid4()), name="X")
+        assert exc_info.value.status_code == 404
+        self.repo.find_in_global_catalog.assert_not_called()
+        self.repo.update_class.assert_not_called()
 
 
 class TestDeleteClass:
@@ -229,6 +312,7 @@ class TestDeleteClass:
 class TestPatchClass:
     def setup_method(self) -> None:
         self.repo = MagicMock()
+        self.repo.find_in_global_catalog.return_value = None
         self.service = TenantClassService(self.repo)
 
     def test_patch_name_only(self) -> None:
@@ -240,6 +324,31 @@ class TestPatchClass:
         self.repo.patch_class.assert_called_once_with(
             5, tenant, {"name": "Colete novo"}
         )
+
+    def test_patch_rename_to_global_catalog_name_raises_409_no_update(self) -> None:
+        """Mesmo guard da criação (ADR-0071): renomear PARA um nome do
+        catálogo global duplicaria a classe do mesmo jeito que criar."""
+        tenant = str(uuid4())
+        self.repo.get_class_for_tenant.return_value = {
+            "id": 5, "name": "Colete", "module_code": "epi",
+        }
+        self.repo.find_in_global_catalog.return_value = {
+            "class_name": "no_glasses", "display_name": "Sem Óculos", "is_violation": True,
+        }
+        with pytest.raises(ConflictError, match="catálogo padrão") as exc_info:
+            self.service.patch_class(5, tenant, name="Sem Óculos")
+        assert exc_info.value.status_code == 409
+        self.repo.patch_class.assert_not_called()
+        self.repo.find_in_global_catalog.assert_called_once_with("epi", "Sem Óculos")
+
+    def test_patch_color_only_does_not_check_global_catalog(self) -> None:
+        """Sem `name` no payload não há nome novo para colidir — o guard não
+        deve nem consultar o catálogo global."""
+        tenant = str(uuid4())
+        self.repo.get_class_for_tenant.return_value = {"id": 5, "name": "Colete"}
+        self.repo.patch_class.return_value = {"id": 5, "color": "#ff0000"}
+        self.service.patch_class(5, tenant, color="#ff0000")
+        self.repo.find_in_global_catalog.assert_not_called()
 
     def test_patch_display_order(self) -> None:
         tenant = str(uuid4())

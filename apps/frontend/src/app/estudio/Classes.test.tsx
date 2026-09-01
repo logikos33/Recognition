@@ -143,4 +143,50 @@ describe('Classes (Estúdio)', () => {
     expect(await screen.findByText(/nenhuma classe cadastrada/i)).toBeTruthy()
     expect(screen.getByRole('button', { name: /nova classe/i })).toBeTruthy()
   })
+
+  // ─── ADR-0071: duplicata catálogo padrão × tenant (incidente de 01/09) ─────
+
+  it('nome do tenant repetido no catálogo padrão ganha aviso de duplicata na linha', async () => {
+    responde([
+      tenantClasse({ display_name: 'Sem luva' }), // mesmo nome do catalogoClasse()
+      catalogoClasse(),
+    ])
+    render(<Classes />)
+    // 'Sem luva' aparece DUAS vezes na tela (tenant + catálogo) — é a
+    // própria duplicação que este teste está cobrindo — então localiza pelo
+    // testid da linha, não por texto (ambíguo por desenho).
+    expect(await screen.findByTestId('duplicata-7')).toBeTruthy()
+  })
+
+  it('nome do tenant sem equivalente no catálogo padrão não ganha aviso', async () => {
+    responde([tenantClasse(), catalogoClasse()]) // 'Capacete' ≠ 'Sem luva'/'no_gloves'
+    render(<Classes />)
+    await screen.findByText('Capacete')
+    expect(screen.queryByTestId('duplicata-7')).toBeNull()
+  })
+
+  it('criar com nome que já existe no catálogo padrão NÃO chama POST — bloqueio no formulário', async () => {
+    responde([catalogoClasse()]) // display_name: 'Sem luva'
+    render(<Classes />)
+    await screen.findByText('Sem luva')
+    fireEvent.change(screen.getByPlaceholderText(/nova classe/i), { target: { value: 'Sem luva' } })
+    fireEvent.click(within(screen.getByTestId('nova-classe-polaridade')).getByRole('button', { name: 'Violação' }))
+    // Mutação: remover o guard de `handleCreate`/o `disabled` do botão faz
+    // este teste falhar (POST voltaria a ser chamado com o nome duplicado).
+    const botaoCriar = screen.getByRole('button', { name: /nova classe/i }) as HTMLButtonElement
+    expect(botaoCriar.disabled).toBe(true)
+    fireEvent.click(botaoCriar)
+    expect(post).not.toHaveBeenCalled()
+    expect(screen.getByTestId('erro-nome-duplicado').textContent).toMatch(/catálogo padrão/i)
+  })
+
+  it('criar com nome duplicado, case-insensitive e com espaço nas pontas, também bloqueia', async () => {
+    responde([catalogoClasse()]) // class_name: 'no_gloves'
+    render(<Classes />)
+    await screen.findByText('Sem luva')
+    fireEvent.change(screen.getByPlaceholderText(/nova classe/i), { target: { value: '  NO_GLOVES  ' } })
+    fireEvent.click(within(screen.getByTestId('nova-classe-polaridade')).getByRole('button', { name: 'Violação' }))
+    fireEvent.click(screen.getByRole('button', { name: /nova classe/i }))
+    expect(post).not.toHaveBeenCalled()
+  })
 })
