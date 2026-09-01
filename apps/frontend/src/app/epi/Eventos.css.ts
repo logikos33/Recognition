@@ -366,3 +366,74 @@ export const confianca = style({
   fontSize: '12px',
   color: lk.cor.cinzaNevoa,
 })
+
+/**
+ * Distribuição no período (item 2) — extensão do padrão "faixa clicável" do
+ * handoff (EPI Evento Detalhe.dc.html), aqui sobre o período inteiro e por
+ * CONTAGEM (não severidade — ver o comentário no topo de Eventos.tsx).
+ */
+export const cartaoTempo = style([
+  cartao,
+  {
+    padding: `${lk.espaco.x2} ${lk.espaco.x2} ${lk.espaco.x1}`,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+  },
+])
+
+export const cabecalhoTempo = style({
+  display: 'flex',
+  alignItems: 'baseline',
+  justifyContent: 'space-between',
+  gap: lk.espaco.x1,
+  flexWrap: 'wrap',
+})
+
+/** Avisa que a faixa conta TODO tipo/status — o endpoint não filtra por
+ *  kind/acknowledged, então ela pode discordar da tabela abaixo. */
+export const notaTempo = style({ fontSize: '11px', color: lk.cor.cinzaNevoa })
+
+/** "Falha ao buscar" ≠ "zero eventos" — mesma família de defeito de "zero é
+ *  uma afirmação". Cor de atenção (a mesma de "Novo"/retroativo), nunca a
+ *  cor neutra de `notaTempo`, senão a falha se disfarça de nota comum. */
+export const notaTempoErro = style({ fontSize: '11px', color: lk.estado.atencao })
+
+export const linhaDoTempo = style({
+  display: 'flex',
+  alignItems: 'flex-end',
+  gap: '2px',
+  height: '52px',
+  overflowX: 'auto',
+})
+
+export const colunaTempo = style({
+  flex: 1,
+  minWidth: '3px',
+  height: '100%',
+  display: 'flex',
+  alignItems: 'flex-end',
+  padding: 0,
+  border: 'none',
+  background: 'transparent',
+  cursor: 'pointer',
+  ':hover': { opacity: 0.7 },
+  selectors: {
+    '&:focus-visible': { outline: `2px solid ${lk.cor.cianoVisao}`, outlineOffset: '1px' },
+  },
+})
+
+export const barraTempo = style({
+  width: '100%',
+  minHeight: '2px',
+  borderRadius: '2px 2px 0 0',
+  background: lk.cor.cianoVisao,
+})
+
+/** Botões do vazio honesto: "alargar" (primário) ao lado de "limpar" (secundário). */
+export const botoesVazio = style({
+  display: 'flex',
+  gap: '8px',
+  flexWrap: 'wrap',
+  justifyContent: 'center',
+})

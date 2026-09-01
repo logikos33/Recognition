@@ -21,11 +21,17 @@
  * nesta família já custou metade das linhas de uma página.
  */
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes, useParams } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useParams, useSearchParams } from 'react-router-dom'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+
+// jsdom não implementa scrollIntoView (usado no auto-scroll até a linha
+// destacada pelo deep-link do sino, `?highlight=`).
+beforeAll(() => {
+  Element.prototype.scrollIntoView = vi.fn()
+})
 
 /** `vi.mock` é içado acima das constantes do módulo — daí o `vi.hoisted`. */
 const h = vi.hoisted(() => ({
@@ -33,6 +39,7 @@ const h = vi.hoisted(() => ({
   isSuperAdmin: false,
   gets: [] as string[],
   posts: [] as string[],
+  downloads: [] as string[],
   pagina: {
     alerts: [] as unknown[],
     total: 0,
@@ -40,7 +47,19 @@ const h = vi.hoisted(() => ({
     per_page: 20,
     pages: 1,
   },
+  /** Payload de `GET /v1/events/timeline` — mesma requisição mockada, rota
+   *  diferente (ver `routeGet` abaixo, mesmo padrão de `CropClassifier...test.tsx`). */
+  timeline: [] as { bucket: string; count: number }[],
   falhar: false,
+  /** Só a faixa falha — distinto de `falhar` (que derruba /alerts também),
+   *  pra QUEBRA 3 provar que a faixa erra sem quebrar a lista abaixo. */
+  falharTimeline: false,
+  /** QUEBRA 4: a faixa responde 200 mas com `data: {}` — sem o campo
+   *  `timeline`. Reproduz o mock catch-all do e2e task-078 (regressão real,
+   *  não flake): `res.data ?? default` deixa passar, `timelinePontos` vira
+   *  `undefined`, `fillBuckets` estoura `rows is not iterable` NO RENDER
+   *  (não num efeito) e derruba a árvore inteira — inclusive a lista. */
+  timelineMalformada: false,
   /** Espelha o `ApiError` real: a tela lê `.status` para dizer o que falhou. */
   ApiErroFalso: class ApiErroFalso extends Error {
     status: number
@@ -58,13 +77,21 @@ vi.mock('../../services/api', () => ({
     get: vi.fn((p: string) => {
       h.gets.push(p)
       if (h.falhar) return Promise.reject(new h.ApiErroFalso(500))
+      if (p.startsWith('/v1/events/timeline')) {
+        if (h.falharTimeline) return Promise.reject(new h.ApiErroFalso(500))
+        if (h.timelineMalformada) return Promise.resolve({ success: true, data: {} })
+        return Promise.resolve({ success: true, data: { timeline: h.timeline, bucket: 'hour' } })
+      }
       return Promise.resolve({ success: true, data: h.pagina })
     }),
     post: vi.fn((p: string) => {
       h.posts.push(p)
       return Promise.resolve({ success: true })
     }),
-    downloadBlob: vi.fn(() => Promise.resolve(new Blob(['a']))),
+    downloadBlob: vi.fn((p: string) => {
+      h.downloads.push(p)
+      return Promise.resolve(new Blob(['a']))
+    }),
   },
 }))
 
@@ -156,9 +183,19 @@ const EVENTOS = [
   },
 ]
 
+/** Lê a URL corrente por dentro do MemoryRouter — é como o teste enxerga o
+ *  deep-link sem sair do isolamento do `MemoryRouter` (não há `window.location`
+ *  real aqui). Vive fora do `<Routes>`: `useSearchParams` só precisa do
+ *  contexto do Router, não de casar rota. */
+function Sonda() {
+  const [sp] = useSearchParams()
+  return <span data-testid="sonda">{sp.toString()}</span>
+}
+
 function montar(rota = '/epi/eventos') {
   return render(
     <MemoryRouter initialEntries={[rota]}>
+      <Sonda />
       <Routes>
         <Route path="/epi/eventos" element={<Eventos />} />
       </Routes>
@@ -172,12 +209,20 @@ const linhaDe = (texto: string) => screen.getByText(texto).closest('tr') as HTML
 const seloVeredito = (texto: string) =>
   linhaDe(texto).cells[5].querySelector('span')!.textContent ?? ''
 
+/** Só as chamadas de `/alerts` — a faixa de distribuição (item 2) também usa
+ *  `api.get` (via `/v1/events/timeline`), então `h.gets` mistura as duas. */
+const chamadasAlerts = () => h.gets.filter((g) => g.startsWith('/alerts?'))
+
 beforeEach(() => {
   h.permissoes = ['alerts:read', 'alerts:feedback', 'alerts:export']
   h.isSuperAdmin = false
   h.gets.length = 0
   h.posts.length = 0
+  h.downloads.length = 0
+  h.timeline = []
   h.falhar = false
+  h.falharTimeline = false
+  h.timelineMalformada = false
   h.pagina = { alerts: EVENTOS, total: 4, page: 1, per_page: 20, pages: 1 }
 })
 
@@ -478,5 +523,164 @@ describe('terceiro estado do filtro — contrato A1', () => {
     montar('/epi/eventos?kind=observacao')
     await waitFor(() => expect(h.gets.length).toBeGreaterThan(0))
     expect(h.gets[0]).toContain('kind=observacao')
+  })
+})
+
+/**
+ * O ACHADO desta rodada: a tela abria SEMPRE em 'hoje' — sem jeito de linkar
+ * para '30 dias', e o último alerta do RVB era de outro dia, então a tela
+ * abria vazia. Os 4 casos abaixo travam a correção nas DUAS pontas —
+ * URL→estado (deep-link chega) e estado→URL (deep-link SAI) — porque uma
+ * tela que só lê a URL na entrada e nunca escreve de volta continua
+ * quebrando o link que alguém compartilha depois de trocar o período.
+ */
+describe('período — deep-link e propagação (item 3 e item 4)', () => {
+  it('URL → estado: ?period=30d abre já em 30 dias, não em "hoje" (o achado desta rodada)', async () => {
+    montar('/epi/eventos?period=30d')
+    await waitFor(() => expect(chamadasAlerts().length).toBeGreaterThan(0))
+    expect((screen.getByLabelText('Período') as HTMLSelectElement).value).toBe('30d')
+    const q = new URLSearchParams(chamadasAlerts()[0].split('?')[1])
+    const dias = (new Date(q.get('end_date')!).getTime() - new Date(q.get('start_date')!).getTime())
+      / 86_400_000
+    expect(dias).toBeGreaterThan(20) // não é a janela de 1 dia de 'hoje'
+  })
+
+  it('URL → estado: ?period=personalizado com start_date/end_date preenche De/Até e a busca', async () => {
+    montar(
+      '/epi/eventos?period=personalizado&start_date=2026-01-01T00%3A00%3A00&end_date=2026-01-05T23%3A59%3A59',
+    )
+    await waitFor(() => expect(chamadasAlerts().length).toBeGreaterThan(0))
+    const q = new URLSearchParams(chamadasAlerts()[0].split('?')[1])
+    expect(q.get('start_date')).toBe('2026-01-01T00:00:00')
+    expect(q.get('end_date')).toBe('2026-01-05T23:59:59')
+    expect((screen.getByLabelText('De') as HTMLInputElement).value).toBe('2026-01-01')
+    expect((screen.getByLabelText('Até') as HTMLInputElement).value).toBe('2026-01-05')
+  })
+
+  it('estado → URL: trocar para 30 dias grava period=30d no link — MATA a mutação de tirar o período da URL', async () => {
+    montar()
+    await screen.findByText('CAM-04 Expedição')
+    fireEvent.change(screen.getByLabelText('Período'), { target: { value: '30d' } })
+    // Se o efeito que escreve `period` na URL sumir (a mutação-alvo), a URL
+    // nunca ganha `period=30d` e este `waitFor` estoura por timeout.
+    await waitFor(() => expect(screen.getByTestId('sonda').textContent).toContain('period=30d'))
+  })
+
+  it('o período propaga ao EXPORT, não só à lista (item 3): 30 dias muda a lista e o CSV JUNTOS', async () => {
+    montar()
+    await screen.findByText('CAM-04 Expedição')
+    fireEvent.change(screen.getByLabelText('Período'), { target: { value: '30d' } })
+    await waitFor(() => expect(chamadasAlerts().at(-1)).toContain('page=1'))
+    const qLista = new URLSearchParams(chamadasAlerts().at(-1)!.split('?')[1])
+
+    fireEvent.click(screen.getByText('Exportar CSV'))
+    await waitFor(() => expect(h.downloads.length).toBeGreaterThan(0))
+    const qExport = new URLSearchParams(h.downloads.at(-1)!.split('?')[1])
+
+    // Mesmo intervalo nos dois — não só "os dois pediram 30d", os MESMOS
+    // limites de data, senão lista e CSV podem discordar por um segundo.
+    expect(qExport.get('start_date')).toBe(qLista.get('start_date'))
+    expect(qExport.get('end_date')).toBe(qLista.get('end_date'))
+  })
+})
+
+describe('deep-link do sino — highlight sobrevive ao mount (QUEBRA 2)', () => {
+  it('?highlight=e1 continua na URL depois do efeito que escreve period/filtros', async () => {
+    // O efeito de período (item 4) reescreve a querystring INTEIRA a cada
+    // render — ele roda logo no mount. Sem preservar `highlight`, o link do
+    // sino perderia o param antes mesmo de a pessoa ver o realce.
+    montar('/epi/eventos?highlight=e1')
+    await screen.findByText('CAM-04 Expedição')
+    expect(screen.getByTestId('sonda').textContent).toContain('highlight=e1')
+  })
+})
+
+describe('linha do tempo — distribuição clicável no período (item 2)', () => {
+  it('clicar numa barra vira o novo intervalo — scrub, extensão do padrão do handoff', async () => {
+    // Bucket relativo a "agora" (não uma data fixa): 'hoje' é [meia-noite
+    // local, agora] — uma data cravada quebraria assim que o relógio virasse
+    // o dia. Truncado em UTC porque é assim que `fillBuckets`/`truncUtc`
+    // agrupam (Eventos.tsx importa de `utils/timeBuckets`).
+    const inicioHora = new Date()
+    inicioHora.setUTCMinutes(0, 0, 0)
+    h.timeline = [{ bucket: inicioHora.toISOString(), count: 3 }]
+    montar()
+    await screen.findByText('CAM-04 Expedição')
+    // Título carrega só a contagem (não a hora local) — evita depender do
+    // fuso horário de quem roda o teste.
+    const barra = await screen.findByTitle(/3 evento\(s\) no total/)
+    fireEvent.click(barra)
+    await waitFor(() => {
+      const ultima = chamadasAlerts().at(-1)
+      expect(ultima).toBeDefined()
+      const q = new URLSearchParams(ultima!.split('?')[1])
+      expect(q.get('start_date')).toBe(inicioHora.toISOString())
+    })
+  })
+
+  it('a faixa avisa que conta todo tipo/status — o endpoint não filtra por kind/acknowledged', async () => {
+    montar()
+    await screen.findByText('CAM-04 Expedição')
+    expect(
+      screen.getByText(/conta violação \+ conformidade, todo status/i),
+    ).toBeTruthy()
+  })
+
+  // QUEBRA 1 (rodada de correção): a faixa somava demo_events, mas `/alerts`
+  // (a lista abaixo) NUNCA soma demo — clicar num bucket só-demo levava a
+  // uma lista vazia. Provar a causa (o parâmetro) prova o beco sem saída:
+  // sem demo na faixa, todo bucket clicável tem contrapartida real na lista.
+  it('pede a faixa SEM demo_events — beco sem saída morto: bucket clicável nunca some da lista real', async () => {
+    montar()
+    await screen.findByText('CAM-04 Expedição')
+    const chamadaTimeline = h.gets.find((g) => g.startsWith('/v1/events/timeline'))
+    expect(chamadaTimeline).toContain('include_demo=false')
+  })
+
+  // QUEBRA 3: falha ao buscar a faixa não pode parecer "zero eventos" — a
+  // mesma família de defeito de "zero é uma afirmação" (rodada #1).
+  it('falha ao buscar a faixa diz que falhou — não vira faixa de "zero eventos"', async () => {
+    h.falharTimeline = true
+    montar()
+    await screen.findByText('CAM-04 Expedição')
+    expect(screen.getByText(/não foi possível carregar a distribuição/i)).toBeTruthy()
+    // A nota "conta violação + conformidade" é o estado de SUCESSO — some
+    // quando o estado é erro, senão as duas mensagens convivem contraditórias.
+    expect(screen.queryByText(/conta violação \+ conformidade/i)).toBeNull()
+    // A lista de eventos (rota separada) segue funcionando — falha da faixa
+    // não derruba a tela inteira.
+    expect(screen.queryByRole('group', { name: /distribuição de eventos/i })).toBeNull()
+  })
+
+  // QUEBRA 4 (regressão real do PR #645, achada pelo e2e task-078): a faixa é
+  // SECUNDÁRIA — um agregado quebrado/vazio nunca pode levar a LISTA junto.
+  // Antes do fix em eventsService.ts, `data: {}` (sem `timeline`) passava
+  // direto pelo `res.data ?? default`, e `fillBuckets` estourava no RENDER
+  // (não num efeito capturável por try/catch de fetch) — React descartava a
+  // árvore inteira, lista incluída. Este teste falha-antes/passa-depois.
+  it('agregado da faixa vem malformado (sem `timeline`) — a lista de eventos continua de pé', async () => {
+    h.timelineMalformada = true
+    montar()
+    await screen.findByText('CAM-04 Expedição')
+    expect(screen.getByRole('table')).toBeTruthy()
+  })
+})
+
+describe('vazio revela o período (item 5, mesmo padrão da fila de Propostas)', () => {
+  it('vazio em "hoje" nomeia o período e oferece "Ver últimos 30 dias"', async () => {
+    h.pagina = { alerts: [], total: 0, page: 1, per_page: 20, pages: 1 }
+    montar()
+    await screen.findByText('Nenhum evento no período')
+    expect(screen.getByText(/Período: Hoje/)).toBeTruthy()
+    fireEvent.click(screen.getByText('Ver últimos 30 dias'))
+    await waitFor(() => expect((screen.getByLabelText('Período') as HTMLSelectElement).value).toBe('30d'))
+  })
+
+  it('vazio já em 30 dias não oferece "alargar" para o MESMO período — só Limpar filtros', async () => {
+    h.pagina = { alerts: [], total: 0, page: 1, per_page: 20, pages: 1 }
+    montar('/epi/eventos?period=30d')
+    await screen.findByText('Nenhum evento no período')
+    expect(screen.queryByText('Ver últimos 30 dias')).toBeNull()
+    expect(screen.getByText('Limpar filtros')).toBeTruthy()
   })
 })

@@ -25,15 +25,21 @@
  *   alerta por requisição. Desenhar um retângulo cinza no lugar seria dado
  *   inventado; 20 requisições por página, um N+1 por rolagem. Falta
  *   `evidence_url` na listagem (ou uma rota em lote).
- * · **Faixa "eventos por hora".** A única fonte agregada é
- *   `GET /api/v1/events/timeline`, que ignora `kind` e `acknowledged` e soma
- *   `demo_events`: as barras discordariam da tabela logo abaixo sob o filtro
- *   padrão da própria tela. E a segunda série do desenho ("violação
- *   confirmada") não tem fonte nenhuma. Falta um agregado por hora que aceite
- *   os mesmos filtros da lista e separe confirmadas.
  * · **Status "descartado".** O desenho traz três estados numa coluna só;
  *   `alerts.acknowledged` é booleano. Descartar, na prática, é o veredito
  *   "falso positivo" — que é OUTRO eixo e tem coluna própria.
+ *
+ * LINHA DO TEMPO (rodada de correção do período — a tela abria presa em
+ * 'hoje', e o último evento do RVB era de outro dia: vazia sempre). Extensão
+ * do padrão "faixa 24h clicável" do handoff (`EPI Evento Detalhe.dc.html`) —
+ * aqui sobre o período INTEIRO escolhido, não só 24h, e por CONTAGEM (não por
+ * severidade: `GET /api/v1/events/timeline` devolve `{bucket, count}`, sem
+ * polaridade — pintar OK/VIOLAÇÃO em cima disso seria inventar dado, o mesmo
+ * motivo que travou essa faixa no detalhe). PARA O BACKEND: o endpoint não
+ * aceita `kind`/`acknowledged` — as barras contam TODO tipo/status do
+ * intervalo, não só o que a tabela abaixo mostra sob `kind=violation`. Em vez
+ * de fingir que bate, a legenda da faixa avisa. Falta um agregado que aceite
+ * os MESMOS filtros da lista — aí a legenda cai e a faixa bate exatamente.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, useSearchParams } from 'react-router-dom'
@@ -48,6 +54,7 @@ import { useModuleClasses } from '../../hooks/useModuleClasses'
 import { useToast } from '../../components/ui/Toast/useToast'
 import { api, ApiError } from '../../services/api'
 import { cameraService } from '../../services/cameraService'
+import { eventsService, type TimelinePoint } from '../../services/eventsService'
 import { confiancaInternaOuCliente } from '../../services/confidenceDisplay'
 import { classificarLatencia } from '../../components/shared/ProcedenciaBadge'
 import { vereditoHumano, type Veredito } from '../../components/shared/VereditoHumano'
@@ -55,7 +62,7 @@ import {
   EXPLICACAO_POLARIDADE, ROTULO_POLARIDADE, type Polaridade,
 } from '../../components/shared/PolaridadeClasse'
 import { labelForVerificationReason } from '../../utils/labels'
-import { rangeForPeriod } from '../../utils/timeBuckets'
+import { rangeForPeriod, fillBuckets, formatBucketLabel, type FillBucket } from '../../utils/timeBuckets'
 import type { Camera } from '../../types'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import * as s from './Eventos.css'
@@ -175,15 +182,24 @@ function intervaloDoPeriodo(periodo: Periodo): { from: string; to: string } {
 export function Eventos() {
   const { can, isSuperAdmin } = useAuth()
   const toast = useToast()
-  const [parametros] = useSearchParams()
+  const [parametros, setParametros] = useSearchParams()
   const { classes, classLabel } = useModuleClasses(MODULO)
 
   const [filtros, setFiltros] = useState<Filtros>(() => {
     const de = parametros.get('start_date')
     const ate = parametros.get('end_date')
+    // Deep-link do período (item 4, rodada de correção UX): `period` é o que
+    // fixa 'hoje'/'7d'/'30d' — sem ele a tela SEMPRE abria em 'hoje' e podia
+    // renderizar vazia (o achado desta rodada: último alerta do RVB de outro
+    // dia). 'personalizado' e os links que já existiam (sino/Dashboard, só
+    // `start_date`/`end_date`, sem `period`) continuam caindo no MESMO
+    // `intervalo` cru de sempre — nada quebra para quem já apontava para cá.
+    const periodoParam = parametros.get('period')
+    const periodo: Periodo = periodoParam === '7d' || periodoParam === '30d' ? periodoParam : 'hoje'
+    const personalizado = periodoParam === 'personalizado' || (!periodoParam && !!de && !!ate)
     return {
-      periodo: 'hoje',
-      intervalo: de && ate ? { from: de, to: ate } : null,
+      periodo,
+      intervalo: personalizado && de && ate ? { from: de, to: ate } : null,
       cameraId: parametros.get('camera_id') ?? '',
       classe: parametros.get('violation_type') ?? '',
       status: parametros.get('acknowledged') ?? '',
@@ -252,6 +268,30 @@ export function Eventos() {
     if (podeLer) void carregar()
   }, [carregar, podeLer])
 
+  /**
+   * Deep-link (item 4): o período — e os demais filtros que a querystring já
+   * suporta — VOLTA para a URL a cada troca. Recarregar a página ou
+   * compartilhar o link reabre no MESMO recorte, em vez de sempre em 'hoje'
+   * (o achado desta rodada). `replace` para não empilhar histórico a cada
+   * clique de filtro. `period` nomeado ('7d'/'30d') NÃO congela `start_date`/
+   * `end_date` no link — eles saem daqui como o cálculo FRESCO de agora
+   * (`consulta()`), mas quem lê de volta prioriza `period` (ver o `useState`
+   * acima) e recalcula "os últimos 30 dias" na hora, não a partir de datas
+   * velhas do dia em que o link foi copiado.
+   *
+   * `highlight` (deep-link do sino) NÃO é filtro — `consulta()` não o carrega
+   * — então sem preservá-lo aqui este mesmo efeito o apagava da URL logo no
+   * mount, antes de a pessoa nem rolar até a linha. `destaque` é a mesma
+   * cópia local que decide o realce/scroll abaixo; solta sozinha em 4s, e a
+   * URL solta junto — não perpetua um highlight morto.
+   */
+  useEffect(() => {
+    const p = consulta()
+    p.set('period', filtros.intervalo ? 'personalizado' : filtros.periodo)
+    if (destaque) p.set('highlight', destaque)
+    setParametros(p, { replace: true })
+  }, [consulta, filtros.intervalo, filtros.periodo, destaque, setParametros])
+
   // Nomes de câmera para o filtro do desenho ("CAM-04 Expedição"). Degrada em
   // silêncio: sem a lista, o filtro some — nunca vira campo de digitar UUID.
   useEffect(() => {
@@ -307,6 +347,66 @@ export function Eventos() {
       periodo: 'hoje', intervalo: null, cameraId: '', classe: '',
       status: '', kind: 'violation', pagina: 1,
     })
+
+  // ── Linha do tempo (item 2 + item 3: o MESMO intervalo da lista/export) ──
+  // `efetivo` é o intervalo real em uso — igual ao que `consulta()` manda pra
+  // API, só que aqui em mão pra decidir o tamanho do bucket e alimentar o
+  // fetch da faixa.
+  // useMemo (não direto no corpo): 'hoje'/'7d'/'30d' calculam `to: agora` a
+  // cada chamada — sem memo, `efetivo.to` seria uma string NOVA a cada
+  // render (mesmo sem periodo/intervalo mudar) e o efeito da faixa abaixo
+  // refaria o fetch a cada tecla de QUALQUER outro filtro.
+  const efetivo = useMemo(
+    () => filtros.intervalo ?? intervaloDoPeriodo(filtros.periodo),
+    [filtros.intervalo, filtros.periodo],
+  )
+  const spanMs = new Date(efetivo.to).getTime() - new Date(efetivo.from).getTime()
+  const bucketTipo: FillBucket = Number.isFinite(spanMs) && spanMs > 2 * 86_400_000 ? 'day' : 'hour'
+
+  const [timelinePontos, setTimelinePontos] = useState<TimelinePoint[]>([])
+  // erroTimeline distingue "falha ao buscar" de "zero eventos" — sem isto o
+  // catch abaixo faz as duas coisas parecerem a MESMA faixa vazia, e "zero é
+  // uma afirmação" é a mesma família de defeito que a rodada #1 já corrigiu
+  // (confiança/precisão) — não inventar "não houve evento" quando o dado é
+  // que a busca falhou.
+  const [erroTimeline, setErroTimeline] = useState(false)
+  useEffect(() => {
+    if (!podeLer) return
+    let vivo = true
+    eventsService
+      .getTimeline({
+        from: efetivo.from,
+        to: efetivo.to,
+        bucket: bucketTipo,
+        moduleCode: MODULO,
+        cameraIds: filtros.cameraId ? [filtros.cameraId] : undefined,
+        classNames: filtros.classe ? [filtros.classe] : undefined,
+        // `/alerts` (a lista abaixo) NUNCA soma demo_events — sem excluir
+        // aqui, uma barra pode contar só evento demo, virar intervalo ao
+        // clicar (`escolherBucketTimeline`) e a lista real vir vazia: beco
+        // sem saída. Ver comentário de `includeDemo` em eventsService.ts.
+        includeDemo: false,
+      })
+      .then((d) => { if (vivo) { setTimelinePontos(d.timeline); setErroTimeline(false) } })
+      .catch(() => { if (vivo) { setTimelinePontos([]); setErroTimeline(true) } })
+    return () => { vivo = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [podeLer, efetivo.from, efetivo.to, bucketTipo, filtros.cameraId, filtros.classe])
+
+  const pontosDensos = fillBuckets(efetivo.from, efetivo.to, bucketTipo, timelinePontos).map((p) => ({
+    ...p,
+    rotulo: formatBucketLabel(p.bucket, bucketTipo),
+  }))
+  const picoTimeline = pontosDensos.reduce((m, p) => Math.max(m, p.count), 0)
+
+  /** Clique na barra: extensão do padrão "faixa clicável" (scrub) do handoff
+   *  — aqui o bucket clicado VIRA o intervalo (mesma mecânica de
+   *  `trocarFiltro`, então também volta pra página 1 e entra na URL). */
+  const escolherBucketTimeline = (bucket: string) => {
+    const passoMs = bucketTipo === 'hour' ? 3_600_000 : 86_400_000
+    const fim = new Date(new Date(bucket).getTime() + passoMs).toISOString()
+    trocarFiltro({ intervalo: { from: bucket, to: fim } })
+  }
 
   /** Reconhecer: ato explícito. Não existe chave de permissão para "dar
    *  ciência" no registry (`core/permissions.py` só tem read/feedback/export),
@@ -378,6 +478,31 @@ export function Eventos() {
   const eventos = dados?.alerts ?? []
   const selecionaveis = eventos.filter((e) => !e.acknowledged).map((e) => e.id)
 
+  /**
+   * Vazio honesto (item 5, mesmo padrão da fila de Propostas): revela QUAL
+   * filtro esvaziou — período SEMPRE aparece (é o suspeito nº1: o achado
+   * desta rodada é 'hoje' + kind=violation abrindo vazio sempre que o último
+   * evento é de outro dia), os demais só quando ativos. Nome de câmera nunca
+   * cai pro UUID cru — sem a lista carregada, diz que não identificou (mesmo
+   * texto de `Relatorios.tsx`), nunca despeja o id.
+   */
+  const rotuloPeriodoAtivo = filtros.intervalo
+    ? `Personalizado (${filtros.intervalo.from.slice(0, 10)} → ${filtros.intervalo.to.slice(0, 10)})`
+    : { hoje: 'Hoje', '7d': '7 dias', '30d': '30 dias' }[filtros.periodo]
+  const rotuloTipoAtivo: Record<string, string> = {
+    '': 'Todos os tipos', compliance: 'Conformidade', observacao: 'Não definida',
+  }
+  const rotulosAtivos = [
+    `Período: ${rotuloPeriodoAtivo}`,
+    filtros.cameraId
+      && `Câmera: ${cameras.find((c) => c.id === filtros.cameraId)?.name ?? 'câmera não identificada'}`,
+    filtros.classe && `Classe: ${classLabel(filtros.classe)}`,
+    filtros.status === 'false' && 'Status: Novo',
+    filtros.status === 'true' && 'Status: Reconhecido',
+    filtros.kind !== 'violation' && `Tipo: ${rotuloTipoAtivo[filtros.kind] ?? filtros.kind}`,
+  ].filter((v): v is string => Boolean(v))
+  const jaEm30dSemLink = filtros.periodo === '30d' && !filtros.intervalo
+
   if (!podeLer) {
     return (
       <div className={s.painelCentral}>
@@ -405,19 +530,57 @@ export function Eventos() {
         <select
           className={s.filtro}
           aria-label="Período"
-          value={filtros.intervalo ? '' : filtros.periodo}
+          value={filtros.intervalo ? 'personalizado' : filtros.periodo}
           onChange={(e) => {
-            // '' é só o rótulo do intervalo que veio no link; não é período.
-            if (!e.target.value) return
-            // Escolher um período descarta o intervalo cru do deep-link.
-            trocarFiltro({ periodo: e.target.value as Periodo, intervalo: null })
+            const valor = e.target.value
+            if (valor === 'personalizado') {
+              // Semeia com o intervalo HOJE ativo — inclusive quando ele veio
+              // cru de um deep-link (sino/Dashboard): em vez de um rótulo
+              // opaco ("Período do link"), o operador agora VÊ as datas e
+              // pode ajustá-las.
+              trocarFiltro({ intervalo: filtros.intervalo ?? intervaloDoPeriodo(filtros.periodo) })
+            } else {
+              // Escolher um período nomeado descarta o intervalo cru.
+              trocarFiltro({ periodo: valor as Periodo, intervalo: null })
+            }
           }}
         >
-          {filtros.intervalo && <option value="">Período do link</option>}
           <option value="hoje">Hoje</option>
           <option value="7d">7 dias</option>
           <option value="30d">30 dias</option>
+          <option value="personalizado">Personalizado</option>
         </select>
+
+        {filtros.intervalo && (
+          <>
+            <input
+              type="date"
+              className={s.filtro}
+              aria-label="De"
+              value={filtros.intervalo.from.slice(0, 10)}
+              max={filtros.intervalo.to.slice(0, 10)}
+              onChange={(e) => {
+                if (!e.target.value || !filtros.intervalo) return
+                trocarFiltro({
+                  intervalo: { from: `${e.target.value}T00:00:00`, to: filtros.intervalo.to },
+                })
+              }}
+            />
+            <input
+              type="date"
+              className={s.filtro}
+              aria-label="Até"
+              value={filtros.intervalo.to.slice(0, 10)}
+              min={filtros.intervalo.from.slice(0, 10)}
+              onChange={(e) => {
+                if (!e.target.value || !filtros.intervalo) return
+                trocarFiltro({
+                  intervalo: { from: filtros.intervalo.from, to: `${e.target.value}T23:59:59` },
+                })
+              }}
+            />
+          </>
+        )}
 
         {cameras.length > 0 && (
           <select
@@ -490,6 +653,56 @@ export function Eventos() {
         )}
       </div>
 
+      {/* Distribuição no período (item 2) — extensão do padrão "faixa 24h
+          clicável" do handoff (EPI Evento Detalhe.dc.html), aqui sobre o
+          período INTEIRO e por CONTAGEM. Clicar num bucket faz dele o novo
+          intervalo (scrub) — item 3: o mesmo período vale pra lista, aqui e
+          no export. */}
+      <div className={s.cartaoTempo}>
+        <div className={s.cabecalhoTempo}>
+          <span className={s.overlineLegenda}>Distribuição no período</span>
+          {!erroTimeline && (
+            <span className={s.notaTempo}>
+              conta violação + conformidade, todo status — não só o que a tabela mostra
+            </span>
+          )}
+        </div>
+        {erroTimeline ? (
+          // Falha do fetch é ESTADO PRÓPRIO — nunca a mesma faixa achatada de
+          // "zero eventos" (a barra de 2px abaixo mentiria "não houve
+          // evento" quando o dado real é "não foi possível saber").
+          <span className={s.notaTempoErro} role="alert">
+            Não foi possível carregar a distribuição — os eventos abaixo continuam confiáveis.
+          </span>
+        ) : (
+          <div
+            className={s.linhaDoTempo}
+            role="group"
+            aria-label="Distribuição de eventos no período — clique numa barra para ver aquele intervalo"
+          >
+            {pontosDensos.map((p) => (
+              <button
+                key={p.bucket}
+                type="button"
+                className={s.colunaTempo}
+                title={`${p.rotulo} · ${p.count} evento(s) no total`}
+                aria-label={`${p.rotulo} · ${p.count} evento(s) · ver este intervalo`}
+                onClick={() => escolherBucketTimeline(p.bucket)}
+              >
+                <span
+                  className={s.barraTempo}
+                  style={{
+                    height: picoTimeline > 0
+                      ? `${Math.max(2, Math.round((p.count / picoTimeline) * 100))}%`
+                      : '2px',
+                  }}
+                />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       {selecionados.length > 0 && (
         <div className={s.barraSelecao}>
           <span className={s.contagemSelecao}>{selecionados.length} selecionados</span>
@@ -524,11 +737,21 @@ export function Eventos() {
           <Inbox size={36} strokeWidth={1.5} aria-hidden="true" />
           <span className={s.painelTitulo}>Nenhum evento no período</span>
           <span className={s.painelTexto}>
-            Nenhuma detecção com os filtros atuais. Bom sinal — ou filtro demais.
+            Nenhum evento com estes filtros: {rotulosAtivos.join(' + ')}.
           </span>
-          <button className={s.botaoPainel} onClick={limparFiltros}>
-            Limpar filtros
-          </button>
+          <div className={s.botoesVazio}>
+            {!jaEm30dSemLink && (
+              <button
+                className={s.botaoPainel}
+                onClick={() => trocarFiltro({ periodo: '30d', intervalo: null })}
+              >
+                Ver últimos 30 dias
+              </button>
+            )}
+            <button className={s.botao} onClick={limparFiltros}>
+              Limpar filtros
+            </button>
+          </div>
         </div>
       ) : (
         <>
