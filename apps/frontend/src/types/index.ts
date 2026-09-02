@@ -96,6 +96,20 @@ export interface TrainedModel {
   created_by?: string
   owner_name?: string
   owner_email?: string
+  /** Classificação Funcional/Parcial/Não avaliado (gate de ativação —
+   * services/api/app/domain/services/model_status.py), derivada da última
+   * avaliação campeão×desafiante. Ausente só em dados antigos/mocks de
+   * teste; GET /training/models sempre preenche pós-fix. */
+  eval_status?: 'funcional' | 'parcial' | 'nao_avaliado'
+  /** Por que não está Funcional (língua de gente) — null quando funcional. */
+  eval_motivo?: string | null
+  /** mAP@50/precisão/cobertura REAIS de model_evaluations — null quando o
+   * status é 'nao_avaliado' (nunca 0 fingido; ver utils/labels.ts). */
+  eval_map50?: number | null
+  eval_precision?: number | null
+  eval_recall?: number | null
+  /** "n" — imagens avaliadas na última avaliação. */
+  eval_images_evaluated?: number | null
 }
 
 export interface Camera {

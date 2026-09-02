@@ -14,6 +14,12 @@ Handlers:
     O fallback "inherited" usa ModelRolloutRepository.get_active_model
     (manifesto {tenant_schema}.models, module-aware) — NÃO
     TrainingRepository.get_active_for_tenant, que não filtra por módulo.
+
+Gate Funcional/Parcial/Não avaliado (mesmo mecanismo do POST
+/v1/models/<id>/activate — app/domain/services/model_status.py):
+_assert_model_ready_for_assignment bloqueia set_camera_model/put_camera_models
+quando o modelo não está classificado como funcional. Sem override — atribuir
+modelo a câmera é ativação de fato.
 """
 import json as _json
 import logging
@@ -25,13 +31,18 @@ from flask_jwt_extended import jwt_required
 from app.core.auth import get_role, get_tenant_id, get_tenant_schema
 from app.core.exceptions import (
     AuthorizationError,
+    ConflictError,
     EpiMonitorError,
     NotFoundError,
     ValidationError,
 )
 from app.core.responses import error, success
+from app.domain.services.model_status import FUNCIONAL, classify_model_evaluation
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.camera_repository import CameraRepository
+from app.infrastructure.database.repositories.model_evaluation_repository import (
+    ModelEvaluationRepository,
+)
 from app.infrastructure.database.repositories.model_rollout_repository import (
     ModelRolloutRepository,
 )
@@ -63,6 +74,25 @@ def _get_model_rollout_repo() -> ModelRolloutRepository:
     if pool is None:
         raise RuntimeError("Database pool not initialized")
     return ModelRolloutRepository(pool)
+
+
+def _get_eval_repo() -> ModelEvaluationRepository:
+    pool = DatabasePool.get_instance()
+    if pool is None:
+        raise RuntimeError("Database pool not initialized")
+    return ModelEvaluationRepository(pool)
+
+
+def _assert_model_ready_for_assignment(model_id: UUID, tenant_id: str) -> None:
+    """Gate Funcional/Parcial/Não avaliado (mesma classificação do gate de
+    ativação em registry_handlers.activate_registry_model — ver
+    app/domain/services/model_status.py): um modelo Parcial ou nunca
+    avaliado não pode ser atribuído a uma câmera. Sem override — atribuir a
+    câmera é uma ativação de fato (o worker passa a servir esse modelo)."""
+    evaluation = _get_eval_repo().get_latest_for_model(model_id, tenant_id)
+    status_info = classify_model_evaluation(evaluation)
+    if status_info["status"] != FUNCIONAL:
+        raise ConflictError(status_info["motivo"])
 
 
 def _check_model_module(model: dict, target_module: str) -> None:
@@ -144,6 +174,7 @@ def set_camera_model(camera_id: str):  # type: ignore[no-untyped-def]
             if not model:
                 raise NotFoundError("Modelo", str(model_id))
             _check_model_module(model, active_module)
+            _assert_model_ready_for_assignment(model_uuid, tenant_id)
 
         row = camera_repo.set_model_assignment(
             camera_id, tenant_id, active_module, str(model_id) if model_id else None
@@ -247,6 +278,7 @@ def put_camera_models(camera_id: str):  # type: ignore[no-untyped-def]
             if not model:
                 raise NotFoundError("Modelo", str(model_id))
             _check_model_module(model, module)
+            _assert_model_ready_for_assignment(model_uuid, tenant_id)
 
         row = camera_repo.set_model_assignment(
             camera_id, tenant_id, module, str(model_id) if model_id else None

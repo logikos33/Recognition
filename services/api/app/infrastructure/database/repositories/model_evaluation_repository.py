@@ -50,6 +50,18 @@ class ModelEvaluationRepository(BaseRepository):
             (str(model_id), str(tenant_id)),
         )
 
+    def get_latest_by_tenant(self, tenant_id: str) -> dict[str, dict[str, Any]]:
+        """Última avaliação de CADA modelo do tenant, num único round-trip
+        (DISTINCT ON model_id) — evita N+1 ao classificar Funcional/Parcial/
+        Não avaliado ao listar o catálogo/seletor de modelos (gate de
+        ativação, ver domain/services/model_status.py)."""
+        rows = self._execute(
+            "SELECT DISTINCT ON (model_id) * FROM model_evaluations "
+            "WHERE tenant_id = %s ORDER BY model_id, created_at DESC",
+            (str(tenant_id),),
+        )
+        return {str(r["model_id"]): r for r in rows if r.get("model_id")}
+
     def list_by_model(self, model_id: UUID, tenant_id: str) -> list[dict[str, Any]]:
         """Histórico de avaliações de um modelo."""
         return self._execute(

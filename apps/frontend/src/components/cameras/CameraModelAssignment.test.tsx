@@ -173,6 +173,67 @@ describe('CameraModelAssignment', () => {
     expect(screen.queryByText('YOLOX')).toBeNull()
   })
 
+  describe('gate Funcional/Parcial/Não avaliado (modelo-por-câmera)', () => {
+    it('modelo Parcial aparece desabilitado no seletor, com o motivo visível', async () => {
+      mocks.listModels.mockResolvedValue({
+        status: 'success',
+        data: {
+          models: [{
+            id: 'model-1', name: 'best_v1',
+            eval_status: 'parcial',
+            eval_motivo: 'Avaliado, mas sem imagens de validação suficientes para: oculos.',
+          }],
+        },
+      })
+
+      render(<CameraModelAssignment cameraId="cam-1" />)
+      const epiSelect = await screen.findByLabelText('Modelo do módulo EPI') as HTMLSelectElement
+      const opt = Array.from(epiSelect.options).find(o => o.value === 'model-1')!
+      expect(opt.disabled).toBe(true)
+      expect(opt.title).toMatch(/oculos/)
+      expect(opt.textContent).toMatch(/Parcial/)
+    })
+
+    it('modelo Não avaliado também aparece desabilitado', async () => {
+      mocks.listModels.mockResolvedValue({
+        status: 'success',
+        data: {
+          models: [{
+            id: 'model-1', name: 'best_v1',
+            eval_status: 'nao_avaliado',
+            eval_motivo: 'Este modelo nunca foi avaliado.',
+          }],
+        },
+      })
+
+      render(<CameraModelAssignment cameraId="cam-1" />)
+      const epiSelect = await screen.findByLabelText('Modelo do módulo EPI') as HTMLSelectElement
+      const opt = Array.from(epiSelect.options).find(o => o.value === 'model-1')!
+      expect(opt.disabled).toBe(true)
+      expect(opt.textContent).toMatch(/Não avaliado/)
+      // mAP@50 nunca medido — "—", nunca "0%" fingido (LEI DA CASA).
+      expect(opt.textContent).not.toMatch(/mAP50/)
+    })
+
+    it('modelo Funcional aparece habilitado, com o mAP@50 real e o n ao lado', async () => {
+      mocks.listModels.mockResolvedValue({
+        status: 'success',
+        data: {
+          models: [{
+            id: 'model-1', name: 'best_v1',
+            eval_status: 'funcional', eval_map50: 0.762, eval_images_evaluated: 232,
+          }],
+        },
+      })
+
+      render(<CameraModelAssignment cameraId="cam-1" />)
+      const epiSelect = await screen.findByLabelText('Modelo do módulo EPI') as HTMLSelectElement
+      const opt = Array.from(epiSelect.options).find(o => o.value === 'model-1')!
+      expect(opt.disabled).toBe(false)
+      expect(opt.textContent).toBe('best_v1 (mAP50 76.2% (n=232))')
+    })
+  })
+
   describe('anti-vazamento de stack interno (política F5-LEVE)', () => {
     // Forma real de um modelo "não rebatizado": name/framework internos,
     // display_name ainda NULL (ninguém atribuiu na tela de rebranding).

@@ -4,8 +4,10 @@ Model Registry Handlers — registry canônico em public.trained_models (WS-A5).
 GET  /api/v1/models                → lista do tenant (?module=&status=ativo|inativo)
 GET  /api/v1/models/<id>           → detalhe + linhagem expandida
                                      (dataset_version→job→model + deployments ativos)
-POST /api/v1/models/<id>/activate  → ativa modelo (gate de eval: verdict=reject → 409;
-                                     override force=true só admin); desativa irmãos do
+POST /api/v1/models/<id>/activate  → ativa modelo (gate Funcional/Parcial/Não avaliado,
+                                     SEM override — ver domain/services/model_status.py;
+                                     gate de eval: verdict=reject → 409, override
+                                     force=true só admin); desativa irmãos do
                                      mesmo tenant+módulo; sincroniza {schema}.models
                                      via pin_model best-effort (ajuste #7 / ADR-0037)
 GET  /api/v1/models/<id>/eval      → última avaliação campeão×desafiante
@@ -34,6 +36,7 @@ from app.core.auth import (
 )
 from app.core.exceptions import EpiMonitorError
 from app.core.responses import error, success
+from app.domain.services.model_status import FUNCIONAL, classify_model_evaluation
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.dataset_repository import (
     DatasetRepository,
@@ -271,6 +274,18 @@ def activate_registry_model(model_id: str):  # type: ignore[no-untyped-def]
 
         # Gate de avaliação campeão×desafiante
         evaluation = _get_eval_repo().get_latest_for_model(model_uuid, tenant_id)
+
+        # Gate Funcional/Parcial/Não avaliado (mecanismo, task "modelo
+        # PARCIAL não ativa"): cobertura incompleta ou avaliação inexistente
+        # bloqueia SEM override — diferente do gate de verdict abaixo, que
+        # aceita force=true de admin. "Parcial" aqui é sobre O QUE foi
+        # medido, não sobre ser melhor ou pior que o campeão.
+        status_info = classify_model_evaluation(evaluation)
+        if status_info["status"] != FUNCIONAL:
+            return error(
+                status_info["motivo"], 409, error_code="model_not_ready"
+            )
+
         if evaluation and evaluation.get("verdict") == EvalVerdict.REJECT:
             if not force:
                 # Mensagem chega ao usuário final (api.ts mostra data.error

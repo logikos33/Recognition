@@ -15,6 +15,9 @@ from app.infrastructure.database.repositories.annotation_repository import (
 )
 from app.infrastructure.database.repositories.dataset_repository import DatasetRepository
 from app.infrastructure.database.repositories.frame_repository import FrameRepository
+from app.infrastructure.database.repositories.model_evaluation_repository import (
+    ModelEvaluationRepository,
+)
 from app.infrastructure.database.repositories.module_repository import ModuleRepository
 from app.infrastructure.database.repositories.training_repository import TrainingRepository
 from app.infrastructure.database.repositories.video_repository import VideoRepository
@@ -41,7 +44,7 @@ def get_annotation_service() -> AnnotationService:
 
 def get_training_service() -> TrainingService:
     pool = _get_pool()
-    return TrainingService(TrainingRepository(pool))
+    return TrainingService(TrainingRepository(pool), ModelEvaluationRepository(pool))
 
 
 def get_dataset_service() -> DatasetService:

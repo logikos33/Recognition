@@ -23,7 +23,12 @@ import { Cpu } from 'lucide-react'
 import { countingService } from '../../services/countingService'
 import { trainingService } from '../../services/trainingService'
 import { nomeInternoOuCliente } from '../../services/modelDisplay'
-import { metricaAusente } from '../../utils/labels'
+import {
+  formatarMetricaAvaliacao,
+  metricaAusente,
+  METRICA_AUSENTE,
+  MODEL_EVAL_STATUS_LABELS,
+} from '../../utils/labels'
 import { useToast } from '../ui/Toast/useToast'
 import { useAuth } from '../../hooks/useAuth'
 import { Badge } from '../ui/Badge/Badge'
@@ -46,6 +51,13 @@ interface ModelOption {
   map50?: number | null
   /** trained_models.framework — "yolox" | "rfdetr" (task-083). */
   framework?: string | null
+  /** Classificação Funcional/Parcial/Não avaliado (gate de ativação —
+   * services/api/app/domain/services/model_status.py). Ausente só em
+   * mocks antigos/testes; GET /training/models sempre preenche pós-fix. */
+  eval_status?: 'funcional' | 'parcial' | 'nao_avaliado'
+  eval_motivo?: string | null
+  eval_map50?: number | null
+  eval_images_evaluated?: number | null
 }
 
 const EMPTY_ASSIGNMENT: ModelAssignment = { epi: null, quality: null, counting: null }
@@ -58,8 +70,22 @@ const FRAMEWORK_LABELS: Record<string, string> = {
 
 function modelLabel(m: ModelOption, isSuperAdmin: boolean): string {
   const name = nomeInternoOuCliente(m, isSuperAdmin)
+  if (m.eval_status !== undefined) {
+    // Fonte honesta (model_evaluations, gate de ativação): ap=None vira
+    // METRICA_AUSENTE, ap=0.0 real fica "0,0%" — nunca fingido.
+    const metrica = formatarMetricaAvaliacao(m.eval_map50, m.eval_images_evaluated)
+    const rotulo = metrica === METRICA_AUSENTE ? name : `${name} (mAP50 ${metrica})`
+    return m.eval_status === 'funcional' ? rotulo : `${rotulo} — ${MODEL_EVAL_STATUS_LABELS[m.eval_status]}`
+  }
+  // Fallback legado (compat com dados antigos/testes sem eval_status).
   // 0 é tratado como não registrada (LEI DA CASA) — nunca "(mAP50 0%)".
   return metricaAusente(m.map50) ? name : `${name} (mAP50 ${((m.map50 as number) * 100).toFixed(0)}%)`
+}
+
+/** Modelo Parcial/Não avaliado não pode ser atribuído (gate de ativação) —
+ * option desabilitada com o motivo visível no title (tooltip nativo). */
+function modelDisabledReason(m: ModelOption): string | undefined {
+  return m.eval_status && m.eval_status !== 'funcional' ? (m.eval_motivo ?? undefined) : undefined
 }
 
 export function CameraModelAssignment({ cameraId }: { cameraId: string }) {
@@ -162,7 +188,14 @@ export function CameraModelAssignment({ cameraId }: { cameraId: string }) {
                 >
                   <option value="">Modelo padrão</option>
                   {models.map(m => (
-                    <option key={m.id} value={m.id}>{modelLabel(m, isSuperAdmin)}</option>
+                    <option
+                      key={m.id}
+                      value={m.id}
+                      disabled={m.eval_status !== undefined && m.eval_status !== 'funcional'}
+                      title={modelDisabledReason(m)}
+                    >
+                      {modelLabel(m, isSuperAdmin)}
+                    </option>
                   ))}
                 </select>
               </div>

@@ -43,12 +43,28 @@ def _assignment_row(epi=None, quality=None, counting=None):
     }
 
 
+# per_class no shape gravado por eval_metrics.precision_recall_map — ap=None
+# quando n_gt=0 (ausência de medida). Default "funcional": preserva o
+# comportamento dos testes que não exercitam o gate Funcional/Parcial/Não
+# avaliado (ver test_model_status.py para a classificação isolada).
+_EVAL_FUNCIONAL = {
+    "verdict": "promote",
+    "metrics": {
+        "map50": 0.8, "images_evaluated": 100,
+        "per_class": {"capacete": {"ap": 0.8, "precision": 0.8, "recall": 0.8, "n_gt": 10}},
+    },
+}
+
+
 @pytest.fixture
 def mocked_repos(monkeypatch):
     camera_repo = MagicMock()
     training_repo = MagicMock()
+    eval_repo = MagicMock()
+    eval_repo.get_latest_for_model.return_value = _EVAL_FUNCIONAL
     monkeypatch.setattr(model_handlers, "_get_camera_repo", lambda: camera_repo)
     monkeypatch.setattr(model_handlers, "_get_training_repo", lambda: training_repo)
+    monkeypatch.setattr(model_handlers, "_get_eval_repo", lambda: eval_repo)
     monkeypatch.setattr(model_handlers, "_notify_model_assignment", MagicMock())
     return camera_repo, training_repo
 
@@ -219,6 +235,58 @@ class TestPutCameraModels:
             json={"module": "epi", "model_id": MODEL_ID},
         )
         assert resp.status_code == 404
+
+    # ------------------------------------------------------------------
+    # Gate Funcional/Parcial/Não avaliado (task "modelo PARCIAL não ativa")
+    # ------------------------------------------------------------------
+
+    def test_never_evaluated_model_is_rejected(self, app, client, mocked_repos, monkeypatch):
+        camera_repo, training_repo = mocked_repos
+        eval_repo = MagicMock()
+        eval_repo.get_latest_for_model.return_value = None
+        monkeypatch.setattr(model_handlers, "_get_eval_repo", lambda: eval_repo)
+
+        camera_repo.get_model_assignments.return_value = _assignment_row()
+        training_repo.get_model_for_tenant.return_value = {
+            "id": MODEL_ID, "name": "best", "module_code": "epi",
+        }
+
+        resp = client.put(
+            f"/api/cameras/{CAMERA_ID}/models",
+            headers=_auth_header(app),
+            json={"module": "epi", "model_id": MODEL_ID},
+        )
+        assert resp.status_code == 409
+        camera_repo.set_model_assignment.assert_not_called()
+
+    def test_partial_coverage_model_is_rejected(self, app, client, mocked_repos, monkeypatch):
+        camera_repo, training_repo = mocked_repos
+        eval_repo = MagicMock()
+        eval_repo.get_latest_for_model.return_value = {
+            "verdict": "promote",
+            "metrics": {
+                "map50": 0.7, "images_evaluated": 100,
+                "per_class": {
+                    "capacete": {"ap": 0.7, "precision": 0.7, "recall": 0.7, "n_gt": 10},
+                    "luvas": {"ap": None, "n_gt": 0, "tp": 0, "fp": 0, "fn": 0},
+                },
+            },
+        }
+        monkeypatch.setattr(model_handlers, "_get_eval_repo", lambda: eval_repo)
+
+        camera_repo.get_model_assignments.return_value = _assignment_row()
+        training_repo.get_model_for_tenant.return_value = {
+            "id": MODEL_ID, "name": "best", "module_code": "epi",
+        }
+
+        resp = client.put(
+            f"/api/cameras/{CAMERA_ID}/models",
+            headers=_auth_header(app),
+            json={"module": "epi", "model_id": MODEL_ID},
+        )
+        assert resp.status_code == 409
+        assert "luvas" in resp.get_json()["error"]
+        camera_repo.set_model_assignment.assert_not_called()
 
     def test_unassign_with_null_model_id(self, app, client, mocked_repos):
         camera_repo, training_repo = mocked_repos

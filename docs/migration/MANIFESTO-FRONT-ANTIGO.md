@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 390 arquivos, 65.812 linhas
+## Situação — 390 arquivos, 65.899 linhas
 
 | status | arquivos |
 |---|---:|
@@ -74,7 +74,7 @@ apagado não são a mesma coisa.
 | `src/components/cameras/CameraCard.tsx` | `INFRA` | — | 191 |
 | `src/components/cameras/CameraFpsConfig.css.ts` | `INFRA` | — | 119 |
 | `src/components/cameras/CameraFpsConfig.tsx` | `INFRA` | — | 453 |
-| `src/components/cameras/CameraModelAssignment.tsx` | `INFRA` | — | 176 |
+| `src/components/cameras/CameraModelAssignment.tsx` | `INFRA` | — | 209 |
 | `src/components/cameras/CameraOnboardingWizard.tsx` | `INFRA` | — | 375 |
 | `src/components/cameras/CameraWizard.css.ts` | `INFRA` | — | 284 |
 | `src/components/cameras/CameraWizard.tsx` | `INFRA` | — | 161 |
@@ -258,7 +258,7 @@ apagado não são a mesma coisa.
 | `src/types/cameraGrid.ts` | `INFRA` | — | 94 |
 | `src/types/counting.ts` | `INFRA` | — | 97 |
 | `src/types/edge.ts` | `INFRA` | — | 108 |
-| `src/types/index.ts` | `INFRA` | — | 157 |
+| `src/types/index.ts` | `INFRA` | — | 171 |
 | `src/types/monitoring.ts` | `INFRA` | — | 268 |
 | `src/types/operations.ts` | `INFRA` | — | 82 |
 | `src/types/scenario.ts` | `INFRA` | — | 34 |
@@ -266,7 +266,7 @@ apagado não são a mesma coisa.
 | `src/utils/classImbalance.ts` | `INFRA` | — | 65 |
 | `src/utils/concurrencyQueue.ts` | `INFRA` | — | 39 |
 | `src/utils/errorTranslator.ts` | `INFRA` | — | 76 |
-| `src/utils/labels.ts` | `INFRA` | — | 253 |
+| `src/utils/labels.ts` | `INFRA` | — | 293 |
 | `src/utils/rajadas.ts` | `INFRA` | — | 120 |
 | `src/utils/statusColors.ts` | `INFRA` | — | 18 |
 | `src/utils/timeBuckets.ts` | `INFRA` | — | 106 |

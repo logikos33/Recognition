@@ -285,6 +285,60 @@ describe('Modelo — cenário e link de classes', () => {
   })
 })
 
+describe('Modelo — gate Funcional/Parcial/Não avaliado (catálogo)', () => {
+  it('modelo Funcional: badge + mAP@50 real com o n ao lado', async () => {
+    responde([modelo({
+      id: 'm-func', is_active: true,
+      eval_status: 'funcional', eval_map50: 0.762, eval_precision: 0.8, eval_recall: 0.7,
+      eval_images_evaluated: 232,
+    })])
+    monta()
+    // is_active aparece 2x (destaque + card da lista) — mesmo modelo.
+    expect((await screen.findAllByText('Funcional')).length).toBe(2)
+    expect(screen.getAllByText('76.2% (n=232)').length).toBeGreaterThan(0)
+  })
+
+  it('modelo Parcial: badge, motivo visível e botão Ativar desabilitado', async () => {
+    responde([modelo({
+      id: 'm-parcial', is_active: false,
+      eval_status: 'parcial',
+      eval_motivo: 'Avaliado, mas sem imagens de validação suficientes para: oculos.',
+      eval_map50: 0.5, eval_images_evaluated: 100,
+    })])
+    monta()
+    expect(await screen.findByText('Parcial')).toBeTruthy()
+    expect(screen.getByText(/sem imagens de validação suficientes para: oculos/i)).toBeTruthy()
+    const botao = screen.getByRole('button', { name: /^ativar$/i }) as HTMLButtonElement
+    expect(botao.disabled).toBe(true)
+  })
+
+  it('modelo Não avaliado: badge, mAP@50 mostra "—" (nunca 0% fingido) e Ativar desabilitado', async () => {
+    responde([modelo({
+      id: 'm-cru', is_active: false,
+      eval_status: 'nao_avaliado',
+      eval_motivo: 'Este modelo nunca foi avaliado.',
+      eval_map50: null, eval_precision: null, eval_recall: null, eval_images_evaluated: null,
+      map50: 0.9, // legado — não pode vazar por engano quando eval_status existe
+    })])
+    monta()
+    expect(await screen.findByText('Não avaliado')).toBeTruthy()
+    expect(screen.queryByText(/90\.0%/)).toBeNull()
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+    const botao = screen.getByRole('button', { name: /^ativar$/i }) as HTMLButtonElement
+    expect(botao.disabled).toBe(true)
+  })
+
+  it('sem eval_status (mock antigo): Ativar continua habilitado — sem regressão', async () => {
+    responde([modelo({ id: 'm-legado', is_active: false })])
+    monta()
+    const botao = await screen.findByRole('button', { name: /^ativar$/i }) as HTMLButtonElement
+    expect(botao.disabled).toBe(false)
+    expect(screen.queryByText('Funcional')).toBeNull()
+    expect(screen.queryByText('Parcial')).toBeNull()
+    expect(screen.queryByText('Não avaliado')).toBeNull()
+  })
+})
+
 describe('Modelo — anti-vazamento de stack interno (política F5-LEVE)', () => {
   it('sem display_name: nome interno (YOLO26/yolo26n) e framework NUNCA aparecem — cai em "Logikos"', async () => {
     responde([modelo({ name: 'YOLO26 yolo26n - Job abc12345', framework: 'yolox', display_name: null })])

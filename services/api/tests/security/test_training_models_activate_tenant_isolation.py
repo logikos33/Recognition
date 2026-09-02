@@ -72,6 +72,10 @@ def registry_repos(monkeypatch):
     monkeypatch.setattr(registry_handlers, "_get_rollout_repo", lambda: rollout)
     evals.get_latest_for_model.return_value = None
     rollout.pin_model.return_value = ({"id": MODEL_ID}, None)
+    # Exposto para os testes que precisam simular uma avaliação real (gate
+    # Funcional/Parcial/Não avaliado, model_status.py) sem mudar a
+    # assinatura de retorno usada pelos demais testes desta classe.
+    registry.evals = evals
     return registry
 
 
@@ -124,6 +128,17 @@ class TestLegacyActivateModelTenantIsolation:
         """Superadmin do tenant dono → 200, e a ativação passa pelo
         repositório canônico escopado por tenant+módulo, nunca pelo legado."""
         registry_repos.get_for_tenant.return_value = _model_row()
+        # Gate Funcional/Parcial/Não avaliado (model_status.py) exige uma
+        # avaliação com cobertura completa antes do gate de tenant/role
+        # importar — sem isso o teste bloquearia em 409 antes de provar o
+        # que esta classe existe para provar (posse/role via canônico).
+        registry_repos.evals.get_latest_for_model.return_value = {
+            "verdict": "promote",
+            "metrics": {
+                "map50": 0.8, "images_evaluated": 100,
+                "per_class": {"capacete": {"ap": 0.8, "precision": 0.8, "recall": 0.8, "n_gt": 10}},
+            },
+        }
         registry_repos.activate_for_tenant_module.return_value = _model_row(is_active=True)
         resp = client.post(
             f"/api/training/models/{MODEL_ID}/activate",

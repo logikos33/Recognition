@@ -37,8 +37,16 @@ import { AlertTriangle, CheckCircle2, Settings } from 'lucide-react'
 
 import { api } from '../../services/api'
 import { nomeParaCliente } from '../../services/modelDisplay'
-import { formatarMetricaModelo, metricaAusente, METRICA_AUSENTE_ROTULO } from '../../utils/labels'
+import {
+  formatarMetricaAvaliacao,
+  formatarMetricaModelo,
+  metricaAusente,
+  METRICA_AUSENTE_ROTULO,
+  MODEL_EVAL_STATUS_LABELS,
+  modelEvalStatusBadgeVariant,
+} from '../../utils/labels'
 import { useToast } from '../../components/ui/Toast/useToast'
+import { Badge } from '../../components/ui/Badge/Badge'
 import { EmptyState } from '../../components/ui/EmptyState/EmptyState'
 import { Tooltip } from '../../components/ui/Tooltip/Tooltip'
 import { ModelScenarioWizard } from '../../components/scenario/ModelScenarioWizard'
@@ -83,12 +91,42 @@ function Metrica({ rotulo, valor, ausente }: { rotulo: string; valor: string; au
 }
 
 function Metricas({ modelo }: { modelo: TrainedModel }) {
+  // eval_status presente = GET /training/models já enriqueceu com a
+  // avaliação real (model_evaluations) — honesta por construção (ap=None
+  // vira ausente, ap=0.0 real fica 0,0%). Ausente (mocks antigos/testes)
+  // cai no legado trained_models.map50 (0 literal tratado como ausente —
+  // LEI DA CASA, ver metricaAusente).
+  const honesto = modelo.eval_status !== undefined
+  const n = modelo.eval_images_evaluated
   return (
     <div className={s.metricas}>
-      <Metrica rotulo="mAP@50" valor={formatarMetricaModelo(modelo.map50)} ausente={metricaAusente(modelo.map50)} />
-      <Metrica rotulo="Precisão" valor={formatarMetricaModelo(modelo.precision)} ausente={metricaAusente(modelo.precision)} />
-      <Metrica rotulo="Cobertura" valor={formatarMetricaModelo(modelo.recall)} ausente={metricaAusente(modelo.recall)} />
+      <Metrica
+        rotulo="mAP@50"
+        valor={honesto ? formatarMetricaAvaliacao(modelo.eval_map50, n) : formatarMetricaModelo(modelo.map50)}
+        ausente={honesto ? modelo.eval_map50 == null : metricaAusente(modelo.map50)}
+      />
+      <Metrica
+        rotulo="Precisão"
+        valor={honesto ? formatarMetricaAvaliacao(modelo.eval_precision, n) : formatarMetricaModelo(modelo.precision)}
+        ausente={honesto ? modelo.eval_precision == null : metricaAusente(modelo.precision)}
+      />
+      <Metrica
+        rotulo="Cobertura"
+        valor={honesto ? formatarMetricaAvaliacao(modelo.eval_recall, n) : formatarMetricaModelo(modelo.recall)}
+        ausente={honesto ? modelo.eval_recall == null : metricaAusente(modelo.recall)}
+      />
     </div>
+  )
+}
+
+/** Badge Funcional/Parcial/Não avaliado — null quando o backend ainda não
+ * manda eval_status (mocks antigos/testes sem o campo). */
+function BadgeAvaliacao({ modelo }: { modelo: TrainedModel }) {
+  if (!modelo.eval_status) return null
+  return (
+    <Badge variant={modelEvalStatusBadgeVariant(modelo.eval_status)}>
+      {MODEL_EVAL_STATUS_LABELS[modelo.eval_status]}
+    </Badge>
   )
 }
 
@@ -218,7 +256,7 @@ export function Modelo() {
         <span className={s.secaoTitulo}>Modelo ativo</span>
         {ativo ? (
           <>
-            <div className={s.nomeAtivo}>{nomeParaCliente(ativo)}</div>
+            <div className={s.nomeAtivo}>{nomeParaCliente(ativo)} <BadgeAvaliacao modelo={ativo} /></div>
             <Metricas modelo={ativo} />
             <div className={s.rodapeAtivo}>
               <span>Origem: {originLabel(ativo.origin)}</span>
@@ -279,6 +317,7 @@ export function Modelo() {
                       <CheckCircle2 size={10} strokeWidth={2.5} aria-hidden="true" /> ativo
                     </span>
                   )}
+                  {' '}<BadgeAvaliacao modelo={modelo} />
                 </span>
               </div>
               <Metricas modelo={modelo} />
@@ -287,6 +326,12 @@ export function Modelo() {
                 {isSimulatedArtifact(modelo.origin, modelo.metrics) && <SeloSimulacao />}
                 <OwnerInfo model={modelo} />
               </div>
+              {/* Gate Funcional/Parcial/Não avaliado: o backend já recusa
+                  (409) — mostrar o motivo aqui evita o usuário descobrir
+                  isso só depois de clicar Ativar. */}
+              {modelo.eval_status && modelo.eval_status !== 'funcional' && modelo.eval_motivo && (
+                <p className={s.semAtivo}>{modelo.eval_motivo}</p>
+              )}
               <div className={s.acoes}>
                 <button className={s.botaoAcao} onClick={() => setModeloCenario(modelo)}>
                   <Settings size={12} strokeWidth={2} aria-hidden="true" /> Configurar cenário
@@ -295,7 +340,15 @@ export function Modelo() {
                   <button
                     className={s.botaoAcao}
                     onClick={() => ativar(modelo.id)}
-                    disabled={ativando === modelo.id}
+                    disabled={
+                      ativando === modelo.id ||
+                      (modelo.eval_status !== undefined && modelo.eval_status !== 'funcional')
+                    }
+                    title={
+                      modelo.eval_status && modelo.eval_status !== 'funcional'
+                        ? (modelo.eval_motivo ?? undefined)
+                        : undefined
+                    }
                   >
                     {ativando === modelo.id ? '...' : 'Ativar'}
                   </button>

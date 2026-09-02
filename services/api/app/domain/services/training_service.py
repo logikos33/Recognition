@@ -4,9 +4,14 @@ Recognition — Training Service.
 Orquestra pipeline de treinamento YOLOv8. NÃO conhece Flask.
 """
 import logging
+from typing import Optional
 from uuid import UUID
 
 from app.core.exceptions import NotFoundError, ValidationError
+from app.domain.services.model_status import classify_model_evaluation
+from app.infrastructure.database.repositories.model_evaluation_repository import (
+    ModelEvaluationRepository,
+)
 from app.infrastructure.database.repositories.training_repository import (
     TrainingRepository,
 )
@@ -17,8 +22,17 @@ logger = logging.getLogger(__name__)
 class TrainingService:
     """Use cases de treinamento."""
 
-    def __init__(self, training_repo: TrainingRepository) -> None:
+    def __init__(
+        self,
+        training_repo: TrainingRepository,
+        eval_repo: Optional[ModelEvaluationRepository] = None,
+    ) -> None:
         self._training_repo = training_repo
+        # Opcional (default None) — só enriquece list_models com a
+        # classificação Funcional/Parcial/Não avaliado quando fornecido;
+        # construção antiga TrainingService(repo) (testes existentes)
+        # continua funcionando sem enriquecimento.
+        self._eval_repo = eval_repo
 
     def create_job(
         self,
@@ -137,10 +151,34 @@ class TrainingService:
         return model
 
     def list_models(self, tenant_id: str) -> list[dict]:
-        """Lista modelos treinados do TENANT (C-01 — inclui origin/owner_name/owner_email)."""
+        """Lista modelos treinados do TENANT (C-01 — inclui origin/owner_name/owner_email).
+
+        Enriquece cada modelo com a classificação Funcional/Parcial/Não
+        avaliado (eval_status/eval_motivo/eval_map50/eval_precision/
+        eval_recall/eval_images_evaluated — domain/services/model_status.py)
+        a partir da ÚLTIMA avaliação campeão×desafiante de cada um, num
+        único round-trip (get_latest_by_tenant). Consumida por
+        GET /training/models — fonte de dados de Modelo.tsx (catálogo) e
+        CameraModelAssignment.tsx (seletor por câmera); os dois precisam do
+        mesmo dado honesto (número + n, nunca zero fingido) e do mesmo gate
+        visual (Parcial desabilitado) sem cada tela reimplementar a
+        classificação.
+        """
         models = self._training_repo.get_models_by_tenant(tenant_id)
         for m in models:
             self._stringify_model_uuids(m)
+
+        if self._eval_repo is not None and models:
+            evals = self._eval_repo.get_latest_by_tenant(tenant_id)
+            for m in models:
+                info = classify_model_evaluation(evals.get(m["id"]))
+                m["eval_status"] = info["status"]
+                m["eval_motivo"] = info["motivo"]
+                m["eval_map50"] = info["map50"]
+                m["eval_precision"] = info["precision"]
+                m["eval_recall"] = info["recall"]
+                m["eval_images_evaluated"] = info["images_evaluated"]
+
         return models
 
     def register_model(self, data: dict) -> dict:

@@ -180,6 +180,46 @@ export function formatarMetricaModelo(v: number | null | undefined, casas = 1): 
   return metricaAusente(v) ? METRICA_AUSENTE : `${((v as number) * 100).toFixed(casas)}%`
 }
 
+// ── Classificação Funcional/Parcial/Não avaliado (gate de ativação) ──────────
+//
+// Distinta de METRICA_AUSENTE acima: aqui a ausência vem do BACKEND
+// (services/api/app/domain/services/model_status.py — ap=None quando a
+// avaliação não tinha imagens de validação para aquela classe), não de
+// tratar 0 como ausente. Um modelo Parcial/Funcional pode legitimamente
+// mostrar "0,0%" — é uma medida real; só "Não avaliado" mostra "—".
+
+export type ModelEvalStatus = 'funcional' | 'parcial' | 'nao_avaliado'
+
+export const MODEL_EVAL_STATUS_LABELS: Record<ModelEvalStatus, string> = {
+  funcional: 'Funcional',
+  parcial: 'Parcial',
+  nao_avaliado: 'Não avaliado',
+}
+
+/** Variant de Badge (components/ui/Badge) por status de avaliação. */
+export function modelEvalStatusBadgeVariant(
+  status: string | null | undefined,
+): 'success' | 'warning' | 'neutral' {
+  if (status === 'funcional') return 'success'
+  if (status === 'parcial') return 'warning'
+  return 'neutral'
+}
+
+/**
+ * mAP@50/precisão/cobertura REAIS de `model_evaluations` (honestas: ap=None
+ * vira METRICA_AUSENTE, ap=0.0 real vira "0,0%"), com o "n" (imagens
+ * avaliadas) ao lado — "31,6% (n=360)". v==null é o ÚNICO sinal de
+ * ausência aqui (o backend só grava null quando não mediu nada).
+ */
+export function formatarMetricaAvaliacao(
+  v: number | null | undefined,
+  n: number | null | undefined,
+): string {
+  if (v == null) return METRICA_AUSENTE
+  const pct = `${(v * 100).toFixed(1)}%`
+  return n != null ? `${pct} (n=${n})` : pct
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /** Fallback universal: snake_case/kebab-case → 'Frase capitalizada'. */

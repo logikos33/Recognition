@@ -238,12 +238,22 @@ class TestActivateModel:
         assert resp.status_code == 403
         repos.registry.activate_for_tenant_module.assert_not_called()
 
-    def test_admin_activates_without_eval(self, app, client, repos):
+    # per_class no shape gravado por eval_metrics.precision_recall_map —
+    # ap=None quando n_gt=0 (ausência de medida); ap≠None é medida real.
+    _EVAL_FUNCIONAL = {
+        "verdict": "promote",
+        "metrics": {
+            "map50": 0.82, "images_evaluated": 300,
+            "per_class": {"capacete": {"ap": 0.82, "precision": 0.8, "recall": 0.85, "n_gt": 40}},
+        },
+    }
+
+    def test_admin_activates_with_funcional_eval(self, app, client, repos):
         """training:approve é exclusivo de superadmin no registry canônico —
         activate exercitado com superadmin (admin puro cobre-se em
         test_role_without_permission_returns_403 + test_auth_training_roles.py)."""
         repos.registry.get_for_tenant.return_value = _model_row()
-        repos.evals.get_latest_for_model.return_value = None
+        repos.evals.get_latest_for_model.return_value = self._EVAL_FUNCIONAL
         repos.registry.activate_for_tenant_module.return_value = _model_row(
             is_active=True
         )
@@ -265,9 +275,65 @@ class TestActivateModel:
             "tenant_test", MODEL_ID, "epi"
         )
 
+    # ------------------------------------------------------------------
+    # Gate Funcional/Parcial/Não avaliado (task "modelo PARCIAL não ativa")
+    # — bloqueia ANTES do gate de verdict/force, sem override.
+    # ------------------------------------------------------------------
+
+    def test_no_evaluation_at_all_blocks_activation(self, app, client, repos):
+        """FALHA-ANTES desta task: nenhuma avaliação registrada ativava
+        livremente (repos.evals.get_latest_for_model=None só disparava o
+        `if evaluation and ...` do gate de verdict, que nunca via nada).
+        PASSA-DEPOIS: bloqueado sem tocar em activate_for_tenant_module."""
+        repos.registry.get_for_tenant.return_value = _model_row()
+        repos.evals.get_latest_for_model.return_value = None
+
+        resp = client.post(
+            f"/api/v1/models/{MODEL_ID}/activate",
+            headers=_token(app, role="superadmin"), json={},
+        )
+        assert resp.status_code == 409
+        assert resp.get_json()["error_code"] == "model_not_ready"
+        repos.registry.activate_for_tenant_module.assert_not_called()
+
+    def test_partial_coverage_blocks_activation_even_with_force(self, app, client, repos):
+        """Modelo Parcial (uma classe sem cobertura no holdout) não ativa —
+        nem com force=true + superadmin (esse override é do gate de
+        verdict/regressão, não do gate de cobertura)."""
+        repos.registry.get_for_tenant.return_value = _model_row()
+        repos.evals.get_latest_for_model.return_value = {
+            "verdict": "promote",
+            "metrics": {
+                "map50": 0.9, "images_evaluated": 300,
+                "per_class": {
+                    "capacete": {"ap": 0.9, "precision": 0.9, "recall": 0.9, "n_gt": 40},
+                    "oculos": {"ap": None, "n_gt": 0, "tp": 0, "fp": 0, "fn": 0},
+                },
+            },
+        }
+
+        resp = client.post(
+            f"/api/v1/models/{MODEL_ID}/activate",
+            headers=_token(app, role="superadmin"),
+            json={"force": True},
+        )
+        assert resp.status_code == 409
+        assert resp.get_json()["error_code"] == "model_not_ready"
+        assert "oculos" in resp.get_json()["error"]
+        repos.registry.activate_for_tenant_module.assert_not_called()
+
+    # verdict=reject (regressão vs campeão), MAS cobertura completa — o gate
+    # de cobertura (Funcional/Parcial/Não avaliado) deixa passar; é o gate de
+    # verdict abaixo (com force+admin) que decide.
+    _EVAL_REJECT_COBERTURA_COMPLETA = {
+        **_EVAL_FUNCIONAL, "verdict": "reject",
+    }
+
     def test_eval_reject_without_force_returns_409(self, app, client, repos):
         repos.registry.get_for_tenant.return_value = _model_row()
-        repos.evals.get_latest_for_model.return_value = {"verdict": "reject"}
+        repos.evals.get_latest_for_model.return_value = (
+            self._EVAL_REJECT_COBERTURA_COMPLETA
+        )
 
         resp = client.post(
             f"/api/v1/models/{MODEL_ID}/activate",
@@ -279,7 +345,9 @@ class TestActivateModel:
 
     def test_eval_reject_with_force_admin_activates(self, app, client, repos):
         repos.registry.get_for_tenant.return_value = _model_row()
-        repos.evals.get_latest_for_model.return_value = {"verdict": "reject"}
+        repos.evals.get_latest_for_model.return_value = (
+            self._EVAL_REJECT_COBERTURA_COMPLETA
+        )
         repos.registry.activate_for_tenant_module.return_value = _model_row(
             is_active=True
         )
@@ -302,7 +370,9 @@ class TestActivateModel:
             core_auth, "_has_training_override", lambda *a, **k: True
         )
         repos.registry.get_for_tenant.return_value = _model_row()
-        repos.evals.get_latest_for_model.return_value = {"verdict": "reject"}
+        repos.evals.get_latest_for_model.return_value = (
+            self._EVAL_REJECT_COBERTURA_COMPLETA
+        )
 
         resp = client.post(
             f"/api/v1/models/{MODEL_ID}/activate",
@@ -314,6 +384,7 @@ class TestActivateModel:
 
     def test_pin_failure_is_best_effort(self, app, client, repos):
         repos.registry.get_for_tenant.return_value = _model_row()
+        repos.evals.get_latest_for_model.return_value = self._EVAL_FUNCIONAL
         repos.registry.activate_for_tenant_module.return_value = _model_row(
             is_active=True
         )
