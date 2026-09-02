@@ -32,6 +32,7 @@ from app.core.edge_offline import (
 from app.core.exceptions import AuthenticationError, StorageError
 from app.core.responses import error, success
 from app.core.tenant import has_permission
+from app.domain.services.crop_origin import parse_crop_origin
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.edge_heartbeat_repository import (
     EdgeHeartbeatRepository,
@@ -718,6 +719,15 @@ def upload_edge_frame() -> tuple:
         except ValueError:
             return error("captured_at inválido (ISO 8601 esperado)", 422)
 
+    # Vínculo do RECORTE com o frame de onde ele saiu (migration 132). Ausente
+    # = a imagem é o quadro inteiro (fallback do coletor quando o detector está
+    # off/indeterminado): `crop_origin` fica NULL, e isso é a leitura certa, não
+    # um dado faltando.
+    try:
+        crop_origin = parse_crop_origin(request.form.get("crop_origin"))
+    except ValueError as exc:
+        return error(f"crop_origin inválido: {exc}", 422)
+
     # C-01: camera_id/recorder_id devem pertencer ao tenant do device
     # (do enrollment, nunca do payload) — cross-tenant -> 404, não vaza existência.
     if _get_camera_repo().get_by_id_and_tenant(camera_id_raw, tenant_id) is None:
@@ -765,6 +775,7 @@ def upload_edge_frame() -> tuple:
             captured_at=captured_at,
             tenant_id=tenant_id,
             module_code=module_code,
+            crop_origin=crop_origin,
         )
     except Exception:
         # Objeto já está no R2 mas a linha não entrou: fica órfão. Logado com

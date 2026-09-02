@@ -240,8 +240,12 @@ def _make_plan(n_tasks: int) -> list[MiningTask]:
 
 def _make_miner(recorder, uploads: list, **overrides) -> ReplayMiner:
     def _upload_fn(http, api_base_url, bearer, camera_id, recorder_id, frame_bytes,
-                    module_code, captured_at):
-        uploads.append({"camera_id": camera_id, "frame_bytes": frame_bytes})
+                    module_code, captured_at, crop_origin=None):
+        uploads.append({
+            "camera_id": camera_id,
+            "frame_bytes": frame_bytes,
+            "crop_origin": crop_origin,
+        })
         return f"frame-{len(uploads)}"
 
     defaults = dict(
@@ -1106,3 +1110,39 @@ class TestResumoGritaQuandoOFiltroComeAColheita:
         ))
         assert "comendo a colheita" not in texto
         assert "157.0 KB/frame" in texto  # custo medido, não estimado
+
+
+class TestVinculoComOFrameDeOrigem:
+    """O recorte minerado sobe com a caixa de onde saiu (migration 132).
+
+    A mineração de replay produz RECORTE por definição; sem o vínculo, cada
+    recorte minerado nasce órfão do frame cheio — que é onde o modelo é
+    SERVIDO. Foi assim que 5.259 recortes anotados do RVB se perderam.
+    """
+
+    def test_recorte_leva_a_caixa_em_coordenadas_do_frame_original(self) -> None:
+        """Conta à mão: pessoa 20x20 em (10,10) num frame 80x60, margem
+        0.25x/0.08y -> mx=5, my=1 -> caixa (5, 9) de 30x22, que é exatamente o
+        tamanho do JPEG que sobe."""
+        gravador = _GravadorQueRegistra()
+        uploads: list = []
+        miner = _make_miner(gravador, uploads, person_detector=_PessoaPequena())
+
+        miner.mine(_make_plan(1))
+
+        origem = uploads[0]["crop_origin"]
+        assert origem == {"box": [5, 9, 30, 22], "source_size": [80, 60]}
+        assert _tamanho(uploads[0]["frame_bytes"]) == tuple(origem["box"][2:])
+
+    def test_modo_frame_cheio_sobe_sem_vinculo(self) -> None:
+        """Não houve recorte: a imagem já É o quadro inteiro. NULL é a leitura
+        certa, não um dado faltando."""
+        gravador = _GravadorQueRegistra()
+        uploads: list = []
+        miner = _make_miner(
+            gravador, uploads, person_detector=_PessoaPequena(), full_frame=True
+        )
+
+        miner.mine(_make_plan(1))
+
+        assert uploads[0]["crop_origin"] is None

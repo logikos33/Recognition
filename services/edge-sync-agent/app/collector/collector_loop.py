@@ -68,6 +68,12 @@ _DEFAULT_MODULE_CODE = "epi"
 # near-exact repeat (e.g. the scene went still mid-burst), not "similar".
 _DEDUP_THRESHOLD = 2.0
 
+#: O que sobe: (bytes, vínculo com o frame de origem). O vínculo é None quando
+#: NÃO há recorte — frame cheio do fallback (detector desligado/indeterminado,
+#: recorte falhou). Aí a coluna `crop_origin` nasce NULL, que é a leitura certa:
+#: a imagem JÁ É o quadro inteiro, não há o que reprojetar.
+_Upload = tuple[bytes, "dict[str, Any] | None"]
+
 
 class TokenSource(Protocol):
     def get_bearer(self, ttl_s: int = 300) -> str: ...
@@ -147,7 +153,12 @@ class CollectorLoop:
 
     # ── upload ───────────────────────────────────────────────────────────────
 
-    def _upload(self, camera_id: str, frame_bytes: bytes) -> bool:
+    def _upload(
+        self,
+        camera_id: str,
+        frame_bytes: bytes,
+        crop_origin: "dict[str, Any] | None" = None,
+    ) -> bool:
         try:
             bearer = self._token_source.get_bearer()
             frame_id = self._upload_fn(
@@ -159,6 +170,7 @@ class CollectorLoop:
                 frame_bytes,
                 self._module_code,
                 datetime.now(timezone.utc),
+                crop_origin=crop_origin,
             )
         except FrameUploadError as exc:
             logger.warning("collector_upload_failed camera=%s err=%s", camera_id, exc)
@@ -168,21 +180,24 @@ class CollectorLoop:
 
     # ── gatilho de coleta por pessoa ─────────────────────────────────────────
 
-    def _payload_para_upload(self, camera_id: str, frame_bytes: bytes) -> bytes | None:
+    def _payload_para_upload(self, camera_id: str, frame_bytes: bytes) -> _Upload | None:
         """Decide se o frame vira upload e COMO. NÃO é detecção de EPI.
 
-        Devolve os bytes a subir, ou None pra descartar. Desfecho C (fase 1c):
+        Devolve `(bytes, vínculo)`, ou None pra descartar. Desfecho C (fase 1c):
         com pessoa detectada, sobe o RECORTE dela em resolução nativa, não o
         frame inteiro — 10 KB com cabeça de ~40px, contra 157 KB com ~17px do
-        substream antigo.
+        substream antigo. O vínculo (`crop_origin`, migration 132) é a caixa do
+        recorte nas coordenadas do quadro original: sem ele, a anotação feita no
+        recorte não volta pro frame cheio, que é onde o modelo é servido.
 
         Sem detector (desligado, modelo ausente, erro de inferência) devolve o
         frame inteiro — degrada pro comportamento antigo (gatilho por
         movimento). Coletar demais é recuperável; não coletar durante uma falha
-        silenciosa custa a janela inteira.
+        silenciosa custa a janela inteira. Nesses casos o vínculo é None **por
+        estar certo**: não houve recorte, a imagem já é o quadro inteiro.
         """
         if self._person is None:
-            return frame_bytes
+            return frame_bytes, None
         result = self._person.detect(frame_bytes)
         if result.undetermined:
             logger.warning(
@@ -190,7 +205,7 @@ class CollectorLoop:
                 "inteiro (fallback pro gatilho por movimento)",
                 camera_id,
             )
-            return frame_bytes
+            return frame_bytes, None
         if not result.found:
             logger.debug("collector_sem_pessoa camera=%s", camera_id)
             return None
@@ -205,14 +220,14 @@ class CollectorLoop:
                 "collector_recorte_falhou camera=%s err=%s — subindo o frame inteiro",
                 camera_id, exc,
             )
-            return frame_bytes
+            return frame_bytes, None
         logger.info(
             "collector_pessoa_detectada camera=%s n=%d conf=%.2f "
-            "bbox=%dx%d recorte=%dB (frame=%dB)",
+            "bbox=%dx%d recorte=%dB (frame=%dB) origem=%s",
             camera_id, len(result.boxes), result.max_confidence,
-            maior.w, maior.h, len(recorte), len(frame_bytes),
+            maior.w, maior.h, len(recorte.jpeg), len(frame_bytes), recorte.origin,
         )
-        return recorte
+        return recorte.jpeg, recorte.origin
 
     # ── burst ────────────────────────────────────────────────────────────────
 
@@ -222,10 +237,11 @@ class CollectorLoop:
         state: _CameraState,
         first_frame: bytes,
         stop_event: threading.Event,
-        first_payload: bytes | None = None,
+        first_payload: _Upload | None = None,
     ) -> int:
-        """*first_payload* é o recorte que o tick() já calculou pro frame que
-        disparou — evita rodar a inferência duas vezes no mesmo quadro."""
+        """*first_payload* é o par (bytes, vínculo) que o tick() já calculou pro
+        frame que disparou — evita rodar a inferência duas vezes no mesmo
+        quadro, e carrega junto o vínculo do recorte com o frame de origem."""
         uploaded = 0
         frame = first_frame
         for i in range(self._burst_count):
@@ -258,7 +274,7 @@ class CollectorLoop:
             )
             if payload is None:
                 continue
-            if self._upload(camera_id, payload):
+            if self._upload(camera_id, *payload):
                 # dedup compara o FRAME capturado, não o recorte: recortes de
                 # posições diferentes teriam sempre bytes diferentes e o dedup
                 # nunca pegaria a cena parada.

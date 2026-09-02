@@ -11,7 +11,7 @@ from app.infrastructure.database.repositories.base import BaseRepository
 _INSERT_COLUMNS = (
     "video_id, frame_number, filename, timestamp_seconds, source, r2_key, "
     "camera_id, recorder_id, width, height, model_confidence, captured_at, "
-    "tenant_id, module_code"
+    "tenant_id, module_code, crop_origin"
 )
 
 # tenant_id NUNCA pode nascer NULL silenciosamente: as queries de auto-training
@@ -46,6 +46,7 @@ class FrameRepository(BaseRepository):
         tenant_id: UUID | str | None = None,
         module_code: str | None = None,
         user_id: UUID | str | None = None,
+        crop_origin: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Cria registro de frame (multi-fonte desde migration 094).
 
@@ -55,6 +56,10 @@ class FrameRepository(BaseRepository):
         r2_key=filename (chave R2 legada), module_code='epi' (default do schema).
         tenant_id cai para o tenant do user_id ou do dono do vídeo quando não
         informado (linha com tenant NULL é invisível às queries tenant-scoped).
+
+        crop_origin (migration 132) liga um RECORTE ao frame de onde ele saiu:
+        {"box": [x,y,w,h], "source_size": [W,H]} em px do original. NULL para
+        tudo que não é recorte — frame cheio, upload manual, extração de vídeo.
         """
         return self._execute_mutation(
             f"INSERT INTO training_frames ({_INSERT_COLUMNS}) "
@@ -62,7 +67,7 @@ class FrameRepository(BaseRepository):
             "%(timestamp_seconds)s, %(source)s, %(r2_key)s, %(camera_id)s, "
             f"%(recorder_id)s, %(width)s, %(height)s, %(model_confidence)s, "
             f"%(captured_at)s, {_TENANT_COALESCE}, "
-            "COALESCE(%(module_code)s, 'epi')) RETURNING *",
+            "COALESCE(%(module_code)s, 'epi'), %(crop_origin)s) RETURNING *",
             {
                 "video_id": str(video_id) if video_id else None,
                 "frame_number": frame_number,
@@ -79,6 +84,7 @@ class FrameRepository(BaseRepository):
                 "tenant_id": str(tenant_id) if tenant_id else None,
                 "user_id": str(user_id) if user_id else None,
                 "module_code": module_code,
+                "crop_origin": json.dumps(crop_origin) if crop_origin else None,
             },
         )  # type: ignore[return-value]
 
@@ -97,7 +103,7 @@ class FrameRepository(BaseRepository):
             "%(timestamp_seconds)s, %(source)s, %(r2_key)s, %(camera_id)s, "
             "%(recorder_id)s, %(width)s, %(height)s, %(model_confidence)s, "
             f"%(captured_at)s, {_TENANT_COALESCE}, "
-            "COALESCE(%(module_code)s, 'epi'))",
+            "COALESCE(%(module_code)s, 'epi'), %(crop_origin)s)",
             rows,  # type: ignore[arg-type]
         )
 
@@ -123,6 +129,9 @@ class FrameRepository(BaseRepository):
             "tenant_id": _opt_str(frame.get("tenant_id")),
             "user_id": _opt_str(frame.get("user_id")),
             "module_code": frame.get("module_code"),
+            "crop_origin": (
+                json.dumps(frame["crop_origin"]) if frame.get("crop_origin") else None
+            ),
         }
 
     def get_by_id(self, frame_id: UUID) -> dict[str, Any] | None:

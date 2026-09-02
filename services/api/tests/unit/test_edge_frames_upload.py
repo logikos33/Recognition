@@ -246,6 +246,70 @@ def test_module_code_can_be_overridden(client, monkeypatch):
     assert kwargs["module_code"] == "quality"
 
 
+# ── vínculo recorte→frame de origem (migration 132) ─────────────────────────
+
+
+_CROP_ORIGIN_JSON = '{"box": [300, 100, 200, 100], "source_size": [1000, 500]}'
+
+
+def test_recorte_grava_o_vinculo_com_o_frame_de_origem(client, monkeypatch):
+    """O que o coletor sobe é o RECORTE da pessoa; sem esta caixa a anotação
+    feita nele não volta pro frame cheio — que é onde o modelo é servido."""
+    monkeypatch.setattr(device_auth, "authenticate_device", _authed(FRAMES_WRITE))
+    _, _, frame_repo, _ = _setup_repos(monkeypatch)
+
+    resp = _post_frame(
+        client, file_bytes=_tiny_jpeg_bytes(), crop_origin=_CROP_ORIGIN_JSON
+    )
+
+    assert resp.status_code == 201
+    _, kwargs = frame_repo.create.call_args
+    assert kwargs["crop_origin"] == {
+        "box": [300, 100, 200, 100],
+        "source_size": [1000, 500],
+    }
+
+
+def test_frame_cheio_sobe_sem_vinculo_e_sem_erro(client, monkeypatch):
+    """Fallback do coletor (detector off/indeterminado, recorte falhou): a
+    imagem JÁ É o quadro inteiro. Vínculo NULL é a resposta certa, não um dado
+    faltando — e não pode virar 422."""
+    monkeypatch.setattr(device_auth, "authenticate_device", _authed(FRAMES_WRITE))
+    _, _, frame_repo, _ = _setup_repos(monkeypatch)
+
+    resp = _post_frame(client, file_bytes=_tiny_jpeg_bytes())
+
+    assert resp.status_code == 201
+    _, kwargs = frame_repo.create.call_args
+    assert kwargs["crop_origin"] is None
+
+
+def test_vinculo_malformado_returns_422_e_nao_persiste(client, monkeypatch):
+    """Vínculo errado mente pior que vínculo ausente — parece existir. Aqui a
+    caixa estoura a borda do frame declarado."""
+    monkeypatch.setattr(device_auth, "authenticate_device", _authed(FRAMES_WRITE))
+    _, _, frame_repo, _ = _setup_repos(monkeypatch)
+
+    resp = _post_frame(
+        client,
+        file_bytes=_tiny_jpeg_bytes(),
+        crop_origin='{"box": [900, 0, 200, 100], "source_size": [1000, 500]}',
+    )
+
+    assert resp.status_code == 422
+    assert "crop_origin" in resp.get_json()["error"]
+    frame_repo.create.assert_not_called()
+
+
+def test_vinculo_nao_json_returns_422(client, monkeypatch):
+    monkeypatch.setattr(device_auth, "authenticate_device", _authed(FRAMES_WRITE))
+    _setup_repos(monkeypatch)
+    resp = _post_frame(
+        client, file_bytes=_tiny_jpeg_bytes(), crop_origin="isto nao e json"
+    )
+    assert resp.status_code == 422
+
+
 def test_route_registered(app):
     rules = {str(r) for r in app.url_map.iter_rules()}
     assert "/api/v1/edge/frames" in rules
