@@ -86,7 +86,14 @@ VARIANTES: dict[str, dict[str, str]] = {
 # que os jobs de referência (ab-536) usaram — trocar aqui invalidaria a
 # projeção de tempo medida abaixo, que veio deles.
 IMGSZ = 560
-BATCH = 16          # `train_rfdetr` capa em 4 + grad_accum 4 (batch efetivo 16)
+# BATCH pelo ambiente porque a RunPod NÃO entrega a placa pedida: em 02/09
+# pedimos 4090 (24 GiB) nos dois braços e veio uma A6000 (47,4 GiB) no segundo,
+# e o `_cap_de_batch()` do runner — certo para produção — liberou 16 num braço e
+# 4 no outro. Num experimento isso é um hiperparâmetro decidido pelo sorteio da
+# plataforma. Com BATCH=4 + BATCH_FIXO=1 o runner ABORTA se a placa não
+# comportar, em vez de escolher outro valor calado. Batch efetivo segue 16
+# (4 × grad_accum 4) em qualquer placa que venha.
+BATCH = int(os.environ.get("BATCH", "16"))
 EPOCAS_TETO = 100   # TETO, não alvo — quem encerra é o early-stop (paciência 15)
 
 
@@ -490,6 +497,7 @@ def disparar(variante: str) -> dict[str, Any]:
          json.dumps({
              "experimento": "v2-tres-variantes", "variante": meta["versao"],
              "imgsz": IMGSZ, "gpu": os.environ.get("RUNPOD_GPU_TYPE", "4090"),
+             "batch": BATCH, "batch_fixo": os.environ.get("BATCH_FIXO", ""),
              "timeout_s": int(os.environ["RUNPOD_TIMEOUT_SECONDS_TRAIN"]),
              "projecao": proj,
          })),

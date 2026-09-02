@@ -511,3 +511,52 @@ class TestFineTuneDoNossoCheckpoint:
         monkeypatch.setitem(sys.modules, "torch", fake_torch)
         with pytest.raises(RuntimeError, match="class_embed.bias"):
             remote_train_mod._carregar_checkpoint(tmp_path / "w.pth")
+
+
+class TestHardwareDaCorrida:
+    """A placa que a RunPod entregou tem de chegar ao job.
+
+    Motivo (medido em 02/09): pedimos 4090 nos dois braços de um A/B e veio uma
+    A6000 no segundo, sem erro. `get_pod` devolve `gpuTypeIds: null`, então sem
+    esta leitura de dentro do pod nada registra em que hardware o modelo rodou.
+    """
+
+    def _torch_de(self, monkeypatch, *, total_bytes: int, nome: str) -> None:
+        props = types.SimpleNamespace(total_memory=total_bytes, name=nome)
+        fake = types.ModuleType("torch")
+        fake.cuda = types.SimpleNamespace(get_device_properties=lambda _i: props)
+        monkeypatch.setitem(sys.modules, "torch", fake)
+
+    def test_reporta_vram_e_nome(self, remote_train_mod, monkeypatch) -> None:
+        self._torch_de(monkeypatch, total_bytes=int(47.4 * 1024**3), nome="NVIDIA RTX A6000")
+        d = remote_train_mod._hardware_da_corrida()
+        assert d["vram_gib"] == 47.4
+        assert d["gpu"] == "NVIDIA RTX A6000"
+
+    def test_gpu_ilegivel_nao_derruba(self, remote_train_mod, monkeypatch) -> None:
+        """Proveniência é sensor, não guarda: falhar a leitura não mata o treino."""
+        quebrado = types.ModuleType("torch")
+        quebrado.cuda = types.SimpleNamespace(
+            get_device_properties=lambda _i: (_ for _ in ()).throw(RuntimeError("sem cuda"))
+        )
+        monkeypatch.setitem(sys.modules, "torch", quebrado)
+        d = remote_train_mod._hardware_da_corrida()
+        assert d["vram_gib"] is None and d["gpu"] is None
+
+    def test_vai_dentro_de_metrics_no_primeiro_callback(
+        self, remote_train_mod, monkeypatch,
+    ) -> None:
+        """`_validate_callback_payload` remonta o payload com chaves FIXAS —
+        um `hardware` IRMÃO de `metrics` seria descartado em silêncio."""
+        self._torch_de(monkeypatch, total_bytes=24 * 1024**3, nome="NVIDIA GeForce RTX 4090")
+        enviados: list = []
+        monkeypatch.setattr(remote_train_mod, "post_callback", enviados.append)
+        monkeypatch.setattr(
+            remote_train_mod, "prepare_dataset",
+            lambda: (_ for _ in ()).throw(RuntimeError("para aqui")),
+        )
+        with pytest.raises(RuntimeError, match="para aqui"):
+            remote_train_mod.main()
+        primeiro = enviados[0]
+        assert "hardware" not in primeiro, "hardware fora de metrics é descartado pelo backend"
+        assert primeiro["metrics"]["hardware"]["gpu"] == "NVIDIA GeForce RTX 4090"

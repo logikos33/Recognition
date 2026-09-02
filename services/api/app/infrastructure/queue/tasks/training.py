@@ -1099,6 +1099,11 @@ def _run_runpod_train_job(
         "FRAMEWORK": framework,
         "EPOCHS": str(epochs),
         "BATCH": str(batch),
+        # Sem esta linha a trava do experimento é INERTE: `remote_train.py` lê
+        # `BATCH_FIXO` do ambiente DO POD, e `remote_env` é um dict fechado —
+        # a variável existir no processo que despacha não a leva a lugar nenhum.
+        # Vazia (o normal em produção) = adaptação por placa ligada, como antes.
+        "BATCH_FIXO": os.environ.get("BATCH_FIXO", ""),
         "IMGSZ": str(imgsz),
         "CALLBACK_URL": callback_url,
         "CALLBACK_TOKEN": callback_token,

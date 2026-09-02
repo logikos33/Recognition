@@ -654,9 +654,44 @@ def validate_onnx(onnx_path: Path) -> None:
 
 # --------------------------------------------------------------------- main
 
+def _hardware_da_corrida() -> dict:
+    """Placa que a RunPod REALMENTE entregou — para o job registrar em que
+    hardware o modelo foi treinado.
+
+    Sem isto, NADA no sistema guarda essa informação: `create_pod` manda
+    `gpuTypeIds: [tipo]` e a plataforma pode entregar outra placa sem erro, e
+    `get_pod` devolve `gpuTypeIds: null`. Em 02/09 pedimos 4090 (24 GiB) nos
+    dois braços de um A/B e veio uma A6000 (47,4 GiB) no segundo — só deu para
+    descobrir cavando o `pod.log` no R2. Um modelo cuja placa não foi
+    registrada é um modelo cuja corrida não pode ser reproduzida nem auditada.
+
+    ⚠️ Vai DENTRO de `metrics`, como chave de primeiro nível dela. Duas razões,
+    ambas verificadas no código do backend:
+      - `_validate_callback_payload` (job_handlers.py) remonta o payload com um
+        conjunto FIXO de chaves; um `hardware` irmão de `metrics` seria
+        descartado em silêncio e nunca chegaria ao banco;
+      - a gravação funde com `metrics = COALESCE(metrics,'{}') || %s::jsonb`, e
+        o `||` do jsonb é RASO — gravar isto dentro de `provenance` substituiria
+        o objeto inteiro e apagaria o `runner_sha256`/`worker_commit` que o
+        dispatch escreveu antes do pod subir.
+    """
+    dados: dict = {"vram_gib": None, "gpu": None, "batch_fixo": BATCH_FIXO}
+    gib = _vram_gib()
+    if gib is not None:
+        dados["vram_gib"] = round(gib, 1)
+    try:
+        import torch  # noqa: PLC0415 — só existe dentro do pod
+
+        dados["gpu"] = torch.cuda.get_device_properties(0).name
+    except Exception as exc:  # noqa: BLE001 — proveniência nunca derruba treino
+        logger.warning("hardware_da_corrida: nome da GPU ilegível (%s)", exc)
+    logger.info("hardware_da_corrida: %s", dados)
+    return dados
+
+
 def main() -> int:
     post_callback({"status": "running", "progress": 1,
-                   "metrics": {"stage": 1.0}})
+                   "metrics": {"stage": 1.0, "hardware": _hardware_da_corrida()}})
     dataset_dir = prepare_dataset()
     post_callback({"status": "running", "progress": 5,
                    "metrics": {"stage": 2.0}})
