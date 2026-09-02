@@ -89,6 +89,28 @@ class TestCapDeBatch:
         monkeypatch.setitem(sys.modules, "torch", self._fake_torch(47.4))
         assert remote_train_mod._cap_de_batch() == 16
 
+    def test_batch_fixo_nao_se_adapta_a_placa_grande(
+        self, remote_train_mod, monkeypatch,
+    ) -> None:
+        """O caso real de 02/09: pedimos 4090 (24G) nos dois braços do A/B e a
+        RunPod entregou A6000 (47,4G) no segundo. Sem BATCH_FIXO, um braço rodou
+        16×1 e o outro 4×4 — caminhos de normalização diferentes dentro do que
+        deveria ser o mesmo experimento."""
+        monkeypatch.setitem(sys.modules, "torch", self._fake_torch(47.4))
+        monkeypatch.setattr(remote_train_mod, "BATCH_FIXO", True)
+        monkeypatch.setattr(remote_train_mod, "BATCH", 4)
+        assert remote_train_mod._cap_de_batch() == 4
+
+    def test_batch_fixo_aborta_quando_a_placa_nao_comporta(
+        self, remote_train_mod, monkeypatch,
+    ) -> None:
+        """Num experimento, morrer alto é melhor que divergir calado."""
+        monkeypatch.setitem(sys.modules, "torch", self._fake_torch(23.7))
+        monkeypatch.setattr(remote_train_mod, "BATCH_FIXO", True)
+        monkeypatch.setattr(remote_train_mod, "BATCH", 16)
+        with pytest.raises(RuntimeError, match="não cabe nesta placa"):
+            remote_train_mod._cap_de_batch()
+
     def test_placa_de_24g_mantem_o_cap_antigo(self, remote_train_mod, monkeypatch) -> None:
         """A 3090 que causou o OOM real (job 90946c17) não pode ser liberada."""
         monkeypatch.setitem(sys.modules, "torch", self._fake_torch(23.7))

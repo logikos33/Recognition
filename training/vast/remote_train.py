@@ -62,6 +62,10 @@ EPOCHS = int(os.environ.get("EPOCHS", "50"))
 # repete o job 5894a860, morto no relógio na época 16 de 50.
 PATIENCE = int(os.environ.get("EARLY_STOPPING_PATIENCE", "15"))
 BATCH = int(os.environ.get("BATCH", "4"))
+# Desliga a adaptação do batch à placa. Ligue em EXPERIMENTO (braços de um A/B
+# precisam do mesmo caminho de acumulação); deixe desligado em PRODUÇÃO, onde
+# aproveitar a placa que veio é o certo. Ver `_cap_de_batch`.
+BATCH_FIXO = os.environ.get("BATCH_FIXO", "").strip().lower() in ("1", "true", "sim")
 IMGSZ = int(os.environ.get("IMGSZ", "560"))
 CALLBACK_URL = os.environ.get("CALLBACK_URL", "")
 CALLBACK_TOKEN = os.environ.get("CALLBACK_TOKEN", "")
@@ -388,6 +392,23 @@ def _modelo_fine_tune(dataset_dir: Path, resolution: int):
     )
 
 
+def _vram_gib() -> float | None:
+    """VRAM da placa que a RunPod REALMENTE entregou, lida de dentro do pod.
+
+    É a única fonte de verdade sobre o hardware da corrida: `create_pod` manda
+    `gpuTypeIds: [tipo]` e a plataforma pode entregar outra placa sem erro, e
+    `get_pod` devolve `gpuTypeIds: null`. Sem esta leitura, nada no sistema
+    registra em que hardware o modelo foi treinado.
+    """
+    try:
+        import torch  # noqa: PLC0415 — só existe dentro do pod
+
+        return torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
+    except Exception as exc:  # noqa: BLE001 — sem CUDA legível, quem chama decide
+        logger.warning("vram_gib: GPU ilegível (%s)", exc)
+        return None
+
+
 def _cap_de_batch() -> int:
     """Maior batch que a placa desta corrida aguenta, medido no pod.
 
@@ -398,13 +419,35 @@ def _cap_de_batch() -> int:
     Falha para 4 — o valor que já rodava — quando não dá para ler a GPU. Um
     palpite otimista aqui custa a corrida inteira em OOM na primeira época;
     um palpite conservador custa tempo. A casa prefere perder tempo.
-    """
-    try:
-        import torch  # noqa: PLC0415 — só existe dentro do pod
 
-        gib = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
-    except Exception as exc:  # noqa: BLE001 — sem CUDA legível, cai no conservador
-        logger.warning("cap_de_batch: GPU ilegível (%s) — mantendo 4", exc)
+    ⚠️ `BATCH_FIXO` desliga a adaptação. Existe porque adaptar-se à placa é
+    certo em PRODUÇÃO e errado num EXPERIMENTO, e o código não tinha como
+    distinguir os dois. Medido em 02/09: pedimos 4090 (24 GiB) nos dois braços
+    do A/B e a RunPod entregou uma A6000 (47,4 GiB) no segundo, sem erro e sem
+    registrar a troca (`get_pod` devolve `gpuTypeIds: null`). Este cap então
+    liberou 16 num braço e 4 no outro. O batch EFETIVO ficou 16 nos dois, mas
+    o caminho não: o DETR normaliza a loss por `num_boxes` a cada MICRO-lote,
+    então 4×4 normaliza sobre 4 imagens e 16×1 sobre 16 — diferença pequena e
+    real, que entraria na comparação disfarçada de diferença entre taxonomias.
+    Com `BATCH_FIXO`, uma placa que não comporta o valor pedido ABORTA em vez
+    de se adaptar: num experimento, morrer alto é melhor que divergir calado.
+    """
+    if BATCH_FIXO:
+        gib = _vram_gib()
+        cabe = 16 if (gib is None or gib >= 44) else 4
+        if BATCH > cabe:
+            raise RuntimeError(
+                f"BATCH_FIXO={BATCH} não cabe nesta placa "
+                f"({'VRAM ilegível' if gib is None else f'{gib:.1f} GiB'}, "
+                f"comporta {cabe}). A RunPod entrega placa diferente da pedida "
+                "sem avisar; num experimento controlado isso ABORTA em vez de "
+                "virar outro hiperparâmetro em silêncio."
+            )
+        logger.info("cap_de_batch: BATCH_FIXO=%d (adaptação desligada)", BATCH)
+        return BATCH
+
+    gib = _vram_gib()
+    if gib is None:
         return 4
     # 44 e não 48: a placa reporta menos que o nominal (uma A6000 de 48GB
     # informa ~47,4 GiB) e parte fica com o contexto de CUDA.
