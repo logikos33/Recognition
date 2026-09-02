@@ -262,6 +262,24 @@ Scopes: `api, frontend, migration, railway, edge, inference, training, landing, 
 
 ---
 
+## Processo no GitHub
+
+**Régua anti-burocracia: automação > cerimônia.** Nada aqui é aprovação manual na `develop`.
+
+**PR.** Template curto (`.github/PULL_REQUEST_TEMPLATE.md`): o que muda · `Closes #N` · impacto P0–P3 · **zona quente tocada** · prova. Marcar a zona quente é o roteador — marcou `migration`, valem as regras de migration; marcou `caminho servido`, vale o gate de licença. PR pequeno > PR gordo.
+
+**Cético como review.** O veredito do cético vai postado **como review no PR** (`gh pr review <N> --comment --body "..."`), não só no chat. Registro durável, **não-bloqueante na develop** — o objetivo é deixar rastro de que alguém olhou com prova reproduzida, não criar portão. Reprovação com evidência é sucesso do processo. O cético nunca é modelo menor que o autor.
+
+**Issue = fila operacional.** Toda issue nasce com dono, classificação (P0–P3) e destino. Fecha por `Closes #N` **com prova**; fechamento manual exige justificativa escrita no comentário. Achado novo vira issue com dono — nunca execução silenciosa (exceto `risk:security`, que para a fila e vai ao Vitor antes de qualquer outra coisa).
+
+**Labels.** `P0`–`P3` · `risk:security` · `faixa:*` (pista: modelo, migracao, ux, infra, github) · `humano-gated` (espera decisão/ação humana — dono nomeado na issue) · `flaky`.
+
+**Teste instável é mentira de CI.** ⛔ Proibido `.skip`, `.retry`, retry-until-green ou afrouxar seletor para passar. Flaky mascarado ensina o time a "rerunar e seguir" — e é assim que um vermelho de verdade passa despercebido. Conserte a causa (estado compartilhado, setup/teardown, timing) e prove por mutação. Teste novo nasce isolado: mock/timer/DOM limpos no `afterEach`, zero dependência de ordem.
+
+**Deploy.** Merge em `staging` ganha tag datada automática (`deploy/AAAA-MM-DD-sha`) com nota curta — complementa a proveniência de `/livez`.
+
+---
+
 ## Session Protocol
 
 ### Iniciando Sessão
