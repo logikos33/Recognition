@@ -55,6 +55,12 @@ DATASET_URL = os.environ.get("DATASET_URL", "")
 INIT_WEIGHTS_URL = os.environ.get("INIT_WEIGHTS_URL", "")
 FRAMEWORK = os.environ.get("FRAMEWORK", "rfdetr").strip().lower()
 EPOCHS = int(os.environ.get("EPOCHS", "50"))
+# Teto de épocas e paciência do early-stop andam juntos: EPOCHS é TETO, não
+# alvo — quem decide o fim é a validação parando de melhorar (`PATIENCE`), e o
+# artefato entregue é o `checkpoint_best_total`, nunca o último. Subir EPOCHS
+# sem subir PATIENCE só gasta GPU; subir PATIENCE sem subir o timeout do pod
+# repete o job 5894a860, morto no relógio na época 16 de 50.
+PATIENCE = int(os.environ.get("EARLY_STOPPING_PATIENCE", "15"))
 BATCH = int(os.environ.get("BATCH", "4"))
 IMGSZ = int(os.environ.get("IMGSZ", "560"))
 CALLBACK_URL = os.environ.get("CALLBACK_URL", "")
@@ -480,8 +486,14 @@ def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
         lr_drop=15,
         # Para quando a validação empaca — não paga GPU depois do pico.
         # use_ema=True: a métrica estável do harness sempre foi a EMA.
+        #
+        # patience 15 (era 8): com teto de 100 épocas, 8 é curto demais. O
+        # `lr_drop=15` derruba o LR de 10× na época 15, e a val costuma dar um
+        # SEGUNDO salto logo depois — com patience 8 o run morre na 14ª parada
+        # sem nunca ver o efeito do próprio decay que este arquivo configura.
+        # Tunável por env para o dia em que a curva mostrar outro platô.
         early_stopping=True,
-        early_stopping_patience=8,
+        early_stopping_patience=PATIENCE,
         early_stopping_use_ema=True,
         resolution=resolution,
         output_dir=str(OUTPUT_DIR),

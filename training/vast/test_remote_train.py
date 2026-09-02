@@ -32,8 +32,10 @@ class _FakeRFDETRModel:
     def __init__(self) -> None:
         self.callbacks: dict[str, list] = {"on_fit_epoch_end": []}
         self.epoch_logs: list[dict] = []
+        self.train_kwargs: dict = {}
 
     def train(self, **_kwargs) -> None:
+        self.train_kwargs = dict(_kwargs)
         for log in self.epoch_logs:
             for cb in self.callbacks["on_fit_epoch_end"]:
                 cb(log)
@@ -67,6 +69,42 @@ def _install_fake_rfdetr(monkeypatch, model: _FakeRFDETRModel) -> None:
     fake_pkg = types.ModuleType("rfdetr")
     fake_pkg.RFDETRBase = lambda: model
     monkeypatch.setitem(sys.modules, "rfdetr", fake_pkg)
+
+
+class TestEarlyStoppingPatience:
+    """A paciência do early-stop é o que decide quando o treino para.
+
+    Com `lr_drop=15` no mesmo `model.train(...)`, o LR só cai de 10× na época
+    15 — e a validação costuma dar um segundo salto DEPOIS disso. Uma
+    paciência menor que o próprio lr_drop mata o run antes de ele ver o efeito
+    do decay que este arquivo configura. Era 8, hardcoded.
+    """
+
+    def test_patience_vem_do_modulo_e_nao_e_menor_que_o_lr_drop(
+        self, remote_train_mod, monkeypatch,
+    ) -> None:
+        model = _FakeRFDETRModel()
+        model.epoch_logs = [{"epoch": 1, "loss": 1.0}]
+        _install_fake_rfdetr(monkeypatch, model)
+        monkeypatch.setattr(remote_train_mod, "post_callback", lambda *_: None)
+        monkeypatch.setattr(remote_train_mod, "PATIENCE", 15)
+
+        try:
+            remote_train_mod.train_rfdetr(Path("/tmp/ds"))  # noqa: S108
+        except RuntimeError:
+            pass  # export/onnx não roda no fake — irrelevante aqui
+
+        kwargs = model.train_kwargs
+        assert kwargs["early_stopping"] is True
+        # Reprova se alguém voltar a chumbar o número na chamada.
+        assert kwargs["early_stopping_patience"] == 15
+        assert kwargs["early_stopping_patience"] >= kwargs["lr_drop"], (
+            "paciência menor que lr_drop: o run morre antes de ver o decay"
+        )
+
+    def test_patience_default_do_modulo_e_15(self, remote_train_mod) -> None:
+        """Sem env, o default precisa ser o valor da regra — não o antigo 8."""
+        assert remote_train_mod.PATIENCE == 15
 
 
 class TestEpochCallbackAccumulatesMetrics:
