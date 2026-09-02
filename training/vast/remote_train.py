@@ -833,17 +833,33 @@ def _hardware_da_corrida() -> dict:
         o `||` do jsonb é RASO — gravar isto dentro de `provenance` substituiria
         o objeto inteiro e apagaria o `runner_sha256`/`worker_commit` que o
         dispatch escreveu antes do pod subir.
+
+    ⛔ NÃO IMPORTE `torch` (nem nada que puxe numpy) AQUI. Esta função roda
+    ANTES do `pip_install`, e importar torch carrega numpy e typing_extensions
+    NAS VERSÕES DA IMAGEM dentro de `sys.modules`. O `pip install` seguinte
+    atualiza o DISCO, mas o processo continua com os módulos velhos — e o
+    `from rfdetr import ...` estoura depois com um erro que aponta para o lugar
+    errado. Foi exatamente isso que matou os jobs 40e61279, b5569408, 58ae243f
+    e 15f42a12 em 02/09 com `ImportError: cannot import name 'Sentinel'`,
+    enquanto `_logar_versoes_resolvidas` (que lê o DISCO) jurava
+    typing_extensions 4.16.0. O job 04508616, que rodou ANTES desta função
+    existir, não teve o problema. A regressão nasceu no commit 3c292524 —
+    instrumentação de proveniência que envenenou o interpretador.
+
+    `nvidia-smi` é subprocesso: dá a mesma informação sem importar nada.
     """
     dados: dict = {"vram_gib": None, "gpu": None, "batch_fixo": BATCH_FIXO}
-    gib = _vram_gib()
-    if gib is not None:
-        dados["vram_gib"] = round(gib, 1)
     try:
-        import torch  # noqa: PLC0415 — só existe dentro do pod
-
-        dados["gpu"] = torch.cuda.get_device_properties(0).name
+        saida = subprocess.run(  # noqa: S603
+            ["nvidia-smi", "--query-gpu=name,memory.total",
+             "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=30, check=True,
+        ).stdout.strip().splitlines()[0]
+        nome, mib = (p.strip() for p in saida.split(","))
+        dados["gpu"] = nome
+        dados["vram_gib"] = round(float(mib) / 1024, 1)
     except Exception as exc:  # noqa: BLE001 — proveniência nunca derruba treino
-        logger.warning("hardware_da_corrida: nome da GPU ilegível (%s)", exc)
+        logger.warning("hardware_da_corrida: nvidia-smi ilegível (%s)", exc)
     logger.info("hardware_da_corrida: %s", dados)
     return dados
 

@@ -521,25 +521,41 @@ class TestHardwareDaCorrida:
     esta leitura de dentro do pod nada registra em que hardware o modelo rodou.
     """
 
-    def _torch_de(self, monkeypatch, *, total_bytes: int, nome: str) -> None:
-        props = types.SimpleNamespace(total_memory=total_bytes, name=nome)
-        fake = types.ModuleType("torch")
-        fake.cuda = types.SimpleNamespace(get_device_properties=lambda _i: props)
-        monkeypatch.setitem(sys.modules, "torch", fake)
+    def _smi(self, monkeypatch, mod, saida: str) -> None:
+        monkeypatch.setattr(
+            mod.subprocess, "run",
+            lambda *a, **k: types.SimpleNamespace(stdout=saida),
+        )
 
     def test_reporta_vram_e_nome(self, remote_train_mod, monkeypatch) -> None:
-        self._torch_de(monkeypatch, total_bytes=int(47.4 * 1024**3), nome="NVIDIA RTX A6000")
+        self._smi(monkeypatch, remote_train_mod, "NVIDIA RTX A6000, 48538\n")
         d = remote_train_mod._hardware_da_corrida()
         assert d["vram_gib"] == 47.4
         assert d["gpu"] == "NVIDIA RTX A6000"
 
+    def test_nao_importa_torch_antes_do_pip(self, remote_train_mod, monkeypatch) -> None:
+        """A REGRESSÃO 3c292524: importar torch aqui carrega numpy e
+        typing_extensions NAS VERSÕES DA IMAGEM em sys.modules; o pip seguinte
+        atualiza o disco e o processo segue com os módulos velhos. Matou quatro
+        pods em 02/09 com 'ImportError: Sentinel'."""
+        monkeypatch.delitem(sys.modules, "torch", raising=False)
+        armadilha = types.ModuleType("torch")
+
+        def _explode(*_a, **_k):
+            raise AssertionError("torch NÃO pode ser importado antes do pip_install")
+
+        armadilha.__getattr__ = _explode
+        monkeypatch.setitem(sys.modules, "torch", armadilha)
+        self._smi(monkeypatch, remote_train_mod, "NVIDIA GeForce RTX 4090, 24564\n")
+        d = remote_train_mod._hardware_da_corrida()
+        assert d["gpu"] == "NVIDIA GeForce RTX 4090"
+
     def test_gpu_ilegivel_nao_derruba(self, remote_train_mod, monkeypatch) -> None:
         """Proveniência é sensor, não guarda: falhar a leitura não mata o treino."""
-        quebrado = types.ModuleType("torch")
-        quebrado.cuda = types.SimpleNamespace(
-            get_device_properties=lambda _i: (_ for _ in ()).throw(RuntimeError("sem cuda"))
+        monkeypatch.setattr(
+            remote_train_mod.subprocess, "run",
+            lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError("nvidia-smi")),
         )
-        monkeypatch.setitem(sys.modules, "torch", quebrado)
         d = remote_train_mod._hardware_da_corrida()
         assert d["vram_gib"] is None and d["gpu"] is None
 
@@ -548,7 +564,7 @@ class TestHardwareDaCorrida:
     ) -> None:
         """`_validate_callback_payload` remonta o payload com chaves FIXAS —
         um `hardware` IRMÃO de `metrics` seria descartado em silêncio."""
-        self._torch_de(monkeypatch, total_bytes=24 * 1024**3, nome="NVIDIA GeForce RTX 4090")
+        self._smi(monkeypatch, remote_train_mod, "NVIDIA GeForce RTX 4090, 24564\n")
         enviados: list = []
         monkeypatch.setattr(remote_train_mod, "post_callback", enviados.append)
         monkeypatch.setattr(
