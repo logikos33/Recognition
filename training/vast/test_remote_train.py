@@ -71,6 +71,56 @@ def _install_fake_rfdetr(monkeypatch, model: _FakeRFDETRModel) -> None:
     monkeypatch.setitem(sys.modules, "rfdetr", fake_pkg)
 
 
+class TestCapDeBatch:
+    """O cap existe para não estourar a memória, não para ir rápido.
+
+    Errar para cima custa a corrida inteira num OOM na primeira época; errar
+    para baixo custa tempo. Por isso todo caminho de dúvida cai em 4.
+    """
+
+    def _fake_torch(self, gib):
+        """torch mínimo cuja GPU relata `gib` de memória."""
+        props = types.SimpleNamespace(total_memory=int(gib * (1024 ** 3)))
+        mod = types.ModuleType("torch")
+        mod.cuda = types.SimpleNamespace(get_device_properties=lambda _: props)
+        return mod
+
+    def test_placa_de_48g_libera_batch_16(self, remote_train_mod, monkeypatch) -> None:
+        monkeypatch.setitem(sys.modules, "torch", self._fake_torch(47.4))
+        assert remote_train_mod._cap_de_batch() == 16
+
+    def test_placa_de_24g_mantem_o_cap_antigo(self, remote_train_mod, monkeypatch) -> None:
+        """A 3090 que causou o OOM real (job 90946c17) não pode ser liberada."""
+        monkeypatch.setitem(sys.modules, "torch", self._fake_torch(23.7))
+        assert remote_train_mod._cap_de_batch() == 4
+
+    def test_sem_torch_cai_no_conservador(self, remote_train_mod, monkeypatch) -> None:
+        quebrado = types.ModuleType("torch")
+        quebrado.cuda = types.SimpleNamespace(
+            get_device_properties=lambda _: (_ for _ in ()).throw(RuntimeError("no CUDA"))
+        )
+        monkeypatch.setitem(sys.modules, "torch", quebrado)
+        assert remote_train_mod._cap_de_batch() == 4
+
+    def test_batch_efetivo_16_nos_dois_caminhos(self, remote_train_mod, monkeypatch) -> None:
+        """batch × grad_accum tem de dar 16 com ou sem a placa grande —
+        senão a troca de GPU muda a matemática do treino, não só a velocidade."""
+        for gib, esperado in ((47.4, 16), (23.7, 4)):
+            model = _FakeRFDETRModel()
+            model.epoch_logs = [{"epoch": 1, "loss": 1.0}]
+            _install_fake_rfdetr(monkeypatch, model)
+            monkeypatch.setitem(sys.modules, "torch", self._fake_torch(gib))
+            monkeypatch.setattr(remote_train_mod, "BATCH", 16)
+            monkeypatch.setattr(remote_train_mod, "post_callback", lambda *_: None)
+            try:
+                remote_train_mod.train_rfdetr(Path("/tmp/ds"))  # noqa: S108
+            except RuntimeError:
+                pass
+            kw = model.train_kwargs
+            assert kw["batch_size"] == esperado
+            assert kw["batch_size"] * kw["grad_accum_steps"] == 16
+
+
 class TestEarlyStoppingPatience:
     """A paciência do early-stop é o que decide quando o treino para.
 

@@ -388,6 +388,31 @@ def _modelo_fine_tune(dataset_dir: Path, resolution: int):
     )
 
 
+def _cap_de_batch() -> int:
+    """Maior batch que a placa desta corrida aguenta, medido no pod.
+
+    Não é escolha de performance, é guarda de OOM: o teto de 4 nasceu de um
+    estouro real em 24GB (job 90946c17, 23,38 GiB com batch 16 @616). Em 48GB
+    o 16 cabe com folga e o grad_accum deixa de ser necessário.
+
+    Falha para 4 — o valor que já rodava — quando não dá para ler a GPU. Um
+    palpite otimista aqui custa a corrida inteira em OOM na primeira época;
+    um palpite conservador custa tempo. A casa prefere perder tempo.
+    """
+    try:
+        import torch  # noqa: PLC0415 — só existe dentro do pod
+
+        gib = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
+    except Exception as exc:  # noqa: BLE001 — sem CUDA legível, cai no conservador
+        logger.warning("cap_de_batch: GPU ilegível (%s) — mantendo 4", exc)
+        return 4
+    # 44 e não 48: a placa reporta menos que o nominal (uma A6000 de 48GB
+    # informa ~47,4 GiB) e parte fica com o contexto de CUDA.
+    cap = 16 if gib >= 44 else 4
+    logger.info("cap_de_batch: %.1f GiB na GPU → batch até %d", gib, cap)
+    return cap
+
+
 def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
     """Treina RF-DETR (Apache 2.0) e exporta ONNX.
 
@@ -471,7 +496,12 @@ def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
     # RF-DETR base @616 com batch 16 estoura os 24GB da RTX 3090 (OOM real
     # no DEV, job 90946c17: 23,38 GiB em uso). Cap em 4; grad_accum preserva
     # o batch EFETIVO 16 (4 × 4) — mesma matemática, memória 1/4.
-    batch_size = min(max(BATCH, 1), 4)
+    #
+    # O cap está certo PARA 24GB e vira desperdício em 48GB, onde o 16 cabe
+    # inteiro e dispensa a acumulação. Quem decide é a placa que a RunPod
+    # sorteou nesta corrida, não uma constante: o mesmo job pode cair numa
+    # A6000 hoje e numa 3090 amanhã.
+    batch_size = min(max(BATCH, 1), _cap_de_batch())
     model.train(
         dataset_dir=str(dataset_dir),
         epochs=EPOCHS,
