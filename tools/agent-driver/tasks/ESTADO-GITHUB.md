@@ -56,34 +56,54 @@ Já existiam e foram mantidas: `risk:security`, `faixa:modelo`, `faixa:migracao`
 
 ---
 
-## Fila de trabalho
+## Resultado medido — as 5 falhas de CI dos últimos 60 runs, todas explicadas
 
-### Bloco 1 — saúde do CI
+| Run | Branch | Causa | Estado |
+|---|---|---|---|
+| 33407024422 | `develop` | `CropClassifierFiltro` (#618) | ✅ corrigida — PR #654 |
+| 33403614910 | `develop` | `Modulos.test.tsx` | ✅ corrigida — PR #654 |
+| 33501160346 | `ux2/periodo` | e2e `task-078-visual` | ❌ **veredito não entregue** |
+| 33503612087 | `ux2/periodo` | e2e `task-078-visual` | ❌ **veredito não entregue** |
+| 33459508504 | `ux2/a1` | **Docs gate** | ✅ não é flaky — portão funcionando |
+
+**4 de 5 explicadas com certeza.** As duas de `develop` eram as MESMAS duas famílias mortas no PR #654 — não era coincidência de branch, era o mesmo defeito batendo em todo lugar.
+
+## Bloco 1 — saúde do CI
+
 | # | Item | Estado |
 |---|---|---|
-| 1.1 | Flaky vitest: #618 CropClassifierFiltro · #627 CameraModelAssignment · Modulos.test.tsx | em execução (`wt-github`) |
-| 1.2 | Flaky/regressão e2e `task-078-visual` + 2 falhas na própria `develop` | em execução (`wt-gh-e2e`) |
-| 1.3 | Padrão anti-flaky escrito como regra | ✅ CLAUDE.md § Processo no GitHub |
+| 1.1a | #618 `CropClassifierFiltro` | ✅ PR #654 — causa medida, mutação, 3× shuffle verde, **CI verde** |
+| 1.1b | `Modulos.test.tsx` | ✅ PR #654 — mesma causa |
+| 1.1c | #627 `CameraModelAssignment` | ⚠️ **segue aberta — não reproduzida.** Hipótese registrada na issue. Sem reprodução não há causa medida, e sem causa não se mexe no teste. |
+| 1.2 | e2e `task-078-visual` — flake ou regressão do #645? | ❌ **NÃO AUDITÁVEL nesta rodada.** A pista não entregou o veredito. **Ninguém sabe se o #645 tem regressão real.** Ver abaixo. |
+| 1.3 | Padrão anti-flaky como regra | ✅ CLAUDE.md (PR #652) |
 
-**Hipóteses concorrentes do 1.1 (a medir, não assumir):**
-- (H1) vazamento de estado entre arquivos — **improvável**: `vitest.config.ts` não tem `isolate:false`, e o vitest isola cada arquivo por padrão.
-- (H2) **timing sob contenção de CPU** — `src/test/setup.ts` tem só `afterEach(cleanup)`; "passa isolado, falha em paralelo" é a assinatura clássica de `waitFor` estourando com N workers disputando CPU.
+**A causa raiz, medida — e a hipótese das issues caiu.** #618 e #627 supunham *poluição de estado entre arquivos*. **Não se sustenta:** `vitest.config.ts` não tem `isolate:false` e o vitest isola cada arquivo por padrão. A causa real é **corrida entre `useEffect` e evento**: o teste espera a RENDERIZAÇÃO (`findBy*`) quando devia esperar o EFEITO assentar. Sob contenção de CPU o `fireEvent` cai entre um commit de efeito e outro.
 
-### Bloco 2 — pacote GitHub
+⛔ **`waitFor` na asserção NÃO conserta isto** — foi tentado e reprovado. Em `Modulos.tsx:174`, com `cartoes` velho o handler **engole a tecla**: `navegar` nunca é chamado e nunca será. `waitFor` conserta chamada ATRASADA, não PERDIDA. Correção certa: `await act(async () => {})` ANTES do evento.
+
+## Bloco 2 — pacote GitHub
+
 | # | Item | Estado |
 |---|---|---|
-| 2.2 | Template de PR curto (27→19 linhas, ~20→8 caixas) | ✅ PR #652 |
-| 2.3 | Labels formais | ✅ 12 criadas |
+| 2.1 | Branch protection `staging`/`main` | ✅ **aplicada** (decisão do Vitor: checks verdes, sem aprovação, admin passa) |
+| 2.2 | Template de PR curto | ✅ PR #652 — 27→19 linhas, ~20→8 caixas |
+| 2.3 | Labels formais | ✅ 12 criadas; 0 issues sem label |
 | 2.4 | Issue com dono/classificação/destino | ✅ PR #652 |
-| 2.4b | **Jardineiro** — triagem das 64 issues abertas | em execução (triagem com prova) |
-| 2.5 | Fila operacional E1…E10 vira issue | ⛔ **bloqueado** — lista não existe no repo (ver acima) |
-| 2.6 | Cético como review, documentado | ✅ PR #652 (CLAUDE.md) |
-| 2.7 | Secret scanning · push protection · Dependabot | ✅ (1 resíduo: non-provider patterns, ação Vitor) |
-| 2.8 | CODEOWNERS mapeia zonas quentes | ✅ PR #652 |
-| 2.9 | Tag de deploy datada no merge para staging | ✅ PR #652 |
-| 2.1 | **Branch protection em `staging`/`main`** | 🛑 **AGUARDA VITOR** (R9 — muda o fluxo de merge dele) |
+| 2.4b | Jardineiro | ⚠️ **parcial** — ~19 de 60 auditadas; 3 fechadas com prova (#530, #475, #536) |
+| 2.5 | Fila E1…E10 vira issue | ⛔ bloqueado — lista não existe no repo |
+| 2.6 | Cético como review | ✅ documentado + **exercido no PR #654** |
+| 2.7 | Secret scanning · Dependabot | ✅ (1 resíduo: non-provider patterns, ação Vitor pela UI) |
+| 2.8 | CODEOWNERS | ✅ PR #652 |
+| 2.9 | Tag de deploy | ✅ PR #652 |
+| 2.10 | Relatório semanal da fila | ✅ PR #652 — `scripts/ci/issues_report.py` |
 
----
+## O que ficou ABERTO com dono
+
+- **#655 🔴 `risk:security`** — advisory nova de `browserslist` (high) publicada HOJE deixa todo PR vermelho. Janela registrada: #652 às 05:36 passou, #654 às 06:04 falhou, **zero mudança de dependência**. ⛔ Não consertei (R7). **Decisão A/B no corpo da issue → Vitor.**
+- **#627** — flaky não reproduzido; hipótese e receita de reprodução registradas na issue.
+- **e2e `task-078-visual`** — **o buraco desta rodada.** Não se sabe se o PR #645 tem regressão real na tela de Eventos (o PR mexe justamente ali, e o teste que quebra navega Eventos→detalhe). **Não mergear o #645 sem alguém rodar esse e2e nas duas branches.**
+- **41 issues não auditadas** pelo jardineiro.
 
 ## Único gate humano desta pista
 
