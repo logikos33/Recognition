@@ -46,10 +46,23 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import sys
 from pathlib import Path
 from typing import Any
+
+# ── Taxonomia da variante C: IMPORTADA de quem a define, nunca recopiada ──────
+# Duas cópias divergiram em silêncio e o resultado foi que `conferir_dicionario_c`
+# RECUSAVA o dataset que `converter_variante_c.py` produz: ele emite `mao`,
+# `regiao_olhos`, `regiao_boca_nariz`, `protetor_auricular`; a tabela daqui
+# pedia `mão`, `rosto`, `protetor auricular`. Nenhum dos dois estava "errado" —
+# eram duas verdades sobre a mesma taxonomia, e a errada era a que ninguém rodou.
+_spec = importlib.util.spec_from_file_location(
+    "converter_variante_c", Path(__file__).resolve().parent / "converter_variante_c.py"
+)
+_vc = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_vc)
 
 # ── Régua e limiares ──────────────────────────────────────────────────────────
 # 0,30 é o "melhor limiar" da medição do #536 registrada na ADR-0067 — é de lá
@@ -108,17 +121,21 @@ MAPA_AUSENCIA: dict[str, str] = {
 CLASSE_SO_DIRETA = "Uso incorreto de mascara"
 CLASSES_AUSENCIA: tuple[str, ...] = (*MAPA_AUSENCIA.values(), CLASSE_SO_DIRETA)
 
-# Variante C — classe de ausência → (parte do corpo âncora, EPI que a cobre).
+# Variante C — classe de ausência → (parte do corpo âncora, EPIs que a cobrem).
 # A parte do corpo é a ÂNCORA: sem ela detectada, C não fala (abstenção).
-# ponytail: nomes fixos porque a taxonomia C ainda não existe; quando o dataset
-# convertido chegar com outros rótulos, é este dicionário que muda — e
-# `conferir_dicionario_c()` recusa rodar se os nomes não baterem, para uma
-# incompatibilidade não sair disfarçada de "C nunca acusou nada".
-MAPA_SOBREPOSICAO: dict[str, tuple[str, str]] = {
-    "Sem Luvas": ("mão", "luva"),
-    "Sem mascara": ("rosto", "máscara"),
-    "Sem Óculos": ("rosto", "óculos"),
-    "Sem protetor de ouvido": ("orelha", "protetor auricular"),
+#
+# DERIVADO, não digitado: a âncora sai de `_vc.MAPA["Sem X"]` (a caixa de
+# ausência vira exatamente a parte do corpo) e os EPIs de `_vc.PROTEGE[parte]`.
+# Assim o dicionário nasce compatível com o dataset que o conversor produz, e
+# `conferir_dicionario_c` deixa de reprovar por diferença de grafia.
+#
+# São EPIs no PLURAL porque `regiao_boca_nariz` é coberta por `mascara` E
+# `mascara_incorreta`: máscara no queixo é máscara PRESENTE e mal usada — se só
+# `mascara` contasse, as 219 caixas de "Uso incorreto" do RVB virariam acusação
+# de "Sem mascara", que é o falso positivo que a variante C existe para evitar.
+MAPA_SOBREPOSICAO: dict[str, tuple[str, tuple[str, ...]]] = {
+    ausencia: (_vc.MAPA[ausencia][0], _vc.PROTEGE[_vc.MAPA[ausencia][0]])
+    for ausencia in ("Sem Luvas", "Sem mascara", "Sem Óculos", "Sem protetor de ouvido")
 }
 
 
@@ -245,12 +262,12 @@ def acusacoes_c(
             if det["confidence"] >= limiar:
                 caixas.setdefault(det["class"], []).append(det["bbox"])
 
-        for classe_ausencia, (parte, epi) in MAPA_SOBREPOSICAO.items():
+        for classe_ausencia, (parte, epis) in MAPA_SOBREPOSICAO.items():
             ancoras = caixas.get(parte, [])
             if not ancoras:
                 abstencoes[classe_ausencia].add(image_id)
                 continue
-            equipamentos = caixas.get(epi, [])
+            equipamentos = [c for epi in epis for c in caixas.get(epi, [])]
             # Uma âncora descoberta basta para acusar a imagem — e a sobreposição
             # é por PAR, então a luva de uma pessoa não cobre a mão da outra.
             if any(
@@ -276,7 +293,9 @@ def conferir_dicionario_c(classes: list[str]) -> None:
     o relatório sairia dizendo "C nunca acusou" — que é indistinguível de "C é
     conservadora". Erro de fiação não pode virar resultado (#542).
     """
-    exigidos = {nome for par in MAPA_SOBREPOSICAO.values() for nome in par}
+    exigidos = {parte for parte, _ in MAPA_SOBREPOSICAO.values()} | {
+        epi for _, epis in MAPA_SOBREPOSICAO.values() for epi in epis
+    }
     faltando = sorted(exigidos - set(classes))
     if faltando:
         raise SystemExit(

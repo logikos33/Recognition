@@ -174,7 +174,13 @@ class TestTresVariantesDoMesmoInsumo:
 
     def test_espacos_de_classe_nao_se_confundem(self):
         assert len(conv.classes_da_variante("a")) == 5
-        assert len(conv.classes_da_variante("b")) == 10
+        # 5 presença + 5 "Sem X" + "Uso incorreto de mascara". A 11ª não é
+        # enfeite: `ab_ausencia.CLASSES_AUSENCIA` a MEDE no A/B, e sem ela na
+        # taxonomia a variante B sairia com recall 0 numa classe que nunca lhe
+        # foi ensinada — além de jogar fora as 219 caixas que o RVB tem dela
+        # (medido no DEV em 2026-09-02) enquanto a C as aproveita.
+        assert len(conv.classes_da_variante("b")) == 11
+        assert conv.CLASSE_SO_DIRETA in conv.classes_da_variante("b")
         assert set(conv.classes_da_variante("a")) < set(conv.classes_da_variante("b"))
 
     def test_a_sobreposicao_de_nomes_entre_B_e_C_esta_fixada(self):

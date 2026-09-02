@@ -183,43 +183,43 @@ def _c(dets, limiar=0.30, sobrep=0.50):
 
 
 def test_variante_c_acusa_mao_sem_luva_sobreposta():
-    acusadas, abstencoes = _c([_det("mão", bbox=MAO)])
+    acusadas, abstencoes = _c([_det("mao", bbox=MAO)])
     assert acusadas["Sem Luvas"] == {1}
     assert abstencoes["Sem Luvas"] == set()  # a âncora apareceu: houve julgamento
 
 
 def test_variante_c_nao_acusa_mao_com_luva_sobreposta():
-    acusadas, _ = _c([_det("mão", bbox=MAO), _det("luva", bbox=LUVA_NA_MAO)])
+    acusadas, _ = _c([_det("mao", bbox=MAO), _det("luva", bbox=LUVA_NA_MAO)])
     assert acusadas["Sem Luvas"] == set()
 
 
 def test_variante_c_nao_deixa_a_luva_de_uma_pessoa_cobrir_a_mao_da_outra():
     """Duas pessoas na cena: a luva está em cima da mão 1, a mão 2 está nua."""
     acusadas, _ = _c([
-        _det("mão", bbox=MAO), _det("luva", bbox=LUVA_NA_MAO), _det("mão", bbox=MAO_2),
+        _det("mao", bbox=MAO), _det("luva", bbox=LUVA_NA_MAO), _det("mao", bbox=MAO_2),
     ])
     assert acusadas["Sem Luvas"] == {1}
 
 
 def test_variante_c_com_epi_que_nao_sobrepoe_nenhuma_parte_acusa():
     """Luva detectada solta no canto não inocenta a mão que está do outro lado."""
-    acusadas, _ = _c([_det("mão", bbox=MAO), _det("luva", bbox=[900, 900, 15, 15])])
+    acusadas, _ = _c([_det("mao", bbox=MAO), _det("luva", bbox=[900, 900, 15, 15])])
     assert acusadas["Sem Luvas"] == {1}
 
 
 def test_variante_c_duas_maos_uma_com_luva_outra_sem_acusa():
     acusadas, _ = _c([
-        _det("mão", bbox=MAO),
+        _det("mao", bbox=MAO),
         _det("luva", bbox=LUVA_NA_MAO),
-        _det("mão", bbox=[300, 100, 40, 40]),
+        _det("mao", bbox=[300, 100, 40, 40]),
     ])
     assert acusadas["Sem Luvas"] == {1}
 
 
 def test_variante_c_duas_maos_ambas_com_luva_nao_acusa():
     acusadas, _ = _c([
-        _det("mão", bbox=MAO), _det("luva", bbox=LUVA_NA_MAO),
-        _det("mão", bbox=[300, 100, 40, 40]), _det("luva", bbox=[310, 110, 15, 15]),
+        _det("mao", bbox=MAO), _det("luva", bbox=LUVA_NA_MAO),
+        _det("mao", bbox=[300, 100, 40, 40]), _det("luva", bbox=[310, 110, 15, 15]),
     ])
     assert acusadas["Sem Luvas"] == set()
 
@@ -228,30 +228,56 @@ def test_variante_c_orelha_sem_abafador_acusa_e_com_abafador_nao():
     acusadas, _ = _c([_det("orelha", bbox=ORELHA)])
     assert acusadas["Sem protetor de ouvido"] == {1}
     acusadas, _ = _c([
-        _det("orelha", bbox=ORELHA), _det("protetor auricular", bbox=ABAFADOR)
+        _det("orelha", bbox=ORELHA), _det("protetor_auricular", bbox=ABAFADOR)
     ])
     assert acusadas["Sem protetor de ouvido"] == set()
 
 
-def test_variante_c_rosto_serve_de_ancora_para_mascara_e_oculos():
-    rosto = [50, 50, 100, 120]
-    acusadas, _ = _c([_det("rosto", bbox=rosto), _det("máscara", bbox=[70, 100, 60, 40])])
+def test_variante_c_olhos_e_boca_sao_ancoras_SEPARADAS():
+    """Não há âncora `rosto`: máscara na boca não inocenta nem acusa os olhos.
+
+    `converter_variante_c` MEDIU as duas regiões como geometricamente distintas
+    (KS D=0,518 na razão de aspecto, IoU médio 0,078 em 63 frames com as duas no
+    mesmo rosto). Uma âncora `rosto` única — que era o que este teste exigia —
+    faria a máscara detectada decidir sobre óculos por vizinhança, não por
+    evidência, e o dataset que o conversor produz não tem esse nome.
+    """
+    boca = [70, 100, 60, 40]
+    acusadas, abstencoes = _c([
+        _det("regiao_boca_nariz", bbox=boca), _det("mascara", bbox=boca),
+    ])
+    assert acusadas["Sem mascara"] == set()   # boca julgada, máscara sobreposta
+    assert acusadas["Sem Óculos"] == set()    # olhos NÃO detectados: não acusa
+    assert abstencoes["Sem Óculos"] == {1}    # ...abstém-se, que é o correto
+
+
+def test_variante_c_mascara_incorreta_nao_vira_acusacao_de_sem_mascara():
+    """Máscara no queixo é máscara PRESENTE. `Sem mascara` seria falso positivo.
+
+    São 219 caixas de "Uso incorreto de mascara" no pool de export do RVB
+    (medido no DEV em 2026-09-02): com `mascara_incorreta` fora do conjunto de
+    EPIs que cobrem a âncora, todas elas virariam acusação errada de
+    "Sem mascara" — que é justamente a distinção que o cliente pediu.
+    """
+    boca = [70, 100, 60, 40]
+    acusadas, _ = _c([
+        _det("regiao_boca_nariz", bbox=boca), _det("mascara_incorreta", bbox=boca),
+    ])
     assert acusadas["Sem mascara"] == set()
-    assert acusadas["Sem Óculos"] == {1}  # mesma âncora, EPI diferente
 
 
 def test_variante_c_respeita_o_limiar_de_sobreposicao():
     """Luva meio dentro, meio fora: acusa a 0,90 e não acusa a 0,25."""
     meia_luva = [125, 110, 30, 15]  # metade da área cai fora da mão
     assert ab.sobreposicao(MAO, meia_luva) == pytest.approx(0.5)
-    assert _c([_det("mão", bbox=MAO), _det("luva", bbox=meia_luva)], sobrep=0.90)[0][
+    assert _c([_det("mao", bbox=MAO), _det("luva", bbox=meia_luva)], sobrep=0.90)[0][
         "Sem Luvas"] == {1}
-    assert _c([_det("mão", bbox=MAO), _det("luva", bbox=meia_luva)], sobrep=0.25)[0][
+    assert _c([_det("mao", bbox=MAO), _det("luva", bbox=meia_luva)], sobrep=0.25)[0][
         "Sem Luvas"] == set()
 
 
 def test_variante_c_respeita_o_limiar_de_confianca():
-    abaixo = [_det("mão", bbox=MAO, conf=0.10)]
+    abaixo = [_det("mao", bbox=MAO, conf=0.10)]
     acusadas, abstencoes = _c(abaixo, limiar=0.30)
     assert acusadas["Sem Luvas"] == set()
     assert abstencoes["Sem Luvas"] == {1}  # âncora abaixo do limiar = não detectada
@@ -274,7 +300,7 @@ def test_variante_c_epi_sem_parte_do_corpo_tambem_e_abstencao():
 
 def test_variante_c_abstem_por_classe_nao_pela_imagem_inteira():
     """Mão detectada, orelha não: julga luva, abstém-se de protetor."""
-    acusadas, abstencoes = _c([_det("mão", bbox=MAO)])
+    acusadas, abstencoes = _c([_det("mao", bbox=MAO)])
     assert acusadas["Sem Luvas"] == {1} and abstencoes["Sem Luvas"] == set()
     assert acusadas["Sem protetor de ouvido"] == set()
     assert abstencoes["Sem protetor de ouvido"] == {1}
@@ -282,7 +308,7 @@ def test_variante_c_abstem_por_classe_nao_pela_imagem_inteira():
 
 def test_variante_c_abstem_de_uso_incorreto_de_mascara():
     """Máscara sobreposta ao rosto não diz se está no queixo. C não tem mecanismo."""
-    _, abstencoes = _c([_det("rosto", bbox=[50, 50, 100, 120])])
+    _, abstencoes = _c([_det("regiao_boca_nariz", bbox=[70, 100, 60, 40])])
     assert abstencoes[ab.CLASSE_SO_DIRETA] == {1}
 
 
@@ -316,9 +342,8 @@ def test_conferir_dicionario_c_recusa_nomes_incompativeis():
         ab.conferir_dicionario_c(["Luvas", "Sem Luvas"])
     assert "incompatível" in str(exc.value)
     ab.conferir_dicionario_c(
-        ["pessoa", "mão", "luva", "rosto", "máscara", "óculos", "orelha",
-         "protetor auricular", "botas"]
-    )  # não levanta
+        list(ab._vc.CLASSES)
+    )  # a taxonomia REAL do conversor não levanta — a régua e o dado batem
 
 
 # ── Divisão por zero ──────────────────────────────────────────────────────────
@@ -440,7 +465,7 @@ def test_inferir_holdout_recorta_pessoa_e_da_o_mesmo_universo_para_as_duas(tmp_p
     det_pessoa = DetectorFake([[_det("person", bbox=(10, 10, 40, 60))], []])
     det_a = DetectorFake([[_det("mascara")]])  # só máscara no recorte → falta o resto
     det_b = DetectorFake([[_det("Sem Luvas", conf=0.7)], []])
-    det_c = DetectorFake([[_det("mão", bbox=MAO)], []])
+    det_c = DetectorFake([[_det("mao", bbox=MAO)], []])
 
     universo, saidas, recortes_a, falhas = ab.inferir_holdout(
         coco, tmp_path, det_a, det_pessoa, "person", {"B": det_b, "C": det_c}
@@ -495,7 +520,7 @@ def test_main_fim_a_fim_escreve_relatorio(tmp_path, monkeypatch, capsys):
         "a": DetectorFake([[_det("Luvas")]]),
         "pessoa": DetectorFake([[_det("person", bbox=(5, 5, 40, 60))]]),
         "b": DetectorFake([[_det("Sem Luvas", conf=0.7)]]),
-        "c": DetectorFake([[_det("mão", bbox=MAO), _det("orelha", bbox=ORELHA)]]),
+        "c": DetectorFake([[_det("mao", bbox=MAO), _det("orelha", bbox=ORELHA)]]),
     }
     ordem = iter(("a", "pessoa", "b", "c"))  # ordem de construção em main()
     monkeypatch.setattr(ab, "_construir_detector", lambda *a, **k: fakes[next(ordem)])
@@ -505,8 +530,7 @@ def test_main_fim_a_fim_escreve_relatorio(tmp_path, monkeypatch, capsys):
         "--holdout", str(hold / "_annotations.coco.json"),
         "--modelo-a", "a.onnx", "--modelo-b", "b.onnx", "--modelo-c", "c.onnx",
         "--pessoa", "p.onnx", "--treino", str(treino), "--saida", str(saida),
-        "--classes-c", "pessoa,mão,luva,rosto,máscara,óculos,orelha,"
-                       "protetor auricular,botas",
+        "--classes-c", ",".join(ab._vc.CLASSES),
     ]) == 0
 
     texto = saida.read_text(encoding="utf-8")

@@ -97,6 +97,14 @@ PARTES_SO_PUBLICAS = {
     ),
 }
 
+#: Não é ausência de objeto: é objeto PRESENTE e mal usado. Precisa ser classe
+#: da B porque `ab_ausencia.CLASSES_AUSENCIA` a inclui no que o A/B mede — sem
+#: ela na taxonomia, a B seria avaliada numa classe que nunca lhe foi ensinada e
+#: sairia com recall 0 por construção. E o RVB tem 219 caixas dela no pool de
+#: export (medido no DEV em 2026-09-02), que a B estaria jogando fora enquanto a
+#: C as aproveita como `mascara_incorreta` — comparação desigual.
+CLASSE_SO_DIRETA = "Uso incorreto de mascara"
+
 VARIANTES = ("a", "b", "c")
 
 
@@ -104,7 +112,7 @@ def classes_da_variante(variante: str) -> list[str]:
     if variante == "a":
         return sorted(PRESENCA)
     if variante == "b":
-        return sorted([*PRESENCA, *AUSENCIA.values()])
+        return sorted([*PRESENCA, *AUSENCIA.values(), CLASSE_SO_DIRETA])
     return sorted([*_vc.CLASSES, *PARTES_SO_PUBLICAS])
 
 
