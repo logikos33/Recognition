@@ -601,3 +601,37 @@ class TestMetricasDoLog:
     def test_log_sem_metrica_nao_inventa(self, remote_train_mod, monkeypatch) -> None:
         monkeypatch.setattr(remote_train_mod, "_LOG_BUFFER", ["pip install rfdetr\n"])
         assert remote_train_mod._metricas_do_log() == {}
+
+
+class TestPinsQueJaMataramPod:
+    """Cada pin aqui nasceu de um pod pago que morreu. Remover um é reabrir a
+    cova — este teste existe para que a remoção seja deliberada, não distraída.
+
+    numpy<2 ....... job b4d69cde, época 0, 02/09 18h38: ImportError '_center'
+                    (numpy misto 1.x/2.x via rfdetr→supervision→scipy). O job
+                    04508616, MESMO código e imagem, rodara 3h antes.
+    transformers<5  jobs 9504a3a2 / pods m0amcgnl4: rfdetr importa
+                    BackboneConfigMixin, API removida na série 5.x.
+    rfdetr==1.5.2 . versão provada; >=1.9 exige transformers>=5.1 e o pip morre
+                    em ResolutionImpossible antes da época 0.
+    """
+
+    def test_train_rfdetr_pina_o_que_precisa(self, remote_train_mod, monkeypatch) -> None:
+        pedidos: list = []
+        monkeypatch.setattr(remote_train_mod, "pip_install", lambda *p: pedidos.extend(p))
+        monkeypatch.setattr(
+            remote_train_mod, "_cap_de_batch",
+            lambda: (_ for _ in ()).throw(RuntimeError("parar depois do pip")),
+        )
+        with pytest.raises(Exception):
+            remote_train_mod.train_rfdetr(Path("/tmp/ds"))
+        assert "numpy<2" in pedidos, "sem o pin o pod morre na época 0 (job b4d69cde)"
+        assert "transformers<5" in pedidos
+        assert "rfdetr==1.5.2" in pedidos
+
+    def test_versoes_resolvidas_nao_explode_sem_o_pacote(
+        self, remote_train_mod, caplog,
+    ) -> None:
+        """Roda no venv local, onde rfdetr/supervision não existem: a função tem
+        de registrar o que achar e ignorar o resto, nunca derrubar o install."""
+        remote_train_mod._logar_versoes_resolvidas()

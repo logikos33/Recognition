@@ -157,6 +157,34 @@ def pip_install(*packages: str) -> None:
         check=True,
         text=True,
     )
+    _logar_versoes_resolvidas()
+
+
+# Pacotes cuja versão RESOLVIDA já derrubou um pod. Registrar o que de fato foi
+# instalado é o que permite comparar uma corrida que funcionou com uma que não.
+_PACOTES_CRITICOS = (
+    "numpy", "scipy", "supervision", "rfdetr", "transformers", "torch", "onnx",
+)
+
+
+def _logar_versoes_resolvidas() -> None:
+    """Registra a versão REAL de cada pacote crítico depois do install.
+
+    `pip install -q` esconde o "Successfully installed ...", e foi por isso que
+    ao diagnosticar o job b4d69cde (morto na época 0 por numpy misto) NÃO deu
+    para saber com quais versões o job 04508616 tinha funcionado 3h antes — a
+    informação nunca foi gravada. Um pod que se paga por hora precisa dizer com
+    o que ele rodou; sem isso, "funcionou ontem" não é reproduzível.
+    """
+    from importlib.metadata import PackageNotFoundError, version  # noqa: PLC0415
+
+    resolvidas = {}
+    for nome in _PACOTES_CRITICOS:
+        try:
+            resolvidas[nome] = version(nome)
+        except PackageNotFoundError:
+            continue
+    logger.info("versoes_resolvidas: %s", resolvidas)
 
 
 # ------------------------------------------------------------------ dataset
@@ -526,9 +554,22 @@ def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
     # do v9). TrainConfig é pydantic extra="forbid": kwarg que a versão não
     # conhece mata o pod pago — toda mudança aqui exige conferir os campos na
     # MESMA versão pinada, não na do venv local.
+    # PIN `numpy<2`: a imagem runpod/pytorch:2.4.0 traz numpy 1.x COMPILADO
+    # (`numpy/core/_multiarray_umath...so`). Sem restrição, o pip resolve
+    # `supervision`/`scipy` novos que arrastam numpy 2.x, cujos .py entram por
+    # cima do .so 1.x e deixam a instalação MISTA — `numpy/_core/umath.py` (2.x)
+    # importando de `numpy.core._multiarray_umath` (1.x). O pod morre na época 0
+    # com "cannot import name '_center'", pela cadeia
+    # rfdetr → supervision → scipy → numpy.
+    # Isto NÃO é hipotético e NÃO é o mesmo ambiente de ontem: o job 04508616
+    # rodou às 15h25 de 02/09 e treinou 23 épocas; o b4d69cde, MESMO código e
+    # MESMA imagem, morreu às 18h38 do mesmo dia. Só mudou o que o PyPI
+    # oferecia no meio do caminho — que é exatamente o que um pin existe para
+    # congelar. Deixar `supervision` solto num pod que se paga por hora é
+    # apostar a corrida no calendário de release de terceiros.
     pip_install(
         "rfdetr==1.5.2", "rfdetr[onnx]==1.5.2", "onnx", "onnxruntime",
-        "supervision", "transformers<5",
+        "supervision", "transformers<5", "numpy<2",
     )
     from rfdetr import RFDETRBase  # noqa: PLC0415
 
