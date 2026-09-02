@@ -13,6 +13,7 @@ tasks/model_validation.py::validate_onnx): worker sem as libs (imagem da
 API não instala ML) não quebra — task retorna status 'skipped'.
 """
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 from app.infrastructure.queue.celery_app import celery
@@ -20,6 +21,11 @@ from app.infrastructure.queue.celery_app import celery
 logger = logging.getLogger(__name__)
 
 _DEFAULT_IOU_THRESHOLD = 0.5
+# Piso de confiança com que o detector roda na avaliação. É o CHÃO da curva
+# P/R/F1: abaixo dele o detector não emite nada, então limiar de produção
+# medido abaixo disso não existiria. Baixo de propósito — a curva precisa de
+# espaço à esquerda do pico para o pico ser um pico, e não a borda da grade.
+_EVAL_CONFIDENCE = 0.25
 _MAP_REGRESSION_TOLERANCE = 0.01  # desafiante pode ficar até 1pp abaixo do campeão
 _RECALL_DROP_TOLERANCE = 0.05  # nenhuma classe pode cair mais de 5pp de recall
 _MAX_CATEGORIA_ID = 10_000  # teto de sanidade para indexar classes por id COCO
@@ -158,7 +164,7 @@ def _evaluate_model_on_split(
         backend=backend,
         model_path=local_path,
         class_names=_class_names_from_coco(coco),
-        confidence=0.25,
+        confidence=_EVAL_CONFIDENCE,
     )
 
     per_image_preds, per_image_gts = _run_split_inference(
@@ -170,6 +176,8 @@ def _evaluate_model_on_split(
     )
     from app.domain.services.eval_metrics import (
         greedy_match,
+        map_by_size,
+        map_over_iou_sweep,
         merge_confusion_matrices,
         merge_match_results,
         precision_recall_map,
@@ -185,10 +193,33 @@ def _evaluate_model_on_split(
     ]
 
     merged_matches = merge_match_results(match_results)
-    pr_map = precision_recall_map(merged_matches)
+    pr_map = precision_recall_map(merged_matches, confidence_floor=_EVAL_CONFIDENCE)
     matrix = merge_confusion_matrices(confusion_results)
 
+    # Recasamento em 10 IoUs (mAP50-95) e por faixa de tamanho: as detecções já
+    # estão em memória, o custo é aritmética perto da inferência que as gerou.
+    pares = list(zip(per_image_preds, per_image_gts))
+    pr_map.update(map_over_iou_sweep(pares))
+    pr_map["per_size"] = map_by_size(pares, iou_threshold=_DEFAULT_IOU_THRESHOLD)
+    pr_map["confidence_floor"] = _EVAL_CONFIDENCE
+    pr_map["n_gt_total"] = sum(len(g) for g in per_image_gts)
+    pr_map["n_pred_total"] = sum(len(p) for p in per_image_preds)
+
     return {"metrics": pr_map, "confusion_matrix": matrix, "images_evaluated": len(per_image_preds)}
+
+
+def _class_thresholds(metrics: dict[str, Any]) -> dict[str, float]:
+    """{classe: limiar do pico de F1} — só as classes que TÊM pico.
+
+    Classe sem GT no holdout ou que o modelo nunca acerta sai de fora, e é
+    de propósito: o consumidor cai no limiar global e sabe que caiu, em vez
+    de receber um número inventado com cara de medida.
+    """
+    return {
+        cls: d["best_threshold"]
+        for cls, d in (metrics.get("per_class") or {}).items()
+        if d.get("best_threshold") is not None
+    }
 
 
 def _piso_de_medicao(metrics: dict[str, Any]) -> str | None:
@@ -371,6 +402,7 @@ def evaluate_challenger_model(self, model_id: str, dataset_version_id: str | Non
         "images_evaluated": challenger_result["images_evaluated"],
         "champion_model_id": champion_id,
         "champion_map50": champion_metrics["map50"] if champion_metrics else None,
+        "champion_map50_95": (champion_metrics or {}).get("map50_95"),
     }
 
     evaluation = _get_eval_repo().create({
@@ -383,11 +415,48 @@ def evaluate_challenger_model(self, model_id: str, dataset_version_id: str | Non
         "verdict": verdict,
     })
 
+    # Limiar de produção POR CLASSE, junto do modelo. Antes disso o único
+    # limiar era DETECTION_CONFIDENCE_THRESHOLD=0.5 (tasks/inference.py:51),
+    # global e sem origem: ninguém sabia dizer de que medida ele saiu, porque
+    # não saiu de nenhuma. Agora sai do pico da curva F1 de cada classe, com o
+    # n e a proveniência ao lado — quem ler sabe de onde veio e em que split.
+    limiares = _class_thresholds(challenger_result["metrics"])
+    try:
+        registry_repo.merge_metrics(model_id, {
+            "class_thresholds": limiares,
+            "class_thresholds_origem": {
+                "metodo": "pico da curva F1 por classe",
+                "evaluation_id": str(evaluation["id"]) if evaluation else None,
+                "dataset_version_id": str(dsv_id),
+                "split": split,
+                "iou_threshold": _DEFAULT_IOU_THRESHOLD,
+                "confidence_floor": _EVAL_CONFIDENCE,
+                "images_evaluated": challenger_result["images_evaluated"],
+                "n_gt_por_classe": {
+                    cls: d.get("n_gt")
+                    for cls, d in (challenger_result["metrics"].get("per_class") or {}).items()
+                },
+                "sem_limiar": sorted(
+                    set(challenger_result["metrics"].get("per_class") or {}) - set(limiares)
+                ),
+                "gerado_em": datetime.now(timezone.utc).isoformat(),
+            },
+        })
+    except Exception as exc:  # noqa: BLE001 — a avaliação já está gravada
+        logger.warning(
+            "evaluate_challenger_thresholds_nao_persistidos: model=%s err=%s",
+            model_id, exc,
+        )
+
     logger.info(
         "evaluate_challenger_completed: model=%s champion=%s verdict=%s map50=%.4f "
-        "images=%d piso=%s",
+        "map50_95=%.4f images=%d n_gt=%d n_pred=%d limiares=%d piso=%s",
         model_id, champion_id, verdict, challenger_result["metrics"]["map50"],
+        challenger_result["metrics"].get("map50_95") or 0.0,
         challenger_result["images_evaluated"],
+        challenger_result["metrics"].get("n_gt_total") or 0,
+        challenger_result["metrics"].get("n_pred_total") or 0,
+        len(limiares),
         _piso_de_medicao(challenger_result["metrics"]) or "ok",
     )
     return {
@@ -396,4 +465,6 @@ def evaluate_challenger_model(self, model_id: str, dataset_version_id: str | Non
         "evaluation_id": str(evaluation["id"]) if evaluation else None,
         "verdict": verdict,
         "map50": challenger_result["metrics"]["map50"],
+        "map50_95": challenger_result["metrics"].get("map50_95"),
+        "class_thresholds": limiares,
     }
