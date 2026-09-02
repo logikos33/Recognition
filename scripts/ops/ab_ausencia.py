@@ -596,12 +596,23 @@ def inferir_holdout(
 
 
 def _construir_detector(
-    backend: str, caminho: str, classes: list[str] | None, limiar: float
+    backend: str, caminho: str, classes: list[str] | None, limiar: float,
+    entrada: int = 640,
 ) -> Any:
+    """`entrada` existe porque o estágio 1 NÃO roda a 640.
+
+    O `yolox_nano.onnx` servido no edge tem entrada FIXA 416×416
+    (`person_detector.py:_DEFAULT_MODEL_PATH`, tiling 2×2 em 416). O default de
+    `get_detector` é 640, e alimentar 640 num grafo de 416 faz o onnxruntime
+    recusar TODA imagem — silenciosamente, porque o detector loga o erro e
+    devolve zero caixas. O sintoma é o pior possível: a variante A abstém-se em
+    100% do holdout e o relatório sai "SEM VEREDITO", como se fosse resultado.
+    """
     from app.domain.detectors.factory import get_detector  # noqa: PLC0415
 
     return get_detector(
-        backend=backend, model_path=caminho, class_names=classes, confidence=limiar
+        backend=backend, model_path=caminho, class_names=classes, confidence=limiar,
+        input_size=(entrada, entrada),
     )
 
 
@@ -812,6 +823,11 @@ def montar_parser() -> argparse.ArgumentParser:
                     help="nome da classe de pessoa no dicionário do estágio 1")
     ap.add_argument("--limiar-pessoa", type=float, default=0.25,
                     help="confiança mínima do estágio 1 (padrão 0.25)")
+    ap.add_argument("--entrada-pessoa", type=int, default=416,
+                    help="lado da entrada do estágio 1 (padrão 416 — é o que o "
+                         "yolox_nano.onnx servido no edge tem FIXO no grafo; "
+                         "640 faz o onnxruntime recusar toda imagem e a A "
+                         "abster-se em 100%% do holdout)")
     ap.add_argument("--classes-a", help="dicionário do modelo A na ORDEM DO ÍNDICE, separado "
                                        "por vírgula (padrão: categorias do holdout)")
     ap.add_argument("--classes-b", help="idem para o modelo B")
@@ -844,7 +860,8 @@ def main(argv: list[str] | None = None) -> int:
 
     det_a = _construir_detector(args.backend, args.modelo_a, classes_a, _LIMIAR_COLETA)
     det_pessoa = _construir_detector(
-        args.backend_pessoa, args.pessoa, None, args.limiar_pessoa
+        args.backend_pessoa, args.pessoa, None, args.limiar_pessoa,
+        entrada=args.entrada_pessoa,
     )
     completos = {
         "B": _construir_detector(args.backend, args.modelo_b, classes_b, _LIMIAR_COLETA)
