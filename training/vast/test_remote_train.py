@@ -635,3 +635,43 @@ class TestPinsQueJaMataramPod:
         """Roda no venv local, onde rfdetr/supervision não existem: a função tem
         de registrar o que achar e ignorar o resto, nunca derrubar o install."""
         remote_train_mod._logar_versoes_resolvidas()
+
+
+class TestLockDoAmbiente:
+    """O ambiente é artefato, não instalação repetida.
+
+    Em 02/09, com os MESMOS pacotes de topo, o pip montou ambientes diferentes
+    em horas diferentes do mesmo dia e matou dois pods na época 0. Pin de topo
+    não alcança a transitiva; o lock alcança.
+    """
+
+    def test_pip_usa_o_lock(self, monkeypatch, tmp_path) -> None:
+        # Instância LIMPA de propósito: a fixture `remote_train_mod` substitui
+        # `pip_install` por um stub, e um teste do pip_install que roda o stub
+        # não testa nada.
+        spec = importlib.util.spec_from_file_location("rt_lock", _MODULE_PATH)
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["rt_lock"] = mod
+        spec.loader.exec_module(mod)
+        chamadas: list = []
+        monkeypatch.setattr(mod, "_CONSTRAINTS_PATH", tmp_path / "c.txt")
+        monkeypatch.setattr(mod, "_logar_versoes_resolvidas", lambda: None)
+        monkeypatch.setattr(mod.subprocess, "run", lambda cmd, **k: chamadas.append(cmd))
+        mod.pip_install("rfdetr==1.5.2")
+        sys.modules.pop("rt_lock", None)
+        remote_train_mod = mod
+        cmd = chamadas[0]
+        assert "-c" in cmd, "sem -c o lock não é aplicado e a transitiva volta a flutuar"
+        assert cmd[cmd.index("-c") + 1] == str(tmp_path / "c.txt")
+        assert (tmp_path / "c.txt").read_text() == remote_train_mod._CONSTRAINTS
+
+    def test_lock_travou_o_que_ja_quebrou(self, remote_train_mod) -> None:
+        lock = remote_train_mod._CONSTRAINTS
+        assert "numpy==1.26.4" in lock          # matou o pod b4d69cde
+        assert "typing_extensions==4.16.0" in lock  # matou 40e61279 e b5569408
+        assert "pydantic-core==2.46.5" in lock  # quem importava Sentinel
+
+    def test_torch_fora_do_lock(self, remote_train_mod) -> None:
+        """A imagem traz 2.4.1+cu124, build que não existe no PyPI: pinar faria
+        o pip tentar buscar e falhar."""
+        assert "torch==" not in remote_train_mod._CONSTRAINTS

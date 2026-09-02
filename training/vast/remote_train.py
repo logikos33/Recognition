@@ -150,10 +150,78 @@ def download(url: str, dest: Path, *, expect_zip: bool = False) -> None:
     dest.write_bytes(body)
 
 
+# ── O AMBIENTE COMO ARTEFATO ──────────────────────────────────────────────────
+#
+# Conjunto RESOLVIDO que subiu e importou `rfdetr` com sucesso na sonda de
+# 02/09 (`scripts/ops/sondar_ambiente.py`, pod 7x3ihchfl2h6c8). Congelar isto
+# transforma "funcionou naquele dia" em "rodou no ambiente X, e X existe para
+# sempre" — sem imagem, sem registry, sem credencial.
+#
+# Por que precisou existir: com os MESMOS pacotes de topo, o pip montou
+# ambientes DIFERENTES em horas diferentes do MESMO dia 02/09 e matou dois pods
+# na época 0 — numpy misto às 18h38, `typing_extensions.Sentinel` às 19h09.
+# Quem quebra não é o pacote de topo, é a transitiva; pin de topo não alcança.
+#
+# ⚠️ `torch` NÃO entra: a imagem traz 2.4.1+cu124, build que não existe no PyPI.
+# Pinar faria o pip tentar buscar e falhar. Nada da lista pede torch, então ele
+# fica intocado — que é como tem de ser.
+#
+# ⚠️ LIMITE HONESTO, que uma imagem congelada NÃO teria: se o PyPI fizer *yank*
+# de alguma destas versões, o lock quebra e não há cópia local de onde tirar.
+# É o preço de não haver registry hoje (ver docs/quality/AMBIENTE-TREINO.md).
+_CONSTRAINTS = """\
+accelerate==1.14.0
+albucore==0.0.23
+albumentations==1.4.24
+annotated-types==0.8.0
+contourpy==1.3.3
+cycler==0.12.1
+flatbuffers==25.12.19
+fonttools==4.64.0
+huggingface-hub==0.36.2
+kiwisolver==1.5.1
+matplotlib==3.11.1
+ml_dtypes==0.5.4
+numpy==1.26.4
+onnx==1.22.0
+onnxruntime==1.29.0
+opencv-python-headless==4.11.0.86
+peft==0.20.0
+pillow==12.3.0
+protobuf==7.36.1
+pycocotools==2.0.11
+pydantic==2.13.5
+pydantic-core==2.46.5
+pyparsing==3.3.2
+regex==2026.9.3
+rf100vl==1.1.2
+roboflow==1.4.2
+safetensors==0.8.0
+scipy==1.17.1
+supervision==0.30.1
+tokenizers==0.22.2
+tqdm==4.70.0
+transformers==4.57.6
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+"""
+_CONSTRAINTS_PATH = WORK_DIR / "constraints-treino.txt"
+
+
 def pip_install(*packages: str) -> None:
-    logger.info("pip install %s", " ".join(packages))
+    """Instala com as versões TRAVADAS pelo lock (`-c`).
+
+    `-c` restringe VERSÕES sem instalar nada por si: o conjunto pedido continua
+    sendo `packages`; cada transitiva que o pip resolver cai na versão provada.
+    """
+    _CONSTRAINTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _CONSTRAINTS_PATH.write_text(_CONSTRAINTS)
+    logger.info("pip install %s (lock: %s)", " ".join(packages), _CONSTRAINTS_PATH)
     subprocess.run(  # noqa: S603
-        [sys.executable, "-m", "pip", "install", "-q", *packages],
+        [
+            sys.executable, "-m", "pip", "install", "-q",
+            "-c", str(_CONSTRAINTS_PATH), *packages,
+        ],
         check=True,
         text=True,
     )

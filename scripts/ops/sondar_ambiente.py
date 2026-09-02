@@ -40,30 +40,36 @@ TENANT_RVB = "63c219d8-fbef-4f3c-a7c9-058c742482e2"
 IMAGEM = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
 
 
-def _pacotes_do_runner() -> list[str]:
-    """A MESMA lista que `train_rfdetr` instala — lida do runner, nunca
-    recopiada. Uma sonda que testa outra lista não testa nada."""
+def _do_runner() -> tuple[list[str], str]:
+    """A MESMA lista e o MESMO lock que `train_rfdetr` usa — lidos do runner,
+    nunca recopiados. Uma sonda que testa outro ambiente não testa nada."""
     import re
 
     fonte = (_RAIZ / "training" / "vast" / "remote_train.py").read_text()
     bloco = re.search(r"pip_install\(\s*\n(.*?)\n\s*\)", fonte, re.S)
     if not bloco:
         raise SystemExit("não achei a chamada pip_install em remote_train.py")
-    return re.findall(r'"([^"]+)"', bloco.group(1))
+    pacotes = re.findall(r'"([^"]+)"', bloco.group(1))
+    lock = re.search(r'_CONSTRAINTS = """\\\n(.*?)"""', fonte, re.S)
+    return pacotes, (lock.group(1) if lock else "")
 
 
 EXECUTOR = '''
 import json, os, subprocess, sys, urllib.request
 
 PACOTES = {pacotes!r}
+LOCK = {lock!r}
 SAIDA = os.environ["UPLOAD_URL_RESULTADO"]
 
-resultado = {{"pacotes_pedidos": PACOTES}}
+resultado = {{"pacotes_pedidos": PACOTES, "lock_linhas": len(LOCK.splitlines())}}
 try:
-    p = subprocess.run(
-        [sys.executable, "-m", "pip", "install", *PACOTES],
-        capture_output=True, text=True, timeout=1800,
-    )
+    cmd = [sys.executable, "-m", "pip", "install", *PACOTES]
+    if LOCK:
+        # Testa o ambiente COM o lock — é assim que o pod de treino instala.
+        with open("/root/c.txt", "w") as fh:
+            fh.write(LOCK)
+        cmd = [sys.executable, "-m", "pip", "install", "-c", "/root/c.txt", *PACOTES]
+    p = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
     resultado["pip_returncode"] = p.returncode
     resultado["pip_tail"] = (p.stdout + p.stderr)[-3000:]
     if p.returncode == 0:
@@ -102,8 +108,9 @@ def main() -> int:
     )
     from app.infrastructure.storage.local_storage import get_storage
 
-    pacotes = _pacotes_do_runner()
-    print(json.dumps({"pacotes": pacotes}), flush=True)
+    pacotes, lock = _do_runner()
+    print(json.dumps({"pacotes": pacotes, "lock_linhas": len(lock.splitlines())}),
+          flush=True)
 
     chave = f"sondas/ambiente/{uuid.uuid4().hex[:12]}.json"
     st = get_storage(TENANT_RVB)
@@ -116,7 +123,8 @@ def main() -> int:
     # ainda assim custa centavos. O `timeout` do onstart mata o pod de qualquer
     # jeito — a sonda não pode virar o pod esquecido que ela existe para evitar.
     onstart = build_onstart(
-        EXECUTOR.format(pacotes=pacotes), 900, executor_filename="sonda_env.py"
+        EXECUTOR.format(pacotes=pacotes, lock=lock), 900,
+        executor_filename="sonda_env.py",
     )
     pod = cli.create_pod(
         name=f"recognition-sondaenv-{uuid.uuid4().hex[:8]}",
