@@ -62,6 +62,24 @@ LOCK = {lock!r}
 SAIDA = os.environ["UPLOAD_URL_RESULTADO"]
 
 resultado = {{"pacotes_pedidos": PACOTES, "lock_linhas": len(LOCK.splitlines())}}
+
+# MESMA ORDEM DO RUNNER: o que ele faz ANTES do pip acontece aqui antes tambem.
+# Em 02/09 a sonda passou e o treino morreu porque o runner importava torch
+# antes do pip (envenenando sys.modules) e a sonda nao. Sonda que nao percorre
+# o mesmo caminho nao protege contra defeito de caminho.
+try:
+    smi = subprocess.run(
+        ["nvidia-smi", "--query-gpu=name,memory.total",
+         "--format=csv,noheader,nounits"],
+        capture_output=True, text=True, timeout=30,
+    )
+    resultado["pre_pip_nvidia_smi"] = smi.stdout.strip()[:120]
+except Exception as exc:
+    resultado["pre_pip_nvidia_smi"] = f"falhou: {{exc}}"[:200]
+resultado["pre_pip_sys_modules"] = sorted(
+    m for m in sys.modules if m in ("torch", "numpy", "typing_extensions", "scipy")
+)
+
 try:
     cmd = [sys.executable, "-m", "pip", "install", *PACOTES]
     if LOCK:
@@ -73,9 +91,14 @@ try:
     resultado["pip_returncode"] = p.returncode
     resultado["pip_tail"] = (p.stdout + p.stderr)[-3000:]
     if p.returncode == 0:
-        import rfdetr  # o import que quebrou nas duas ultimas tentativas
+        import rfdetr  # noqa: F401
         from rfdetr import RFDETRBase  # noqa: F401
         resultado["import_rfdetr"] = "OK"
+        # O import que REALMENTE matou os pods: rfdetr.datasets.coco puxa
+        # albumentations -> pydantic -> pydantic_core -> typing_extensions.
+        # `import rfdetr` sozinho passava e dava falso verde.
+        import rfdetr.datasets.coco  # noqa: F401
+        resultado["import_datasets_coco"] = "OK"
 except Exception as exc:
     resultado["erro"] = f"{{type(exc).__name__}}: {{exc}}"[:2000]
     import traceback

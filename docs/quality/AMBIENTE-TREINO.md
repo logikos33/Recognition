@@ -52,6 +52,51 @@ As duas correções de dependência de 02/09 queimaram o ciclo de 50 min para
 descobrir, no minuto 50, que faltava mais um pin. A sonda inverte isso — e de
 quebra foi ela que produziu o conjunto resolvido que virou o lock.
 
+## ⚠️ O que os pins e o lock NÃO consertaram — leia antes de tirar conclusão
+
+Um leitor que veja *"quatro pods morreram, aí pinaram as versões, aí funcionou"*
+vai concluir a coisa errada. **Os pins (`numpy<2`, `typing_extensions>=4.13`)
+estavam CERTOS desde o começo — eles só nunca chegavam a valer.**
+
+A causa das quatro mortes de 02/09 (`40e61279`, `b5569408`, `58ae243f`,
+`15f42a12`) foi outra: `_hardware_da_corrida()`, um sensor de proveniência
+acrescentado no commit `3c292524`, rodava ANTES do `pip_install` e importava
+`torch` para ler a placa. torch carrega `numpy` e `typing_extensions` **nas
+versões da imagem** dentro de `sys.modules`; o pip seguinte atualizava o DISCO e
+o processo seguia com os módulos velhos.
+
+O sintoma que fecha o caso, no mesmo pod e no mesmo segundo:
+
+```
+versoes_resolvidas: numpy 1.26.4      <- importlib.metadata lê o DISCO
+scipy: "detected version 1.26.3"      <- o que estava em MEMÓRIA
+```
+
+O job `04508616` — o único que entregou — rodou o runner `d84c7492`, ANTERIOR a
+essa função. Conserto: ler a placa por `nvidia-smi` (subprocesso, zero import).
+
+**A lição, que vale além deste arquivo: um sensor de proveniência mudou o
+comportamento daquilo que observava.** A instrumentação estava certa no QUE
+media e errada em QUANDO media. A responsabilidade é compartilhada — a proposta
+foi de quem escreveu, a aprovação do timing foi de quem revisou sem perguntar em
+que ponto do fluxo ela rodaria.
+
+## ⚠️ O limite da sonda (foi ele que deixou passar o defeito acima)
+
+A sonda passou verde enquanto o treino morria. Motivo: ela validava o
+**ambiente**, não a **sequência de imports do runner** — fazia `pip install` e
+depois `import rfdetr`, na ordem limpa, sem reproduzir o import de torch que o
+runner fazia antes do pip. **Sonda que não percorre o mesmo caminho não protege
+contra defeito de caminho.**
+
+Corrigido: a sonda agora (1) executa o passo pré-pip do runner (`nvidia-smi`) e
+registra quais módulos críticos já estão em `sys.modules` antes do pip, e (2)
+importa `rfdetr.datasets.coco` — o import que de fato quebrava. `import rfdetr`
+sozinho passava e dava falso verde.
+
+Limite residual, honesto: ela ainda não roda `model.train()`. Responde "o
+ambiente sobe e os módulos do dataset importam", não "o treino converge".
+
 ## O que o lock NÃO cobre (e a imagem cobriria)
 
 - **Yank no PyPI.** Se alguma dessas versões for removida do índice, o lock
