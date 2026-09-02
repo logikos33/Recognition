@@ -36,6 +36,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import urllib.error
@@ -187,6 +188,52 @@ def prepare_dataset() -> Path:
     if len(entries) == 1 and entries[0].is_dir():
         return entries[0]
     return DATASET_DIR
+
+
+# O RF-DETR 1.5.2 NÃO entrega mAP no dict de `on_fit_epoch_end` — ele IMPRIME.
+# Por isso `_collect_metrics` sempre devolveu {} de métrica, o callback gravou
+# vazio, e `trained_models` nasceu com map50=0/precision=0/recall=0. Não é um
+# job azarado: NENHUM modelo deste sistema jamais gravou métrica, e o ranking
+# campeão×desafiante vinha comparando zeros com zeros. Confirmado no job
+# 04508616, que custou US$ 1,71 e cujo mAP 0,4386 só existia no pod.log.
+#
+# Os padrões abaixo são os do log REAL (lidos, não presumidos):
+#   ' Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=500 ] = 0.400'
+#   'Early stopping: Current mAP (EMA): 0.4386, Best: 0.4386, Diff: ..., Min delta: 0.001'
+_RE_AP = re.compile(
+    r"Average Precision\s+\(AP\) @\[ IoU=(0\.50:0\.95|0\.50)\s+\| area=\s*all\s*\|"
+    r"[^]]*\]\s*=\s*([0-9.]+)"
+)
+# `Best:` é O NÚMERO que o early-stop usa para eleger `checkpoint_best_total` —
+# o mesmo arquivo que vira o ONNX servido. Ancorar aqui é o que garante que a
+# métrica gravada é a DO ARTEFATO ENTREGUE, e não a de outra época qualquer.
+_RE_EMA = re.compile(
+    r"Current mAP \(EMA\):\s*([0-9.]+),\s*Best:\s*([0-9.]+)"
+)
+
+
+def _metricas_do_log() -> dict:
+    """Métricas garimpadas do texto que o RF-DETR imprime nesta época.
+
+    Lê o `_LOG_BUFFER` do auto-log (o mesmo tee que sobe o pod.log ao R2) — a
+    única fonte onde essas métricas existem. Só a ÚLTIMA ocorrência de cada
+    padrão importa: o buffer acumula o run inteiro.
+    """
+    texto = "".join(_LOG_BUFFER[-4000:])
+    metrics: dict = {}
+    for iou, valor in _RE_AP.findall(texto):
+        try:
+            metrics["map" if iou == "0.50:0.95" else "map50"] = float(valor)
+        except ValueError:
+            continue
+    ema = _RE_EMA.findall(texto)
+    if ema:
+        try:
+            metrics["map_ema"] = float(ema[-1][0])
+            metrics["map_ema_best"] = float(ema[-1][1])
+        except ValueError:
+            pass
+    return metrics
 
 
 def _collect_metrics(source: dict) -> dict:
@@ -510,6 +557,9 @@ def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
         state["epoch"] += 1
         epoch = state["epoch"]
         metrics = _collect_metrics(log if isinstance(log, dict) else {})
+        # O dict do framework vem SEM mAP na 1.5.2 — o número está no texto
+        # que ele imprimiu. Sem esta linha o modelo nasce com métrica zero.
+        metrics.update(_metricas_do_log())
         # O número do framework não é descartado — vai para métrica com nome
         # que diz o que ele é, para o dia em que alguém precisar diagnosticá-lo.
         bruto = log.get("epoch") if isinstance(log, dict) else None

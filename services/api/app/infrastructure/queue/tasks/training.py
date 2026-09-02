@@ -150,6 +150,30 @@ def _publish_progress(job_id: str, payload: dict[str, Any]) -> None:
 _FRAMEWORK_LABELS = {"rfdetr": "RF-DETR", "yolo26": "YOLO26", "yolox": "YOLOX"}
 
 
+def _primeira_metrica(metrics: dict, *chaves: str) -> float:
+    """Primeira das `chaves` presente e numérica em `metrics`, senão 0.0.
+
+    Existe porque a coluna `trained_models.map50` era preenchida só com
+    `metrics.get("mAP50")` — chave que NENHUM runner deste repositório jamais
+    emitiu. O RF-DETR (via `remote_train._metricas_do_log`) reporta `map50`, com
+    'm' minúsculo; a grafia procurada aqui era herança do fluxo Ultralytics Hub,
+    deletado. Resultado medido em 02/09: TODOS os modelos do tenant com
+    map50/precision/recall = 0, e o ranking campeão×desafiante comparando zeros
+    com zeros — inclusive um censo anterior que precisou recalcular tudo rodando
+    inferência de novo, sem saber que a causa era esta linha.
+
+    Aceitar as duas grafias (em vez de renomear no runner) mantém compatível o
+    que já está gravado e o que qualquer runner futuro venha a emitir.
+    """
+    for chave in chaves:
+        if chave in metrics:
+            try:
+                return float(metrics[chave])
+            except (TypeError, ValueError):
+                continue
+    return 0.0
+
+
 def _build_model_name(framework: str, model_size: str, job_id: str) -> str:
     """Nome honesto do trained_model: reflete o framework REAL do artefato.
 
@@ -539,7 +563,7 @@ def dispatch_training(
                     model_name,
                     display_name,
                     model_path,
-                    metrics.get("mAP50", 0.0),
+                    _primeira_metrica(metrics, "mAP50", "map50"),
                     metrics.get("precision", 0.0),
                     metrics.get("recall", 0.0),
                     origin,

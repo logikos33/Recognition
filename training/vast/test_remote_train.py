@@ -560,3 +560,44 @@ class TestHardwareDaCorrida:
         primeiro = enviados[0]
         assert "hardware" not in primeiro, "hardware fora de metrics é descartado pelo backend"
         assert primeiro["metrics"]["hardware"]["gpu"] == "NVIDIA GeForce RTX 4090"
+
+
+class TestMetricasDoLog:
+    """O modelo tem de nascer sabendo quanto vale.
+
+    O RF-DETR 1.5.2 não põe mAP no dict de `on_fit_epoch_end` — ele IMPRIME. Por
+    isso `trained_models` sempre gravou map50=0/precision=0/recall=0, em TODO
+    modelo do sistema, e o ranking campeão×desafiante comparava zeros. As linhas
+    abaixo são cópias LITERAIS do pod.log do job 04508616 (US$ 1,71 pagos).
+    """
+
+    LOG_REAL = (
+        "2026-09-02 17:20:51,022 INFO rf-detr -  Average Precision  (AP) @[ IoU=0.50:0.95 "
+        "| area=   all | maxDets=500 ] = 0.401\n"
+        "2026-09-02 17:20:51,023 INFO rf-detr -  Average Precision  (AP) @[ IoU=0.50      "
+        "| area=   all | maxDets=500 ] = 0.562\n"
+        "2026-09-02 17:20:51,024 INFO rf-detr -  Average Precision  (AP) @[ IoU=0.50:0.95 "
+        "| area= small | maxDets=500 ] = 0.300\n"
+        "2026-09-02 17:20:52,001 INFO rf-detr - Early stopping: Current mAP (EMA): 0.4301, "
+        "Best: 0.4386, Diff: 0.0085, Min delta: 0.001\n"
+    )
+
+    def test_extrai_do_log_real(self, remote_train_mod, monkeypatch) -> None:
+        monkeypatch.setattr(remote_train_mod, "_LOG_BUFFER", [self.LOG_REAL])
+        m = remote_train_mod._metricas_do_log()
+        assert m["map"] == 0.401       # AP@[.5:.95], area=all — NÃO o de area=small
+        assert m["map50"] == 0.562     # AP@0.50 — o que alimenta trained_models.map50
+        assert m["map_ema"] == 0.4301
+        # `Best` é o número que elege o checkpoint_best_total, que vira o ONNX
+        # servido: a métrica gravada é a DO ARTEFATO ENTREGUE, não a da última época.
+        assert m["map_ema_best"] == 0.4386
+
+    def test_ignora_area_small_e_medium(self, remote_train_mod, monkeypatch) -> None:
+        """`area=all` é a métrica do modelo; small/medium/large são recortes.
+        Casar o padrão errado gravaria 0,300 como se fosse o mAP."""
+        monkeypatch.setattr(remote_train_mod, "_LOG_BUFFER", [self.LOG_REAL])
+        assert remote_train_mod._metricas_do_log()["map"] != 0.300
+
+    def test_log_sem_metrica_nao_inventa(self, remote_train_mod, monkeypatch) -> None:
+        monkeypatch.setattr(remote_train_mod, "_LOG_BUFFER", ["pip install rfdetr\n"])
+        assert remote_train_mod._metricas_do_log() == {}

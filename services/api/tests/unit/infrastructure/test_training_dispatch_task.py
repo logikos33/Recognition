@@ -839,3 +839,29 @@ class TestGpuEnabledFlag:
         monkeypatch.setenv("VAST_AI_API_KEY", "legacy-key")
         data = self._call_handler(app)
         assert data["gpu_enabled"] is False
+
+
+class TestPrimeiraMetrica:
+    """`trained_models.map50` lia uma chave que runner nenhum emite.
+
+    Medido em 02/09: o job 04508616 fechou com mAP EMA 0,4386 e a linha do
+    modelo (6ca25ee9) nasceu com map50=0/precision=0/recall=0 — como TODOS os
+    modelos deste sistema, porque `metrics.get("mAP50")` é grafia herdada do
+    fluxo Ultralytics Hub (deletado) e o RF-DETR reporta `map50`.
+    """
+
+    def test_aceita_a_grafia_que_o_runner_emite(self) -> None:
+        from app.infrastructure.queue.tasks.training import _primeira_metrica
+
+        assert _primeira_metrica({"map50": 0.562}, "mAP50", "map50") == 0.562
+
+    def test_preferencia_pela_primeira_chave(self) -> None:
+        from app.infrastructure.queue.tasks.training import _primeira_metrica
+
+        assert _primeira_metrica({"mAP50": 0.9, "map50": 0.1}, "mAP50", "map50") == 0.9
+
+    def test_sem_metrica_devolve_zero_e_nao_explode(self) -> None:
+        from app.infrastructure.queue.tasks.training import _primeira_metrica
+
+        assert _primeira_metrica({}, "mAP50", "map50") == 0.0
+        assert _primeira_metrica({"map50": "n/a"}, "mAP50", "map50") == 0.0
