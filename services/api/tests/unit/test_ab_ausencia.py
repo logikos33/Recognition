@@ -140,6 +140,187 @@ def test_gabarito_vem_das_anotacoes_sem_x_do_holdout():
     assert reais["Sem mascara"] == set()
 
 
+# ── Variante C: geometria do critério de sobreposição ─────────────────────────
+
+# COCO [x, y, w, h]. A mão é grande, a luva é pequena e cabe dentro dela; a
+# orelha é pequena e o abafador a engole. A relação de tamanho INVERTE entre os
+# dois pares — é exatamente por isso que o critério é IoMin e não IoU.
+MAO = [100, 100, 40, 40]          # área 1600
+LUVA_NA_MAO = [110, 110, 15, 15]  # área  225, inteiramente dentro da mão
+MAO_2 = [500, 100, 40, 40]        # outra pessoa, longe
+ORELHA = [200, 200, 10, 10]       # área  100
+ABAFADOR = [195, 195, 20, 20]     # área  400, engole a orelha
+
+
+def test_iomin_e_1_quando_a_menor_esta_dentro_da_maior_nos_dois_sentidos():
+    assert ab.sobreposicao(MAO, LUVA_NA_MAO) == pytest.approx(1.0)  # EPI menor
+    assert ab.sobreposicao(ORELHA, ABAFADOR) == pytest.approx(1.0)  # EPI maior
+
+
+def test_iou_puro_reprovaria_os_dois_pares_verdadeiros():
+    """O argumento da escolha, escrito como teste: IoU aqui mede a coisa errada."""
+    def iou(a, b):
+        inter = ab.sobreposicao(a, b) * min(a[2] * a[3], b[2] * b[3])
+        return inter / (a[2] * a[3] + b[2] * b[3] - inter)
+
+    assert iou(MAO, LUVA_NA_MAO) < 0.5   # luva dentro da mão: 0.14
+    assert iou(ORELHA, ABAFADOR) < 0.5   # abafador em volta da orelha: 0.25
+
+
+def test_iomin_e_zero_para_caixas_disjuntas():
+    assert ab.sobreposicao(MAO, MAO_2) == 0.0
+    assert ab.sobreposicao(LUVA_NA_MAO, MAO_2) == 0.0
+
+
+def test_iomin_nao_explode_com_caixa_degenerada():
+    assert ab.sobreposicao([0, 0, 0, 0], MAO) == 0.0
+
+
+# ── Variante C: acusação ──────────────────────────────────────────────────────
+
+def _c(dets, limiar=0.30, sobrep=0.50):
+    return ab.acusacoes_c({1: dets}, limiar, sobrep)
+
+
+def test_variante_c_acusa_mao_sem_luva_sobreposta():
+    acusadas, abstencoes = _c([_det("mão", bbox=MAO)])
+    assert acusadas["Sem Luvas"] == {1}
+    assert abstencoes["Sem Luvas"] == set()  # a âncora apareceu: houve julgamento
+
+
+def test_variante_c_nao_acusa_mao_com_luva_sobreposta():
+    acusadas, _ = _c([_det("mão", bbox=MAO), _det("luva", bbox=LUVA_NA_MAO)])
+    assert acusadas["Sem Luvas"] == set()
+
+
+def test_variante_c_nao_deixa_a_luva_de_uma_pessoa_cobrir_a_mao_da_outra():
+    """Duas pessoas na cena: a luva está em cima da mão 1, a mão 2 está nua."""
+    acusadas, _ = _c([
+        _det("mão", bbox=MAO), _det("luva", bbox=LUVA_NA_MAO), _det("mão", bbox=MAO_2),
+    ])
+    assert acusadas["Sem Luvas"] == {1}
+
+
+def test_variante_c_com_epi_que_nao_sobrepoe_nenhuma_parte_acusa():
+    """Luva detectada solta no canto não inocenta a mão que está do outro lado."""
+    acusadas, _ = _c([_det("mão", bbox=MAO), _det("luva", bbox=[900, 900, 15, 15])])
+    assert acusadas["Sem Luvas"] == {1}
+
+
+def test_variante_c_duas_maos_uma_com_luva_outra_sem_acusa():
+    acusadas, _ = _c([
+        _det("mão", bbox=MAO),
+        _det("luva", bbox=LUVA_NA_MAO),
+        _det("mão", bbox=[300, 100, 40, 40]),
+    ])
+    assert acusadas["Sem Luvas"] == {1}
+
+
+def test_variante_c_duas_maos_ambas_com_luva_nao_acusa():
+    acusadas, _ = _c([
+        _det("mão", bbox=MAO), _det("luva", bbox=LUVA_NA_MAO),
+        _det("mão", bbox=[300, 100, 40, 40]), _det("luva", bbox=[310, 110, 15, 15]),
+    ])
+    assert acusadas["Sem Luvas"] == set()
+
+
+def test_variante_c_orelha_sem_abafador_acusa_e_com_abafador_nao():
+    acusadas, _ = _c([_det("orelha", bbox=ORELHA)])
+    assert acusadas["Sem protetor de ouvido"] == {1}
+    acusadas, _ = _c([
+        _det("orelha", bbox=ORELHA), _det("protetor auricular", bbox=ABAFADOR)
+    ])
+    assert acusadas["Sem protetor de ouvido"] == set()
+
+
+def test_variante_c_rosto_serve_de_ancora_para_mascara_e_oculos():
+    rosto = [50, 50, 100, 120]
+    acusadas, _ = _c([_det("rosto", bbox=rosto), _det("máscara", bbox=[70, 100, 60, 40])])
+    assert acusadas["Sem mascara"] == set()
+    assert acusadas["Sem Óculos"] == {1}  # mesma âncora, EPI diferente
+
+
+def test_variante_c_respeita_o_limiar_de_sobreposicao():
+    """Luva meio dentro, meio fora: acusa a 0,90 e não acusa a 0,25."""
+    meia_luva = [125, 110, 30, 15]  # metade da área cai fora da mão
+    assert ab.sobreposicao(MAO, meia_luva) == pytest.approx(0.5)
+    assert _c([_det("mão", bbox=MAO), _det("luva", bbox=meia_luva)], sobrep=0.90)[0][
+        "Sem Luvas"] == {1}
+    assert _c([_det("mão", bbox=MAO), _det("luva", bbox=meia_luva)], sobrep=0.25)[0][
+        "Sem Luvas"] == set()
+
+
+def test_variante_c_respeita_o_limiar_de_confianca():
+    abaixo = [_det("mão", bbox=MAO, conf=0.10)]
+    acusadas, abstencoes = _c(abaixo, limiar=0.30)
+    assert acusadas["Sem Luvas"] == set()
+    assert abstencoes["Sem Luvas"] == {1}  # âncora abaixo do limiar = não detectada
+
+
+# ── Variante C: ausência de evidência ≠ acusação ──────────────────────────────
+
+def test_variante_c_sem_parte_do_corpo_e_abstencao_nao_acusacao():
+    acusadas, abstencoes = _c([])
+    assert all(acusadas[c] == set() for c in ab.CLASSES_AUSENCIA)
+    assert abstencoes["Sem Luvas"] == {1}
+
+
+def test_variante_c_epi_sem_parte_do_corpo_tambem_e_abstencao():
+    """Falha do detector de parte: vejo a luva mas não a mão. Não sei de quem falar."""
+    acusadas, abstencoes = _c([_det("luva", bbox=LUVA_NA_MAO)])
+    assert acusadas["Sem Luvas"] == set()
+    assert abstencoes["Sem Luvas"] == {1}
+
+
+def test_variante_c_abstem_por_classe_nao_pela_imagem_inteira():
+    """Mão detectada, orelha não: julga luva, abstém-se de protetor."""
+    acusadas, abstencoes = _c([_det("mão", bbox=MAO)])
+    assert acusadas["Sem Luvas"] == {1} and abstencoes["Sem Luvas"] == set()
+    assert acusadas["Sem protetor de ouvido"] == set()
+    assert abstencoes["Sem protetor de ouvido"] == {1}
+
+
+def test_variante_c_abstem_de_uso_incorreto_de_mascara():
+    """Máscara sobreposta ao rosto não diz se está no queixo. C não tem mecanismo."""
+    _, abstencoes = _c([_det("rosto", bbox=[50, 50, 100, 120])])
+    assert abstencoes[ab.CLASSE_SO_DIRETA] == {1}
+
+
+def test_abstencao_nao_vira_tp_nem_fp():
+    """A prova de que ausência de evidência não entra na conta de acusação."""
+    m = ab.contar(acusadas=set(), reais={1}, universo={1, 2}, abstencoes={1, 2})
+    assert (m["tp"], m["fp"]) == (0, 0)
+    assert m["precisao"] is None  # não houve acusação para julgar
+    assert m["abstencoes"] == 2
+    assert m["taxa_abstencao"] == 1.0
+    assert m["fn"] == 1 and m["fn_por_abstencao"] == 1  # a perda foi por cegueira
+
+
+def test_fn_por_abstencao_separa_cegueira_de_julgamento_errado():
+    # imagem 1: absteve-se e a ausência era real  → FN por abstenção
+    # imagem 2: julgou, não acusou, era real      → FN por julgamento
+    m = ab.contar(acusadas=set(), reais={1, 2}, universo={1, 2}, abstencoes={1})
+    assert m["fn"] == 2
+    assert m["fn_por_abstencao"] == 1
+
+
+def test_abstencoes_a_marca_imagem_sem_pessoa():
+    abst = ab.abstencoes_a({1: [], 2: [[_det("Luvas")]]})
+    assert abst["Sem Luvas"] == {1}
+    assert abst[ab.CLASSE_SO_DIRETA] == {1, 2}  # A nunca vê "uso incorreto"
+
+
+def test_conferir_dicionario_c_recusa_nomes_incompativeis():
+    """Dicionário errado faria C abstender-se em 100% e parecer cautelosa."""
+    with pytest.raises(SystemExit) as exc:
+        ab.conferir_dicionario_c(["Luvas", "Sem Luvas"])
+    assert "incompatível" in str(exc.value)
+    ab.conferir_dicionario_c(
+        ["pessoa", "mão", "luva", "rosto", "máscara", "óculos", "orelha",
+         "protetor auricular", "botas"]
+    )  # não levanta
+
+
 # ── Divisão por zero ──────────────────────────────────────────────────────────
 
 def test_classe_sem_predicao_nao_explode_nem_vira_precisao_100():
@@ -179,18 +360,39 @@ def test_regua_reprova_n_insuficiente_mesmo_com_precisao_alta():
 def test_empate_tecnico_vence_a_mais_simples():
     a = _metrica(tp=60, fp=40, fn=40)
     b = _metrica(tp=61, fp=39, fn=40)
-    assert ab.veredito_classe(a, b) == "empate → A (mais simples)"
+    assert ab.vencedor_classe({"A": a, "B": b})[0] == "A"
 
 
 def test_veredito_nao_inventa_vencedor_quando_ninguem_sustenta():
     ruim = _metrica(tp=10, fp=90, fn=10)
-    assert ab.veredito_classe(ruim, ruim) == "nenhuma sustenta a régua"
+    vencedor, motivo = ab.vencedor_classe({"A": ruim, "B": ruim})
+    assert vencedor is None
+    assert motivo == "nenhuma sustenta a régua"
 
 
 def test_b_vence_quando_so_ela_sustenta_a_regua():
     a = _metrica(tp=10, fp=90, fn=10)
     b = _metrica(tp=80, fp=20, fn=10)
-    assert ab.veredito_classe(a, b) == "B vence"
+    assert ab.vencedor_classe({"A": a, "B": b})[0] == "B"
+
+
+def test_c_entra_no_veredito_e_vence_quando_e_a_unica_que_sustenta():
+    ruim = _metrica(tp=10, fp=90, fn=10)
+    boa = _metrica(tp=80, fp=20, fn=10)
+    assert ab.vencedor_classe({"A": ruim, "B": ruim, "C": boa})[0] == "C"
+
+
+def test_empate_a_tres_vence_a_mais_simples_declarada():
+    m = _metrica(tp=70, fp=30, fn=30)
+    vencedor, motivo = ab.vencedor_classe({"A": m, "B": m, "C": m})
+    assert vencedor == "A"
+    assert "empate técnico" in motivo
+
+
+def test_veredito_geral_conta_vitorias_das_tres():
+    assert ab.veredito_geral({"x": "C", "y": "C", "z": "B"}).startswith("C vence")
+    assert ab.veredito_geral({"x": None, "y": None}).startswith("SEM VEREDITO")
+    assert "vence a mais simples: B" in ab.veredito_geral({"x": "B", "y": "C"})
 
 
 # ── Guarda de vazamento ───────────────────────────────────────────────────────
@@ -238,21 +440,28 @@ def test_inferir_holdout_recorta_pessoa_e_da_o_mesmo_universo_para_as_duas(tmp_p
     det_pessoa = DetectorFake([[_det("person", bbox=(10, 10, 40, 60))], []])
     det_a = DetectorFake([[_det("mascara")]])  # só máscara no recorte → falta o resto
     det_b = DetectorFake([[_det("Sem Luvas", conf=0.7)], []])
+    det_c = DetectorFake([[_det("mão", bbox=MAO)], []])
 
-    universo, dets_b, recortes_a, falhas = ab.inferir_holdout(
-        coco, tmp_path, det_a, det_b, det_pessoa, "person"
+    universo, saidas, recortes_a, falhas = ab.inferir_holdout(
+        coco, tmp_path, det_a, det_pessoa, "person", {"B": det_b, "C": det_c}
     )
 
-    assert universo == {1, 2}  # a imagem 3 não existe → fora das DUAS
+    assert universo == {1, 2}  # a imagem 3 não existe → fora das TRÊS
     assert len(falhas) == 1 and "sumida.jpg" in falhas[0]
     assert len(recortes_a[1]) == 1 and recortes_a[2] == []
     assert det_a.chamadas == 1  # só houve pessoa na imagem 1
+    assert set(saidas["B"]) == set(saidas["C"]) == universo  # mesma prova para todas
 
     reais = ab.ausencias_reais(coco)
-    ma = ab.medir(ab.acusacoes_a(recortes_a, 0.3), reais, universo)
-    mb = ab.medir(ab.acusacoes_b(dets_b, 0.3), reais, universo)
-    assert (ma["Sem Luvas"]["tp"], ma["Sem Luvas"]["fp"]) == (1, 0)
-    assert (mb["Sem Luvas"]["tp"], mb["Sem Luvas"]["fp"]) == (1, 0)
+    medidas = ab.medir_todas(recortes_a, saidas, reais, universo, 0.3, 0.5)
+    assert set(medidas) == {"A", "B", "C"}
+    for variante in ("A", "B", "C"):
+        m = medidas[variante]["Sem Luvas"]
+        assert (m["tp"], m["fp"]) == (1, 0), variante
+    # a imagem 2 não tem pessoa (A) nem mão (C) → abstenção, não acusação
+    assert medidas["A"]["Sem Luvas"]["abstencoes"] == 1
+    assert medidas["C"]["Sem Luvas"]["abstencoes"] == 1
+    assert medidas["B"]["Sem Luvas"]["abstencoes"] == 0  # B não tem abstenção
 
 
 def test_guard_conta_arquivos_hasheados_nao_hashes_distintos(tmp_path):
@@ -283,12 +492,54 @@ def test_main_fim_a_fim_escreve_relatorio(tmp_path, monkeypatch, capsys):
     treino = _escrever_coco(tmp_path / "train", ["t1.jpg"])
 
     fakes = {
-        "pessoa": DetectorFake([[_det("person", bbox=(5, 5, 40, 60))]]),
         "a": DetectorFake([[_det("Luvas")]]),
+        "pessoa": DetectorFake([[_det("person", bbox=(5, 5, 40, 60))]]),
         "b": DetectorFake([[_det("Sem Luvas", conf=0.7)]]),
+        "c": DetectorFake([[_det("mão", bbox=MAO), _det("orelha", bbox=ORELHA)]]),
     }
-    ordem = iter(("a", "b", "pessoa"))  # main constrói A, B e pessoa nesta ordem
+    ordem = iter(("a", "pessoa", "b", "c"))  # ordem de construção em main()
     monkeypatch.setattr(ab, "_construir_detector", lambda *a, **k: fakes[next(ordem)])
+
+    saida = tmp_path / "rel.md"
+    assert ab.main([
+        "--holdout", str(hold / "_annotations.coco.json"),
+        "--modelo-a", "a.onnx", "--modelo-b", "b.onnx", "--modelo-c", "c.onnx",
+        "--pessoa", "p.onnx", "--treino", str(treino), "--saida", str(saida),
+        "--classes-c", "pessoa,mão,luva,rosto,máscara,óculos,orelha,"
+                       "protetor auricular,botas",
+    ]) == 0
+
+    texto = saida.read_text(encoding="utf-8")
+    assert "Guarda de vazamento" in texto
+    assert "Sem protetor de ouvido" in texto  # todas as classes de ausência na tabela
+    assert "Varredura de limiares de confiança" in texto
+    assert "Varredura do limiar de SOBREPOSIÇÃO" in texto
+    assert "IoMin" in texto and "abstenção" in texto
+    assert "C · sobreposição geométrica" in texto  # as três na mesma tabela
+    assert "O que este relatório NÃO mediu" in texto
+    assert "veredito geral" in capsys.readouterr().out
+
+
+def test_main_sem_modelo_c_sai_so_com_a_e_b(tmp_path, monkeypatch):
+    """C é opcional — o script continua servindo antes de a variante existir."""
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+
+    hold = tmp_path / "hold"
+    hold.mkdir()
+    cv2.imwrite(str(hold / "h1.jpg"), np.full((80, 80, 3), 200, dtype=np.uint8))
+    (hold / "_annotations.coco.json").write_text(
+        json.dumps(_coco([(1, "h1.jpg")], [(0, "Luvas"), (1, "Sem Luvas")], [(1, 1)])),
+        encoding="utf-8",
+    )
+    treino = _escrever_coco(tmp_path / "train", ["t1.jpg"])
+
+    fakes = iter([
+        DetectorFake([[_det("Luvas")]]),
+        DetectorFake([[_det("person", bbox=(5, 5, 40, 60))]]),
+        DetectorFake([[_det("Sem Luvas", conf=0.7)]]),
+    ])
+    monkeypatch.setattr(ab, "_construir_detector", lambda *a, **k: next(fakes))
 
     saida = tmp_path / "rel.md"
     assert ab.main([
@@ -296,13 +547,9 @@ def test_main_fim_a_fim_escreve_relatorio(tmp_path, monkeypatch, capsys):
         "--modelo-a", "a.onnx", "--modelo-b", "b.onnx", "--pessoa", "p.onnx",
         "--treino", str(treino), "--saida", str(saida),
     ]) == 0
-
     texto = saida.read_text(encoding="utf-8")
-    assert "Guarda de vazamento" in texto
-    assert "Sem protetor de ouvido" in texto  # todas as classes de ausência na tabela
-    assert "Varredura de limiares" in texto
-    assert "O que este relatório NÃO mediu" in texto
-    assert "veredito geral" in capsys.readouterr().out
+    assert "C · sobreposição geométrica" not in texto
+    assert "Varredura do limiar de SOBREPOSIÇÃO" not in texto
 
 
 def test_main_falha_ruidosamente_com_vazamento(tmp_path):
