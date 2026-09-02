@@ -35,10 +35,10 @@
  *   `alerts.acknowledged` é booleano. Descartar, na prática, é o veredito
  *   "falso positivo" — que é OUTRO eixo e tem coluna própria.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, useSearchParams } from 'react-router-dom'
 import {
-  AlertTriangle, Check, CheckCircle, ChevronLeft, ChevronRight,
+  AlertTriangle, Check, CheckCircle, ChevronDown, ChevronLeft, ChevronRight,
   Circle, Clock, Download, HelpCircle, Inbox, RefreshCw, ShieldCheck, XCircle,
   type LucideIcon,
 } from 'lucide-react'
@@ -56,6 +56,7 @@ import {
 } from '../../components/shared/PolaridadeClasse'
 import { labelForVerificationReason } from '../../utils/labels'
 import { rangeForPeriod } from '../../utils/timeBuckets'
+import { agruparPorRajada } from '../../utils/rajadas'
 import type { Camera } from '../../types'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import * as s from './Eventos.css'
@@ -95,6 +96,10 @@ interface Evento {
 interface Pagina {
   alerts: Evento[]
   total: number
+  /** Rajadas (câmera+classe repetida em <60s) desta MESMA página filtrada —
+   *  ux2/dedup, `AlertRepository.list_with_filters`. Ausente em backend/mock
+   *  antigo: quem lê cai para `total` (linhas). */
+  total_situacoes?: number
   page: number
   per_page: number
   pages: number
@@ -203,6 +208,17 @@ export function Eventos() {
   const [destaque, setDestaque] = useState<string | null>(() => parametros.get('highlight'))
   const refDestaque = useRef<HTMLTableRowElement | null>(null)
 
+  // Rajadas expandidas (id do representante) — ux2/dedup: por padrão o
+  // representante fica sozinho na tela; expandir mostra as N repetições.
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set())
+  const alternarExpandido = (id: string) =>
+    setExpandidos((atual) => {
+      const novo = new Set(atual)
+      if (novo.has(id)) novo.delete(id)
+      else novo.add(id)
+      return novo
+    })
+
   const podeLer = can('alerts:read')
   const podeJulgar = can('alerts:feedback')
   const podeExportar = can('alerts:export')
@@ -236,6 +252,7 @@ export function Eventos() {
       setDados({
         alerts: d?.alerts ?? [],
         total: d?.total ?? 0,
+        total_situacoes: d?.total_situacoes,
         page: d?.page ?? filtros.pagina,
         per_page: d?.per_page ?? POR_PAGINA,
         pages: d?.pages ?? 1,
@@ -378,6 +395,21 @@ export function Eventos() {
   const eventos = dados?.alerts ?? []
   const selecionaveis = eventos.filter((e) => !e.acknowledged).map((e) => e.id)
 
+  // ux2/dedup: agrupa a PÁGINA carregada por câmera+classe+60s — mesma
+  // janela do backend (VerificationService). Só reagrupa a página atual, não
+  // reordena entre páginas (a ordenação continua `created_at DESC` do
+  // servidor); "situações" no badge do cabeçalho/rodapé vem de
+  // `total_situacoes` (o filtro INTEIRO), não deste agrupamento local.
+  const grupos = useMemo(
+    () =>
+      agruparPorRajada(eventos, {
+        cameraId: (ev) => ev.camera_id ?? '',
+        classe: (ev) => ev.violations?.[0]?.class ?? '',
+        criadoEm: (ev) => ev.timestamp ?? ev.created_at,
+      }),
+    [eventos],
+  )
+
   if (!podeLer) {
     return (
       <div className={s.painelCentral}>
@@ -391,13 +423,178 @@ export function Eventos() {
     )
   }
 
+  /**
+   * UMA linha de evento — usada tanto para o representante de uma rajada
+   * quanto para cada repetição revelada ao expandir (ux2/dedup). `atenuada`
+   * é a ÚNICA diferença visual entre as duas: mesma estrutura, mesmas ações
+   * (Reconhecer/Julgar/Abrir), porque uma repetição é um alerta de verdade
+   * — só não é uma SITUAÇÃO nova.
+   */
+  const renderLinha = (ev: Evento, atenuada = false) => {
+    const polaridade = polaridadeDoEvento(ev)
+    const IconePol = polaridade ? ICONE_POLARIDADE[polaridade] : null
+    const veredito = vereditoHumano(ev.verification_verdict, ev.verified_by)
+    const IconeVer = ICONE_VEREDITO[veredito]
+    const capturadoEm = ev.timestamp ?? ev.created_at
+    const retroativo = classificarLatencia(ev.timestamp, ev.created_at) === 'retroativa'
+    const marcado = selecionados.includes(ev.id)
+    const realcada = ev.id === destaque
+    return (
+      <tr
+        key={ev.id}
+        ref={realcada ? refDestaque : undefined}
+        className={[realcada ? s.linhaDestacada : '', atenuada ? s.linhaRepeticao : '']
+          .filter(Boolean)
+          .join(' ') || undefined}
+      >
+        <td className={s.celula}>
+          {!ev.acknowledged && (
+            <input
+              type="checkbox"
+              className={s.caixaSelecao}
+              aria-label={`Selecionar evento de ${ev.camera_name ?? 'câmera'}`}
+              checked={marcado}
+              onChange={() =>
+                setSelecionados((sel) =>
+                  marcado ? sel.filter((i) => i !== ev.id) : [...sel, ev.id],
+                )
+              }
+            />
+          )}
+        </td>
+
+        {/* POLARIDADE + classe. Cor + ícone + palavra, sempre. */}
+        <td className={s.celulaEvento}>
+          {polaridade && IconePol && (
+            <span
+              className={`${s.selo} ${s.corPolaridade[polaridade]}`}
+              title={EXPLICACAO_POLARIDADE[polaridade]}
+            >
+              <IconePol size={13} strokeWidth={1.7} aria-hidden="true" />
+              {ROTULO_POLARIDADE[polaridade]}
+            </span>
+          )}
+          <span className={s.nomeClasse}>
+            {ev.violations?.length
+              ? ev.violations.map((v) => classLabel(v.class)).join(', ')
+              : '—'}
+          </span>
+        </td>
+
+        <td className={s.celula}>{ev.camera_name || '—'}</td>
+
+        <td className={s.celulaMono}>
+          {new Date(capturadoEm).toLocaleString('pt-BR')}
+          {/* PROCEDÊNCIA: só a afirmação negativa. Sem badge =
+              sem afirmação — não existe carimbo de "ao vivo"
+              enquanto o shadow roda sobre frames já coletados. */}
+          {retroativo && (
+            <>
+              {' '}
+              <span
+                className={s.seloRetroativo}
+                title={`Capturado: ${ev.timestamp} · gravado: ${ev.created_at}`}
+              >
+                coleta retroativa
+              </span>
+            </>
+          )}
+        </td>
+
+        <td className={s.celula}>
+          <span
+            className={`${s.selo} ${
+              ev.acknowledged ? s.corStatus.reconhecido : s.corStatus.novo
+            }`}
+          >
+            {ev.acknowledged ? (
+              <Check size={13} strokeWidth={1.7} aria-hidden="true" />
+            ) : (
+              <Circle size={13} strokeWidth={1.7} aria-hidden="true" />
+            )}
+            {ev.acknowledged ? 'Reconhecido' : 'Novo'}
+          </span>
+        </td>
+
+        {/* VEREDITO — coluna e paleta próprias. O SELO aparece
+            sempre, inclusive em "Não revisado": ausência de
+            veredito é um estado, não um espaço em branco. */}
+        <td className={s.celula}>
+          <span
+            className={`${s.selo} ${s.corVeredito[veredito]}`}
+            title={EXPLICACAO_VEREDITO[veredito]}
+          >
+            <IconeVer size={13} strokeWidth={1.7} aria-hidden="true" />
+            {ROTULO_VEREDITO[veredito]}
+          </span>
+          {/* MOTIVO do veredito: o que separa "estava de máscara"
+              de "a caixa pegou a luva do outro". */}
+          {ev.verification_reason && (
+            <span className={s.motivo} title={labelForVerificationReason(ev.verification_reason)}>
+              {labelForVerificationReason(ev.verification_reason)}
+            </span>
+          )}
+          {veredito === 'nao-revisado' && podeJulgar && (
+            <span className={s.grupoBotoes}>
+              <button
+                className={s.botao}
+                disabled={ocupado === ev.id}
+                onClick={() => void julgar(ev.id, 'approve')}
+              >
+                Procedente
+              </button>
+              <button
+                className={s.botao}
+                disabled={ocupado === ev.id}
+                onClick={() => void julgar(ev.id, 'reject')}
+              >
+                Falso positivo
+              </button>
+            </span>
+          )}
+        </td>
+
+        {/* Confiança da detecção (§9 paridade) — o dado já vinha,
+            só não era desenhado. Primeira violação, como no legado.
+            Contrato A1c: o número cru não prevê acerto (medido no
+            DEV, ~58-65% plano em toda faixa) — leitura honesta para
+            quem não é superadmin, ver confidenceDisplay.ts. */}
+        <td className={s.celula}>
+          <span className={s.confianca}>
+            {confiancaInternaOuCliente(ev.violations?.[0]?.confidence, isSuperAdmin)}
+          </span>
+        </td>
+
+        <td className={s.celulaAcoes}>
+          {!ev.acknowledged && (
+            <button
+              className={s.botao}
+              disabled={ocupado === ev.id}
+              onClick={() => void reconhecer(ev.id)}
+            >
+              Reconhecer
+            </button>
+          )}
+          <NavLink className={s.botao} to={rotaNova(`/epi/eventos/${ev.id}`)}>
+            Abrir →
+          </NavLink>
+        </td>
+      </tr>
+    )
+  }
+
   return (
     <div className={s.pagina}>
       <div className={s.cabecalho}>
         <h1 className={s.titulo}>Eventos</h1>
         {dados && (
           <span className={s.meta}>
-            {dados.total} NO PERÍODO
+            {/* ux2/dedup: badge conta SITUAÇÕES (rajadas), não linhas — "1/66
+                reconhecidas" media repetição, não trabalho. `total_situacoes`
+                vem do filtro INTEIRO (todas as páginas), não só a carregada. */}
+            {dados.total_situacoes != null && dados.total_situacoes !== dados.total
+              ? `${dados.total_situacoes} SITUAÇÕES NO PERÍODO · ${dados.total} EVENTOS`
+              : `${dados.total} NO PERÍODO`}
           </span>
         )}
         <span className={s.espacador} />
@@ -557,155 +754,42 @@ export function Eventos() {
                 </tr>
               </thead>
               <tbody>
-                {eventos.map((ev) => {
-                  const polaridade = polaridadeDoEvento(ev)
-                  const IconePol = polaridade ? ICONE_POLARIDADE[polaridade] : null
-                  const veredito = vereditoHumano(ev.verification_verdict, ev.verified_by)
-                  const IconeVer = ICONE_VEREDITO[veredito]
-                  const capturadoEm = ev.timestamp ?? ev.created_at
-                  const retroativo =
-                    classificarLatencia(ev.timestamp, ev.created_at) === 'retroativa'
-                  const marcado = selecionados.includes(ev.id)
-                  const realcada = ev.id === destaque
+                {grupos.map((grupo) => {
+                  const ev = grupo.representante
+                  const expandido = expandidos.has(ev.id)
                   return (
-                    <tr
-                      key={ev.id}
-                      ref={realcada ? refDestaque : undefined}
-                      className={realcada ? s.linhaDestacada : undefined}
-                    >
-                      <td className={s.celula}>
-                        {!ev.acknowledged && (
-                          <input
-                            type="checkbox"
-                            className={s.caixaSelecao}
-                            aria-label={`Selecionar evento de ${ev.camera_name ?? 'câmera'}`}
-                            checked={marcado}
-                            onChange={() =>
-                              setSelecionados((sel) =>
-                                marcado ? sel.filter((i) => i !== ev.id) : [...sel, ev.id],
-                              )
-                            }
-                          />
-                        )}
-                      </td>
-
-                      {/* POLARIDADE + classe. Cor + ícone + palavra, sempre. */}
-                      <td className={s.celulaEvento}>
-                        {polaridade && IconePol && (
-                          <span
-                            className={`${s.selo} ${s.corPolaridade[polaridade]}`}
-                            title={EXPLICACAO_POLARIDADE[polaridade]}
+                    <Fragment key={ev.id}>
+                      {renderLinha(ev)}
+                      {/* ux2/dedup: rajada (câmera+classe repetida em <60s) —
+                          nunca esconde, só recolhe. Expandir revela as N
+                          linhas originais, cada uma com as MESMAS ações. */}
+                      {grupo.tamanho > 1 && (
+                        <tr>
+                          <td
+                            colSpan={8}
+                            className={s.linhaRajadaToggle}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => alternarExpandido(ev.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault()
+                                alternarExpandido(ev.id)
+                              }
+                            }}
                           >
-                            <IconePol size={13} strokeWidth={1.7} aria-hidden="true" />
-                            {ROTULO_POLARIDADE[polaridade]}
-                          </span>
-                        )}
-                        <span className={s.nomeClasse}>
-                          {ev.violations?.length
-                            ? ev.violations.map((v) => classLabel(v.class)).join(', ')
-                            : '—'}
-                        </span>
-                      </td>
-
-                      <td className={s.celula}>{ev.camera_name || '—'}</td>
-
-                      <td className={s.celulaMono}>
-                        {new Date(capturadoEm).toLocaleString('pt-BR')}
-                        {/* PROCEDÊNCIA: só a afirmação negativa. Sem badge =
-                            sem afirmação — não existe carimbo de "ao vivo"
-                            enquanto o shadow roda sobre frames já coletados. */}
-                        {retroativo && (
-                          <>
-                            {' '}
-                            <span
-                              className={s.seloRetroativo}
-                              title={`Capturado: ${ev.timestamp} · gravado: ${ev.created_at}`}
-                            >
-                              coleta retroativa
-                            </span>
-                          </>
-                        )}
-                      </td>
-
-                      <td className={s.celula}>
-                        <span
-                          className={`${s.selo} ${
-                            ev.acknowledged ? s.corStatus.reconhecido : s.corStatus.novo
-                          }`}
-                        >
-                          {ev.acknowledged ? (
-                            <Check size={13} strokeWidth={1.7} aria-hidden="true" />
-                          ) : (
-                            <Circle size={13} strokeWidth={1.7} aria-hidden="true" />
-                          )}
-                          {ev.acknowledged ? 'Reconhecido' : 'Novo'}
-                        </span>
-                      </td>
-
-                      {/* VEREDITO — coluna e paleta próprias. O SELO aparece
-                          sempre, inclusive em "Não revisado": ausência de
-                          veredito é um estado, não um espaço em branco. */}
-                      <td className={s.celula}>
-                        <span
-                          className={`${s.selo} ${s.corVeredito[veredito]}`}
-                          title={EXPLICACAO_VEREDITO[veredito]}
-                        >
-                          <IconeVer size={13} strokeWidth={1.7} aria-hidden="true" />
-                          {ROTULO_VEREDITO[veredito]}
-                        </span>
-                        {/* MOTIVO do veredito: o que separa "estava de máscara"
-                            de "a caixa pegou a luva do outro". */}
-                        {ev.verification_reason && (
-                          <span className={s.motivo} title={labelForVerificationReason(ev.verification_reason)}>
-                            {labelForVerificationReason(ev.verification_reason)}
-                          </span>
-                        )}
-                        {veredito === 'nao-revisado' && podeJulgar && (
-                          <span className={s.grupoBotoes}>
-                            <button
-                              className={s.botao}
-                              disabled={ocupado === ev.id}
-                              onClick={() => void julgar(ev.id, 'approve')}
-                            >
-                              Procedente
-                            </button>
-                            <button
-                              className={s.botao}
-                              disabled={ocupado === ev.id}
-                              onClick={() => void julgar(ev.id, 'reject')}
-                            >
-                              Falso positivo
-                            </button>
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Confiança da detecção (§9 paridade) — o dado já vinha,
-                          só não era desenhado. Primeira violação, como no legado.
-                          Contrato A1c: o número cru não prevê acerto (medido no
-                          DEV, ~58-65% plano em toda faixa) — leitura honesta para
-                          quem não é superadmin, ver confidenceDisplay.ts. */}
-                      <td className={s.celula}>
-                        <span className={s.confianca}>
-                          {confiancaInternaOuCliente(ev.violations?.[0]?.confidence, isSuperAdmin)}
-                        </span>
-                      </td>
-
-                      <td className={s.celulaAcoes}>
-                        {!ev.acknowledged && (
-                          <button
-                            className={s.botao}
-                            disabled={ocupado === ev.id}
-                            onClick={() => void reconhecer(ev.id)}
-                          >
-                            Reconhecer
-                          </button>
-                        )}
-                        <NavLink className={s.botao} to={rotaNova(`/epi/eventos/${ev.id}`)}>
-                          Abrir →
-                        </NavLink>
-                      </td>
-                    </tr>
+                            {expandido
+                              ? <ChevronDown size={12} strokeWidth={1.7} aria-hidden="true" />
+                              : <ChevronRight size={12} strokeWidth={1.7} aria-hidden="true" />}
+                            {' '}+{grupo.tamanho - 1} repetiç{grupo.tamanho - 1 === 1 ? 'ão' : 'ões'} da mesma câmera+classe em &lt;60s
+                          </td>
+                        </tr>
+                      )}
+                      {expandido &&
+                        grupo.repeticoes
+                          .filter((rep) => rep.id !== ev.id)
+                          .map((rep) => <Fragment key={rep.id}>{renderLinha(rep, true)}</Fragment>)}
+                    </Fragment>
                   )
                 })}
               </tbody>
@@ -713,7 +797,11 @@ export function Eventos() {
           </div>
 
           <div className={s.rodape}>
-            <span>{dados?.total ?? 0} EVENTOS</span>
+            <span>
+              {dados?.total_situacoes != null && dados.total_situacoes !== dados.total
+                ? `${dados.total_situacoes} SITUAÇÕES · ${dados.total} EVENTOS`
+                : `${dados?.total ?? 0} EVENTOS`}
+            </span>
             <span className={s.espacador} />
             <button
               className={s.botao}

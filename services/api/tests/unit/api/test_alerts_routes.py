@@ -31,9 +31,12 @@ def auth_headers(app):
     return {"Authorization": f"Bearer {token}"}
 
 
-def _mock_repo(items=None, total=0):
+def _mock_repo(items=None, total=0, total_situacoes=None):
     repo = MagicMock()
-    repo.list_with_filters.return_value = {"items": items or [], "total": total}
+    payload = {"items": items or [], "total": total}
+    if total_situacoes is not None:
+        payload["total_situacoes"] = total_situacoes
+    repo.list_with_filters.return_value = payload
     return repo
 
 
@@ -112,6 +115,24 @@ class TestListAlerts:
             resp = client.get("/api/alerts?per_page=10", headers=auth_headers)
         data = resp.get_json()
         assert data["data"]["pages"] == 3
+
+    def test_total_situacoes_forwarded(self, client, auth_headers):
+        """ux2/dedup: `total_situacoes` (rajadas) tem de sair no envelope,
+        SEPARADO de `total` (linhas) — é o número que os badges de
+        Eventos/Ações/sino usam para não confundir repetição com trabalho."""
+        with patch(_GET_REPO, return_value=_mock_repo(total=66, total_situacoes=2)):
+            resp = client.get("/api/alerts", headers=auth_headers)
+        data = resp.get_json()["data"]
+        assert data["total"] == 66
+        assert data["total_situacoes"] == 2
+
+    def test_total_situacoes_fallback_sem_repo_novo(self, client, auth_headers):
+        """Repo/mock que ainda não manda `total_situacoes` degrada para
+        `total` — nunca 500 por causa de um campo novo."""
+        with patch(_GET_REPO, return_value=_mock_repo(total=9)):
+            resp = client.get("/api/alerts", headers=auth_headers)
+        data = resp.get_json()["data"]
+        assert data["total_situacoes"] == 9
 
 
 # ---------------------------------------------------------------------------

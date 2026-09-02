@@ -133,6 +133,39 @@ export const alertTime = style({
   marginTop: '2px',
 })
 
+/**
+ * Rajada (ux2/dedup) — "10 pendentes" que eram a MESMA cena de 6 dias atrás.
+ * O cartão mostra o representante + este alternador; nunca esconde — cada
+ * repetição continua com o próprio deep-link.
+ */
+export const rajadaToggle = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '4px',
+  width: '100%',
+  margin: 0,
+  padding: `2px ${vars.space.md}`,
+  border: 'none',
+  background: 'transparent',
+  font: 'inherit',
+  fontSize: '11px',
+  fontWeight: 600,
+  color: vars.color.primary,
+  cursor: 'pointer',
+})
+
+export const rajadaLista = style({
+  display: 'flex',
+  flexDirection: 'column',
+  paddingBottom: '4px',
+  borderBottom: `1px solid ${vars.color.borderSubtle}`,
+})
+
+export const rajadaItem = style([
+  alertCard,
+  { padding: `4px ${vars.space.md} 4px 40px`, fontSize: '11px', borderBottom: 'none' },
+])
+
 export const emptyPanel = style({
   padding: '32px 16px',
   textAlign: 'center',

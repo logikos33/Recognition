@@ -122,6 +122,10 @@ def list_alerts():  # type: ignore[no-untyped-def]
             "alerts": [_serialize_dates(a) for a in result["items"]],
             "count": len(result["items"]),
             "total": total,
+            # Rajadas (câmera+classe em <60s) do MESMO recorte, não linhas —
+            # ux2/dedup. `.get(..., total)`: repo antigo/mock sem a chave nova
+            # ainda responde (degrada para o total de linhas, nunca 500).
+            "total_situacoes": result.get("total_situacoes", total),
             "page": page,
             "per_page": per_page,
             "pages": max(1, (total + per_page - 1) // per_page),

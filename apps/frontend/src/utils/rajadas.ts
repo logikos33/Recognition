@@ -1,0 +1,119 @@
+/**
+ * Agrupador de RAJADAS — UM serviço, quatro superfícies (ux2/dedup).
+ *
+ * Achado medido: o acervo RVB tem 423 alertas, boa parte é o MESMO fato
+ * redetectado frame a frame. No filtro de Violações de Eventos, 66 linhas de
+ * UMA câmera em 2 minutos eram só 2 situações reais (33 "Sem mascara" + 33
+ * "Sem Luvas", 25/08 13:39–13:41) — "1/66 reconhecidas" media repetição, não
+ * trabalho.
+ *
+ * O backend já tinha a regra: `VerificationService._DEDUP_WINDOW_SECONDS`
+ * (services/api/app/domain/services/verification_service.py) agrupa por
+ * câmera+classe com gap ≤60s. Esta função reimplementa o MESMO critério no
+ * cliente — mesma janela (`JANELA_RAJADA_SEGUNDOS_PADRAO`, documentada como
+ * espelho de `DEDUP_WINDOW_SECONDS` em `app/core/rajada.py`) — para grupar
+ * o que cada tela JÁ tem em mãos (a página carregada, a fila, os itens do
+ * sino). Pedido ao backend NÃO vai por aqui: `total_situacoes` no envelope
+ * de `/api/alerts` já resolve a contagem através de TODA a página filtrada,
+ * não só o que está na tela — ver `pedidos_backend` do handoff desta rodada
+ * para o que ainda falta.
+ *
+ * Regra de produto: NUNCA esconder — quem usa isto tem de conseguir expandir
+ * e ver as N linhas da rajada (`repeticoes`), nunca só o representante.
+ */
+
+/** Mesma janela de `VerificationService._DEDUP_WINDOW_SECONDS` /
+ *  `app.core.rajada.DEDUP_WINDOW_SECONDS` no backend — não inventar outra. */
+export const JANELA_RAJADA_SEGUNDOS_PADRAO = 60
+
+export interface OpcoesRajada<T> {
+  cameraId: (item: T) => string
+  classe: (item: T) => string
+  criadoEm: (item: T) => string
+  /** Segundos de gap que fecham uma rajada. Default: `JANELA_RAJADA_SEGUNDOS_PADRAO`. */
+  janelaSegundos?: number
+  /** Escolhe o representante dentro da rajada — recebe dois itens, devolve o
+   *  "melhor". Default: o mais recente (as listas já abrem `created_at DESC`).
+   *  Verificação passa a mesma fórmula de incerteza do backend
+   *  (`ABS(confidence - 0.5)` ascendente) para casar com quem o servidor já
+   *  rankeou como rank 1 da rajada. */
+  melhorRepresentante?: (a: T, b: T) => T
+}
+
+export interface Rajada<T> {
+  representante: T
+  /** TODOS os itens da rajada, incluindo o representante, em ordem
+   *  cronológica — nunca esconder: quem usa isto expande e vê as N linhas. */
+  repeticoes: T[]
+  tamanho: number
+}
+
+function maisRecente<T>(criadoEm: (item: T) => string) {
+  return (a: T, b: T): T =>
+    new Date(criadoEm(a)).getTime() >= new Date(criadoEm(b)).getTime() ? a : b
+}
+
+/**
+ * Agrupa itens em rajadas: mesma câmera + mesma classe, gap ≤ janela entre
+ * detecções consecutivas (mesmo critério do backend — partição por
+ * câmera+classe, ordenado por hora, sessão nova a cada gap > janela).
+ *
+ * Não filtra nada — todo item de entrada aparece em `repeticoes` de algum
+ * grupo. Grupos saem ordenados pelo representante mais recente primeiro
+ * (mesma ordem que as listas já mostram hoje).
+ */
+export function agruparPorRajada<T>(itens: readonly T[], opcoes: OpcoesRajada<T>): Rajada<T>[] {
+  const janelaMs = (opcoes.janelaSegundos ?? JANELA_RAJADA_SEGUNDOS_PADRAO) * 1000
+  const escolherRepresentante = opcoes.melhorRepresentante ?? maisRecente(opcoes.criadoEm)
+
+  const porChave = new Map<string, T[]>()
+  for (const item of itens) {
+    const chave = `${opcoes.cameraId(item)}\0${opcoes.classe(item)}`
+    const lista = porChave.get(chave)
+    if (lista) lista.push(item)
+    else porChave.set(chave, [item])
+  }
+
+  const grupos: Rajada<T>[] = []
+  for (const lista of porChave.values()) {
+    const ordenada = [...lista].sort(
+      (a, b) => new Date(opcoes.criadoEm(a)).getTime() - new Date(opcoes.criadoEm(b)).getTime(),
+    )
+    let sessao: T[] = []
+    let anteriorMs: number | null = null
+    const fecharSessao = () => {
+      if (sessao.length === 0) return
+      const representante = sessao.reduce((a, b) => escolherRepresentante(a, b))
+      grupos.push({ representante, repeticoes: sessao, tamanho: sessao.length })
+    }
+    for (const item of ordenada) {
+      const atualMs = new Date(opcoes.criadoEm(item)).getTime()
+      if (anteriorMs !== null && atualMs - anteriorMs > janelaMs) {
+        fecharSessao()
+        sessao = []
+      }
+      sessao.push(item)
+      anteriorMs = atualMs
+    }
+    fecharSessao()
+  }
+
+  grupos.sort(
+    (a, b) =>
+      new Date(opcoes.criadoEm(b.representante)).getTime() -
+      new Date(opcoes.criadoEm(a.representante)).getTime(),
+  )
+  return grupos
+}
+
+/** Fórmula de "mais incerto" — espelha `VerificationService.get_human_queue`
+ *  (`ABS(confidence - 0.5)` ascendente, `COALESCE(confidence, 1.0)`). Usada
+ *  como `melhorRepresentante` por Verificação, para o representante do grupo
+ *  bater com o item que o servidor já rankeou primeiro na rajada. */
+export function maisIncerto<T>(confidence: (item: T) => number | undefined | null) {
+  const incerteza = (item: T) => {
+    const c = confidence(item)
+    return typeof c === 'number' && Number.isFinite(c) ? Math.abs(c - 0.5) : 0.5
+  }
+  return (a: T, b: T): T => (incerteza(a) <= incerteza(b) ? a : b)
+}

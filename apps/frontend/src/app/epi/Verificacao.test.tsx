@@ -1026,3 +1026,46 @@ describe('correção de caixa: salva e volta do servidor (contrato B1)', () => {
     expect(screen.getByTestId('caixa-violacao').getAttribute('style')).toContain('left: 2.6042%') // 50/1920, bbox original de Z
   })
 })
+
+// ── ux2/dedup — avisa sem decidir ───────────────────────────────────────────
+//
+// A fila JÁ reordena por rajada (bloco 1 acima) — o que esta rodada acrescenta
+// é só o AVISO visível ("Rajada de N"), nunca uma mudança de comportamento:
+// zero filtro, zero reordenação nova, zero propagação de veredito entre
+// irmãos (decisão pendente, ver docblock de verification_service.py).
+
+const R1 = item('r1', 'no_helmet', 0.9, { camera_id: 'cam-rajada', created_at: '2026-08-25T13:39:00Z' })
+const R2 = item('r2', 'no_helmet', 0.91, { camera_id: 'cam-rajada', created_at: '2026-08-25T13:39:20Z' })
+
+describe('rajada (ux2/dedup) — avisa sem decidir', () => {
+  it('item com irmão de câmera+classe em <60s mostra "Rajada de 2"', async () => {
+    get.mockResolvedValue(fila([R1, R2]))
+    montar()
+    await screen.findByText(/Rajada de 2/)
+  })
+
+  it('sem irmão de rajada, não mostra aviso nenhum', async () => {
+    get.mockResolvedValue(fila([A]))
+    montar()
+    await screen.findByText('Sem capacete')
+    expect(screen.queryByText(/Rajada de/)).toBeNull()
+  })
+
+  it('expandir revela os horários das N repetições — nunca esconde o dado', async () => {
+    get.mockResolvedValue(fila([R1, R2]))
+    montar()
+    await screen.findByText(/Rajada de 2/)
+    // <details> não esconde de verdade — o conteúdo já está no DOM, pronto
+    // para expandir (regra de produto: nunca esconder de verdade).
+    expect(screen.getAllByRole('listitem')).toHaveLength(2)
+  })
+
+  it('julgar o item atual NÃO decide o irmão — cada rajada continua individual (decisão pendente)', async () => {
+    get.mockResolvedValue(fila([R1, R2]))
+    montar()
+    await screen.findByText(/Rajada de 2/)
+    tecla('c') // confirma r1 (item[0] do servidor) — atalho já testado no bloco 1
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/verification/r1/review', { verdict: 'approve' }))
+    expect(post).not.toHaveBeenCalledWith('/verification/r2/review', expect.anything())
+  })
+})

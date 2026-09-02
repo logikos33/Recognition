@@ -36,6 +36,7 @@ o trabalho real (114 no tenant RVB), não os 15 eventos.
 """
 import logging
 
+from app.core.rajada import DEDUP_WINDOW_SECONDS
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.alert_repository import AlertRepository
 
@@ -56,8 +57,9 @@ class VerificationService:
     #: verdict-NULL formam 15 rajadas (a maior com 32 itens, média 7,6) — é a
     #: janela usada nessa medição e a que fica valendo aqui. Documentar o
     #: número é o ponto: se precisar mudar, é decisão consciente, não default
-    #: escondido.
-    _DEDUP_WINDOW_SECONDS = 60
+    #: escondido. Valor vem de `app.core.rajada` (ux2/dedup) — fonte única
+    #: compartilhada com `AlertRepository.list_with_filters` (`total_situacoes`).
+    _DEDUP_WINDOW_SECONDS = DEDUP_WINDOW_SECONDS
 
     #: `presence_class_names` ESCOPADO por módulo (ver docstring do método na
     #: própria AlertRepository — omitir `module_code` já foi bug real:

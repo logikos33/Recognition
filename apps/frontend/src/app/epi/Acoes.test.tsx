@@ -48,7 +48,15 @@ import { Acoes } from './Acoes'
 const evento = (
   id: string,
   acknowledged: boolean,
-  extra: Partial<{ evidence_key: string | null; verification_verdict: string | null; verified_by: string | null }> = {},
+  extra: Partial<{
+    evidence_key: string | null
+    verification_verdict: string | null
+    verified_by: string | null
+    /** ux2/dedup: sobrescrever pra montar rajadas (mesma câmera+classe, gap
+     *  específico) ou provar que gap > 60s NÃO agrupa. */
+    created_at: string
+    camera_id: string
+  }> = {},
 ) => ({
   id,
   camera_id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
@@ -63,21 +71,33 @@ const evento = (
 })
 
 /** Responde por recorte: o snapshot de UM alerta, ou o que a tela pedir com
- *  acknowledged=false vs true. */
+ *  acknowledged=false vs true vs o 3º pedido (união, sem `acknowledged`,
+ *  QUEBRA 3 — fonte do denominador). `situacoes` (ux2/dedup) default =
+ *  `totais` — sem passar nada, o comportamento é IDÊNTICO ao de antes desta
+ *  rodada (situTotal === total, texto "N/M RECONHECIDAS" sem "SITUAÇÕES").
+ *  `situacaoUniao` default = soma dos dois — só testes que provam o fix da
+ *  QUEBRA 3 (rajada parcialmente reconhecida) passam um valor diferente da
+ *  soma, de propósito. */
 function servir(
   abertas: unknown[],
   feitas: unknown[],
   totais = [abertas.length, feitas.length],
   snapshots: Record<string, string | null> = {},
+  situacoes: [number, number] = totais as [number, number],
+  situacaoUniao = situacoes[0] + situacoes[1],
 ) {
   get.mockImplementation((path: string) => {
     const m = path.match(/^\/alerts\/([^/]+)\/snapshot$/)
     if (m) return Promise.resolve({ data: { snapshot_url: snapshots[m[1]] ?? null } })
-    return Promise.resolve(
-      path.includes('acknowledged=false')
-        ? { data: { alerts: abertas, total: totais[0] } }
-        : { data: { alerts: feitas, total: totais[1] } },
-    )
+    if (path.includes('acknowledged=false')) {
+      return Promise.resolve({ data: { alerts: abertas, total: totais[0], total_situacoes: situacoes[0] } })
+    }
+    if (path.includes('acknowledged=true')) {
+      return Promise.resolve({ data: { alerts: feitas, total: totais[1], total_situacoes: situacoes[1] } })
+    }
+    return Promise.resolve({
+      data: { alerts: [], total: totais[0] + totais[1], total_situacoes: situacaoUniao },
+    })
   })
 }
 
@@ -89,14 +109,17 @@ beforeEach(() => {
 })
 
 describe('de onde vem o dado', () => {
-  it('pede os dois recortes reais do ledger, só violações e na mesma janela', async () => {
+  it('pede os TRÊS recortes reais do ledger (aberto/feito/união), só violações e na mesma janela', async () => {
     servir([evento('1111aaaa-0000-0000-0000-000000000000', false)], [])
     render(<Acoes />)
-    await waitFor(() => expect(get).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(3))
 
     const caminhos = get.mock.calls.map((c) => c[0] as string)
     expect(caminhos.some((p) => p.includes('acknowledged=false'))).toBe(true)
     expect(caminhos.some((p) => p.includes('acknowledged=true'))).toBe(true)
+    // QUEBRA 3: 3º pedido sem `acknowledged` — fonte do denominador de
+    // situações (não soma os dois recortes isolados, pede a união pronta).
+    expect(caminhos.some((p) => !p.includes('acknowledged='))).toBe(true)
     // ADR-0065: conformidade é telemetria — não se age sobre quem está certo.
     expect(caminhos.every((p) => p.startsWith('/alerts?') && p.includes('kind=violation'))).toBe(true)
     expect(caminhos.every((p) => p.includes('start_date='))).toBe(true)
@@ -110,7 +133,7 @@ describe('de onde vem o dado', () => {
     // não some do produto — tem filtro próprio em /epi/eventos.
     servir([evento('1111aaaa-0000-0000-0000-000000000000', false)], [])
     render(<Acoes />)
-    await waitFor(() => expect(get).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(3))
     const caminhos = get.mock.calls.map((c) => c[0] as string)
     expect(caminhos.every((p) => !p.includes('kind=observacao'))).toBe(true)
     expect(caminhos.every((p) => !p.includes('kind=compliance'))).toBe(true)
@@ -139,7 +162,7 @@ describe('agir', () => {
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith('/alerts/c1111111-0000-0000-0000-000000000000/acknowledge', undefined),
     )
-    await waitFor(() => expect(get).toHaveBeenCalledTimes(4))
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(6))
   })
 
   it('sem alerts:feedback não há botão de reconhecer', async () => {
@@ -291,5 +314,100 @@ describe('nada de dado inventado', () => {
     servir([], [])
     screen.getByRole('button', { name: /tentar novamente/i }).click()
     await screen.findByText('Nenhuma ação aberta')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// ux2/dedup — "cartões repetem a mesma cena; o contador ('1/66
+// reconhecidas') tem de contar situações, não linhas".
+// ---------------------------------------------------------------------------
+
+describe('rajada (ux2/dedup) — cartão não repete a mesma cena', () => {
+  it('2 eventos da MESMA câmera+classe (mesmo minuto) viram 1 cartão + alternador "+1 repetição"', async () => {
+    servir(
+      [
+        evento('11111111-0000-0000-0000-000000000001', false),
+        evento('11111111-0000-0000-0000-000000000002', false),
+      ],
+      [],
+    )
+    render(<Acoes />)
+    await screen.findByText(/\+1 repetiç/)
+    // Só 1 cartão de verdade na tela, não 2 — "EVENTO <id>" só aparece 1x.
+    expect(screen.getAllByText(/^EVENTO 1{8}/)).toHaveLength(1)
+  })
+
+  it('expandir revela a repetição, e ela mantém a PRÓPRIA ação de reconhecer', async () => {
+    servir(
+      [
+        evento('22222222-0000-0000-0000-000000000001', false),
+        evento('22222222-0000-0000-0000-000000000002', false),
+      ],
+      [],
+    )
+    render(<Acoes />)
+    const alternador = await screen.findByText(/\+1 repetiç/)
+    alternador.click()
+    // Representante ("Marcar reconhecida") + repetição ("Reconhecer", sem o
+    // texto "Marcar") — as DUAS ações continuam disponíveis, nada escondido.
+    await waitFor(() => expect(screen.getByRole('button', { name: /^reconhecer$/i })).toBeTruthy())
+    expect(screen.getByRole('button', { name: /marcar reconhecida/i })).toBeTruthy()
+  })
+
+  it('gap > 60s NÃO agrupa — cada evento continua com o próprio cartão', async () => {
+    servir(
+      [
+        evento('44444444-0000-0000-0000-000000000001', false, { created_at: '2026-08-25T13:00:00Z' }),
+        evento('44444444-0000-0000-0000-000000000002', false, { created_at: '2026-08-25T13:05:00Z' }),
+      ],
+      [],
+    )
+    render(<Acoes />)
+    await screen.findAllByText(/^EVENTO 44444444/)
+    expect(screen.getAllByText(/^EVENTO 44444444/)).toHaveLength(2)
+    expect(screen.queryByText(/repetiç/)).toBeNull()
+  })
+
+  it('badge da coluna e taxa contam SITUAÇÕES (total_situacoes), não linhas', async () => {
+    servir(
+      [evento('33333333-0000-0000-0000-000000000001', false)],
+      [evento('33333333-0000-0000-0000-000000000002', true)],
+      [66, 10],
+      {},
+      [2, 1],
+    )
+    render(<Acoes />)
+    await screen.findByText('1/3 SITUAÇÕES RECONHECIDAS · 10/76 eventos')
+  })
+
+  it('QUEBRA 3 — rajada parcialmente reconhecida NÃO infla o denominador (soma ≠ união)', async () => {
+    // aberto=2 situações, feito=2 situações — SE o denominador fosse a soma
+    // (bug antigo), daria 4. A união real (3º pedido) é 3: uma das rajadas
+    // atravessa os dois estados (parte reconhecida, parte não) e conta 1 vez
+    // só ali. O texto tem de usar 3, nunca 4.
+    servir(
+      [evento('66666666-0000-0000-0000-000000000001', false)],
+      [evento('66666666-0000-0000-0000-000000000002', true)],
+      [5, 5],
+      {},
+      [2, 2],
+      3,
+    )
+    render(<Acoes />)
+    await screen.findByText('2/3 SITUAÇÕES RECONHECIDAS · 5/10 eventos')
+    expect(screen.queryByText(/2\/4 SITUAÇÕES/)).toBeNull()
+  })
+
+  it('sem total_situacoes no payload (backend/mock antigo), cai pro texto de linhas de sempre', async () => {
+    get.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.includes('acknowledged=false')
+          ? { data: { alerts: [evento('55555555-0000-0000-0000-000000000001', false)], total: 1 } }
+          : { data: { alerts: [], total: 0 } },
+      ),
+    )
+    render(<Acoes />)
+    await screen.findByText('0/1 RECONHECIDAS')
+    expect(screen.queryByText(/SITUAÇÕES/)).toBeNull()
   })
 })
