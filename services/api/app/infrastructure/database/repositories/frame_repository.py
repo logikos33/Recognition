@@ -1037,6 +1037,58 @@ class FrameRepository(BaseRepository):
             ),
         )
 
+    def set_dataset_role(
+        self,
+        frame_ids: "list[UUID | str]",
+        role: str,
+        tenant_id: "UUID | str",
+    ) -> "dict[str, int]":
+        """Dá EMPREGO a um lote de quadros: 'pool' (treina) ou 'holdout'
+        (gabarito — mede modelo e nunca treina). Migration 133.
+
+        IDEMPOTENTE por construção: o UPDATE só toca as linhas cujo papel
+        DIFERE do pedido (`dataset_role IS DISTINCT FROM %s`), então rodar o
+        mesmo lote duas vezes não reescreve nada e, principalmente, não move
+        `dataset_role_set_at` — a data em que o quadro virou gabarito é o que
+        separa "esta medição é limpa" de "este quadro já estava no treino do
+        v11". Reexecução que carimba data nova apagaria justamente essa prova.
+
+        Escopo SEMPRE por tenant_id (id = ANY(%s::uuid[]) AND tenant_id = %s):
+        id de outro tenant não casa o WHERE e não é atualizado, sem vazar
+        existência (C-01). `::uuid[]` é obrigatório — psycopg2 adapta
+        list[str] para text[] e `uuid = ANY(text[])` não tem operador
+        implícito no Postgres (mesmo achado de update_curation_status).
+
+        Devolve as três contagens que importam para conferir o lote:
+        {'marcados': linhas mudadas agora, 'ja_no_papel': já estavam assim,
+        'nao_encontrados': ids que não existem NESTE tenant}.
+        """
+        ids = [str(fid) for fid in frame_ids]
+        if not ids:
+            return {"marcados": 0, "ja_no_papel": 0, "nao_encontrados": 0}
+
+        existentes = self._execute(
+            "SELECT dataset_role FROM training_frames "
+            "WHERE id = ANY(%s::uuid[]) AND tenant_id = %s",
+            (ids, str(tenant_id)),
+        )
+        ja_no_papel = sum(
+            1 for row in existentes if row["dataset_role"] == str(role)
+        )
+
+        marcados = self._execute_mutation_no_return(
+            "UPDATE training_frames "
+            "SET dataset_role = %s, dataset_role_set_at = NOW() "
+            "WHERE id = ANY(%s::uuid[]) AND tenant_id = %s "
+            "  AND dataset_role IS DISTINCT FROM %s",
+            (str(role), ids, str(tenant_id), str(role)),
+        )
+        return {
+            "marcados": marcados,
+            "ja_no_papel": ja_no_papel,
+            "nao_encontrados": len(set(ids)) - len(existentes),
+        }
+
     def list_unlabeled_by_uncertainty(
         self, tenant_id: "UUID | str", module_code: str, limit: int = 20
     ) -> "list[dict[str, Any]]":

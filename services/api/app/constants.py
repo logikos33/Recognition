@@ -109,6 +109,27 @@ class CurationStatus(StrEnum):
     EXCLUIDA = "excluida"
 
 
+class DatasetRole(StrEnum):
+    """Emprego permanente de um frame (migration 133 — CHECK
+    chk_training_frames_dataset_role).
+
+    "Um quadro só tem UM emprego para sempre — gabarito mede, proposta
+    alimenta." Um gabarito que entra no treino faz o modelo decorar a prova,
+    e toda medição posterior passa a mentir para cima sem acusar nada.
+
+    pool    — alimenta treino (padrão de todo frame que já existe)
+    holdout — gabarito: mede modelo e NUNCA entra em export de treino
+              (trava em versioning_v2._snapshot_labeled_frames/
+              _fetch_annotations, por ALLOWLIST `= 'pool'`)
+
+    Ortogonal a CurationStatus: um gabarito é 'active' na curadoria — o que
+    muda é o emprego, não a qualidade.
+    """
+
+    POOL = "pool"
+    HOLDOUT = "holdout"
+
+
 class DatasetVersionStatus(StrEnum):
     """Status de build de uma dataset_version (migration 096)."""
 

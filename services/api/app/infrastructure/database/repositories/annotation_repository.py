@@ -211,11 +211,18 @@ class AnnotationRepository(BaseRepository):
     # Mesmo universo do export de treino (_fetch_annotations,
     # versioning_v2.py:105): só anotação HUMANA (source='manual') ou
     # pré-anotação APROVADA (reviewed_by NOT NULL); frame anotado, não excluído
-    # na curadoria (110), classe não arquivada (110). Decodifica o offset de
+    # na curadoria (110), classe não arquivada (110), papel de treino
+    # (dataset_role='pool', 133). Decodifica o offset de
     # namespace de classe (class_namespace.TENANT_CLASS_ID_OFFSET = 100000)
     # exatamente como o export. Fragmento ESTÁTICO — os únicos valores de
     # request (tenant_id, module_code) entram por %s, nunca por f-string.
     # "Tela que conta diferente do export mente."
+    #
+    # dataset_role = 'pool' entrou junto com a trava holdout-only: o gabarito
+    # é trabalho humano REAL, mas não é cobertura de TREINO — é a prova. Sem
+    # este predicado a matriz passaria a contar caixas que o export recusa, e
+    # `scripts/ops/verify_coverage_matches_export.py` (que compara os dois
+    # SQLs extraídos do fonte) acusaria a divergência, com razão.
     _COVERAGE_UNIVERSE = """
           FROM frame_annotations a
           JOIN yolo_classes c
@@ -226,6 +233,7 @@ class AnnotationRepository(BaseRepository):
             ON pc.id = tf.camera_id AND pc.tenant_id = tf.tenant_id
          WHERE tf.tenant_id = %s AND tf.module_code = %s
            AND tf.is_annotated = TRUE AND tf.curation_status <> 'excluida'
+           AND tf.dataset_role = 'pool'
            AND c.archived_at IS NULL
            AND (COALESCE(a.source, 'manual') = 'manual' OR a.reviewed_by IS NOT NULL)
     """

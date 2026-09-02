@@ -18,7 +18,9 @@ linhagem completa (status building→ready|error).
 Filtros do export: frames com curation_status='excluida' nunca entram no
 pool (curation 'duvida' CONTINUA entrando — ainda não há decisão humana);
 anotações cuja classe custom do tenant está arquivada (yolo_classes.
-archived_at) são excluídas do COCO, mesmo que o frame continue no pool.
+archived_at) são excluídas do COCO, mesmo que o frame continue no pool;
+frame com dataset_role='holdout' (gabarito, migration 133) NUNCA entra —
+ver `_snapshot_labeled_frames` e `holdout_recusados` no resultado.
 
 Corrige os bugs da task legada (versioning.py): key mismatch no copy e
 ausência de INSERT. A task legada permanece para compat; esta é a oficial.
@@ -100,6 +102,18 @@ def _snapshot_labeled_frames(
     (ver frame_repository.py list_frames/list_by_camera). 'duvida' CONTINUA
     entrando — ainda não há decisão humana; excluir preventivamente só
     encolheria o pool sem necessidade (registrado no PR).
+
+    ⛔ TRAVA HOLDOUT-ONLY (migration 133): `dataset_role = 'pool'`. Frame
+    marcado como GABARITO mede modelo e nunca alimenta treino — "um quadro só
+    tem UM emprego para sempre". Se o gabarito vaza para o treino, o modelo
+    decora a prova e toda avaliação posterior mente para cima sem que nada
+    acuse: é a única falha desta lista que corrompe a MEDIÇÃO, não o dado.
+    ALLOWLIST (`= 'pool'`), não denylist (`<> 'holdout'`), para que qualquer
+    papel futuro nasça FORA do treino até alguém decidir o contrário.
+    O mesmo predicado tem de estar em `_fetch_annotations` — as duas queries
+    do pool precisam concordar sobre o mesmo universo (ver o motivo lá).
+    Quem quiser saber quantos frames a trava reteve: `_contar_gabaritos`,
+    devolvido em `holdout_recusados` no resultado do build.
     """
     return annotation_repo._execute(
         """
@@ -113,11 +127,42 @@ def _snapshot_labeled_frames(
            AND tf.module_code = %s
            AND tf.is_annotated = TRUE
            AND tf.curation_status != 'excluida'
+           AND tf.dataset_role = 'pool'
          ORDER BY (tf.validated_at IS NOT NULL) DESC,
                   tf.video_id, tf.frame_number
         """,
         (str(tenant_id), module_code),
     )
+
+
+def _contar_gabaritos(
+    annotation_repo, tenant_id: str, module_code: str
+) -> int:
+    """Quantos frames a trava holdout-only reteve NESTE export.
+
+    Mesmo universo de `_snapshot_labeled_frames` com o papel invertido: o que
+    ENTRARIA no pool se não fosse gabarito. Só isso é "recusado" — frame de
+    outro módulo, não anotado ou excluído na curadoria não entraria de
+    qualquer jeito, e contá-lo transformaria o número em ruído.
+
+    Existe porque exclusão silenciosa é o padrão que já custou 1.098 anotações
+    descartadas sem ninguém saber. O número sobe no resultado do build
+    (`holdout_recusados`), não só no log — aviso que ninguém lê é silêncio com
+    passos extras (D-165).
+    """
+    row = annotation_repo._execute_one(
+        """
+        SELECT COUNT(*) AS total
+          FROM training_frames tf
+         WHERE tf.tenant_id = %s
+           AND tf.module_code = %s
+           AND tf.is_annotated = TRUE
+           AND tf.curation_status != 'excluida'
+           AND tf.dataset_role <> 'pool'
+        """,
+        (str(tenant_id), module_code),
+    )
+    return int(row["total"]) if row else 0
 
 
 def _fetch_annotations(
@@ -158,10 +203,11 @@ def _fetch_annotations(
     archived_at, migration 110 — "aposentar" uma classe sem apagar caixas
     já salvas): a classe continua existindo, só não alimenta mais treino.
 
-    curation_status != 'excluida': mesmo filtro do pool de frames (ver
+    curation_status != 'excluida' e dataset_role = 'pool' (trava
+    holdout-only, migration 133): mesmos filtros do pool de frames (ver
     _snapshot_labeled_frames) — sem efeito prático isolado (o frame já
-    não estaria em `frames`), mas mantém as duas queries com o mesmo
-    universo e evita trabalho desperdiçado. Mesma razão: SEM filtro de
+    não estaria em `frames`), mas mantêm as duas queries com o mesmo
+    universo e evitam trabalho desperdiçado. Mesma razão: SEM filtro de
     câmera ativa (ver _snapshot_labeled_frames) — as duas queries do pool
     têm de concordar, senão uma anotação sobrevive no snapshot e some
     aqui (ou vice-versa), quebrando o COCO por baixo do frame.
@@ -181,6 +227,7 @@ def _fetch_annotations(
            AND tf.module_code = %s
            AND tf.is_annotated = TRUE
            AND tf.curation_status != 'excluida'
+           AND tf.dataset_role = 'pool'
            AND (a.class_id < 100000
                 OR (c.id IS NOT NULL AND c.archived_at IS NULL))
          ORDER BY a.frame_id, a.id
@@ -883,11 +930,32 @@ def build_dataset_version_v2(
         annotation_repo = _get_annotation_repo()
         storage = _get_storage(tenant_id)
 
-        # 1. Snapshot de frames rotulados (reviewed primeiro)
+        # 1. Snapshot de frames rotulados (reviewed primeiro), já SEM gabarito
         frames = _snapshot_labeled_frames(annotation_repo, tenant_id, module_code)
+
+        # Quantos a trava holdout-only reteve. Contado à parte porque o
+        # snapshot já veio filtrado: sem esta consulta o export não teria como
+        # dizer o tamanho do próprio recorte, e "excluído em silêncio" é
+        # exatamente o modo de falha que a trava não pode ter.
+        holdout_recusados = _contar_gabaritos(
+            annotation_repo, tenant_id, module_code
+        )
+        if holdout_recusados:
+            logger.info(
+                "dataset_export_gabarito_retido: %d frame(s) com "
+                "dataset_role='holdout' fora do treino (tenant=%s módulo=%s) — "
+                "gabarito mede modelo, nunca alimenta",
+                holdout_recusados, tenant_id, module_code,
+            )
+
         if not frames:
             raise ValueError(
                 "Nenhum frame rotulado encontrado para o tenant/módulo"
+                + (
+                    f" ({holdout_recusados} retido(s) pela trava holdout-only "
+                    "— são gabarito, não pool de treino)"
+                    if holdout_recusados else ""
+                )
             )
 
         # 2. Anotações YOLO normalizadas por frame
@@ -1136,6 +1204,10 @@ def build_dataset_version_v2(
             # Sai no resultado, não só no log: aviso que ninguém lê é silêncio
             # com passos extras (D-165).
             "split_warnings": split_warnings,
+            # Quantos frames a trava holdout-only manteve fora deste dataset.
+            # Mesma razão do campo acima: uma exclusão que só existe no log é
+            # indistinguível de bug quando alguém conferir a contagem.
+            "holdout_recusados": holdout_recusados,
         }
         logger.info(
             "build_dataset_v2_done: version_id=%s total=%d train=%d val=%d test=%d",
