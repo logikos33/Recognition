@@ -58,10 +58,53 @@ mesma coisa e a decisão fica do dono.
 
 ---
 
-## Variantes B e C
+## Variante B — v17b-ausencia (presença + ausência como classe)
 
-Preenchido quando fecharem. Mesmo formato, mesma pergunta: parou por
-convergência ou por corte?
+Job `9cc62fd6` · pod `fyca473ls44yh6` · RTX 4090 SECURE (VRAM 24,0 GiB lida no
+pod) · batch 4 × grad_accum 4 · **23 épocas**.
+
+`0,1564 · 0,2281 · 0,2472 · 0,2701 · 0,2765 · 0,2779 · 0,2821 · **0,2861 ←
+PICO (ép.8)** · 0,2832 · 0,2783 · 0,2771 · 0,2720 · 0,2702 · 0,2717 · 0,2666 ·
+0,2652 · 0,2617 · 0,2621 · 0,2601 · 0,2585 · 0,2559 · 0,2572 · 0,2568`
+
+Convergiu. Pico ép.8, parada ép.23, distância exatamente 15. Das 15 épocas após
+o pico, **15 ficaram abaixo dele** — queda ainda mais limpa que a do A.
+
+## Variante C — v17c-partes (parte do corpo + EPI)
+
+Job `11f1303c` · pod `6lqnmefcjbeqet` · RTX 4090 SECURE (24,0 GiB) · batch 4 ×
+grad_accum 4 · **20 épocas**.
+
+`0,2187 · 0,3172 · 0,3589 · 0,3835 · **0,3905 ← PICO (ép.5)** · 0,3803 · 0,3803 ·
+0,3780 · 0,3735 · 0,3852 · 0,3762 · 0,3776 · 0,3739 · 0,3704 · 0,3704 · 0,3535 ·
+0,3542 · 0,3563 · 0,3575 · 0,3615`
+
+Convergiu. Pico ép.5, parada ép.20, distância 15. A ép.10 (0,3852) chegou perto
+mas não superou o limiar de 0,001 sobre o pico.
+
+## 🔴 TRÊS CORRIDAS, UMA CONCLUSÃO: a paciência 15 não se pagou
+
+O critério combinado era "se B e C repetirem o padrão do A, são três corridas
+dizendo o mesmo, e a decisão é do dono". **Repetiram.**
+
+| variante | pico | parada | épocas após o pico | superações após o pico |
+|---|---|---|---|---|
+| A | ép. 8 | ép. 23 | 15 | 0 |
+| B | ép. 8 | ép. 23 | 15 | 0 |
+| C | ép. 5 | ép. 20 | 15 | 0 |
+
+**Nas três, o pico veio entre a época 5 e a 8, e nenhuma das 45 épocas seguintes
+superou o próprio pico.** O `lr_drop=15` — a queda de 10× no LR que justificava
+subir a paciência de 8 para 15 — não produziu o segundo salto em nenhuma delas.
+
+O preço, medido: as épocas gastas após o pico custaram **~US$ 3,3 dos US$ 4,9**
+da rodada, e entregaram exatamente os mesmos três artefatos (o `best` é anterior
+ao pico em todas). Com paciência 8, as três teriam parado nas épocas 16, 16 e 13
+— mesmos modelos, ~40% menos GPU.
+
+**Decisão é do dono.** Três corridas do MESMO acervo não provam que a paciência
+15 é errada para todo dataset; provam que para ESTE acervo ela vem cobrando um
+terço da conta sem ter entregue nada em 3 de 3 oportunidades.
 
 ---
 
