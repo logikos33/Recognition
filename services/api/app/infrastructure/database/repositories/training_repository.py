@@ -209,6 +209,14 @@ class TrainingRepository(BaseRepository):
             ("dataset_version_id", "%s",
              str(data["dataset_version_id"]) if data.get("dataset_version_id") else None),
             ("module_code", "%s", data.get("module_code")),
+            # display_name (migration 129, regra de nomenclatura no
+            # nascimento): opcional igual aos demais — este caminho de INSERT
+            # (bridge socket_bridge._register_trained_model, training_service.
+            # register_model) não calculava alias comercial nenhum antes;
+            # colunas omitidas usam o default do schema (NULL, front cai em
+            # "Logikos"). Sem overwrite aqui: é INSERT, não UPDATE — não há
+            # display_name humano prévio pra proteger neste caminho.
+            ("display_name", "%s", data.get("display_name")),
         ]
         for column, placeholder, value in optional:
             if value is not None:

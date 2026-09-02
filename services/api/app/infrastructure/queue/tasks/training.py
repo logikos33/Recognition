@@ -166,19 +166,195 @@ def _build_model_name(framework: str, model_size: str, job_id: str) -> str:
     return f"{label} - Job {short_job}"
 
 
-def _build_display_name(version_n: int, when: datetime | None = None) -> str:
-    """Alias comercial pro cliente (task D3, política já vigente na casa):
-    "Logikos V<n> · DD/MM". NUNCA framework/".py"/UUID/job-id — só o alias
-    sequencial (nº de modelos já registrados do tenant, +1) e a data.
+# Regra de nomenclatura do modelo no nascimento (dono do produto, requisito):
+# "Logikos <MÓDULO> <escopo> · DD/MM HHhMM" — substitui o alias legado
+# "Logikos V<n> · DD/MM" (task D3). <MÓDULO> é o module_code traduzido/
+# maiúsculo; <escopo> é "Completo" quando o treino cobre todas as classes
+# ATIVAS do módulo, ou os nomes das classes treinadas quando é subconjunto.
+_MODULE_LABELS_PT: dict[str, str] = {
+    "epi": "EPI",
+    "quality": "QUALIDADE",
+    "counting": "CONTAGEM",
+    "fueling": "ABASTECIMENTO",
+    "basic": "BÁSICO",
+    "analytics": "ANALYTICS",
+}
 
-    "O que mudou" (ex.: "+340 imagens de Expedição", no espírito do exemplo
-    do contrato) fica de fora de propósito: neste ponto do dispatch não há
-    dado de delta de dataset disponível (dataset_versions não guarda quantas
-    imagens foram adicionadas desde a versão anterior) — registrado como
-    pedido pendente no relatório da task, não inventado aqui.
+# Teto de classes nomeadas no escopo ("Luvas+Máscara"). Acima disso, o nome
+# comercial vira ilegível — troca para "N classes" (ex.: "7 classes").
+_ESCOPO_TETO_CLASSES = 3
+
+# Fallback honesto quando a informação de classes treinadas genuinamente não
+# existe (lookup falhou, dataset_version sem class_distribution) — NUNCA
+# "Completo" (mentira de cobertura) nem um subconjunto inventado.
+_ESCOPO_PERSONALIZADO = "Personalizado"
+
+
+def _module_label(module_code: str) -> str:
+    """<MÓDULO> do nome comercial: module_code em PT-BR maiúsculo.
+
+    Fallback: o próprio module_code.upper() — um módulo futuro sem entrada
+    no mapa ainda produz um nome válido (ex.: "NOVOMODULO"), nunca quebra o
+    dispatch nem vira 'None' no nome do cliente.
+    """
+    return _MODULE_LABELS_PT.get(module_code, module_code.upper())
+
+
+def _prettify_class_name(class_name: str) -> str:
+    """class_name interno (snake_case, ex. 'no_helmet') -> rótulo apresentável
+    quando a classe treinada não tem display_name cadastrado em
+    module_classes (classe custom do tenant, fora do catálogo global)."""
+    return class_name.replace("_", " ").strip().title()
+
+
+def _classes_treinadas(class_distribution: dict[str, Any] | None) -> list[str]:
+    """class_name das classes REALMENTE treinadas, lidas de
+    dataset_versions.class_distribution (chaves são class_name — task-077/
+    versioning_v2.py `_fetch_annotations`/`build_dataset_version_v2`).
+
+    Filtra chaves reservadas (prefixo "__", ex. "__sem_suporte_treino__" —
+    versioning_v2.py: classe excluída do treino por falta de suporte,
+    registrada na versão mas NÃO é uma classe treinada).
+    """
+    if not class_distribution:
+        return []
+    return [k for k in class_distribution if not str(k).startswith("__")]
+
+
+def _module_class_catalog(repo, module_code: str) -> dict[str, str]:
+    """class_name -> display_name das classes ATIVAS do módulo (module_classes,
+    catálogo global — mesma tabela de ModuleRepository.get_classes).
+
+    Catálogo vazio (módulo sem linhas cadastradas, ou a query falhou) nunca
+    deixa `_derive_scope` inventar "Completo": sem saber o total de classes
+    do módulo, não há como provar cobertura — cai direto no ramo de
+    subconjunto nomeado (comportamento correto e mais seguro).
+    """
+    try:
+        rows = repo._execute(
+            "SELECT class_name, display_name FROM module_classes "
+            "WHERE module_code = %s AND is_active = TRUE",
+            (module_code,),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "module_class_catalog_lookup_failed: module_code=%s err=%s",
+            module_code, exc,
+        )
+        return {}
+    return {
+        row["class_name"]: (
+            row.get("display_name") or _prettify_class_name(row["class_name"])
+        )
+        for row in rows
+    }
+
+
+def _derive_scope(trained_class_names: list[str], catalog: dict[str, str]) -> str:
+    """<escopo> do nome comercial: "Completo" quando as classes treinadas
+    cobrem TODO o catálogo ativo do módulo; senão, os nomes das classes
+    treinadas juntados com "+" (ex.: "Luvas+Máscara"); acima do teto de
+    classes, "N classes" em vez de um nome quilométrico.
+
+    trained_class_names vazio (nenhuma classe real no class_distribution) ->
+    _ESCOPO_PERSONALIZADO — mesmo fallback honesto de quando a informação
+    simplesmente não existe (ver _build_display_name).
+    """
+    if not trained_class_names:
+        return _ESCOPO_PERSONALIZADO
+    trained = set(trained_class_names)
+    if catalog and trained >= set(catalog):
+        return "Completo"
+    labels = sorted(catalog.get(name, _prettify_class_name(name)) for name in trained)
+    if len(labels) > _ESCOPO_TETO_CLASSES:
+        return f"{len(labels)} classes"
+    return "+".join(labels)
+
+
+def _resolve_display_name(existing_display_name: str | None, auto_generated: str) -> str:
+    """Precedência humano > auto-gerado (regra do dono do produto): um
+    display_name já definido por um humano NUNCA é sobrescrito pelo
+    auto-gerado.
+
+    Não existe hoje neste repositório nenhuma rota PATCH/PUT de rename de
+    modelo nem coluna/marcador de proveniência dedicado (conferido: grep por
+    "rename"/"display_name" em services/api/app não encontrou nenhum —
+    trained_models.display_name só é escrito uma vez, no INSERT). Por isso a
+    única fonte de verdade possível hoje é "já tem valor" == "alguém (humano,
+    ou um dispatch anterior) já decidiu o nome". Esta função é o ponto único
+    onde essa precedência é aplicada — pronta para qualquer INSERT/UPDATE
+    futuro (inclusive uma futura rota de rename) chamar sem risco de
+    sobrescrever um nome humano.
+    """
+    return existing_display_name if existing_display_name else auto_generated
+
+
+def _fetch_scope_info(repo, dataset_version_id: str) -> tuple[str, str | None]:
+    """(module_code, escopo) do nome comercial, lidos do dataset_version que
+    originou o treino (`dataset_versions.module_code`/`class_distribution`).
+
+    Fail-safe total: qualquer erro de leitura (dataset_version sem linha,
+    module_classes indisponível, tipo inesperado) devolve module_code
+    default + escopo None — o chamador (_build_display_name) já sabe cair
+    num rótulo honesto sem inventar cobertura. Uma falha aqui nunca derruba
+    o display_name inteiro (comparado ao guard mais amplo do call site, que
+    cobre só a contagem de versão).
+    """
+    module_code = "epi"
+    escopo: str | None = None
+    try:
+        dsv = repo._execute_one(
+            "SELECT module_code, class_distribution FROM dataset_versions "
+            "WHERE id = %s",
+            (str(dataset_version_id),),
+        )
+        if dsv:
+            module_code = dsv.get("module_code") or module_code
+            trained = _classes_treinadas(dsv.get("class_distribution"))
+            catalog = _module_class_catalog(repo, module_code)
+            escopo = _derive_scope(trained, catalog)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "display_name_scope_lookup_failed: dataset_version=%s err=%s",
+            dataset_version_id, exc,
+        )
+    return module_code, escopo
+
+
+def _build_display_name(
+    version_n: int,
+    when: datetime | None = None,
+    module_code: str = "epi",
+    escopo: str | None = None,
+) -> str:
+    """Nome comercial pro cliente (regra do dono do produto, REQUISITO — não
+    é o legado "Logikos V<n>" da task D3): "Logikos <MÓDULO> <escopo> ·
+    DD/MM HHhMM". NUNCA framework/".py"/UUID/job-id no nome.
+
+    `version_n` preservado na assinatura por compatibilidade com o único
+    call site existente (que ainda precisa contar "modelo nº quantos" pra
+    outros fins) — não entra mais no texto: o formato exigido não tem slot
+    de versão (identificação passou a ser módulo+escopo+quando).
+
+    escopo=None: quando a informação de classes treinadas genuinamente não
+    existe neste ponto (lookup falhou, dataset_version sem
+    class_distribution) — usa o rótulo honesto _ESCOPO_PERSONALIZADO, que
+    não reivindica cobertura total nem nomeia um subconjunto não confirmado.
+
+    Fuso: grep no repo (ZoneInfo/America/Sao_Paulo) não encontrou nenhuma
+    conversão de timezone pro backend — todo `datetime.now()` do módulo já
+    usa UTC (era o padrão do próprio `_build_display_name` legado). Mantido
+    aqui pela mesma razão do resto do dispatch: sem uma conversão já
+    estabelecida em algum lugar do sistema, inventar uma aqui seria a
+    "invenção" que a regra proíbe. DÍVIDA CONHECIDA: como display_name é uma
+    string gravada uma vez (não um timestamp reformatado no cliente como o
+    resto da UI faz), a hora mostrada ao cliente é UTC crua — pode divergir
+    do horário local do site (ex. RVB/Blumenau, UTC-3) em até algumas horas.
     """
     quando = when or datetime.now(timezone.utc)
-    return f"Logikos V{version_n} · {quando.strftime('%d/%m')}"
+    modulo = _module_label(module_code)
+    escopo_final = escopo if escopo else _ESCOPO_PERSONALIZADO
+    return f"Logikos {modulo} {escopo_final} · {quando.strftime('%d/%m')} {quando.strftime('%Hh%M')}"
 
 
 @celery.task(
@@ -304,12 +480,23 @@ def dispatch_training(
             )
             job_framework = str((job_row or {}).get("framework") or "rfdetr")
             model_name = _build_model_name(job_framework, model_size, job_id)
-            # display_name (migration 129, task D3 — "job/treino aparece com
-            # nome cru"): alias comercial voltado ao cliente, NUNCA o `name`
+            # display_name (migration 129, regra de nomenclatura no nascimento
+            # — dono do produto, requisito): "Logikos <MÓDULO> <escopo> ·
+            # DD/MM HHhMM", alias comercial voltado ao cliente, NUNCA o `name`
             # interno acima (framework/job-id são jargão de stack). Só
             # calculado quando o tenant é resolvível — sem tenant não há como
             # contar "modelo nº quantos" e o front já cai em "Logikos"
             # (NOME_PADRAO_CLIENTE) quando display_name vem NULL.
+            #
+            # Precedência humano > auto (_resolve_display_name): esta é a
+            # única linha que grava trained_models.display_name (INSERT,
+            # nunca UPDATE — o guard `existing` acima já garante que este
+            # branch só roda quando NENHUMA linha existe pro job ainda), então
+            # não há nome humano prévio pra preservar AQUI. A chamada
+            # existe mesmo assim porque é o ponto único onde a precedência é
+            # aplicada — pronta pra um futuro caller (ex. rota de rename, ou
+            # um job de resync) que já tenha uma linha existente reusar sem
+            # risco de sobrescrever.
             display_name = None
             if tenant_id:
                 try:
@@ -320,7 +507,13 @@ def dispatch_training(
                         (tenant_id,),
                     )
                     version_n = int((contagem or {}).get("cnt") or 0) + 1
-                    display_name = _build_display_name(version_n)
+                    modulo_do_job, escopo_do_job = _fetch_scope_info(
+                        repo, dataset_version_id
+                    )
+                    auto_display_name = _build_display_name(
+                        version_n, module_code=modulo_do_job, escopo=escopo_do_job,
+                    )
+                    display_name = _resolve_display_name(None, auto_display_name)
                 except Exception as exc:  # noqa: BLE001
                     logger.warning(
                         "display_name_version_lookup_failed: job=%s tenant=%s err=%s",

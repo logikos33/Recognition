@@ -308,31 +308,236 @@ class TestBuildModelName:
 
 
 class TestBuildDisplayName:
-    """_build_display_name: alias comercial pro cliente (task D3 — "job/treino
-    aparece com nome cru"). NUNCA framework/".py"/job-id/UUID — só
-    "Logikos V<n> · DD/MM" (política já vigente na casa)."""
+    """_build_display_name: regra de nomenclatura do modelo no nascimento
+    (dono do produto, REQUISITO — substitui o alias legado "Logikos V<n> ·
+    DD/MM" da task D3): "Logikos <MÓDULO> <escopo> · DD/MM HHhMM". NUNCA
+    framework/".py"/job-id/UUID."""
 
-    def test_format_is_alias_plus_date_no_jargon(self) -> None:
-        when = datetime(2026, 8, 25, tzinfo=timezone.utc)
-        name = training_mod._build_display_name(2, when)
-        assert name == "Logikos V2 · 25/08", name
+    def test_format_is_modulo_escopo_data_hora(self) -> None:
+        when = datetime(2026, 9, 4, 14, 30, tzinfo=timezone.utc)
+        name = training_mod._build_display_name(
+            2, when, module_code="epi", escopo="Completo",
+        )
+        assert name == "Logikos EPI Completo · 04/09 14h30", name
+
+    def test_format_with_named_subset_scope(self) -> None:
+        when = datetime(2026, 9, 4, 14, 30, tzinfo=timezone.utc)
+        name = training_mod._build_display_name(
+            1, when, module_code="epi", escopo="Luvas+Máscara",
+        )
+        assert name == "Logikos EPI Luvas+Máscara · 04/09 14h30", name
+
+    def test_hour_is_zero_padded_hhhmm(self) -> None:
+        when = datetime(2026, 9, 4, 8, 5, tzinfo=timezone.utc)
+        name = training_mod._build_display_name(1, when, escopo="Completo")
+        assert "08h05" in name, name
+
+    def test_module_code_translated_to_pt_upper(self) -> None:
+        when = datetime(2026, 9, 4, 14, 30, tzinfo=timezone.utc)
+        name = training_mod._build_display_name(
+            1, when, module_code="quality", escopo="Completo",
+        )
+        assert name.startswith("Logikos QUALIDADE "), name
+
+    def test_unknown_module_code_falls_back_to_upper(self) -> None:
+        when = datetime(2026, 9, 4, 14, 30, tzinfo=timezone.utc)
+        name = training_mod._build_display_name(
+            1, when, module_code="novomodulo", escopo="Completo",
+        )
+        assert name.startswith("Logikos NOVOMODULO "), name
+
+    def test_scope_none_uses_honest_fallback_never_completo(self) -> None:
+        """escopo=None (informação genuinamente indisponível) não pode virar
+        "Completo" por acidente — seria mentir sobre cobertura."""
+        when = datetime(2026, 9, 4, 14, 30, tzinfo=timezone.utc)
+        name = training_mod._build_display_name(1, when, module_code="epi")
+        assert "Completo" not in name, name
+        assert name == "Logikos EPI Personalizado · 04/09 14h30", name
+
+    def test_defaults_to_now_when_no_date_given(self) -> None:
+        name = training_mod._build_display_name(1, escopo="Completo")
+        assert name.startswith("Logikos EPI Completo · "), name
+
+    def test_no_jargon_leaks_into_name(self) -> None:
+        when = datetime(2026, 9, 4, 14, 30, tzinfo=timezone.utc)
+        name = training_mod._build_display_name(
+            2, when, module_code="epi", escopo="Completo",
+        )
         assert "RF-DETR" not in name
         assert "YOLOX" not in name
         assert "YOLO26" not in name
         assert _JOB_ID not in name
         assert ".py" not in name
+        assert "V2" not in name  # versão sequencial saiu do texto (regra nova)
 
-    def test_defaults_to_now_when_no_date_given(self) -> None:
-        name = training_mod._build_display_name(1)
-        assert name.startswith("Logikos V1 · "), name
+
+class TestDeriveScope:
+    """_derive_scope: "Completo" quando as classes treinadas cobrem TODO o
+    catálogo ativo do módulo; senão, nomes das classes treinadas juntados
+    com "+"; acima do teto, "N classes"."""
+
+    _CATALOGO_EPI = {
+        "helmet": "Capacete",
+        "vest": "Colete",
+        "gloves": "Luvas",
+        "mask": "Máscara",
+    }
+
+    def test_covers_entire_catalog_is_completo(self) -> None:
+        escopo = training_mod._derive_scope(
+            list(self._CATALOGO_EPI), self._CATALOGO_EPI,
+        )
+        assert escopo == "Completo"
+
+    def test_covers_more_than_catalog_is_still_completo(self) -> None:
+        """Treinou tudo do módulo + 1 classe custom do tenant — ainda cobre
+        o módulo inteiro, então "Completo" continua honesto."""
+        escopo = training_mod._derive_scope(
+            [*self._CATALOGO_EPI, "capacete_customizado"], self._CATALOGO_EPI,
+        )
+        assert escopo == "Completo"
+
+    def test_named_subset_uses_display_names_joined(self) -> None:
+        escopo = training_mod._derive_scope(["gloves", "mask"], self._CATALOGO_EPI)
+        assert escopo == "Luvas+Máscara"
+
+    def test_subset_order_is_deterministic(self) -> None:
+        """Mesmo conjunto, ordem de entrada diferente -> mesmo escopo (senão
+        dois treinos idênticos nasceriam com nomes diferentes)."""
+        a = training_mod._derive_scope(["mask", "gloves"], self._CATALOGO_EPI)
+        b = training_mod._derive_scope(["gloves", "mask"], self._CATALOGO_EPI)
+        assert a == b == "Luvas+Máscara"
+
+    def test_teto_de_classes_vira_contagem(self) -> None:
+        """Acima do teto (_ESCOPO_TETO_CLASSES), nomear cada classe vira
+        ilegível — usa "N classes" em vez de um nome quilométrico.
+
+        Catálogo maior que o treinado (5 de 7) — testa o ramo de teto sem
+        cair em "Completo".
+        """
+        treinadas = {"a": "Alfa", "b": "Beta", "c": "Gama", "d": "Delta", "e": "Epsilon"}
+        catalogo_maior = {**treinadas, "f": "Fi", "g": "Gi"}
+        escopo = training_mod._derive_scope(list(treinadas), catalogo_maior)
+        assert escopo == "5 classes", escopo
+
+    def test_class_without_catalog_entry_gets_prettified(self) -> None:
+        """Classe custom do tenant sem display_name cadastrado: usa o
+        class_name prettificado, nunca o snake_case cru."""
+        escopo = training_mod._derive_scope(["no_ear_protection"], {})
+        assert escopo == "No Ear Protection"
+
+    def test_empty_trained_classes_uses_honest_fallback(self) -> None:
+        escopo = training_mod._derive_scope([], self._CATALOGO_EPI)
+        assert escopo == training_mod._ESCOPO_PERSONALIZADO
+
+    def test_empty_catalog_never_claims_completo(self) -> None:
+        """Catálogo vazio (lookup falhou ou módulo sem classes cadastradas)
+        nunca pode produzir "Completo" — sem o total, não há como provar
+        cobertura."""
+        escopo = training_mod._derive_scope(["gloves", "mask"], {})
+        assert escopo != "Completo"
+
+
+class TestClassesTreinadas:
+    """_classes_treinadas: extrai class_name reais de class_distribution,
+    filtrando a chave reservada de versioning_v2.py."""
+
+    def test_filters_reserved_sem_suporte_treino_key(self) -> None:
+        dist = {"helmet": 10, "gloves": 5, "__sem_suporte_treino__": ["mask"]}
+        classes = training_mod._classes_treinadas(dist)
+        assert set(classes) == {"helmet", "gloves"}
+
+    def test_none_or_empty_returns_empty_list(self) -> None:
+        assert training_mod._classes_treinadas(None) == []
+        assert training_mod._classes_treinadas({}) == []
+
+
+class TestResolveDisplayNameHumanPrecedence:
+    """_resolve_display_name: precedência humano > auto-gerado (regra do
+    dono do produto) — um display_name já definido por humano NUNCA é
+    sobrescrito pelo auto-gerado."""
+
+    def test_human_display_name_is_preserved(self) -> None:
+        resolved = training_mod._resolve_display_name(
+            "Câmera 3 — Expedição", "Logikos EPI Completo · 04/09 14h30",
+        )
+        assert resolved == "Câmera 3 — Expedição"
+
+    def test_auto_generated_used_when_nothing_set_yet(self) -> None:
+        resolved = training_mod._resolve_display_name(
+            None, "Logikos EPI Completo · 04/09 14h30",
+        )
+        assert resolved == "Logikos EPI Completo · 04/09 14h30"
+
+    def test_empty_string_treated_as_unset(self) -> None:
+        resolved = training_mod._resolve_display_name(
+            "", "Logikos EPI Completo · 04/09 14h30",
+        )
+        assert resolved == "Logikos EPI Completo · 04/09 14h30"
+
+
+class TestNoInternalJargonInAnyDisplayName:
+    """⛔ Nenhum UUID, hash, nome de framework ou ".py" pode aparecer em
+    display_name — cobre o gerador de ponta a ponta com dados realistas."""
+
+    def test_full_uuid_never_appears(self) -> None:
+        job_uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        name = training_mod._build_display_name(
+            3, module_code="epi", escopo="Completo",
+        )
+        assert job_uuid not in name
+
+    def test_framework_names_never_appear(self) -> None:
+        name = training_mod._build_display_name(
+            3, module_code="epi", escopo="Completo",
+        )
+        for jargon in ("rfdetr", "RF-DETR", "yolox", "YOLOX", "yolo26", "YOLO26"):
+            assert jargon not in name, name
+
+    def test_dot_py_never_appears(self) -> None:
+        name = training_mod._build_display_name(
+            3, module_code="epi", escopo="Completo",
+        )
+        assert ".py" not in name
 
 
 class TestTrainedModelInsertDisplayName:
-    """Fail-antes/passa-depois (task D3): o INSERT em trained_models grava
-    `display_name` como alias "Logikos V<n>" — nunca o `name` interno
+    """Fail-antes/passa-depois (regra de nomenclatura no nascimento): o
+    INSERT em trained_models grava `display_name` no formato
+    "Logikos <MÓDULO> <escopo> · DD/MM HHhMM" — nunca o `name` interno
     (framework/job-id), e só quando o tenant é resolvível."""
 
-    def _run(self, monkeypatch, existing_count: int = 4, tenant: str | None = _REAL_TENANT):
+    # Sentinel — distingue "parâmetro não passado" (default) de "passado
+    # como None explicitamente" (simula dataset_version sem linha/lookup
+    # falho), já que None é um valor de teste legítimo aqui.
+    _NAO_INFORMADO = object()
+
+    def _run(
+        self, monkeypatch, existing_count: int = 4, tenant: str | None = _REAL_TENANT,
+        dataset_version_row=_NAO_INFORMADO,
+        module_classes_rows=_NAO_INFORMADO,
+    ):
+        dsv_row = (
+            {
+                "module_code": "epi",
+                "class_distribution": {
+                    "helmet": 10, "vest": 8, "gloves": 5, "mask": 3,
+                },
+            }
+            if dataset_version_row is self._NAO_INFORMADO
+            else dataset_version_row
+        )
+        catalogo_rows = (
+            [
+                {"class_name": "helmet", "display_name": "Capacete"},
+                {"class_name": "vest", "display_name": "Colete"},
+                {"class_name": "gloves", "display_name": "Luvas"},
+                {"class_name": "mask", "display_name": "Máscara"},
+            ]
+            if module_classes_rows is self._NAO_INFORMADO
+            else module_classes_rows
+        )
+
         def _execute_one_side_effect(sql, params=()):
             if "SELECT COUNT(*) AS cnt FROM trained_models" in sql:
                 return {"cnt": existing_count}
@@ -340,7 +545,14 @@ class TestTrainedModelInsertDisplayName:
                 return None  # guarda anti-duplicação: nenhum modelo existente
             if "SELECT framework FROM training_jobs" in sql:
                 return {"framework": "rfdetr"}
+            if "FROM dataset_versions" in sql:
+                return dsv_row
             return {"tenant_id": tenant}  # _get_job_tenant_id
+
+        def _execute_side_effect(sql, params=()):
+            if "FROM module_classes" in sql:
+                return catalogo_rows
+            return []
 
         with patch.object(training_mod, "DatabasePool"), \
              patch.object(training_mod, "AnnotationRepository") as mock_repo_cls, \
@@ -351,6 +563,7 @@ class TestTrainedModelInsertDisplayName:
              ), \
              patch.object(training_mod, "verify_model_artifact", return_value=True):
             mock_repo_cls.return_value._execute_one.side_effect = _execute_one_side_effect
+            mock_repo_cls.return_value._execute.side_effect = _execute_side_effect
             training_mod.dispatch_training(_JOB_ID, _DSV_ID, epochs=5)
             repo = mock_repo_cls.return_value
 
@@ -360,20 +573,33 @@ class TestTrainedModelInsertDisplayName:
         sql, _ = self._run(monkeypatch)
         assert "name, display_name, model_path" in sql
 
-    def test_display_name_is_logikos_alias_counts_tenant_models(self, monkeypatch) -> None:
-        _, params = self._run(monkeypatch, existing_count=4)
+    def test_display_name_reflects_module_and_completo_scope(self, monkeypatch) -> None:
+        """4 classes treinadas == as 4 classes ativas do catálogo -> Completo."""
+        _, params = self._run(monkeypatch)
         [display_name] = [
-            p for p in params if isinstance(p, str) and p.startswith("Logikos V")
+            p for p in params if isinstance(p, str) and p.startswith("Logikos ")
         ]
-        # 4 modelos já existentes do tenant => este é o 5º (V5).
-        assert display_name.startswith("Logikos V5 · "), display_name
+        assert display_name.startswith("Logikos EPI Completo · "), display_name
+
+    def test_display_name_reflects_named_subset_scope(self, monkeypatch) -> None:
+        _, params = self._run(
+            monkeypatch,
+            dataset_version_row={
+                "module_code": "epi",
+                "class_distribution": {"gloves": 5, "mask": 3},
+            },
+        )
+        [display_name] = [
+            p for p in params if isinstance(p, str) and p.startswith("Logikos ")
+        ]
+        assert display_name.startswith("Logikos EPI Luvas+Máscara · "), display_name
 
     def test_display_name_never_leaks_internal_jargon(self, monkeypatch) -> None:
         """Mutação-alvo: reinstalar o nome cru (framework/job-id/".py") no
         display_name reprova este teste."""
         _, params = self._run(monkeypatch, existing_count=0)
         [display_name] = [
-            p for p in params if isinstance(p, str) and p.startswith("Logikos V")
+            p for p in params if isinstance(p, str) and p.startswith("Logikos ")
         ]
         assert "RF-DETR" not in display_name
         assert "YOLOX" not in display_name
@@ -387,8 +613,20 @@ class TestTrainedModelInsertDisplayName:
         _, params = self._run(monkeypatch, tenant=None)
         assert None in params
         assert not any(
-            isinstance(p, str) and p.startswith("Logikos V") for p in params
+            isinstance(p, str) and p.startswith("Logikos ") for p in params
         )
+
+    def test_display_name_falls_back_honestly_when_dataset_version_missing(
+        self, monkeypatch,
+    ) -> None:
+        """dataset_version sem linha (lookup falhou) -> nunca inventa
+        "Completo" nem um subconjunto — cai no rótulo honesto."""
+        _, params = self._run(monkeypatch, dataset_version_row=None)
+        [display_name] = [
+            p for p in params if isinstance(p, str) and p.startswith("Logikos ")
+        ]
+        assert "Completo" not in display_name
+        assert "Personalizado" in display_name
 
 
 class TestTrainedModelInsertNameReflectsRealFramework:
