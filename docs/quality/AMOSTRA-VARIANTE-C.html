@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Amostra Variante C</title>
+<style>
+:root { --fg:#1a1a1a; --fg2:#666; --bg:#faf9f7; --card:#fff; --borda:#d8d4cc;
+        --quadro:#efece6; --acento:#d92b2b; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --fg:#e8e6e1; --fg2:#9a958c; --bg:#16150f; --card:#1f1e18; --borda:#3a382f;
+  --quadro:#26241c; --acento:#ff6b5e; } }
+:root[data-theme="dark"] { --fg:#e8e6e1; --fg2:#9a958c; --bg:#16150f; --card:#1f1e18;
+  --borda:#3a382f; --quadro:#26241c; --acento:#ff6b5e; }
+body { background:var(--bg); color:var(--fg); margin:0; padding:2rem 1.25rem 4rem;
+  font:15px/1.55 ui-sans-serif,-apple-system,"Segoe UI",sans-serif; }
+main { max-width:1120px; margin:0 auto; }
+h1 { font-size:1.7rem; margin:0 0 .3rem; letter-spacing:-.02em; }
+.sub { color:var(--fg2); margin:0 0 1.5rem; max-width:62ch; }
+.aviso { border-left:3px solid var(--acento); background:var(--card); padding:.85rem 1rem;
+  margin:0 0 2rem; border-radius:0 4px 4px 0; max-width:62ch; }
+.aviso b { color:var(--acento); }
+table { border-collapse:collapse; margin:0 0 2.5rem; font-size:.9rem; }
+th,td { text-align:left; padding:.32rem .9rem .32rem 0; border-bottom:1px solid var(--borda); }
+tr.fora td { color:var(--fg2); }
+.grid { display:grid; gap:1.1rem; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); }
+.c { margin:0; background:var(--card); border:1px solid var(--borda); border-radius:6px;
+  overflow:hidden; }
+.c svg { display:block; width:100%; height:auto; background:var(--quadro); }
+figcaption { padding:.7rem .8rem .8rem; }
+.de { margin:0; font-size:.82rem; color:var(--fg2); }
+.para { margin:.1rem 0 .6rem; font-size:1rem; }
+dl { display:grid; grid-template-columns:auto 1fr; gap:.1rem .5rem; margin:0; font-size:.76rem; }
+dt { color:var(--fg2); } dd { margin:0; overflow-wrap:anywhere; }
+code { font-size:.72rem; }
+</style></head><body>
+<main>
+<h1>Amostra — Variante C</h1>
+<p class="sub">Cada cartão mostra UMA anotação de ausência do RVB e o rótulo de
+parte-do-corpo que o remapeamento propõe para ela. O retângulo grande é o quadro
+inteiro, na proporção real; a caixa vermelha é a anotação; as cinzas tracejadas
+são as outras caixas do mesmo frame, para dar contexto espacial.</p>
+<p class="aviso"><b>Sem a foto.</b> Esta sessão não tem credencial de R2, então
+as imagens não foram baixadas — o desenho é esquemático, na posição e na escala
+reais da caixa sobre o quadro. O <code>r2_key</code> de cada exemplo está no
+cartão para quem tiver a credencial abrir a imagem e conferir a olho.</p>
+<h2>Mapeamento</h2>
+<table><thead><tr><th>classe RVB</th><th>variante C</th></tr></thead>
+<tbody><tr><td>Sem Luvas</td><td>mao</td></tr><tr><td>Luvas</td><td>mao + luva</td></tr><tr><td>Sem protetor de ouvido</td><td>orelha</td></tr><tr><td>Protetor auditivo</td><td>orelha + protetor_auricular</td></tr><tr><td>Sem Óculos</td><td>regiao_olhos</td></tr><tr><td>Óculos</td><td>regiao_olhos + oculos</td></tr><tr><td>Sem mascara</td><td>regiao_boca_nariz</td></tr><tr><td>mascara</td><td>regiao_boca_nariz + mascara</td></tr><tr><td>Uso incorreto de mascara</td><td>regiao_boca_nariz + mascara_incorreta</td></tr><tr><td>Botas</td><td>botas</td></tr><tr class="fora"><td>Capacete</td><td>fora — n=3, abaixo de qualquer n mínimo</td></tr><tr class="fora"><td>Sem Capacete</td><td>fora — n=1</td></tr><tr class="fora"><td>Sem botas</td><td>fora — n=1 — não sustenta a parte &#x27;pé&#x27;</td></tr><tr class="fora"><td>incluir blur</td><td>fora — não é classe de objeto</td></tr></tbody></table>
+<h2>Exemplos (20)</h2>
+<div class="grid">
+<figure class="c">
+  <svg viewBox="0 0 417 369" role="img"
+       aria-label="caixa Sem Luvas sobre o quadro">
+    <rect x="0" y="0" width="417" height="369" fill="var(--quadro)" stroke="var(--borda)" stroke-width="1.67"/>
+    <rect x="120.4" y="272.9" width="90.0" height="89.0" fill="none" stroke="#8a8a8a" stroke-width="2.92" stroke-dasharray="6.25"/><text x="120.4" y="267.9" fill="#8a8a8a" font-size="14.9">Botas</text><rect x="86.4" y="171.9" width="78.0" height="59.0" fill="none" stroke="#d92b2b" stroke-width="2.92" /><text x="86.4" y="166.9" fill="#d92b2b" font-size="14.9">Sem Luvas</text>
+  </svg>
+  <figcaption>
+    <p class="de">Sem Luvas</p>
+    <p class="para">→ <b>mao</b></p>
+    <dl>
+      <dt>frame</dt><dd><code>454b6008-5373-4184-a6d1-1cb72adb7e4e</code></dd>
+      <dt>quadro</dt><dd>417×369 px</dd>
+      <dt>caixa</dt><dd>78×59 px &middot; área 2.99% &middot; proporção 1.32</dd>
+      <dt>r2_key</dt><dd><code>training-images/63c219d8-fbef-4f3c-a7c9-058c742482e2/nvr/e0c906a9-1b0a-4f3e-b299-715202e28b08/76c7721a-e328-4f40-9a4e-7464cead1ba7.jpg</code></dd>
+    </dl>
+  </figcaption>
+</figure>
+<figure class="c">
+  <svg viewBox="0 0 342 628" role="img"
+       aria-label="caixa Sem Luvas sobre o quadro">
+    <rect x="0" y="0" width="342" height="628" fill="var(--quadro)" stroke="var(--borda)" stroke-width="2.51"/>
+    <rect x="95.0" y="262.0" width="68.0" height="102.0" fill="none" stroke="#8a8a8a" stroke-width="4.40" stroke-dasharray="9.42"/><text x="95.0" y="254.5" fill="#8a8a8a" font-size="22.4">Sem Luvas</text><rect x="179.0" y="253.0" width="59.0" height="101.0" fill="none" stroke="#d92b2b" stroke-width="4.40" /><text x="179.0" y="245.5" fill="#d92b2b" font-size="22.4">Sem Luvas</text>
+  </svg>
+  <figcaption>
+    <p class="de">Sem Luvas</p>
+    <p class="para">→ <b>mao</b></p>
+    <dl>
+      <dt>frame</dt><dd><code>043a977b-dac8-4365-8c70-1f2f70c4e481</code></dd>
+      <dt>quadro</dt><dd>342×628 px</dd>
+      <dt>caixa</dt><dd>59×101 px &middot; área 2.77% &middot; proporção 0.58</dd>
+      <dt>r2_key</dt><dd><code>training-images/63c219d8-fbef-4f3c-a7c9-058c742482e2/nvr/e0c906a9-1b0a-4f3e-b299-715202e28b08/f7e7f4d0-3ac0-423f-948d-3af6edd4d1f6.jpg</code></dd>
+    </dl>
+  </figcaption>
+</figure>
+<figure class="c">
+  <svg viewBox="0 0 434 542" role="img"
+       aria-label="caixa Sem Luvas sobre o quadro">
+    <rect x="0" y="0" width="434" height="542" fill="var(--quadro)" stroke="var(--borda)" stroke-width="2.17"/>
+    <rect x="75.4" y="242.2" width="77.0" height="68.0" fill="none" stroke="#d92b2b" stroke-width="3.79" /><text x="75.4" y="235.7" fill="#d92b2b" font-size="19.4">Sem Luvas</text>
+  </svg>
+  <figcaption>
+    <p class="de">Sem Luvas</p>
+    <p class="para">→ <b>mao</b></p>
+    <dl>
+      <dt>frame</dt><dd><code>6ceff747-0ebe-474a-9269-5d06bdaaea3d</code></dd>
+      <dt>quadro</dt><dd>434×542 px</dd>
+      <dt>caixa</dt><dd>77×68 px &middot; área 2.23% &middot; proporção 1.13</dd>
+      <dt>r2_key</dt><dd><code>training-images/63c219d8-fbef-4f3c-a7c9-058c742482e2/nvr/e0c906a9-1b0a-4f3e-b299-715202e28b08/34f48019-f41e-4fb7-bcc4-4336f226b61a.jpg</code></dd>
+    </dl>
+  </figcaption>
+</figure>
+<figure class="c">
+  <svg viewBox="0 0 266 334" role="img"
+       aria-label="caixa Sem Luvas sobre o quadro">
+    <rect x="0" y="0" width="266" height="334" fill="var(--quadro)" stroke="var(--borda)" stroke-width="1.34"/>
+    <rect x="86.9" y="42.4" width="50.0" height="36.0" fill="none" stroke="#8a8a8a" stroke-width="2.34" stroke-dasharray="5.01"/><text x="86.9" y="38.4" fill="#8a8a8a" font-size="11.9">Protetor auditivo</text><rect x="159.9" y="90.4" width="29.0" height="39.0" fill="none" stroke="#8a8a8a" stroke-width="2.34" stroke-dasharray="5.01"/><text x="159.9" y="86.4" fill="#8a8a8a" font-size="11.9">Protetor auditivo</text><rect x="92.9" y="169.4" width="41.0" height="36.0" fill="none" stroke="#8a8a8a" stroke-width="2.34" stroke-dasharray="5.01"/><text x="92.9" y="165.4" fill="#8a8a8a" font-size="11.9">Sem Luvas</text><rect x="37.9" y="125.4" width="44.0" height="52.0" fill="none" stroke="#d92b2b" stroke-width="2.34" /><text x="37.9" y="121.4" fill="#d92b2b" font-size="11.9">Sem Luvas</text>
+  </svg>
+  <figcaption>
+    <p class="de">Sem Luvas</p>
+    <p class="para">→ <b>mao</b></p>
+    <dl>
+      <dt>frame</dt><dd><code>8f596796-cd45-4a09-8aa6-a60cb76f1d04</code></dd>
+      <dt>quadro</dt><dd>266×334 px</dd>
+      <dt>caixa</dt><dd>44×52 px &middot; área 2.58% &middot; proporção 0.85</dd>
+      <dt>r2_key</dt><dd><code>training-images/63c219d8-fbef-4f3c-a7c9-058c742482e2/nvr/e0c906a9-1b0a-4f3e-b299-715202e28b08/8dcefe9f-b59d-4926-baca-26abc111f3f0.jpg</code></dd>
+    </dl>
+  </figcaption>
+</figure>
+<figure class="c">
+  <svg viewBox="0 0 140 173" role="img"
+       aria-label="caixa Sem mascara sobre o quadro">
+    <rect x="0" y="0" width="140" height="173" fill="var(--quadro)" stroke="var(--borda)" stroke-width="0.69"/>
+    <rect x="62.2" y="39.3" width="49.5" height="25.1" fill="none" stroke="#d92b2b" stroke-width="1.21" /><text x="62.2" y="37.2" fill="#d92b2b" font-size="6.2">Sem mascara</text>
+  </svg>
+  <figcaption>
+    <p class="de">Sem mascara</p>
+    <p class="para">→ <b>regiao_boca_nariz</b></p>
+    <dl>
+      <dt>frame</dt><dd><code>0304abcf-0bce-40f0-b7e2-ed3ecab8ed90</code></dd>
+      <dt>quadro</dt><dd>140×173 px</dd>
+      <dt>caixa</dt><dd>49×25 px &middot; área 5.13% &middot; proporção 1.97</dd>
+      <dt>r2_key</dt><dd><code>training-images/63c219d8-fbef-4f3c-a7c9-058c742482e2/nvr/e0c906a9-1b0a-4f3e-b299-715202e28b08/79db3b42-3596-4e48-bea3-4b2dd660bf3f.jpg</code></dd>
+    </dl>
+  </figcaption>
+</figure>
+<figure class="c">
+  <svg viewBox="0 0 343 530" role="img"
+       aria-label="caixa Sem mascara sobre o quadro">
+    <rect x="0" y="0" width="343" height="530" fill="var(--quadro)" stroke="var(--borda)" stroke-width="2.12"/>
+    <rect x="229.5" y="99.0" width="53.0" height="34.0" fill="none" stroke="#d92b2b" stroke-width="3.71" /><text x="229.5" y="92.6" fill="#d92b2b" font-size="18.9">Sem mascara</text>
+  </svg>
+  <figcaption>
+    <p class="de">Sem mascara</p>
+    <p class="para">→ <b>regiao_boca_nariz</b></p>
+    <dl>
+      <dt>frame</dt><dd><code>c8a9d47a-5905-4f26-8b42-e4ab3ed84999</code></dd>
+      <dt>quadro</dt><dd>343×530 px</dd>
+      <dt>caixa</dt><dd>53×34 px &middot; área 0.99% &middot; proporção 1.56</dd>
+      <dt>r2_key</dt><dd><code>training-images/63c219d8-fbef-4f3c-a7c9-058c742482e2/nvr/e0c906a9-1b0a-4f3e-b299-715202e28b08/40540bb5-f753-4345-bccd-76effe73231e.jpg</code></dd>
+    </dl>
+  </figcaption>
+</figure>
+<figure class="c">
+  <svg viewBox="0 0 469 439" role="img"
+       aria-label="caixa Sem mascara sobre o quadro">
+    <rect x="0" y="0" width="469" height="439" fill="var(--quadro)" stroke="var(--borda)" stroke-width="1.88"/>
+    <rect x="143.9" y="120.7" width="59.0" height="46.0" fill="none" stroke="#8a8a8a" stroke-width="3.28" stroke-dasharray="7.04"/><text x="143.9" y="115.1" fill="#8a8a8a" font-size="16.8">Uso incorreto de mascara</text><rect x="187.9" y="33.7" width="60.0" height="38.0" fill="none" stroke="#d92b2b" stroke-width="3.28" /><text x="187.9" y="28.1" fill="#d92b2b" font-size="16.8">Sem mascara</text>
+  </svg>
+  <figcaption>
+    <p class="de">Sem mascara</p>
+    <p class="para">→ <b>regiao_boca_nariz</b></p>
+    <dl>
+      <dt>frame</dt><dd><code>14a34a2f-ff38-4a54-8259-2edde00deeff</code></dd>
+      <dt>quadro</dt><dd>469×439 px</dd>
+      <dt>caixa</dt><dd>60×38 px &middot; área 1.11% &middot; proporção 1.58</dd>
+      <dt>r2_key</dt><dd><code>training-images/63c219d8-fbef-4f3c-a7c9-058c742482e2/nvr/e0c906a9-1b0a-4f3e-b299-715202e28b08/0609cab3-8100-4644-8297-2209dd6b6755.jpg</code></dd>
+    </dl>
+  </figcaption>
+</figure>
+<figure class="c">
+  <svg viewBox="0 0 586 591" role="img"
+       aria-label="caixa Sem mascara sobre o quadro">
+    <rect x="0" y="0" width="586" height="591" fill="var(--quadro)" stroke="var(--borda)" stroke-width="2.36"/>
+    <rect x="295.9" y="99.2" width="94.1" height="51.6" fill="none" stroke="#8a8a8a" stroke-width="4.14" stroke-dasharray="8.87"/><text x="295.9" y="92.1" fill="#8a8a8a" font-size="21.1">Óculos</text><rect x="376.0" y="137.3" width="39.7" height="50.2" fill="none" stroke="#8a8a8a" stroke-width="4.14" stroke-dasharray="8.87"/><text x="376.0" y="130.2" fill="#8a8a8a" font-size="21.1">Protetor auditivo</text><rect x="271.9" y="126.9" width="119.0" height="78.0" fill="none" stroke="#d92b2b" stroke-width="4.14" /><text x="271.9" y="119.8" fill="#d92b2b" font-size="21.1">Sem mascara</text>
+  </svg>
+  <figcaption>
+    <p class="de">Sem mascara</p>
+    <p class="para">→ <b>regiao_boca_nariz</b></p>
+    <dl>
+      <dt>frame</dt><dd><code>b39e4518-510e-42c1-bc6b-baec388685c8</code></dd>
+      <dt>quadro</dt><dd>586×591 px</dd>
+      <dt>caixa</dt><dd>119×78 px &middot; área 2.68% &middot; proporção 1.53</dd>
+      <dt>r2_key</dt><dd><code>training-images/63c219d8-fbef-4f3c-a7c9-058c742482e2/nvr/e0c906a9-1b0a-4f3e-b299-715202e28b08/e38d3c12-bab6-409e-94d1-c9e2a36740cc.jpg</code></dd>
+    </dl>
+  </figcaption>
+</figure>
+<figure class="c">
+  <svg viewBox="0 0 444 502" role="img"
+       aria-label="caixa Sem Óculos sobre o quadro">
+    <rect x="0" y="0" width="444" height="502" fill="var(--quadro)" stroke="var(--borda)" stroke-width="2.01"/>
+    <rect x="329.0" y="93.9" width="68.0" height="40.1" fill="none" stroke="#d92b2b" stroke-width="3.51" /><text x="329.0" y="87.9" fill="#d92b2b" font-size="17.9">Sem Óculos</text>
+  </svg>
+  <figcaption>
+    <p class="de">Sem Óculos</p>
+    <p class="para">→ <b>regiao_olhos</b></p>
+    <dl>
+      <dt>frame</dt><dd><code>cead982f-00a0-43a4-a6b9-dbad43c9f579</code></dd>
+      <dt>quadro</dt><dd>444×502 px</dd>
+      <dt>caixa</dt><dd>68×40 px &middot; área 1.22% &middot; proporção 1.70</dd>
+      <dt>r2_key</dt><dd><code>training-images/63c219d8-fbef-4f3c-a7c9-058c742482e2/nvr/e0c906a9-1b0a-4f3e-b299-715202e28b08/83b1876c-084e-43ff-b9a0-6f2ab0001741.jpg</code></dd>
+    </dl>
+  </figcaption>
+</figure>
+<figure class="c">
+  <svg viewBox="0 0 300 556" role="img"
+       aria-label="caixa Sem Óculos sobre o quadro">
+    <rect x="0" y="0" width="300" height="556" fill="var(--quadro)" stroke="var(--borda)" stroke-width="2.22"/>
+    <rect x="154.5" y="108.9" width="58.3" height="35.7" fill="none" stroke="#d92b2b" stroke-width="3.89" /><text x="154.5" y="102.2" fill="#d92b2b" font-size="19.9">Sem Óculos</text>
+  </svg>
+  <figcaption>
+    <p class="de">Sem Óculos</p>
+    <p class="para">→ <b>regiao_olhos</b></p>
+    <dl>
+      <dt>frame</dt><dd><code>4ca4d540-4060-4e86-9e30-f7dd2df220d8</code></dd>
+      <dt>quadro</dt><dd>300×556 px</dd>
+      <dt>caixa</dt><dd>58×36 px &middot; área 1.25% &middot; proporção 1.63</dd>
+      <dt>r2_key</dt><dd><code>training-images/63c219d8-fbef-4f3c-a7c9-058c742482e2/nvr/e0c906a9-1b0a-4f3e-b299-715202e28b08/a0cf0c12-5577-47a1-801e-f556c66f9a1c.jpg</code></dd>
+    </dl>
+  </figcaption>
+</figure>
+<figure class="c">
+  <svg viewBox="0 0 132 264" role="img"
+       aria-label="caixa Sem Óculos sobre o quadro">
+    <rect x="0" y="0" width="132" height="264" fill="var(--quadro)" stroke="var(--borda)" stroke-width="1.06"/>
+    <rect x="70.1" y="43.6" width="29.7" height="17.8" fill="none" stroke="#d92b2b" stroke-width="1.85" /><text x="70.1" y="40.4" fill="#d92b2b" font-size="9.4">Sem Óculos</text>
+  </svg>
+  <figcaption>
+    <p class="de">Sem Óculos</p>
+    <p class="para">→ <b>regiao_olhos</b></p>
+    <dl>
+      <dt>frame</dt><dd><code>9b1e6db4-4ed3-4a30-82e2-437ecc8364c9</code></dd>
+      <dt>quadro</dt><dd>132×264 px</dd>
+      <dt>caixa</dt><dd>30×18 px &middot; área 1.52% &middot; proporção 1.66</dd>
+      <dt>r2_key</dt><dd><code>training-images/63c219d8-fbef-4f3c-a7c9-058c742482e2/nvr/e0c906a9-1b0a-4f3e-b299-715202e28b08/aa7d6640-58e5-4551-b22c-5aaf461ab6c3.jpg</code></dd>
+    </dl>
+  </figcaption>
+</figure>
+<figure class="c">
+  <svg viewBox="0 0 438 579" role="img"
+       aria-label="caixa Sem Óculos sobre o quadro">
+    <rect x="0" y="0" width="438" height="579" fill="var(--quadro)" stroke="var(--borda)" stroke-width="2.32"/>
+    <rect x="171.4" y="126.7" width="76.0" height="59.0" fill="none" stroke="#8a8a8a" stroke-width="4.05" stroke-dasharray="8.69"/><text x="171.4" y="119.8" fill="#8a8a8a" font-size="20.7">Sem mascara</text><rect x="130.4" y="124.7" width="126.0" height="97.0" fill="none" stroke="#8a8a8a" stroke-width="4.05" stroke-dasharray="8.69"/><text x="130.4" y="117.8" fill="#8a8a8a" font-size="20.7">Sem protetor de ouvido</text><rect x="153.4" y="73.7" width="106.0" height="45.0" fill="none" stroke="#d92b2b" stroke-width="4.05" /><text x="153.4" y="66.8" fill="#d92b2b" font-size="20.7">Sem Óculos</text>
+  </svg>
+  <figcaption>
+    <p class="de">Sem Óculos</p>
+    <p class="para">→ <b>regiao_olhos</b></p>
+    <dl>
+      <dt>frame</dt><dd><code>2d83b378-46f2-45d0-9ca1-900df79c33ed</code></dd>
+      <dt>quadro</dt><dd>438×579 px</dd>
+      <dt>caixa</dt><dd>106×45 px &middot; área 1.88% &middot; proporção 2.36</dd>
+      <dt>r2_key</dt><dd><code>training-images/63c219d8-fbef-4f3c-a7c9-058c742482e2/nvr/e0c906a9-1b0a-4f3e-b299-715202e28b08/de0931bf-a93c-4b6b-9054-640eb425dc21.jpg</code></dd>
+    </dl>
+  </figcaption>
+</figure>
+<figure class="c">
+  <svg viewBox="0 0 584 560" role="img"
+       aria-label="caixa Sem protetor de ouvido sobre o quadro">
+    <rect x="0" y="0" width="584" height="560" fill="var(--quadro)" stroke="var(--borda)" stroke-width="2.34"/>
+    <rect x="324.2" y="78.4" width="37.0" height="62.0" fill="none" stroke="#8a8a8a" stroke-width="4.09" stroke-dasharray="8.76"/><text x="324.2" y="71.4" fill="#8a8a8a" font-size="20.9">Sem protetor de ouvido</text><rect x="314.6" y="92.9" width="42.9" height="49.7" fill="none" stroke="#d92b2b" stroke-width="4.09" /><text x="314.6" y="85.9" fill="#d92b2b" font-size="20.9">Sem protetor de ouvido</text>
+  </svg>
+  <figcaption>
+    <p class="de">Sem protetor de ouvido</p>
+    <p class="para">→ <b>orelha</b></p>
+    <dl>
+      <dt>frame</dt><dd><code>ce4b3928-7416-4a38-bbef-f55f362594e5</code></dd>
+      <dt>quadro</dt><dd>584×560 px</dd>
+      <dt>caixa</dt><dd>43×50 px &middot; área 0.65% &middot; proporção 0.86</dd>
+      <dt>r2_key</dt><dd><code>training-images/63c219d8-fbef-4f3c-a7c9-058c742482e2/nvr/e0c906a9-1b0a-4f3e-b299-715202e28b08/715025d7-8585-4c90-837b-eeef9a05746a.jpg</code></dd>
+    </dl>
+  </figcaption>
+</figure>
+<figure class="c">
+  <svg viewBox="0 0 374 511" role="img"
+       aria-label="caixa Sem protetor de ouvido sobre o quadro">
+    <rect x="0" y="0" width="374" height="511" fill="var(--quadro)" stroke="var(--borda)" stroke-width="2.04"/>
+    <rect x="288.2" y="232.3" width="56.4" height="50.1" fill="none" stroke="#d92b2b" stroke-width="3.58" /><text x="288.2" y="226.2" fill="#d92b2b" font-size="18.2">Sem protetor de ouvido</text>
+  </svg>
+  <figcaption>
+    <p class="de">Sem protetor de ouvido</p>
+    <p class="para">→ <b>orelha</b></p>
+    <dl>
+      <dt>frame</dt><dd><code>578c7d1b-2206-43fb-857a-af4f193430bb</code></dd>
+      <dt>quadro</dt><dd>374×511 px</dd>
+      <dt>caixa</dt><dd>56×50 px &middot; área 1.48% &middot; proporção 1.12</dd>
+      <dt>r2_key</dt><dd><code>training-images/63c219d8-fbef-4f3c-a7c9-058c742482e2/nvr/e0c906a9-1b0a-4f3e-b299-715202e28b08/168ab7bb-6945-48ec-860f-a68a90bc3706.jpg</code></dd>
+    </dl>
+  </figcaption>
+</figure>
+<figure class="c">
+  <svg viewBox="0 0 368 397" role="img"
+       aria-label="caixa Sem protetor de ouvido sobre o quadro">
+    <rect x="0" y="0" width="368" height="397" fill="var(--quadro)" stroke="var(--borda)" stroke-width="1.59"/>
+    <rect x="200.9" y="0.4" width="32.6" height="32.5" fill="none" stroke="#d92b2b" stroke-width="2.78" /><text x="200.9" y="14.2" fill="#d92b2b" font-size="14.2">Sem protetor de ouvido</text>
+  </svg>
+  <figcaption>
+    <p class="de">Sem protetor de ouvido</p>
+    <p class="para">→ <b>orelha</b></p>
+    <dl>
+      <dt>frame</dt><dd><code>de06712c-261f-410d-9531-143ad36fc05f</code></dd>
+      <dt>quadro</dt><dd>368×397 px</dd>
+      <dt>caixa</dt><dd>33×32 px &middot; área 0.72% &middot; proporção 1.00</dd>
+      <dt>r2_key</dt><dd><code>training-images/63c219d8-fbef-4f3c-a7c9-058c742482e2/nvr/e0c906a9-1b0a-4f3e-b299-715202e28b08/8f0641a9-e7ec-4305-b5ef-00a10a60ccb8.jpg</code></dd>
+    </dl>
+  </figcaption>
+</figure>
+<figure class="c">
+  <svg viewBox="0 0 327 661" role="img"
+       aria-label="caixa Sem protetor de ouvido sobre o quadro">
+    <rect x="0" y="0" width="327" height="661" fill="var(--quadro)" stroke="var(--borda)" stroke-width="2.64"/>
+    <rect x="68.4" y="21.9" width="50.0" height="41.0" fill="none" stroke="#8a8a8a" stroke-width="4.63" stroke-dasharray="9.91"/><text x="68.4" y="23.6" fill="#8a8a8a" font-size="23.6">Sem mascara</text><rect x="125.4" y="8.9" width="49.0" height="56.0" fill="none" stroke="#d92b2b" stroke-width="4.63" /><text x="125.4" y="23.6" fill="#d92b2b" font-size="23.6">Sem protetor de ouvido</text>
+  </svg>
+  <figcaption>
+    <p class="de">Sem protetor de ouvido</p>
+    <p class="para">→ <b>orelha</b></p>
+    <dl>
+      <dt>frame</dt><dd><code>3dc00465-5693-4349-9191-c2b9725c58ed</code></dd>
+      <dt>quadro</dt><dd>327×661 px</dd>
+      <dt>caixa</dt><dd>49×56 px &middot; área 1.27% &middot; proporção 0.88</dd>
+      <dt>r2_key</dt><dd><code>training-images/63c219d8-fbef-4f3c-a7c9-058c742482e2/nvr/e0c906a9-1b0a-4f3e-b299-715202e28b08/cb22379f-4960-4fe4-84fe-29c0f3a33b53.jpg</code></dd>
+    </dl>
+  </figcaption>
+</figure>
+<figure class="c">
+  <svg viewBox="0 0 579 686" role="img"
+       aria-label="caixa Uso incorreto de mascara sobre o quadro">
+    <rect x="0" y="0" width="579" height="686" fill="var(--quadro)" stroke="var(--borda)" stroke-width="2.74"/>
+    <rect x="240.3" y="89.3" width="65.6" height="59.9" fill="none" stroke="#8a8a8a" stroke-width="4.80" stroke-dasharray="10.29"/><text x="240.3" y="81.1" fill="#8a8a8a" font-size="24.5">Sem protetor de ouvido</text><rect x="127.2" y="129.1" width="113.4" height="41.0" fill="none" stroke="#8a8a8a" stroke-width="4.80" stroke-dasharray="10.29"/><text x="127.2" y="120.9" fill="#8a8a8a" font-size="24.5">Óculos</text><rect x="143.4" y="151.4" width="162.0" height="99.0" fill="none" stroke="#d92b2b" stroke-width="4.80" /><text x="143.4" y="143.1" fill="#d92b2b" font-size="24.5">Uso incorreto de mascara</text>
+  </svg>
+  <figcaption>
+    <p class="de">Uso incorreto de mascara</p>
+    <p class="para">→ <b>regiao_boca_nariz</b> + <b>mascara_incorreta</b></p>
+    <dl>
+      <dt>frame</dt><dd><code>fea6264a-eeab-4b8b-97d9-202666e11b35</code></dd>
+      <dt>quadro</dt><dd>579×686 px</dd>
+      <dt>caixa</dt><dd>162×99 px &middot; área 4.04% &middot; proporção 1.64</dd>
+      <dt>r2_key</dt><dd><code>training-images/63c219d8-fbef-4f3c-a7c9-058c742482e2/nvr/e0c906a9-1b0a-4f3e-b299-715202e28b08/0809800e-5bdb-4f4f-8b1f-cb61b74417ae.jpg</code></dd>
+    </dl>
+  </figcaption>
+</figure>
+<figure class="c">
+  <svg viewBox="0 0 310 470" role="img"
+       aria-label="caixa Uso incorreto de mascara sobre o quadro">
+    <rect x="0" y="0" width="310" height="470" fill="var(--quadro)" stroke="var(--borda)" stroke-width="1.88"/>
+    <rect x="217.9" y="72.4" width="45.0" height="48.0" fill="none" stroke="#d92b2b" stroke-width="3.29" /><text x="217.9" y="66.7" fill="#d92b2b" font-size="16.8">Uso incorreto de mascara</text>
+  </svg>
+  <figcaption>
+    <p class="de">Uso incorreto de mascara</p>
+    <p class="para">→ <b>regiao_boca_nariz</b> + <b>mascara_incorreta</b></p>
+    <dl>
+      <dt>frame</dt><dd><code>4b7a5787-ef94-4c96-9fff-b164287194c5</code></dd>
+      <dt>quadro</dt><dd>310×470 px</dd>
+      <dt>caixa</dt><dd>45×48 px &middot; área 1.48% &middot; proporção 0.94</dd>
+      <dt>r2_key</dt><dd><code>training-images/63c219d8-fbef-4f3c-a7c9-058c742482e2/nvr/e0c906a9-1b0a-4f3e-b299-715202e28b08/3931c215-fede-48a5-9732-d37c55090745.jpg</code></dd>
+    </dl>
+  </figcaption>
+</figure>
+<figure class="c">
+  <svg viewBox="0 0 218 365" role="img"
+       aria-label="caixa Uso incorreto de mascara sobre o quadro">
+    <rect x="0" y="0" width="218" height="365" fill="var(--quadro)" stroke="var(--borda)" stroke-width="1.46"/>
+    <rect x="107.9" y="67.9" width="47.0" height="43.0" fill="none" stroke="#d92b2b" stroke-width="2.55" /><text x="107.9" y="63.5" fill="#d92b2b" font-size="13.0">Uso incorreto de mascara</text>
+  </svg>
+  <figcaption>
+    <p class="de">Uso incorreto de mascara</p>
+    <p class="para">→ <b>regiao_boca_nariz</b> + <b>mascara_incorreta</b></p>
+    <dl>
+      <dt>frame</dt><dd><code>236ddc08-3f3d-48b6-a862-057b54f83725</code></dd>
+      <dt>quadro</dt><dd>218×365 px</dd>
+      <dt>caixa</dt><dd>47×43 px &middot; área 2.54% &middot; proporção 1.09</dd>
+      <dt>r2_key</dt><dd><code>training-images/63c219d8-fbef-4f3c-a7c9-058c742482e2/nvr/e0c906a9-1b0a-4f3e-b299-715202e28b08/1435854c-30c2-47ae-80cb-82b6b9ccac56.jpg</code></dd>
+    </dl>
+  </figcaption>
+</figure>
+<figure class="c">
+  <svg viewBox="0 0 180 363" role="img"
+       aria-label="caixa Uso incorreto de mascara sobre o quadro">
+    <rect x="0" y="0" width="180" height="363" fill="var(--quadro)" stroke="var(--borda)" stroke-width="1.45"/>
+    <rect x="65.2" y="52.7" width="42.0" height="36.0" fill="none" stroke="#d92b2b" stroke-width="2.54" /><text x="65.2" y="48.3" fill="#d92b2b" font-size="13.0">Uso incorreto de mascara</text>
+  </svg>
+  <figcaption>
+    <p class="de">Uso incorreto de mascara</p>
+    <p class="para">→ <b>regiao_boca_nariz</b> + <b>mascara_incorreta</b></p>
+    <dl>
+      <dt>frame</dt><dd><code>bea99cbe-eada-4386-ba3f-67d38d4d8ec9</code></dd>
+      <dt>quadro</dt><dd>180×363 px</dd>
+      <dt>caixa</dt><dd>42×36 px &middot; área 2.31% &middot; proporção 1.17</dd>
+      <dt>r2_key</dt><dd><code>training-images/63c219d8-fbef-4f3c-a7c9-058c742482e2/nvr/e0c906a9-1b0a-4f3e-b299-715202e28b08/d7cfe4c1-a316-4a55-bf33-ad5c2d15b46e.jpg</code></dd>
+    </dl>
+  </figcaption>
+</figure></div>
+</main></body></html>
