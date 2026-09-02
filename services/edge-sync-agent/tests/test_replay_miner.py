@@ -245,6 +245,7 @@ def _make_miner(recorder, uploads: list, **overrides) -> ReplayMiner:
             "camera_id": camera_id,
             "frame_bytes": frame_bytes,
             "crop_origin": crop_origin,
+            "captured_at": captured_at,
         })
         return f"frame-{len(uploads)}"
 
@@ -281,6 +282,24 @@ def test_happy_path_uploads_one_crop_per_task():
     assert stats.crops_kept == 3
     assert len(uploads) == 3
     assert recorder.calls == ["cam-1", "cam-4", "cam-11"]
+
+
+def test_captured_at_e_o_instante_da_gravacao_nao_o_da_mineracao():
+    """O carimbo tem de ser a hora do DVR, não a hora em que colhemos.
+
+    Já foi `datetime.now()`: um lote minerado hoje de gravação de 3 dias atrás
+    nascia inteiro com a data de hoje, e o dataset perdia turno, luz e a
+    ligação com o roteiro. Aqui o turno é 07:00:00..07:00:06 de 2026-08-03, e
+    o frame de índice 0 tem de sair exatamente em 07:00:00 daquele dia.
+    """
+    recorder = _MockRecorderClient()
+    uploads: list = []
+    miner = _make_miner(recorder, uploads, sample_fps=2.0)
+
+    miner.mine(_make_plan(1))
+
+    assert len(uploads) == 1
+    assert uploads[0]["captured_at"] == datetime(2026, 8, 3, 7, 0, 0)
 
 
 def test_run_mining_builds_plan_skips_excluded_and_runs():

@@ -802,7 +802,7 @@ class ReplayMiner:
             stats.frames_scanned += len(frames)
 
             window_kept = 0
-            for frame in frames:
+            for indice, frame in enumerate(frames):
                 if rule.per_window_cap is not None and window_kept >= rule.per_window_cap:
                     break
                 if rule.campaign_max_crops is not None and (
@@ -813,7 +813,11 @@ class ReplayMiner:
                 if payload is None:
                     continue
                 payload_bytes, crop_origin = payload
-                if self._upload(task.camera_id, payload_bytes, crop_origin):
+                # QUANDO A CENA ACONTECEU, não quando a mineramos. O extrator
+                # devolve os frames em ordem, a `sample_fps`, a partir de
+                # `start` — então o instante do frame i é start + i/fps.
+                capturado_em = start + timedelta(seconds=indice / self._sample_fps)
+                if self._upload(task.camera_id, payload_bytes, capturado_em, crop_origin):
                     window_kept += 1
                     stats.crops_kept += 1
                     stats.bytes_uploaded += len(payload_bytes)
@@ -878,8 +882,17 @@ class ReplayMiner:
         self,
         camera_id: str,
         payload_bytes: bytes,
+        captured_at: datetime,
         crop_origin: "dict[str, Any] | None" = None,
     ) -> bool:
+        """*captured_at* é o instante da GRAVAÇÃO, não o da mineração.
+
+        Isto já foi `datetime.now()`, e num minerador de REPLAY isso é errado
+        por construção: todo frame nascia carimbado com a hora da colheita, e
+        o dataset perdia a única coisa que liga a imagem ao turno, à luz e ao
+        roteiro em que ela foi gravada. Um lote inteiro minerado numa tarde
+        parecia ter acontecido naquela tarde.
+        """
         try:
             bearer = self._token_source.get_bearer()
             self._upload_fn(
@@ -890,7 +903,7 @@ class ReplayMiner:
                 self._recorder_id,
                 payload_bytes,
                 self._module_code,
-                datetime.now(),
+                captured_at,
                 crop_origin=crop_origin,
             )
         except FrameUploadError as exc:
