@@ -60,13 +60,45 @@ def _get_storage(tenant_id: str | None = None):  # type: ignore[no-untyped-def]
     return get_storage(tenant_id)
 
 
-def _resolve_holdout_split(dataset_version: dict[str, Any]) -> str | None:
-    """Prefere 'test'; cai pra 'val' se test_count==0; None se os dois forem 0."""
-    if int(dataset_version.get("test_count") or 0) > 0:
-        return "test"
-    if int(dataset_version.get("val_count") or 0) > 0:
-        return "val"
-    return None
+def _digital_do_holdout(frame_ids: list[str]) -> str:
+    """Impressão digital da prova: sha256 dos ids ORDENADOS, 12 hex.
+
+    Gravada em metrics junto do veredito. É o que torna o ranking auditável:
+    duas avaliações que dizem ter usado o mesmo holdout ou exibem a mesma
+    digital, ou uma delas está mentindo — e dá para provar qual, depois.
+    """
+    import hashlib
+    return hashlib.sha256("\n".join(sorted(frame_ids)).encode()).hexdigest()[:12]
+
+
+def _filtrar_coco_pela_membresia(
+    coco: dict[str, Any], frame_ids: list[str]
+) -> tuple[dict[str, Any], list[str]]:
+    """Recorta o COCO para EXATAMENTE os frames congelados na membresia.
+
+    O COCO vive no R2 e já foi reescrito por baixo antes (#515: o v9-freeze
+    declarava val=553 no artefato e 159 no banco). A membresia é a fonte de
+    verdade do que é a prova; o COCO é só onde as caixas estão guardadas.
+    Devolve (coco recortado, ids da membresia que sumiram do artefato).
+    """
+    por_id = {f: None for f in frame_ids}
+    images = [
+        img for img in coco.get("images", [])
+        if str(img.get("file_name", "")).rsplit(".", 1)[0] in por_id
+    ]
+    vistos = {str(img["file_name"]).rsplit(".", 1)[0] for img in images}
+    faltantes = [f for f in frame_ids if f not in vistos]
+    manter = {img["id"] for img in images}
+    return (
+        {
+            **coco,
+            "images": images,
+            "annotations": [
+                a for a in coco.get("annotations", []) if a["image_id"] in manter
+            ],
+        },
+        faltantes,
+    )
 
 
 def _run_split_inference(
@@ -328,9 +360,14 @@ def evaluate_challenger_model(self, model_id: str, dataset_version_id: str | Non
     if dataset_version is None:
         return {"status": "error", "model_id": model_id, "reason": "dataset_version_not_found"}
 
-    coco_r2_key = dataset_version.get("coco_r2_key")
-    split = _resolve_holdout_split(dataset_version)
-    if not coco_r2_key or split is None:
+    # O holdout é resolvido pelo ID DELE, e por nada do modelo. Era exatamente
+    # aqui que o ranking histórico se perdia: `_resolve_holdout_split` lia as
+    # contagens da dataset_version DO PRÓPRIO MODELO, então cada modelo prestava
+    # uma prova diferente e as notas eram comparadas como se fossem a mesma.
+    # Dois modelos com o mesmo `dsv_id` agora recebem a mesma lista de frames,
+    # byte a byte — e a digital gravada em metrics permite conferir isso depois.
+    holdout = dataset_repo.get_holdout(dsv_id)
+    if holdout is None or not holdout.get("coco_r2_key"):
         logger.warning(
             "evaluate_challenger_no_holdout: model=%s dataset_version=%s "
             "test_count=%s val_count=%s",
@@ -338,6 +375,9 @@ def evaluate_challenger_model(self, model_id: str, dataset_version_id: str | Non
             dataset_version.get("test_count"), dataset_version.get("val_count"),
         )
         return {"status": "error", "model_id": model_id, "reason": "no_holdout_split"}
+
+    coco_r2_key = holdout["coco_r2_key"]
+    split = holdout["split"]
 
     storage = _get_storage(tenant_id)
     try:
@@ -350,6 +390,29 @@ def evaluate_challenger_model(self, model_id: str, dataset_version_id: str | Non
             model_id, exc, exc_info=True,
         )
         return {"status": "error", "model_id": model_id, "reason": "coco_download_failed"}
+
+    frame_ids = holdout.get("frame_ids")
+    if frame_ids:
+        coco, faltantes = _filtrar_coco_pela_membresia(coco, frame_ids)
+        if faltantes:
+            logger.warning(
+                "evaluate_challenger_holdout_incompleto: dataset_version=%s split=%s "
+                "%d de %d frames congelados não estão mais no COCO do R2 — a prova "
+                "encolheu por baixo e é por isso que a membresia existe",
+                dsv_id, split, len(faltantes), len(frame_ids),
+            )
+        holdout_digital = _digital_do_holdout(frame_ids)
+    else:
+        # Versão anterior à migration 131: a membresia é irrecuperável. Roda
+        # sobre o COCO inteiro (comportamento legado) mas NUNCA se declara
+        # congelada — ausência de congelamento não é congelamento.
+        holdout_digital = None
+        logger.warning(
+            "evaluate_challenger_holdout_nao_congelado: dataset_version=%s split=%s "
+            "— build anterior à membresia persistida; esta nota não é comparável "
+            "com a de outro modelo",
+            dsv_id, split,
+        )
 
     try:
         challenger_result = _evaluate_model_on_split(model, storage, coco_r2_key, split, coco)
@@ -398,6 +461,12 @@ def evaluate_challenger_model(self, model_id: str, dataset_version_id: str | Non
     metrics_payload = {
         **challenger_result["metrics"],
         "split_used": split,
+        # Qual prova foi prestada, gravado junto da nota. Sem isto o ranking é
+        # uma coluna de números sem exame identificado.
+        "holdout_version_id": str(dsv_id),
+        "holdout_frozen": bool(frame_ids),
+        "holdout_fingerprint": holdout_digital,
+        "holdout_frame_count": len(frame_ids) if frame_ids else None,
         "iou_threshold": _DEFAULT_IOU_THRESHOLD,
         "images_evaluated": challenger_result["images_evaluated"],
         "champion_model_id": champion_id,

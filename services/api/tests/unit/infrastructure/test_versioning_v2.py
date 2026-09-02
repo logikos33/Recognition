@@ -490,6 +490,50 @@ class TestLineageInsert:
         assert status_call.args[2] == "error"
 
 
+class TestMembresiaDoSplitCongelada:
+    """O build grava QUEM caiu em cada split (migration 131).
+
+    `dataset_versions.split` só guarda a proporção. Sem esta gravação o
+    holdout do A/B é irrecuperável — o build 42023066 sorteou com
+    `random.shuffle` sem semente e nem re-executar o código recupera.
+    """
+
+    def test_grava_membresia_com_os_ids_exatos_de_cada_split(self, v2_mod):
+        frames = [_make_frame(uuid4(), i) for i in range(9)]
+        result, _, dataset_repo, _ = _run(v2_mod, frames, [_make_ann(frames[0]["id"])])
+
+        membresia = dataset_repo.update_split_membership.call_args.args[2]
+        assert set(membresia) == {"train", "val", "test"}
+
+        # Os ids gravados são exatamente os frames do export — nem um a mais,
+        # nem um a menos, e nenhum em dois splits.
+        gravados = [i for nome in membresia for i in membresia[nome]]
+        assert sorted(gravados) == sorted(str(f["id"]) for f in frames)
+        assert len(gravados) == len(set(gravados))
+
+        # E as contagens gravadas na row batem com o tamanho das listas.
+        for nome in ("train", "val", "test"):
+            assert len(membresia[nome]) == result[f"{nome}_count"]
+
+    def test_membresia_gravada_antes_do_ready(self, v2_mod):
+        """Versão 'ready' é imutável — se a membresia entrasse depois, o
+        artefato ficaria pronto sem a prova que o define."""
+        ordem = []
+        dataset_repo = MagicMock()
+        dataset_repo.create_version_v2.return_value = {"id": DV_ID}
+        dataset_repo.get_pending_version.return_value = None
+        dataset_repo.update_split_membership.side_effect = (
+            lambda *a, **k: ordem.append("membresia")
+        )
+        dataset_repo.update_version_status.side_effect = (
+            lambda *a, **k: ordem.append(f"status:{a[2]}")
+        )
+        frames = [_make_frame(uuid4(), i) for i in range(5)]
+        _run(v2_mod, frames, [_make_ann(frames[0]["id"])], dataset_repo=dataset_repo)
+
+        assert ordem.index("membresia") < ordem.index("status:ready")
+
+
 class TestRetryReusesExistingVersion:
     """Achado da revisão adversarial: sem UNIQUE(dataset_id, version), um
     retry do Celery após falha transiente (ex.: upload R2) reINSERTava

@@ -27,9 +27,25 @@ _MINIMAL_COCO = json.dumps(
 ).encode("utf-8")
 
 
+def _holdout(split="test", frame_ids=None, coco_r2_key="dataset-exports/tenant/1/v1"):
+    """Holdout congelado (migration 131) — o que get_holdout devolve.
+
+    Default sem `frame_ids`: dataset_version anterior à membresia persistida,
+    que é o caso da maioria destes testes (foco na orquestração, não na
+    membresia — essa tem suíte própria em test_holdout_membresia.py).
+    """
+    return {
+        "dataset_version_id": DSV_ID, "coco_r2_key": coco_r2_key,
+        "split": split, "frame_ids": frame_ids, "frozen": bool(frame_ids),
+    }
+
+
 def _fake_repos(monkeypatch, registry=None, dataset=None, eval_repo=None, storage=None):
     registry = registry or MagicMock()
     dataset = dataset or MagicMock()
+    # Sem isto o holdout viria de um MagicMock e os testes passariam por
+    # acidente, sobre um split que ninguém declarou.
+    dataset.get_holdout.return_value = _holdout()
     eval_repo = eval_repo or MagicMock()
     storage = storage or MagicMock()
     monkeypatch.setattr(model_evaluation, "_get_registry_repo", lambda: registry)
@@ -125,12 +141,13 @@ class TestOrchestration:
         assert result["reason"] == "dataset_version_not_found"
 
     def test_missing_holdout_split_returns_error(self, monkeypatch):
-        """test_count==0 E val_count==0 — nunca gerar veredito sem holdout real."""
+        """Versão sem holdout nenhum — nunca gerar veredito sem prova real."""
         registry, dataset, *_ = _fake_repos(monkeypatch)
         registry.get_by_id.return_value = self._base_model()
         dataset.get_by_id.return_value = self._base_dataset_version(
             test_count=0, val_count=0
         )
+        dataset.get_holdout.return_value = None
         monkeypatch.setitem(sys.modules, "onnxruntime", MagicMock())
         monkeypatch.setitem(sys.modules, "cv2", MagicMock())
 
@@ -139,10 +156,14 @@ class TestOrchestration:
         assert result["reason"] == "no_holdout_split"
 
     def test_falls_back_to_val_split_when_test_count_zero(self, monkeypatch):
+        """A escolha test→val agora mora em DatasetRepository.get_holdout; a
+        task só obedece ao que o holdout declarou. Ver test_holdout_membresia.py
+        ::test_cai_para_val_quando_test_vazio para a escolha em si."""
         registry, dataset, eval_repo, storage = _fake_repos(monkeypatch)
         registry.get_by_id.return_value = self._base_model()
         registry.list_for_tenant.return_value = []
         dataset.get_by_id.return_value = self._base_dataset_version(test_count=0, val_count=3)
+        dataset.get_holdout.return_value = _holdout(split="val")
         storage.download_bytes.return_value = _MINIMAL_COCO
         eval_repo.create.return_value = {"id": "eval-1"}
         monkeypatch.setitem(sys.modules, "onnxruntime", MagicMock())

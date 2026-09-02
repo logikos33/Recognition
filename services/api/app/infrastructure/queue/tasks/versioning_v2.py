@@ -946,6 +946,16 @@ def build_dataset_version_v2(
         # 7b. Conferência antes do 'ready' — ver _conferir_splits.
         _conferir_splits(splits, cocos)
 
+        # 7c. Congela a MEMBRESIA do split (migration 131). `split` guarda só a
+        # proporção pedida; sem esta lista o holdout é promessa, não artefato —
+        # o build 42023066 sorteou com `random.shuffle` sem semente e não é
+        # reproduzível nem re-executando o código. Gravada ANTES do 'ready':
+        # dali em diante a versão é imutável e o holdout com ela.
+        dataset_repo.update_split_membership(
+            row["id"], tenant_id,
+            {nome: [str(f["id"]) for f in splits[nome]] for nome in _SPLIT_NAMES},
+        )
+
         # 8. building → ready (grava prefixo R2 dos COCO)
         dataset_repo.update_version_status(
             row["id"], tenant_id, DatasetVersionStatus.READY.value,
