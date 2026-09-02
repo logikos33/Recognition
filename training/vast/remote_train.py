@@ -569,7 +569,7 @@ def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
     # apostar a corrida no calendário de release de terceiros.
     pip_install(
         "rfdetr==1.5.2", "rfdetr[onnx]==1.5.2", "onnx", "onnxruntime",
-        "supervision", "transformers<5", "numpy<2",
+        "supervision", "transformers<5", "numpy<2", "typing_extensions>=4.13",
     )
     from rfdetr import RFDETRBase  # noqa: PLC0415
 
