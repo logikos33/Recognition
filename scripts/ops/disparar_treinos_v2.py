@@ -125,6 +125,40 @@ TETO_RODADA_USD = 40.0
 N_TREINOS = 3
 
 
+# ── A MEDIÇÃO QUE SUBSTITUI A EXTRAPOLAÇÃO ────────────────────────────────────
+# Medido NO POD REAL do treino A (job 04508616, pod tep7xhdt469zoy, RTX 4090
+# SECURE, batch 4 × grad_accum 4, imgsz 560, 3.560 train + 1.175 val):
+#     ép.3→4 = 274 s   ·   ép.4→5 = 288 s   →   281 s/época
+#     setup (pod criado → época 1) = 444 s
+# A extrapolação dizia 171 s/época — errou 1,64× para baixo, porque o nosso val
+# é 1,8× o da referência e o RF-DETR valida a CADA época. Com medida na mão, o
+# fator de loteria da COMMUNITY sai da conta: ele existia para cobrir a máquina
+# sorteada, e esta máquina não é mais hipótese — está rodando. A margem de 1,5×
+# FICA (cobre a variação entre épocas e o export final).
+S_POR_EPOCA_MEDIDO = 281.0
+SETUP_MEDIDO_S = 444
+
+
+def projetar_timeout_medido(
+    preco_usd_h: float = 0.74, teto_rodada: float = TETO_RODADA_USD,
+) -> dict[str, Any]:
+    """Timeout a partir do s/época MEDIDO no pod, não de extrapolação."""
+    bruto = S_POR_EPOCA_MEDIDO * EPOCAS_TETO + SETUP_MEDIDO_S + 400  # +export/upload
+    por_cobertura = int(bruto * MARGEM)
+    por_orcamento = int(teto_rodada / N_TREINOS / preco_usd_h * 3600)
+    timeout = min(por_cobertura, por_orcamento)
+    return {
+        "fonte": "medido no pod tep7xhdt469zoy",
+        "s_por_epoca": S_POR_EPOCA_MEDIDO,
+        "cem_epocas_s": int(bruto),
+        "timeout_s": timeout,
+        "horas": round(timeout / 3600, 2),
+        "restricao": "orcamento" if por_orcamento < por_cobertura else "cobertura",
+        "custo_estimado_usd": round(preco_usd_h * timeout / 3600, 2),
+        "folga_sobre_cem_epocas": round(timeout / bruto, 2),
+    }
+
+
 def projetar_timeout(
     train: int, val: int, preco_usd_h: float = 0.74,
     teto_rodada: float = TETO_RODADA_USD,
@@ -431,10 +465,7 @@ def disparar(variante: str) -> dict[str, Any]:
         raise SystemExit(f"variante {variante}: exporte antes (`exportar`).")
 
     nuvem = os.environ.get("RUNPOD_CLOUD_TYPE", "COMMUNITY").upper()
-    proj = projetar_timeout(
-        dsv["train_count"], dsv["val_count"],
-        preco_usd_h=PRECO_REAL_USD_H.get(nuvem, 0.74),
-    )
+    proj = projetar_timeout_medido(preco_usd_h=PRECO_REAL_USD_H.get(nuvem, 0.74))
     proj["nuvem"] = nuvem
     if str(os.environ.get("RUNPOD_TIMEOUT_SECONDS_TRAIN", "")) == "":
         raise SystemExit(
@@ -535,6 +566,15 @@ def autoteste() -> None:
         assert teto_custo(p["timeout_s"], preco) * N_TREINOS <= TETO_RODADA_USD, p
         print(json.dumps({"preco": preco, "projecao": p,
                           "teto_usd_por_treino": teto_custo(p["timeout_s"], preco)}))
+    # A projeção MEDIDA (a que B e C usam) tem de cobrir 100 épocas do ritmo real
+    # e caber no orçamento aos 3 treinos, ao preço REAL do tier em uso.
+    m = projetar_timeout_medido(preco_usd_h=PRECO_REAL_USD_H["SECURE"])
+    assert m["timeout_s"] > m["cem_epocas_s"], m
+    assert m["custo_estimado_usd"] * N_TREINOS <= TETO_RODADA_USD, m
+    # E tem de ser MAIOR que a extrapolação achava necessário por época: medir
+    # revelou 281 s/época contra os 171 projetados — 1,64× de erro para baixo.
+    assert S_POR_EPOCA_MEDIDO > projetar_timeout(3560, 1175)["s_por_epoca_bom"]
+    print(json.dumps({"medido": m}))
     # Em SECURE quem manda é o orçamento; em COMMUNITY, a cobertura.
     assert projetar_timeout(3560, 1175, 0.74)["restricao"] == "orcamento"
     assert projetar_timeout(3560, 1175, 0.34)["restricao"] == "cobertura"
