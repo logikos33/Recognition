@@ -13,10 +13,10 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from flask import Blueprint, request
-from flask_jwt_extended import get_jwt, get_jwt_identity, verify_jwt_in_request
+from flask_jwt_extended import get_jwt, get_jwt_identity, jwt_required, verify_jwt_in_request
 
 from app.api.v1.quality.classes import DEFECT_CATEGORIES, QUALITY_CLASSES, VALID_CLASS_IDS
-from app.core.auth import get_role
+from app.core.auth import get_role, require_training_role
 from app.core.quality_video_security import (
     RateLimitError,
     SecurityError,
@@ -1053,7 +1053,14 @@ def create_job_from_inspection(inspection_id: str):
 # TREINAMENTO
 # ============================================================
 
+# Achado irmão do mutirão (mesma vulnerabilidade de training/routes.py):
+# esta rota não tinha NENHUM decorator — nem @jwt_required(), só o
+# _require_jwt() interno (autentica mas não checa papel). Qualquer usuário
+# autenticado disparava treino (GPU paga) via módulo quality. Mesmo gate
+# training:approve (superadmin-only) aplicado no irmão EPI.
 @quality_bp.route("/training/jobs", methods=["POST"])
+@jwt_required()
+@require_training_role("approve")
 def create_training_job():
     """POST /api/v1/quality/training/jobs — cria job de treinamento por vídeo."""
     try:
