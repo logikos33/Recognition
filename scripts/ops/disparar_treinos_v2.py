@@ -114,23 +114,57 @@ FATOR_LOTERIA = 348.0 / 105.0  # 3,31× — MESMO dataset, máquinas diferentes
 SETUP_E_EXPORT_S = 1200        # pip install + download do zip + export/validação/upload
 MARGEM = 1.5                   # a margem que a guarda pede
 
+# ── O PREÇO QUE A ESTEIRA NÃO ENXERGA ─────────────────────────────────────────
+# `RunPodClient.get_gpu_price` devolve `lowestPrice.uninterruptablePrice` — que é
+# o preço da COMMUNITY — INDEPENDENTE do `cloud_type` com que o pod é criado.
+# Medido em 02/09 pelo GraphQL, RTX 4090: communityPrice 0,34 · securePrice 0,74.
+# Logo, rodando em SECURE, `check_cost_cap` protege contra um número 2,2× MENOR
+# que a conta real. Quem define o orçamento aqui tem de usar o preço de VERDADE.
+PRECO_REAL_USD_H = {"COMMUNITY": 0.34, "SECURE": 0.74}
+TETO_RODADA_USD = 40.0
+N_TREINOS = 3
 
-def projetar_timeout(train: int, val: int) -> dict[str, float]:
+
+def projetar_timeout(
+    train: int, val: int, preco_usd_h: float = 0.74,
+    teto_rodada: float = TETO_RODADA_USD,
+) -> dict[str, Any]:
     """Timeout do pod POR MEDIÇÃO, com o pior caso histórico — nunca a mediana.
 
-    Escala linear no volume (train+val, porque o RF-DETR valida a cada época),
-    multiplicada pelo fator de loteria medido, mais o setup, vezes a margem.
+    Duas restrições, e vale a MENOR:
+
+    1. **Cobrir o pior caso.** Escala linear no volume (train+val, porque o
+       RF-DETR valida a cada época) × fator de loteria medido + setup, × margem.
+    2. **Caber no orçamento.** O timeout é o teto de gasto REAL do pod
+       (`timeout × preço`). Com 3 treinos e US$ 40, cada um pode no máximo
+       `teto_rodada / 3 / preço` horas.
+
+    Em COMMUNITY (0,34/h) a restrição 1 manda. Em SECURE (0,74/h) a 2 manda: a
+    margem de 1,5× custaria US$ 53,6 nos três, acima do teto da rodada. O que
+    sai é dito no campo `restricao`, nunca escondido — e mesmo o timeout
+    orçamentário ainda cobre 100 épocas no PIOR s/época já medido (é o que
+    `folga_sobre_pior_caso` prova).
     """
     imagens = train + val
     s_bom = REF_S_POR_EPOCA * imagens / REF_IMAGENS
     s_pior = s_bom * FATOR_LOTERIA
-    bruto = s_pior * EPOCAS_TETO + SETUP_E_EXPORT_S
+    pior_caso_s = s_pior * EPOCAS_TETO + SETUP_E_EXPORT_S
+
+    por_cobertura = int(pior_caso_s * MARGEM)
+    por_orcamento = int(teto_rodada / N_TREINOS / preco_usd_h * 3600)
+    timeout = min(por_cobertura, por_orcamento)
     return {
         "imagens": imagens,
         "s_por_epoca_bom": round(s_bom, 1),
         "s_por_epoca_pior": round(s_pior, 1),
-        "timeout_s": int(bruto * MARGEM),
-        "horas": round(bruto * MARGEM / 3600, 2),
+        "pior_caso_100_epocas_s": int(pior_caso_s),
+        "timeout_por_cobertura_s": por_cobertura,
+        "timeout_por_orcamento_s": por_orcamento,
+        "restricao": "orcamento" if por_orcamento < por_cobertura else "cobertura",
+        "timeout_s": timeout,
+        "horas": round(timeout / 3600, 2),
+        "preco_usd_h": preco_usd_h,
+        "folga_sobre_pior_caso": round(timeout / pior_caso_s, 2),
     }
 
 
@@ -338,6 +372,43 @@ def nomes() -> list[dict[str, str]]:
 
 # ══════════════════════════════════════════════════════════════ disparar ══
 
+def sondar() -> dict[str, Any]:
+    """Cria e MATA um pod com o spec EXATO do treino, só pra saber se há máquina.
+
+    Existe porque `_run_runpod_train_job` monta o `dataset.zip` (4.983 downloads
+    sequenciais + upload de 349 MB ≈ 35 min) ANTES de chamar `create_pod`. O
+    primeiro disparo gastou esses 35 minutos para receber "There are no
+    instances currently available" — a resposta que esta sonda dá em 3 segundos.
+    Custo: o pod vive menos de um segundo (fração de centavo).
+    """
+    import os as _os
+
+    from app.infrastructure.gpu.runpod_client import RunPodClient
+    from app.infrastructure.gpu.runpod_runner import (
+        cloud_type_default, container_disk_gb_default, gpu_type_default,
+    )
+
+    cli = RunPodClient(_os.environ["RUNPOD_API_KEY"])
+    spec = {
+        "gpu": gpu_type_default(), "cloud": cloud_type_default(),
+        "disco_gb": container_disk_gb_default(),
+    }
+    try:
+        pod = cli.create_pod(
+            name=f"recognition-sonda-{uuid.uuid4().hex[:8]}",
+            image="runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04",
+            gpu_type_id=spec["gpu"], env={},
+            docker_start_cmd=["/bin/bash", "-c", "true"],
+            container_disk_gb=spec["disco_gb"], cloud_type=spec["cloud"],
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {**spec, "capacidade": False, "erro": str(exc)[:300]}
+    # Mata NA HORA — sonda que esquece o pod aceso é pior que sonda nenhuma.
+    cli.terminate_pod(str(pod["id"]))
+    return {**spec, "capacidade": True, "pod_sondado": str(pod["id"]),
+            "preco_usd_h": cli.get_gpu_price(spec["gpu"])}
+
+
 def disparar(variante: str) -> dict[str, Any]:
     """Cria a linha do job e roda `dispatch_training` SÍNCRONO neste processo.
 
@@ -359,21 +430,32 @@ def disparar(variante: str) -> dict[str, Any]:
     if not dsv:
         raise SystemExit(f"variante {variante}: exporte antes (`exportar`).")
 
-    proj = projetar_timeout(dsv["train_count"], dsv["val_count"])
+    nuvem = os.environ.get("RUNPOD_CLOUD_TYPE", "COMMUNITY").upper()
+    proj = projetar_timeout(
+        dsv["train_count"], dsv["val_count"],
+        preco_usd_h=PRECO_REAL_USD_H.get(nuvem, 0.74),
+    )
+    proj["nuvem"] = nuvem
     if str(os.environ.get("RUNPOD_TIMEOUT_SECONDS_TRAIN", "")) == "":
         raise SystemExit(
             "RUNPOD_TIMEOUT_SECONDS_TRAIN não setado — o default 3600 MATA um "
             f"treino de 100 épocas. Projeção desta variante: {proj}"
         )
 
+    # ⚠️ SEM `name`: `public.training_jobs` (onde os 40 jobs reais vivem, e
+    # onde a esteira lê — `BaseRepository` não mexe em search_path, então o
+    # default `"$user", public` resolve pra public) NÃO tem essa coluna. Quem
+    # tem é a cópia LEGADA em `{tenant_schema}.training_jobs` (rvb/dev/admin,
+    # 15 colunas, ZERO linhas). A variante viaja em `hyperparams.variante`.
+    # Tabela sem qualificar DE PROPÓSITO: é assim que `dispatch_training`
+    # resolve, e a linha tem de cair onde ele vai lê-la.
     job_id = str(uuid.uuid4())
     repo._execute_mutation_no_return(
-        "INSERT INTO training_jobs (id, user_id, name, status, model_size, "
+        "INSERT INTO training_jobs (id, user_id, status, model_size, "
         " total_epochs, tenant_id, dataset_version_id, framework, base_model, "
-        " hyperparams) VALUES (%s, %s, %s, 'pending', 'rfdetr', %s, %s, %s, "
+        " hyperparams) VALUES (%s, %s, 'pending', 'rfdetr', %s, %s, %s, "
         " 'rfdetr', 'base', %s::jsonb)",
-        (job_id, USER_RVB, f"v2-{variante} {meta['resumo']}", EPOCAS_TETO,
-         TENANT_RVB, dsv["id"],
+        (job_id, USER_RVB, EPOCAS_TETO, TENANT_RVB, dsv["id"],
          json.dumps({
              "experimento": "v2-tres-variantes", "variante": meta["versao"],
              "imgsz": IMGSZ, "gpu": os.environ.get("RUNPOD_GPU_TYPE", "4090"),
@@ -397,7 +479,8 @@ def status() -> list[dict[str, Any]]:
     _bootstrap()
     repo = _repo()
     linhas = repo._execute(
-        "SELECT tj.id::text AS id, tj.name, tj.status, tj.current_epoch, "
+        "SELECT tj.id::text AS id, tj.hyperparams->>'variante' AS variante, "
+        "       tj.status, tj.current_epoch, "
         "       tj.total_epochs, tj.progress, tj.gpu_instance_ref, "
         "       tj.started_at, tj.completed_at, tj.metrics, tj.error_message, "
         "       tm.display_name, tm.id::text AS model_id "
@@ -417,7 +500,7 @@ def status() -> list[dict[str, Any]]:
             seg = round((fim - r["started_at"]).total_seconds())
         ep = r["current_epoch"] or 0
         saida.append({
-            "job": r["id"][:8], "nome": r["name"], "status": r["status"],
+            "job": r["id"][:8], "variante": r["variante"], "status": r["status"],
             "epoca": f"{ep}/{r['total_epochs']}", "progresso": r["progress"],
             "pod": r["gpu_instance_ref"], "segundos": seg,
             "s_por_epoca": round(seg / ep) if seg and ep else None,
@@ -437,27 +520,31 @@ def autoteste() -> None:
 
     O resto (early-stop, nome, morte do pod) é da esteira e já tem teste lá.
     """
-    p = projetar_timeout(3560, 1175)
-    assert p["imagens"] == 4735
-    # Volume 11% maior que a referência -> s/época 11% maior.
-    assert 165 < p["s_por_epoca_bom"] < 180, p
-    # Pior caso = bom × fator de loteria medido (3,31×), NUNCA a mediana.
-    assert abs(p["s_por_epoca_pior"] / p["s_por_epoca_bom"] - FATOR_LOTERIA) < 0.01
-    # E tem de sobreviver ao pior caso de 100 épocas com folga.
-    assert p["timeout_s"] > p["s_por_epoca_pior"] * EPOCAS_TETO, p
-    # O teto de custo dos 3 treinos tem de caber nos US$ 40 da rodada.
-    assert teto_custo(p["timeout_s"], 0.34) * 3 < 40, teto_custo(p["timeout_s"], 0.34)
-    # Um timeout dimensionado pelo caso BOM seria menor que o pior caso real —
-    # exatamente o erro que matou o job 5894a860 na época 16.
-    assert p["s_por_epoca_bom"] * EPOCAS_TETO * MARGEM < p["s_por_epoca_pior"] * EPOCAS_TETO
-    print(json.dumps({"projecao": p, "teto_usd_por_treino": teto_custo(p["timeout_s"], 0.34)}))
+    for preco in (PRECO_REAL_USD_H["COMMUNITY"], PRECO_REAL_USD_H["SECURE"]):
+        p = projetar_timeout(3560, 1175, preco_usd_h=preco)
+        assert p["imagens"] == 4735
+        # Volume 11% maior que a referência -> s/época 11% maior.
+        assert 165 < p["s_por_epoca_bom"] < 180, p
+        # Pior caso = bom × fator de loteria medido (3,31×), NUNCA a mediana.
+        assert abs(p["s_por_epoca_pior"] / p["s_por_epoca_bom"] - FATOR_LOTERIA) < 0.01
+        # A REGRA QUE NÃO PODE CEDER: mesmo depois de cortado pelo orçamento, o
+        # timeout ainda cobre 100 épocas no PIOR s/época já medido. Foi o
+        # contrário disso que matou o job 5894a860 na época 16 de 50.
+        assert p["timeout_s"] > p["pior_caso_100_epocas_s"], p
+        # E os 3 treinos têm de caber nos US$ 40 da rodada, ao preço REAL.
+        assert teto_custo(p["timeout_s"], preco) * N_TREINOS <= TETO_RODADA_USD, p
+        print(json.dumps({"preco": preco, "projecao": p,
+                          "teto_usd_por_treino": teto_custo(p["timeout_s"], preco)}))
+    # Em SECURE quem manda é o orçamento; em COMMUNITY, a cobertura.
+    assert projetar_timeout(3560, 1175, 0.74)["restricao"] == "orcamento"
+    assert projetar_timeout(3560, 1175, 0.34)["restricao"] == "cobertura"
     print("autoteste OK")
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("comando", choices=[
-        "autoteste", "plano", "exportar", "nomes", "disparar", "status",
+        "autoteste", "plano", "exportar", "nomes", "sondar", "disparar", "status",
     ])
     ap.add_argument("--variante", choices=list(VARIANTES))
     ap.add_argument(
@@ -469,15 +556,17 @@ def main() -> int:
     if args.comando == "autoteste":
         autoteste()
     elif args.comando == "plano":
-        p = projetar_timeout(3560, 1175)
-        print(json.dumps({
-            "referencia": {"job": REF_JOB, "imagens": REF_IMAGENS,
-                           "s_por_epoca": REF_S_POR_EPOCA},
-            "fator_loteria_medido": round(FATOR_LOTERIA, 2),
-            "projecao": p,
-            "teto_usd_por_treino_4090": teto_custo(p["timeout_s"], 0.34),
-            "teto_usd_3_treinos": round(teto_custo(p["timeout_s"], 0.34) * 3, 2),
-        }, indent=2))
+        saida = {"referencia": {"job": REF_JOB, "imagens": REF_IMAGENS,
+                                "s_por_epoca": REF_S_POR_EPOCA},
+                 "fator_loteria_medido": round(FATOR_LOTERIA, 2), "nuvens": {}}
+        for nuvem, preco in PRECO_REAL_USD_H.items():
+            p = projetar_timeout(3560, 1175, preco_usd_h=preco)
+            saida["nuvens"][nuvem] = {
+                "projecao": p,
+                "teto_usd_por_treino": teto_custo(p["timeout_s"], preco),
+                "teto_usd_3_treinos": round(teto_custo(p["timeout_s"], preco) * N_TREINOS, 2),
+            }
+        print(json.dumps(saida, indent=2))
     elif args.comando == "exportar":
         if not args.variante:
             raise SystemExit("--variante obrigatório")
@@ -487,6 +576,8 @@ def main() -> int:
         ))
     elif args.comando == "nomes":
         print(json.dumps(nomes(), indent=2, ensure_ascii=False))
+    elif args.comando == "sondar":
+        print(json.dumps(sondar(), indent=2, ensure_ascii=False))
     elif args.comando == "disparar":
         if not args.variante:
             raise SystemExit("--variante obrigatório")
