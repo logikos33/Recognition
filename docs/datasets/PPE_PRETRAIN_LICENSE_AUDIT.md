@@ -196,6 +196,82 @@ desvantagem artificial. A taxonomia do SH17 pode ser copiada; o dado dele, não.
 - **Sobreposição entre datasets** — R1/R2/R3/R10 podem compartilhar imagens; não verificado.
 - **Ganho de mAP do pré-treino.** Nada aqui mede utilidade; só mede licença e encaixe declarado.
 
+---
+
+## Reconferência de 2026-09-02 (aquisição)
+
+Antes de escrever `scripts/ops/baixar_datasets_publicos.py`, as licenças das
+fontes que o script usa foram lidas **de novo na fonte primária**, pelo mesmo
+método (r.jina.ai; `universe.roboflow.com` continua devolvendo 403 a acesso
+direto). **Nenhuma licença divergiu.**
+
+| Fonte | Licença relida | Bate? |
+|---|---|---|
+| R1 `detector_epp_earmuff_gloves_mask` | `CC BY 4.0` → creativecommons.org/licenses/by/4.0/ | sim |
+| R2 `safety_ppe` | `CC BY 4.0` | sim |
+| R3 `safety-gloves-xbnf8` | `CC BY 4.0` | sim |
+| R6 `hand-no-gloves` | `Public Domain` → creativecommons.org/publicdomain/zero/1.0/ | sim |
+
+O script ainda reconfere pela **API** (`api.roboflow.com/{ws}/{proj}`) antes de
+baixar e **aborta a fonte** se o campo `license` divergir — página e API são
+fontes diferentes, e discordância entre elas significa registro envelhecido.
+
+### Open Images V7 — confirmado, e agora medido
+
+**Licença.** Verbatim de https://storage.googleapis.com/openimages/web/factsfigures_v7.html:
+*"The annotations are licensed by Google LLC under CC BY 4.0 license."* As
+imagens são *"listed as having a CC BY 2.0 license"*, **com ressalva do próprio
+Google**: *"we make no representations or warranties regarding the license status
+of each image and you should verify the license for each image yourself."*
+Ou seja: anotação limpa, imagem com risco residual declarado — mesmo formato de
+ressalva do CPPE-5, e registrado no `PROCEDENCIA.json` de cada download.
+
+**Contagem — medida, não estimada.** Baixando os dois CSVs canônicos que a
+página de download do V7 aponta e contando a coluna `LabelName`:
+
+```
+curl -sO https://storage.googleapis.com/openimages/v5/validation-annotations-bbox.csv   # 25.105.048 B
+curl -sO https://storage.googleapis.com/openimages/v5/test-annotations-bbox.csv         # 77.484.237 B
+cut -d, -f3 validation-annotations-bbox.csv | grep -cx /m/0k65p    # 5031
+cut -d, -f3 test-annotations-bbox.csv       | grep -cx /m/0k65p    # 15185
+```
+
+| Classe | MID | validation | test | **total** | bate com a auditoria? |
+|---|---|---|---|---|---|
+| Human hand | `/m/0k65p` | 5.031 | 15.185 | **20.216** | sim |
+| Human face | `/m/0dzct` | 5.594 | 17.008 | **22.602** | sim |
+| Human ear | `/m/039xj_` | 1.147 | 3.304 | **4.451** | sim |
+
+MIDs conferidos em `oidv7-class-descriptions-boxable.csv`. Imagens distintas com
+≥1 destas caixas: **4.332** (validation) + **13.060** (test) = **17.392** — nada
+do split `train` é baixado. As imagens vêm de
+`https://open-images-dataset.s3.amazonaws.com/{split}/{id}.jpg`, público, **sem
+chave** (HTTP 200 verificado).
+
+### Correção à §4: `Botas` tem MENOS cobertura pública do que a tabela sugere
+
+A §4 credita `Shoe` (R2) e `shoes` (R6) como cobertura de **Botas**. O conversor
+**descarta os dois**, e a razão é o próprio R6: ele tem `boots` **e** `shoes`
+como classes separadas. Quando o dataset público distingue duas classes,
+colapsá-las numa nossa destrói a distinção que ele pagou para fazer — e encheria
+`Botas` de sapato comum. Mesma regra descarta `glasses` (o R6 também separa
+`glasses` de `goggles`).
+
+**Resultado:** a única fonte pública de `Botas` é `boots` do R6 — 200 imagens.
+`Botas` continua sendo lacuna, e a §4 a dava por coberta. Reverter é uma linha
+em `MAPA` de `converter_datasets_publicos.py`, depois de olhar o dado.
+
+### Ainda não medido
+
+- Instâncias por classe de R1/R2/R3/R6 — exige a API key (o script mede e
+  reporta automaticamente no primeiro download).
+- **Se a caixa de ausência do público tem a geometria do EPI que falta**, como
+  foi medido no RVB (KS D 0,135–0,225). A variante C depende disso: se o público
+  desenhar `no glove` sobre a pessoa inteira em vez de sobre a mão, o mapeamento
+  `no glove → mao` fica errado. Medir logo após o download, antes de treinar.
+
+---
+
 ## Correção a `docs/datasets/PPE_LICENSE.md`
 
 Aquele documento afirma CC BY 4.0 para *"'Construction Site Safety' ou 'HardHat & SafetyVest'"* —
