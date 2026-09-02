@@ -31,7 +31,12 @@ vi.mock('../../services/api', () => ({
   getToken: () => 'tok-123',
 }))
 
-const auth = vi.hoisted(() => ({ modules: ['epi'] as string[], isSuperAdmin: false }))
+// can('training:approve') = true por padrão nos testes de payload/paridade
+// já existentes (superadmin de fato) — o teste de gate abaixo vira `false`.
+const auth = vi.hoisted(() => ({
+  modules: ['epi'] as string[], isSuperAdmin: false,
+  can: ((_p: string) => true) as (p: string) => boolean,
+}))
 vi.mock('../../hooks/useAuth', () => ({ useAuth: () => auth }))
 
 const toastOk = vi.fn()
@@ -88,6 +93,7 @@ beforeEach(() => {
   toastErro.mockReset()
   auth.modules = ['epi']
   auth.isSuperAdmin = false
+  auth.can = () => true
   liveJobs.current = {}
 })
 
@@ -167,6 +173,15 @@ describe('Treino (Estúdio — treino ao vivo)', () => {
     render(<Treino />)
 
     await screen.findByText((text) => text.includes('20/50'))
+  })
+
+  it('sem training:approve, esconde "Novo treino" e "Parar" (botão que o papel não pode usar não se desenha)', async () => {
+    auth.can = () => false
+    mockApi({ status: statusEnvelope(job('job-9', { status: 'running' }), true) })
+    render(<Treino />)
+    await screen.findByText(/Logikos/)
+    expect(screen.queryByText('Novo treino')).toBeNull()
+    expect(screen.queryByText('Parar')).toBeNull()
   })
 
   describe('anti-vazamento de stack interno (política F5-LEVE)', () => {

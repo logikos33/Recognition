@@ -41,6 +41,29 @@ def auth_headers(app, user_id):
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest.fixture
+def superadmin_auth_headers(app, user_id):
+    """Token com role=superadmin — único papel com training:approve.
+
+    Endpoints de disparo/cancelamento de treino (POST /api/training/jobs,
+    POST /api/training/jobs/<id>/stop) exigem este gate desde o fix do
+    achado P0 (routes.py criava job com só @jwt_required()) — `auth_headers`
+    (role=operator) agora leva 403 neles, mesmo padrão já usado em
+    test_create_class_ok/test_activate_model_error_path.
+    """
+    with app.app_context():
+        from flask_jwt_extended import create_access_token
+        token = create_access_token(
+            identity=str(user_id),
+            additional_claims={
+                "tenant_id": str(uuid4()),
+                "role": "superadmin",
+                "tenant_schema": "public",
+            },
+        )
+    return {"Authorization": f"Bearer {token}"}
+
+
 # ---------------------------------------------------------------------------
 # Training — Videos
 # ---------------------------------------------------------------------------
@@ -196,7 +219,7 @@ class TestTrainingClasses:
 
 class TestTrainingJobs:
 
-    def test_create_job_ok(self, client, auth_headers) -> None:
+    def test_create_job_ok(self, client, superadmin_auth_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.create_job.return_value = {
             "id": str(uuid4()), "status": "queued", "preset": "balanced",
@@ -207,10 +230,10 @@ class TestTrainingJobs:
              patch("app.api.v1.training.job_handlers.get_dataset_service", return_value=mock_dataset_svc):
             res = client.post("/api/training/jobs", json={
                 "preset": "balanced", "model_size": "yolo26n", "total_epochs": 100,
-            }, headers=auth_headers)
+            }, headers=superadmin_auth_headers)
         assert res.status_code in (200, 201)
 
-    def test_create_job_resolves_latest_dataset_version_when_omitted(self, client, auth_headers) -> None:
+    def test_create_job_resolves_latest_dataset_version_when_omitted(self, client, superadmin_auth_headers) -> None:
         """task B2: sem dataset_version_id no body, resolve pra versão mais recente do usuário."""
         dsv_id = str(uuid4())
         mock_svc = MagicMock()
@@ -224,13 +247,13 @@ class TestTrainingJobs:
              patch("app.api.v1.training.job_handlers.get_dataset_service", return_value=mock_dataset_svc):
             res = client.post("/api/training/jobs", json={
                 "preset": "balanced", "model_size": "yolo26n", "total_epochs": 100,
-            }, headers=auth_headers)
+            }, headers=superadmin_auth_headers)
         assert res.status_code in (200, 201)
         mock_svc.create_job.assert_called_once()
         assert mock_svc.create_job.call_args.kwargs["dataset_version_id"] == dsv_id
         assert res.get_json()["data"]["dataset_version_id"] == dsv_id
 
-    def test_create_job_respects_explicit_dataset_version_id(self, client, auth_headers) -> None:
+    def test_create_job_respects_explicit_dataset_version_id(self, client, superadmin_auth_headers) -> None:
         """task B2: dataset_version_id explícito no body vence — sem lookup."""
         explicit_dsv_id = str(uuid4())
         mock_svc = MagicMock()
@@ -244,7 +267,7 @@ class TestTrainingJobs:
             res = client.post("/api/training/jobs", json={
                 "preset": "balanced", "model_size": "yolo26n", "total_epochs": 100,
                 "dataset_version_id": explicit_dsv_id,
-            }, headers=auth_headers)
+            }, headers=superadmin_auth_headers)
         assert res.status_code in (200, 201)
         assert mock_svc.create_job.call_args.kwargs["dataset_version_id"] == explicit_dsv_id
         # Body já trouxe o id — não precisa consultar a versão mais recente
@@ -289,6 +312,89 @@ class TestTrainingJobs:
             )
         assert res.status_code == 403
         mock_svc.activate_model.assert_not_called()
+
+
+def _role_headers(app, role: str) -> dict[str, str]:
+    """Token com role arbitrária — para os testes de gate abaixo."""
+    with app.app_context():
+        from flask_jwt_extended import create_access_token
+        token = create_access_token(
+            identity=str(uuid4()),
+            additional_claims={
+                "tenant_id": str(uuid4()), "role": role, "tenant_schema": "public",
+            },
+        )
+    return {"Authorization": f"Bearer {token}"}
+
+
+class TestTrainingJobsPlatformGate:
+    """Achado P0 do mutirão: POST /api/training/jobs e .../jobs/<id>/stop só
+    tinham @jwt_required() — QUALQUER papel autenticado disparava treino
+    real (GPU paga). Regra do produto: 'a Logikos treina, sempre; nenhum
+    papel de tenant dispara treino' → training:approve (superadmin-only,
+    ver app/core/permissions.py). activate_model já tinha o gate certo
+    (test_activate_model_requires_training_approve, acima); aqui fecha o
+    buraco simétrico em criar/cancelar job.
+
+    Protocolo falha-antes/passa-depois: sem @require_training_role("approve")
+    em create_job/stop_job (routes.py) estes testes voltam a 200/201 —
+    prova de mutação rodada manualmente (ver saída no relatório do PR)."""
+
+    NAO_PLATAFORMA = ["admin", "trainer", "operator", "analyst", "viewer"]
+
+    @pytest.mark.parametrize("role", NAO_PLATAFORMA)
+    def test_create_job_denied_for_non_platform_role(self, app, client, role) -> None:
+        mock_svc = MagicMock()
+        with patch("app.api.v1.training.job_handlers.get_training_service", return_value=mock_svc), \
+             patch("app.core.auth._has_training_override", return_value=False):
+            res = client.post(
+                "/api/training/jobs",
+                json={"preset": "balanced"},
+                headers=_role_headers(app, role),
+            )
+        assert res.status_code == 403, res.get_json()
+        mock_svc.create_job.assert_not_called()
+
+    def test_create_job_still_works_for_superadmin(self, client, superadmin_auth_headers) -> None:
+        """Não quebrar o caminho legítimo — o Vitor treina como superadmin."""
+        mock_svc = MagicMock()
+        mock_svc.create_job.return_value = {
+            "id": str(uuid4()), "status": "queued", "preset": "balanced",
+        }
+        mock_dataset_svc = MagicMock()
+        mock_dataset_svc.get_latest.return_value = None
+        with patch("app.api.v1.training.job_handlers.get_training_service", return_value=mock_svc), \
+             patch("app.api.v1.training.job_handlers.get_dataset_service", return_value=mock_dataset_svc):
+            res = client.post(
+                "/api/training/jobs", json={"preset": "balanced"},
+                headers=superadmin_auth_headers,
+            )
+        assert res.status_code == 201, res.get_json()
+        mock_svc.create_job.assert_called_once()
+
+    @pytest.mark.parametrize("role", NAO_PLATAFORMA)
+    def test_stop_job_denied_for_non_platform_role(self, app, client, role) -> None:
+        mock_svc = MagicMock()
+        with patch("app.api.v1.training.job_handlers.get_training_service", return_value=mock_svc), \
+             patch("app.core.auth._has_training_override", return_value=False):
+            res = client.post(
+                f"/api/training/jobs/{uuid4()}/stop",
+                headers=_role_headers(app, role),
+            )
+        assert res.status_code == 403, res.get_json()
+        mock_svc.stop_job.assert_not_called()
+
+    def test_stop_job_still_works_for_superadmin(self, client, superadmin_auth_headers) -> None:
+        """Não quebrar o caminho legítimo — cancelar continua liberado pro superadmin."""
+        job_id = str(uuid4())
+        mock_svc = MagicMock()
+        mock_svc.stop_job.return_value = {"id": job_id, "status": "stopped"}
+        with patch("app.api.v1.training.job_handlers.get_training_service", return_value=mock_svc):
+            res = client.post(
+                f"/api/training/jobs/{job_id}/stop", headers=superadmin_auth_headers,
+            )
+        assert res.status_code == 200, res.get_json()
+        mock_svc.stop_job.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -507,11 +613,11 @@ class TestTrainingErrorPaths:
                               headers={"Authorization": f"Bearer {token}"})
         assert res.status_code == 500
 
-    def test_create_job_error_path(self, client, auth_headers) -> None:
+    def test_create_job_error_path(self, client, superadmin_auth_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.create_job.side_effect = RuntimeError("DB error")
         with patch("app.api.v1.training.job_handlers.get_training_service", return_value=mock_svc):
-            res = client.post("/api/training/jobs", json={}, headers=auth_headers)
+            res = client.post("/api/training/jobs", json={}, headers=superadmin_auth_headers)
         assert res.status_code == 500
 
     def test_list_jobs_error_path(self, client, auth_headers) -> None:

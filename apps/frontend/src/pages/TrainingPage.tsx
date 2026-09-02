@@ -192,7 +192,11 @@ function MiniChart({ data, color, label, width = 180, height = 44 }: MiniChartPr
 export function TrainingPage() {
   const toast = useToast()
   const navigate = useNavigate()
-  const { modules, isSuperAdmin } = useAuth()
+  const { modules, isSuperAdmin, can } = useAuth()
+  // Só quem tem training:approve dispara treino real (GPU paga) ou ativa
+  // modelo — a Logikos treina, o cliente só valida caixas. Botão que o
+  // papel não pode usar não se desenha (regra da casa).
+  const podeTreinar = can('training:approve')
   const trainingModules = ['epi', 'quality', 'counting'].filter(m => modules.includes(m))
 
   // ── estúdio de anotação (tela cheia, lista congelada) ──────────────────────
@@ -682,7 +686,7 @@ export function TrainingPage() {
                           >
                             <Settings size={12} /> Configurar Cenário
                           </Button>
-                          {!model.is_active && (
+                          {!model.is_active && podeTreinar && (
                             <Button
                               size="sm"
                               variant="secondary"
@@ -781,7 +785,7 @@ export function TrainingPage() {
                 Job Atual
               </h3>
               <div style={{ display: 'flex', gap: 8 }}>
-                {isRunning && currentJob && (
+                {isRunning && currentJob && podeTreinar && (
                   <Button
                     size="sm"
                     variant="secondary"
@@ -792,7 +796,7 @@ export function TrainingPage() {
                     <Square size={12} /> {stopping ? 'Parando...' : 'Parar'}
                   </Button>
                 )}
-                {!isRunning && (
+                {!isRunning && podeTreinar && (
                   <Button variant="primary" size="sm" onClick={() => setShowConfig(v => !v)}>
                     <Zap size={13} /> Novo Treino
                   </Button>

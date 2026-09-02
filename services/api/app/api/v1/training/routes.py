@@ -206,10 +206,15 @@ def delete_class(class_id: int):  # type: ignore[no-untyped-def]
 
 
 # --- Training Jobs ---
+# Gate training:approve (superadmin only, ADR-produto "Logikos treina, sempre"):
+# dispara GPU paga de verdade — nenhum papel de tenant (admin/trainer incluso)
+# cria ou cancela job. Achado do mutirão: só tinha @jwt_required(), qualquer
+# usuário autenticado disparava treino.
 
 @training_bp.route("/api/training/jobs", methods=["POST"])
 @limiter.limit("20 per day", key_func=get_rate_limit_identifier)
 @jwt_required()
+@require_training_role("approve")
 def create_job():  # type: ignore[no-untyped-def]
     return create_job_handler()
 
@@ -398,6 +403,7 @@ def get_current_job_status():  # type: ignore[no-untyped-def]
 
 @training_bp.route("/api/training/jobs/<job_id>/stop", methods=["POST"])
 @jwt_required()
+@require_training_role("approve")
 def stop_job(job_id: str):  # type: ignore[no-untyped-def]
     return stop_job_handler(job_id)
 
