@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 390 arquivos, 65.812 linhas
+## Situação — 390 arquivos, 65.816 linhas
 
 | status | arquivos |
 |---|---:|
@@ -273,7 +273,7 @@ apagado não são a mesma coisa.
 | `src/pages/ModuleClassesPage.tsx` | `MIGRADO` | src/app/estudio/Classes.tsx | 776 |
 | `src/pages/ReportsPage.tsx` | `MIGRADO` | src/app/epi/Relatorios.tsx | 31 |
 | `src/pages/TrainingPage.css.ts` | `MIGRADO` | src/app/estudio/*.css.ts | 361 |
-| `src/pages/TrainingPage.tsx` | `MIGRADO` | src/app/estudio/* | 1075 |
+| `src/pages/TrainingPage.tsx` | `MIGRADO` | src/app/estudio/* | 1079 |
 | `src/modules/admin/AdminLayout.css.ts` | `PENDENTE` | — | 249 |
 | `src/modules/admin/AdminLayout.tsx` | `PENDENTE` | — | 278 |
 | `src/modules/admin/components/admin.css.ts` | `PENDENTE` | — | 275 |

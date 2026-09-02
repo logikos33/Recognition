@@ -107,7 +107,11 @@ function GraficoLinha({ dados, corClasse, rotulo }: { dados: number[]; corClasse
 
 export function Treino() {
   const toast = useToast()
-  const { modules, isSuperAdmin } = useAuth()
+  const { modules, isSuperAdmin, can } = useAuth()
+  // Só quem tem training:approve dispara treino real (GPU paga) — a
+  // Logikos treina, o cliente só valida caixas. Botão que o papel não
+  // pode usar não se desenha (regra da casa).
+  const podeTreinar = can('training:approve')
   const trainingModules = ['epi', 'quality', 'counting'].filter((m) => modules.includes(m))
 
   const [jobs, setJobs] = useState<TrainingJob[]>([])
@@ -236,7 +240,7 @@ export function Treino() {
       <div className={s.cabecalho}>
         <h1 className={s.titulo}>Treinos</h1>
         <div className={s.espacador} />
-        {!isRunning && (
+        {!isRunning && podeTreinar && (
           <button className={s.botaoPrimario} onClick={() => setShowConfig((v) => !v)}>
             <Zap size={13} /> Novo treino
           </button>
@@ -334,7 +338,7 @@ export function Treino() {
               </span>
               {currentJob.metrics?.simulated === true && <SeloSimulacao />}
               <span className={s.infoMono}>{PRESET_LABELS[currentJob.preset] ?? humanize(currentJob.preset)}</span>
-              {isRunning && (
+              {isRunning && podeTreinar && (
                 <button className={s.botaoParar} onClick={() => stopJob(currentJob.id)} disabled={stopping}>
                   <Square size={12} /> {stopping ? 'Parando...' : 'Parar'}
                 </button>

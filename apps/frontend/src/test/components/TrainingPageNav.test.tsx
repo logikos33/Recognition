@@ -72,7 +72,9 @@ vi.mock('../../hooks/useTrainingSocket', () => ({
 }))
 
 vi.mock('../../hooks/useAuth', () => ({
-  useAuth: () => ({ modules: ['epi'], isSuperAdmin: false }),
+  // can() precisa existir — TrainingPage lê training:approve pro gate de
+  // disparo/cancelamento de treino (achado P0 do mutirão).
+  useAuth: () => ({ modules: ['epi'], isSuperAdmin: false, can: () => true }),
 }))
 
 vi.mock('../../components/ui/Toast/useToast', () => ({
