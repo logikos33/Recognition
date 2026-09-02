@@ -446,8 +446,11 @@ def sondar() -> dict[str, Any]:
         return {**spec, "capacidade": False, "erro": str(exc)[:300]}
     # Mata NA HORA — sonda que esquece o pod aceso é pior que sonda nenhuma.
     cli.terminate_pod(str(pod["id"]))
+    # Preço no TIER em que o pod roda — `get_gpu_price` sem o flag devolve o
+    # da COMMUNITY mesmo quando o pod sobe em SECURE (4090: 0,34 vs 0,74).
     return {**spec, "capacidade": True, "pod_sondado": str(pod["id"]),
-            "preco_usd_h": cli.get_gpu_price(spec["gpu"])}
+            "preco_usd_h": cli.get_gpu_price(
+                spec["gpu"], secure_cloud=spec["cloud"].upper() == "SECURE")}
 
 
 def disparar(variante: str) -> dict[str, Any]:
