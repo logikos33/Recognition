@@ -824,3 +824,285 @@ class TestEstadoPersisteNoMeio:
         # nenhum temporário sobrevive: rename consumiu, finally limpou
         assert [f.name for f in tmp_path.iterdir()] == ["m.json"]
         assert ler_marca_dagua(str(alvo)) is not None
+
+
+# ---------------------------------------------------------------------------
+# Modo FRAME CHEIO (REPLAY_MINER_FULL_FRAME=1) — o domínio que é SERVIDO.
+#
+# O caminho servido é single-stage sobre o quadro inteiro (inference_engine.py
+# `_run_detector(frame)` -> `predict(frame)`; não há recorte de pessoa em lugar
+# nenhum do que é servido), mas 95,9% do dado de treino é recorte. Este modo
+# colhe o domínio de produção sem abrir mão do gate de pessoa.
+#
+# O teste que mais importa aqui NÃO é o do modo novo: é o de NÃO-REGRESSÃO do
+# default. O modo recorte é o que roda em produção hoje.
+# ---------------------------------------------------------------------------
+
+
+class _PessoaPequena:
+    """Pessoa num pedaço do quadro — é o que separa "subiu recorte" de "subiu
+    frame cheio" por TAMANHO, não só por bytes diferentes."""
+
+    def __init__(self, undetermined: bool = False, found: bool = True) -> None:
+        self._undetermined = undetermined
+        self._found = found
+
+    def detect(self, frame_bytes: bytes) -> PersonResult:
+        if self._undetermined:
+            return PersonResult(found=False, undetermined=True)
+        if not self._found:
+            return PersonResult(found=False)
+        return PersonResult(
+            found=True,
+            boxes=(PersonBox(x=10, y=10, w=20, h=20, confidence=0.9),),
+            max_confidence=0.9,
+        )
+
+
+class _GravadorQueRegistra:
+    """Guarda os bytes exatos que entregou — a asserção "mesmos bytes que
+    entraram" só vale contra o que de fato saiu do gravador."""
+
+    def __init__(self, quadros: int = 1) -> None:
+        self.emitidos: list[bytes] = []
+        self._quadros = quadros
+
+    def stream_clip(self, camera_id, start, end):
+        clip = b"".join(
+            _gradient_jpeg(quality=90, flip=(i % 2 == 0)) for i in range(self._quadros)
+        )
+        self.emitidos.extend(_split_mjpeg(clip))
+        yield clip
+
+
+def _tamanho(jpeg: bytes) -> tuple[int, int]:
+    return Image.open(io.BytesIO(jpeg)).size
+
+
+class TestModoFrameCheio:
+    def test_DEFAULT_continua_subindo_RECORTE(self) -> None:
+        """NÃO-REGRESSÃO. Este é o teste mais importante do arquivo novo: o
+        modo que roda em produção hoje não muda em nada."""
+        gravador = _GravadorQueRegistra()
+        uploads: list = []
+        miner = _make_miner(gravador, uploads, person_detector=_PessoaPequena())
+
+        stats = miner.mine(_make_plan(1))
+
+        assert stats.modo == "recorte"
+        assert len(uploads) == 1
+        subido = uploads[0]["frame_bytes"]
+        assert subido != gravador.emitidos[0], "default subiu o frame cheio — regressão"
+        # recorte da caixa 20x20 com margem (0.25 x, 0.08 y) sobre um frame 80x60
+        assert _tamanho(subido) == (30, 22)
+        assert _tamanho(gravador.emitidos[0]) == (80, 60)
+
+    def test_frame_cheio_sobe_o_quadro_INTEIRO_com_os_MESMOS_bytes(self) -> None:
+        """Inteiro E intacto: sem re-encode, os bytes que entraram são os que
+        sobem. Re-encodar aqui reintroduziria perda no dado de treino."""
+        gravador = _GravadorQueRegistra()
+        uploads: list = []
+        miner = _make_miner(
+            gravador, uploads, person_detector=_PessoaPequena(), full_frame=True
+        )
+
+        stats = miner.mine(_make_plan(1))
+
+        assert stats.modo == "frame_cheio"
+        assert len(uploads) == 1
+        assert uploads[0]["frame_bytes"] == gravador.emitidos[0]
+        assert _tamanho(uploads[0]["frame_bytes"]) == (80, 60)
+        assert stats.bytes_uploaded == len(gravador.emitidos[0])
+
+    def test_sem_pessoa_DESCARTA_nos_dois_modos(self) -> None:
+        """O gate é o mesmo. Sem ele, o modo frame-cheio vira coletor de
+        corredor vazio — que é exatamente o que o gate de pessoa existe para
+        não ser (person_detector docstring)."""
+        for full_frame in (False, True):
+            uploads: list = []
+            miner = _make_miner(
+                _GravadorQueRegistra(), uploads,
+                person_detector=_PessoaPequena(found=False), full_frame=full_frame,
+            )
+            stats = miner.mine(_make_plan(1))
+            assert uploads == [], f"full_frame={full_frame} subiu quadro sem pessoa"
+            assert stats.crops_dropped_no_person == 1
+            assert stats.crops_kept == 0
+
+    def test_undetermined_DESCARTA_nos_dois_modos(self) -> None:
+        """Diferente do CollectorLoop, que sobe o frame inteiro quando o
+        detector não opina: replay não tem janela perecível para justificar
+        quadro ambíguo."""
+        for full_frame in (False, True):
+            uploads: list = []
+            miner = _make_miner(
+                _GravadorQueRegistra(), uploads,
+                person_detector=_PessoaPequena(undetermined=True), full_frame=full_frame,
+            )
+            stats = miner.mine(_make_plan(1))
+            assert uploads == [], f"full_frame={full_frame} subiu quadro indeterminado"
+            assert stats.crops_dropped_undetermined == 1
+
+    def test_blur_vale_no_modo_frame_cheio(self) -> None:
+        uploads: list = []
+        miner = _make_miner(
+            _GravadorQueRegistra(), uploads, person_detector=_PessoaPequena(),
+            full_frame=True, blur_min_variance=10**9,  # nada passa
+        )
+        stats = miner.mine(_make_plan(1))
+        assert uploads == []
+        assert stats.crops_dropped_blurry == 1
+
+    def test_dedup_vale_no_modo_frame_cheio(self) -> None:
+        """Dois quadros IDÊNTICOS na mesma janela: o segundo cai, mesmo com o
+        limiar 0 do modo — cena congelada de verdade continua sendo duplicata."""
+        class _DoisIguais(_GravadorQueRegistra):
+            def stream_clip(self, camera_id, start, end):
+                quadro = _gradient_jpeg(quality=90)
+                self.emitidos.extend([quadro, quadro])
+                yield quadro + quadro
+
+        uploads: list = []
+        miner = _make_miner(
+            _DoisIguais(), uploads, person_detector=_PessoaPequena(), full_frame=True
+        )
+        stats = miner.mine(_make_plan(1))
+        assert len(uploads) == 1
+        assert stats.crops_dropped_duplicate == 1
+
+    def test_reserva_de_disco_insuficiente_nao_sobe_NADA_nos_dois_modos(self) -> None:
+        for full_frame in (False, True):
+            gravador = _GravadorQueRegistra()
+            uploads: list = []
+            miner = _make_miner(
+                gravador, uploads, person_detector=_PessoaPequena(),
+                full_frame=full_frame, disk_check_fn=lambda: False,
+            )
+            stats = miner.mine(_make_plan(2))
+            assert uploads == [], f"full_frame={full_frame} subiu com o disco no piso"
+            assert gravador.emitidos == [], "nem chegou a falar com o gravador"
+            assert stats.aborted_reason == "disk_reserve"
+
+    def test_frame_cheio_confere_o_disco_por_JANELA_o_default_por_TAREFA(self) -> None:
+        """Mesmo piso, cadência diferente — e a diferença é de propósito.
+
+        Uma tarefa cobre dezenas de janelas; no modo frame-cheio cada janela
+        move ~4x mais bytes (medido, ver EstimateParams.avg_full_frame_kb).
+        Conferir só na virada de tarefa deixaria o resto do box cruzar a
+        reserva e ficar horas sem ninguém olhar. O default NÃO ganha a
+        checagem extra: seu caminho fica byte a byte o de hoje.
+        """
+        def _disco_acaba_depois_da_primeira_pergunta():
+            respostas = [True]
+
+            def _check() -> bool:
+                return respostas.pop(0) if respostas else False
+
+            return _check
+
+        cheio_uploads: list = []
+        gravador_cheio = _GravadorQueRegistra()
+        cheio = _make_miner(
+            gravador_cheio, cheio_uploads, person_detector=_PessoaPequena(),
+            full_frame=True, disk_check_fn=_disco_acaba_depois_da_primeira_pergunta(),
+        )
+        stats_cheio = cheio.mine(_make_plan(2))
+        assert gravador_cheio.emitidos == [], "janela puxada com o disco no piso"
+        assert cheio_uploads == []
+        assert stats_cheio.aborted_reason == "disk_reserve"
+
+        # Mesmo gravador, mesmo disco, modo default: a primeira tarefa roda
+        # inteira, porque a checagem por janela é EXCLUSIVA do modo novo.
+        rec_uploads: list = []
+        recorte = _make_miner(
+            _GravadorQueRegistra(), rec_uploads, person_detector=_PessoaPequena(),
+            disk_check_fn=_disco_acaba_depois_da_primeira_pergunta(),
+        )
+        recorte.mine(_make_plan(2))
+        assert len(rec_uploads) == 1, "o caminho do default mudou — regressão"
+
+
+class TestDedupNoFrameCheioEDiferente:
+    """MEDIDO 2026-09-02: o dHash de um frame cheio é quase cego a uma pessoa.
+
+    A grade do dHash é 9x8 sobre a imagem toda, então uma pessoa ocupa menos que
+    uma célula e pode ANDAR sem virar bit nenhum. Com o limiar calibrado para
+    recorte (<=6 de 64), a colheita de uma câmera fixa cairia quase inteira como
+    "duplicata" — silenciosamente, que é o modo de falha que este módulo já
+    pagou caro (2601 janelas vazias com cara de domingo).
+    """
+
+    @staticmethod
+    def _cena(pessoa_x: int) -> bytes:
+        """640x360, fundo fixo texturado, 'pessoa' de 20x90 na posição dada."""
+        img = Image.new("RGB", (640, 360), (128, 128, 128))
+        px = img.load()
+        for x in range(0, 640, 4):
+            for y in range(360):
+                px[x, y] = (90, 95, 100)
+        for y in range(200, 360, 8):
+            for x in range(640):
+                px[x, y] = (150, 148, 145)
+        for x in range(pessoa_x, min(640, pessoa_x + 20)):
+            for y in range(230, 320):
+                px[x, y] = (30, 30, 35)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        return buf.getvalue()
+
+    def test_limiar_do_RECORTE_apagaria_a_colheita_de_frame_cheio(self) -> None:
+        from app.collector.replay_miner import _DEFAULT_DEDUP_HAMMING_MAX
+
+        antes, depois = self._cena(150), self._cena(180)  # pessoa andou 30px
+        com_limiar_de_recorte = NearDuplicateFilter(
+            hamming_threshold=_DEFAULT_DEDUP_HAMMING_MAX
+        )
+        assert com_limiar_de_recorte.is_duplicate("cam-1", antes) is False
+        assert com_limiar_de_recorte.is_duplicate("cam-1", depois) is True, (
+            "pessoa andou 30px e o frame passou por duplicata — se ISTO parar de "
+            "valer, o limiar do modo frame-cheio pode voltar a ser o do recorte"
+        )
+
+    def test_limiar_do_MODO_mantem_o_mesmo_par(self) -> None:
+        from app.collector.replay_miner import _DEFAULT_DEDUP_HAMMING_FULL_FRAME
+
+        antes, depois = self._cena(150), self._cena(180)
+        do_modo = NearDuplicateFilter(hamming_threshold=_DEFAULT_DEDUP_HAMMING_FULL_FRAME)
+        assert do_modo.is_duplicate("cam-1", antes) is False
+        assert do_modo.is_duplicate("cam-1", depois) is False
+        # ...e continua descartando cena REALMENTE congelada
+        assert do_modo.is_duplicate("cam-1", antes) is True
+
+    def test_o_default_do_modo_frame_cheio_e_mais_frouxo_que_o_do_recorte(self) -> None:
+        from app.collector.replay_miner import (
+            _DEFAULT_DEDUP_HAMMING_FULL_FRAME,
+            _DEFAULT_DEDUP_HAMMING_MAX,
+        )
+
+        assert _DEFAULT_DEDUP_HAMMING_FULL_FRAME < _DEFAULT_DEDUP_HAMMING_MAX
+
+
+class TestResumoGritaQuandoOFiltroComeAColheita:
+    """Sem isto o modo novo pode voltar vazio parecendo normal — o defeito que
+    custou 2601 janelas silenciosas em 18/08, com outra roupa."""
+
+    def test_duplicata_dominante_aparece_no_resumo(self) -> None:
+        from app.collector.replay_miner import MiningStats, _resumo_do_ciclo
+
+        texto = _resumo_do_ciclo(MiningStats(
+            modo="frame_cheio", windows_pulled=10, crops_kept=2,
+            crops_dropped_duplicate=98,
+        ))
+        assert "frame_cheio" in texto
+        assert "REPLAY_MINER_DEDUP_HAMMING" in texto
+        assert "98%" in texto or "98/100" in texto
+
+    def test_colheita_saudavel_nao_grita(self) -> None:
+        from app.collector.replay_miner import MiningStats, _resumo_do_ciclo
+
+        texto = _resumo_do_ciclo(MiningStats(
+            modo="frame_cheio", windows_pulled=10, crops_kept=80,
+            crops_dropped_duplicate=20, bytes_uploaded=80 * 157 * 1024,
+        ))
+        assert "comendo a colheita" not in texto
+        assert "157.0 KB/frame" in texto  # custo medido, não estimado
