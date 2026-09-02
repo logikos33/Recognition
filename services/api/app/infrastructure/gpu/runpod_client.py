@@ -264,23 +264,30 @@ class RunPodClient:
 
     # --------------------------------------------------------------- pricing
 
-    def get_gpu_price(self, gpu_type: str) -> float:
+    def get_gpu_price(self, gpu_type: str, secure_cloud: bool = False) -> float:
         """Preço on-demand $/h via GraphQL (gpuTypes.lowestPrice.uninterruptablePrice).
+
+        `secure_cloud` NÃO é detalhe. Sem ele a API devolve o menor preço do
+        catálogo, que é sempre o da COMMUNITY. Medido na RTX 4090 em 02/09:
+        secureCloud=false → $0,34/h · true → $0,74/h, 2,2× de diferença.
+        Rodando em SECURE com o preço da COMMUNITY, `check_cost_cap` validava
+        contra menos da metade da conta real e deixava passar mais que o dobro
+        do orçamento autorizado. Quem chama passa o MESMO tier do create_pod.
 
         Levanta RunPodError se o gpu_type for desconhecido ou sem preço —
         nunca retorna 0.0/None silenciosamente (isso zeraria o teto de custo).
         """
         query = """
-        query GpuTypes($id: String) {
+        query GpuTypes($id: String, $secure: Boolean) {
           gpuTypes(input: {id: $id}) {
             id
-            lowestPrice(input: {gpuCount: 1}) {
+            lowestPrice(input: {gpuCount: 1, secureCloud: $secure}) {
               uninterruptablePrice
             }
           }
         }
         """
-        data = self._graphql(query, {"id": gpu_type})
+        data = self._graphql(query, {"id": gpu_type, "secure": bool(secure_cloud)})
         types = data.get("gpuTypes") or []
         if not types:
             raise RunPodError(f"gpu_type desconhecido na RunPod: {gpu_type!r}")
@@ -288,6 +295,26 @@ class RunPodClient:
         if price is None:
             raise RunPodError(f"RunPod não retornou preço para gpu_type={gpu_type!r}")
         return float(price)
+
+    def get_saldo(self) -> float:
+        """Saldo em dólares da conta que esta chave abre (`myself.clientBalance`).
+
+        Existe porque teto de custo e saldo respondem perguntas diferentes:
+        `check_cost_cap` pergunta "este job cabe no orçamento autorizado?" e o
+        saldo pergunta "a conta tem dinheiro para terminar o que vai começar?".
+        Um job dentro do teto que esgota o saldo na metade morre com tudo que
+        já foi pago — e com N pods concorrentes o saldo acaba N vezes mais
+        rápido, matando todos de uma vez.
+
+        Levanta RunPodError em vez de devolver 0.0: saldo desconhecido tratado
+        como zero bloquearia todo disparo, e tratado como infinito não guardaria
+        nada. Quem chama decide o que fazer com a incerteza.
+        """
+        data = self._graphql("query { myself { clientBalance } }", {})
+        saldo = (data.get("myself") or {}).get("clientBalance")
+        if saldo is None:
+            raise RunPodError("RunPod não retornou clientBalance para esta chave")
+        return float(saldo)
 
     # --------------------------------------------------------------- billing
 
