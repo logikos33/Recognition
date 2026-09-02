@@ -30,7 +30,7 @@ papéis por tenant), esse funcionário dispara o mesmo treino pago, hoje, sem qu
 | Existe coluna de ator? | `training_jobs.user_id UUID NOT NULL REFERENCES users(id)` desde a criação da tabela (migration `003_training.sql`) |
 | Está preenchida? | **Sim, em 40/40 jobs** (`count(*) filter (where user_id is null) = 0`) |
 | Dá pra saber o papel **na época**? | **Não.** `users.role` é o papel **atual**, sem histórico (não existe `role_history`/`audit_log` de mudança de papel no schema — migrations `052_custom_roles.sql`/`120_custom_roles.sql` adicionam papéis customizados, não versionam o campo). O papel reportado abaixo é o de **hoje**; se algum desses 4 usuários já teve o papel trocado, o histórico real diverge disso. |
-| Overrides pontuais (`user_permission_overrides`) contam? | Não cruzados — não há timestamp de concessão/revogação do override, então não dá pra saber se um override estava ativo no instante do job. Risco residual não medido, não inventado. |
+| Overrides pontuais (`user_permission_overrides`) contam? | Não — `select count(*) from public.user_permission_overrides` = **0**. Tabela vazia, nunca usada. Os 39 jobs de `admin` vieram do papel puro, não de override. |
 
 **Não é o achado desta rodada** (ao contrário do que o contrato temia) — proveniência de ator
 existe e está completa. O achado é o que a seção seguinte mostra: o ator gravado, no papel atual
