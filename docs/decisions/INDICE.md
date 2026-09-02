@@ -5,7 +5,7 @@
 Uma decisão por arquivo (`docs/decisions/D-NNN-slug.md`). Convenção e motivo:
 [`README.md`](./README.md). Histórico congelado: [`../REGISTRO_DE_DECISOES.md`](../REGISTRO_DE_DECISOES.md).
 
-**183 decisões** · última: D-188
+**185 decisões** · última: D-190
 
 | # | Decisão | Data | Status |
 |---|---|---|---|
@@ -192,3 +192,5 @@ Uma decisão por arquivo (`docs/decisions/D-NNN-slug.md`). Convenção e motivo:
 | [D-186](./D-186-consolidacao-de-17-08-as-4-correcoes-ja-estavam-em-develop.md) | Consolidação de 17/08: as 4 correções já estavam em develop; merges parados por CI vermelho pré-existente | 2026-08-17 | ↩ substituída |
 | [D-187](./D-187-pr-384-nao-mergeado-em-17-08-conflitava-e-tocava-o.md) | #384 (aba Classificar + minerador) não mergeado em 17/08 — conflitava e tocava o supercategory | 2026-08-17 | ↩ substituída |
 | [D-188](./D-188-pr-375-293-259-valor-extraido-em-17-08-recomendacao-de.md) | #375/#293/#259 não mergeados — valor extraído em 17/08, recomendação de fechar | 2026-08-17 | 📌 dívida |
+| [D-189](./D-189-frontend-tests-so-vira-required-check-depois-de-os-flaky.md) | Frontend tests só vira required check depois de os flaky morrerem | 2026-09-02 | ✅ vigente |
+| [D-190](./D-190-sem-action-de-segunda-opiniao-risk-security-ja-para-na-fila.md) | Sem Action de segunda opinião: `risk:security` já para na fila do humano | 2026-09-02 | ✅ vigente |
