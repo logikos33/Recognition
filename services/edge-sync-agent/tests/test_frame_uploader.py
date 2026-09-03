@@ -63,6 +63,36 @@ def test_request_targets_frames_endpoint_with_auth_header():
     assert call["files"]["file"] == ("frame.jpg", b"jpeg-bytes", "image/jpeg")
 
 
+def test_crop_origin_vai_como_campo_json_quando_e_recorte():
+    """O vínculo com o frame de origem (migration 132) sobe junto do recorte —
+    se ficar no edge, o recorte nasce órfão do outro lado."""
+    import json
+
+    client = _FakeHttpClient(_FakeResponse(201, {"data": {"frame_id": "f1"}}))
+
+    upload_frame(
+        client, "https://api.example", "bearer-token", "cam-1", "rec-1",
+        b"jpeg-bytes", "epi", _CAPTURED_AT,
+        crop_origin={"box": [300, 100, 200, 100], "source_size": [1000, 500]},
+    )
+
+    enviado = json.loads(client.calls[0]["data"]["crop_origin"])
+    assert enviado == {"box": [300, 100, 200, 100], "source_size": [1000, 500]}
+
+
+def test_sem_crop_origin_o_campo_e_omitido():
+    """Frame cheio não tem recorte: omitir é diferente de mandar vazio — a
+    coluna nasce NULL e ninguém precisa distinguir 'não sei' de 'não se aplica'."""
+    client = _FakeHttpClient(_FakeResponse(201, {"data": {"frame_id": "f1"}}))
+
+    upload_frame(
+        client, "https://api.example", "bearer-token", "cam-1", "rec-1",
+        b"jpeg-bytes", "epi", _CAPTURED_AT,
+    )
+
+    assert "crop_origin" not in client.calls[0]["data"]
+
+
 def test_non_201_response_raises_frame_upload_error():
     client = _FakeHttpClient(_FakeResponse(422, text="Extensão não suportada"))
 

@@ -72,6 +72,7 @@ vi.mock('../../services/cameraService', () => ({ cameraService: { test: vi.fn() 
 import { Admin } from '../admin/Admin'
 import { Carga } from '../carga/Carga'
 import { Estudio } from '../estudio/Estudio'
+import { Gabarito } from '../estudio/Gabarito'
 import { Qualidade } from '../qualidade/Qualidade'
 
 const AREAS_SEM_BARRA = SEM_BARRA_LATERAL.map((r) => r.replace(`${PREFIXO_NOVO}/`, ''))
@@ -170,9 +171,33 @@ describe('nenhuma área do front novo é beco sem saída', () => {
     },
   )
 
-  it('rotas SEM Shell são a própria home (/modules) ou o kiosk físico sem chrome (/tablet)', () => {
+  it('rotas SEM Shell são a home (/modules), o kiosk físico (/tablet) ou tela de celular (/estudio/gabarito)', () => {
     const caminhos = ROTAS_NOVAS_SEM_SHELL.map((r) => (r.props as { path: string }).path)
-    expect(caminhos).toEqual([`${PREFIXO_NOVO}/modules`, `${PREFIXO_NOVO}/tablet/:station`])
+    expect(caminhos).toEqual([
+      `${PREFIXO_NOVO}/modules`,
+      `${PREFIXO_NOVO}/tablet/:station`,
+      // Triagem do gabarito: tela de TELEFONE. Topbar do Shell + lateral do
+      // Estúdio (220px) comem metade da largura útil de um aparelho em pé, e
+      // a foto 1920x1080 precisa de cada pixel para o dono conseguir ver se
+      // há luva na mão. Sair do Shell aqui NÃO a isenta da regra — ela tem o
+      // próprio link de saída, provado no caso abaixo.
+      `${PREFIXO_NOVO}/estudio/gabarito`,
+    ])
+  })
+
+  it('a triagem do gabarito (sem Shell, sem lateral) tem link real de saída', async () => {
+    // Sem Shell, sem lateral do Estúdio e sem nav própria, esta tela seria o
+    // beco sem saída mais fechado do front novo. Aceitá-la na lista acima sem
+    // cobrar a saída transformaria a lista numa isenção — e a regra existe
+    // exatamente para não ter isenção.
+    get.mockResolvedValue({ success: true, data: { classes: [], frames: [] } })
+    render(
+      <MemoryRouter initialEntries={[`${PREFIXO_NOVO}/estudio/gabarito`]}>
+        <Gabarito />
+      </MemoryRouter>,
+    )
+    const link = await screen.findByRole('link', { name: /voltar/i })
+    expect(link.getAttribute('href')).toBe(`${PREFIXO_NOVO}/estudio/dados`)
   })
 
   it('o logo do Shell é link para a home do usuário (comportamento real coberto em Shell.test.tsx)', () => {

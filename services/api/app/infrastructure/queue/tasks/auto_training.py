@@ -115,11 +115,19 @@ def _check_and_trigger_tenant(pool: DatabasePool, tenant_id: str, threshold_pct:
             )
 
             # Frames anotados APÓS o último treino (novos)
+            #
+            # ⛔ TRAVA HOLDOUT-ONLY (migration 133): `dataset_role = 'pool'` nas
+            # DUAS contagens. Aqui não se consome frame para treinar — se
+            # DECIDE treinar —, mas anotar 150 gabaritos empurraria o
+            # crescimento acima do limiar e dispararia um treino que não tem
+            # nenhum dado novo para aprender (os gabaritos não entram no
+            # export). Contar o que não vai treinar é medir a coisa errada.
             cur.execute(
                 """SELECT COUNT(*) AS cnt
                    FROM training_frames
                    WHERE tenant_id = %s
                      AND is_annotated = true
+                     AND dataset_role = 'pool'
                      AND created_at > %s""",
                 (tenant_id, last_trained_at),
             )
@@ -131,6 +139,7 @@ def _check_and_trigger_tenant(pool: DatabasePool, tenant_id: str, threshold_pct:
                    FROM training_frames
                    WHERE tenant_id = %s
                      AND is_annotated = true
+                     AND dataset_role = 'pool'
                      AND created_at <= %s""",
                 (tenant_id, last_trained_at),
             )

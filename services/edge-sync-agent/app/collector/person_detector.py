@@ -97,6 +97,26 @@ class PersonResult:
     undetermined: bool = False
 
 
+@dataclass(frozen=True)
+class PersonCrop:
+    """O JPEG do recorte E de onde ele saiu — os dois juntos, sempre.
+
+    Antes desta classe `crop_person` devolvia só os bytes, e o retângulo que ela
+    tinha acabado de calcular (margem aplicada, borda aparada) morria na função.
+    Foi assim que os 5.259 recortes anotados do RVB viraram órfãos: sem a caixa
+    em coordenadas do frame original, nenhuma anotação feita no recorte volta
+    pro quadro cheio — que é justamente onde o modelo é SERVIDO.
+
+    `origin` já sai no formato de `training_frames.crop_origin` (migration 132):
+    {"box": [x, y, w, h], "source_size": [W, H]}. Dict e não dataclass porque o
+    único destino é um campo de form JSON no upload — converter duas vezes seria
+    cerimônia sem leitor.
+    """
+
+    jpeg: bytes
+    origin: dict[str, Any]
+
+
 class PersonDetector:
     """Responde "tem pessoa neste JPEG?" — só isso.
 
@@ -343,8 +363,8 @@ def crop_person(
     margin_x: float = _CROP_MARGIN_X,
     margin_y: float = _CROP_MARGIN_Y,
     quality: int = _CROP_JPEG_QUALITY,
-) -> bytes:
-    """Recorta a pessoa em resolução NATIVA e devolve o JPEG do recorte.
+) -> PersonCrop:
+    """Recorta a pessoa em resolução NATIVA e devolve o JPEG **com a origem**.
 
     É o desfecho C da medição de resolução (fase 1b). Medido num frame real da
     RVB, pessoa de 54x282px em 1920x1080:
@@ -357,21 +377,33 @@ def crop_person(
     dois eixos, não é troca. A margem existe porque o alvo desta câmera é EPI de
     CABEÇA (protetor auricular, óculos): um bbox justo demais corta exatamente o
     que se quer anotar.
+
+    O retângulo devolvido em `.origin` é o EFETIVAMENTE recortado — margem já
+    somada, borda já aparada — porque é ele, e não a bbox da pessoa, que define
+    o sistema de coordenadas em que o anotador vai desenhar. Este é o único
+    lugar do sistema que sabe as duas coisas ao mesmo tempo (o retângulo e o
+    tamanho do frame original); recalcular isso no chamador exigiria decodificar
+    o JPEG de novo e duplicar o aparo de borda — dois lugares para a mesma
+    regra, que é como se produz o segundo bug.
     """
     from PIL import Image  # noqa: PLC0415
 
     img = Image.open(io.BytesIO(frame_bytes))
     mx = int(box.w * margin_x)
     my = int(box.h * margin_y)
-    caixa = (
-        max(0, box.x - mx),
-        max(0, box.y - my),
-        min(img.width, box.x + box.w + mx),
-        min(img.height, box.y + box.h + my),
-    )
+    x1 = max(0, box.x - mx)
+    y1 = max(0, box.y - my)
+    x2 = min(img.width, box.x + box.w + mx)
+    y2 = min(img.height, box.y + box.h + my)
     buf = io.BytesIO()
-    img.crop(caixa).convert("RGB").save(buf, format="JPEG", quality=quality)
-    return buf.getvalue()
+    img.crop((x1, y1, x2, y2)).convert("RGB").save(buf, format="JPEG", quality=quality)
+    return PersonCrop(
+        jpeg=buf.getvalue(),
+        origin={
+            "box": [x1, y1, x2 - x1, y2 - y1],
+            "source_size": [img.width, img.height],
+        },
+    )
 
 
 def build_person_detector_from_env(

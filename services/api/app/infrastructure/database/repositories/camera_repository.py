@@ -4,6 +4,10 @@ from typing import Any, Optional
 from uuid import UUID
 
 from app.infrastructure.database.repositories.base import BaseRepository
+from app.infrastructure.database.repositories.camera_module_repository import (
+    escopo_camera_params,
+    escopo_camera_sql,
+)
 
 
 class CameraRepository(BaseRepository):
@@ -209,20 +213,36 @@ class CameraRepository(BaseRepository):
         count_by_status já usa. Antes desta correção o COUNT(*) sem filtro
         somava arquivadas ao total, inflando o denominador de "câmeras
         ativas" mostrado no dashboard (ex.: 29 = 19 ativas + 10 arquivadas).
+
+        Módulo = o VÍNCULO declarado (public.camera_modules, migration 134)
+        quando ele existe; a coluna `module_code` enquanto não existe. Sem
+        isso o KPI "câmeras do módulo" continuaria mostrando 29 para o EPI da
+        RVB depois de o dono declarar 12 — número que nasce do DEFAULT da
+        coluna, não de decisão de ninguém.
         """
         row = self._execute_one(
             "SELECT COUNT(*) AS count FROM public.cameras "
-            "WHERE tenant_id = %s AND module_code = %s AND is_active = true",
-            (tenant_id, module_code),
+            f"WHERE tenant_id = %s AND is_active = true "
+            f"AND {escopo_camera_sql('public.cameras.id', 'public.cameras.module_code')}",
+            tuple([tenant_id] + escopo_camera_params(tenant_id, module_code)),
         )
         return row["count"] if row else 0
 
     def count_by_status(self, tenant_id: str, module_code: str, status: str) -> int:
-        """Conta câmeras de um tenant/módulo por status (is_active)."""
+        """Conta câmeras de um tenant/módulo por status (is_active).
+
+        Mesma regra de módulo de `count_by_module` — vínculo quando declarado,
+        coluna legada enquanto não.
+        """
         is_active = status == "active"
         row = self._execute_one(
-            "SELECT COUNT(*) AS count FROM public.cameras WHERE tenant_id = %s AND module_code = %s AND is_active = %s",
-            (tenant_id, module_code, is_active),
+            "SELECT COUNT(*) AS count FROM public.cameras "
+            f"WHERE tenant_id = %s AND is_active = %s "
+            f"AND {escopo_camera_sql('public.cameras.id', 'public.cameras.module_code')}",
+            tuple(
+                [tenant_id, is_active]
+                + escopo_camera_params(tenant_id, module_code)
+            ),
         )
         return row["count"] if row else 0
 

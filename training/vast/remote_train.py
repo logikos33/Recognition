@@ -36,6 +36,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import urllib.error
@@ -55,7 +56,17 @@ DATASET_URL = os.environ.get("DATASET_URL", "")
 INIT_WEIGHTS_URL = os.environ.get("INIT_WEIGHTS_URL", "")
 FRAMEWORK = os.environ.get("FRAMEWORK", "rfdetr").strip().lower()
 EPOCHS = int(os.environ.get("EPOCHS", "50"))
+# Teto de épocas e paciência do early-stop andam juntos: EPOCHS é TETO, não
+# alvo — quem decide o fim é a validação parando de melhorar (`PATIENCE`), e o
+# artefato entregue é o `checkpoint_best_total`, nunca o último. Subir EPOCHS
+# sem subir PATIENCE só gasta GPU; subir PATIENCE sem subir o timeout do pod
+# repete o job 5894a860, morto no relógio na época 16 de 50.
+PATIENCE = int(os.environ.get("EARLY_STOPPING_PATIENCE", "15"))
 BATCH = int(os.environ.get("BATCH", "4"))
+# Desliga a adaptação do batch à placa. Ligue em EXPERIMENTO (braços de um A/B
+# precisam do mesmo caminho de acumulação); deixe desligado em PRODUÇÃO, onde
+# aproveitar a placa que veio é o certo. Ver `_cap_de_batch`.
+BATCH_FIXO = os.environ.get("BATCH_FIXO", "").strip().lower() in ("1", "true", "sim")
 IMGSZ = int(os.environ.get("IMGSZ", "560"))
 CALLBACK_URL = os.environ.get("CALLBACK_URL", "")
 CALLBACK_TOKEN = os.environ.get("CALLBACK_TOKEN", "")
@@ -139,13 +150,109 @@ def download(url: str, dest: Path, *, expect_zip: bool = False) -> None:
     dest.write_bytes(body)
 
 
+# ── O AMBIENTE COMO ARTEFATO ──────────────────────────────────────────────────
+#
+# Conjunto RESOLVIDO que subiu e importou `rfdetr` com sucesso na sonda de
+# 02/09 (`scripts/ops/sondar_ambiente.py`, pod 7x3ihchfl2h6c8). Congelar isto
+# transforma "funcionou naquele dia" em "rodou no ambiente X, e X existe para
+# sempre" — sem imagem, sem registry, sem credencial.
+#
+# Por que precisou existir: com os MESMOS pacotes de topo, o pip montou
+# ambientes DIFERENTES em horas diferentes do MESMO dia 02/09 e matou dois pods
+# na época 0 — numpy misto às 18h38, `typing_extensions.Sentinel` às 19h09.
+# Quem quebra não é o pacote de topo, é a transitiva; pin de topo não alcança.
+#
+# ⚠️ `torch` NÃO entra: a imagem traz 2.4.1+cu124, build que não existe no PyPI.
+# Pinar faria o pip tentar buscar e falhar. Nada da lista pede torch, então ele
+# fica intocado — que é como tem de ser.
+#
+# ⚠️ LIMITE HONESTO, que uma imagem congelada NÃO teria: se o PyPI fizer *yank*
+# de alguma destas versões, o lock quebra e não há cópia local de onde tirar.
+# É o preço de não haver registry hoje (ver docs/quality/AMBIENTE-TREINO.md).
+_CONSTRAINTS = """\
+accelerate==1.14.0
+albucore==0.0.23
+albumentations==1.4.24
+annotated-types==0.8.0
+contourpy==1.3.3
+cycler==0.12.1
+flatbuffers==25.12.19
+fonttools==4.64.0
+huggingface-hub==0.36.2
+kiwisolver==1.5.1
+matplotlib==3.11.1
+ml_dtypes==0.5.4
+numpy==1.26.4
+onnx==1.22.0
+onnxruntime==1.29.0
+opencv-python-headless==4.11.0.86
+peft==0.20.0
+pillow==12.3.0
+protobuf==7.36.1
+pycocotools==2.0.11
+pydantic==2.13.5
+pydantic-core==2.46.5
+pyparsing==3.3.2
+regex==2026.9.3
+rf100vl==1.1.2
+roboflow==1.4.2
+safetensors==0.8.0
+scipy==1.17.1
+supervision==0.30.1
+tokenizers==0.22.2
+tqdm==4.70.0
+transformers==4.57.6
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+"""
+_CONSTRAINTS_PATH = WORK_DIR / "constraints-treino.txt"
+
+
 def pip_install(*packages: str) -> None:
-    logger.info("pip install %s", " ".join(packages))
+    """Instala com as versões TRAVADAS pelo lock (`-c`).
+
+    `-c` restringe VERSÕES sem instalar nada por si: o conjunto pedido continua
+    sendo `packages`; cada transitiva que o pip resolver cai na versão provada.
+    """
+    _CONSTRAINTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _CONSTRAINTS_PATH.write_text(_CONSTRAINTS)
+    logger.info("pip install %s (lock: %s)", " ".join(packages), _CONSTRAINTS_PATH)
     subprocess.run(  # noqa: S603
-        [sys.executable, "-m", "pip", "install", "-q", *packages],
+        [
+            sys.executable, "-m", "pip", "install", "-q",
+            "-c", str(_CONSTRAINTS_PATH), *packages,
+        ],
         check=True,
         text=True,
     )
+    _logar_versoes_resolvidas()
+
+
+# Pacotes cuja versão RESOLVIDA já derrubou um pod. Registrar o que de fato foi
+# instalado é o que permite comparar uma corrida que funcionou com uma que não.
+_PACOTES_CRITICOS = (
+    "numpy", "scipy", "supervision", "rfdetr", "transformers", "torch", "onnx",
+)
+
+
+def _logar_versoes_resolvidas() -> None:
+    """Registra a versão REAL de cada pacote crítico depois do install.
+
+    `pip install -q` esconde o "Successfully installed ...", e foi por isso que
+    ao diagnosticar o job b4d69cde (morto na época 0 por numpy misto) NÃO deu
+    para saber com quais versões o job 04508616 tinha funcionado 3h antes — a
+    informação nunca foi gravada. Um pod que se paga por hora precisa dizer com
+    o que ele rodou; sem isso, "funcionou ontem" não é reproduzível.
+    """
+    from importlib.metadata import PackageNotFoundError, version  # noqa: PLC0415
+
+    resolvidas = {}
+    for nome in _PACOTES_CRITICOS:
+        try:
+            resolvidas[nome] = version(nome)
+        except PackageNotFoundError:
+            continue
+    logger.info("versoes_resolvidas: %s", resolvidas)
 
 
 # ------------------------------------------------------------------ dataset
@@ -177,6 +284,52 @@ def prepare_dataset() -> Path:
     if len(entries) == 1 and entries[0].is_dir():
         return entries[0]
     return DATASET_DIR
+
+
+# O RF-DETR 1.5.2 NÃO entrega mAP no dict de `on_fit_epoch_end` — ele IMPRIME.
+# Por isso `_collect_metrics` sempre devolveu {} de métrica, o callback gravou
+# vazio, e `trained_models` nasceu com map50=0/precision=0/recall=0. Não é um
+# job azarado: NENHUM modelo deste sistema jamais gravou métrica, e o ranking
+# campeão×desafiante vinha comparando zeros com zeros. Confirmado no job
+# 04508616, que custou US$ 1,71 e cujo mAP 0,4386 só existia no pod.log.
+#
+# Os padrões abaixo são os do log REAL (lidos, não presumidos):
+#   ' Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=500 ] = 0.400'
+#   'Early stopping: Current mAP (EMA): 0.4386, Best: 0.4386, Diff: ..., Min delta: 0.001'
+_RE_AP = re.compile(
+    r"Average Precision\s+\(AP\) @\[ IoU=(0\.50:0\.95|0\.50)\s+\| area=\s*all\s*\|"
+    r"[^]]*\]\s*=\s*([0-9.]+)"
+)
+# `Best:` é O NÚMERO que o early-stop usa para eleger `checkpoint_best_total` —
+# o mesmo arquivo que vira o ONNX servido. Ancorar aqui é o que garante que a
+# métrica gravada é a DO ARTEFATO ENTREGUE, e não a de outra época qualquer.
+_RE_EMA = re.compile(
+    r"Current mAP \(EMA\):\s*([0-9.]+),\s*Best:\s*([0-9.]+)"
+)
+
+
+def _metricas_do_log() -> dict:
+    """Métricas garimpadas do texto que o RF-DETR imprime nesta época.
+
+    Lê o `_LOG_BUFFER` do auto-log (o mesmo tee que sobe o pod.log ao R2) — a
+    única fonte onde essas métricas existem. Só a ÚLTIMA ocorrência de cada
+    padrão importa: o buffer acumula o run inteiro.
+    """
+    texto = "".join(_LOG_BUFFER[-4000:])
+    metrics: dict = {}
+    for iou, valor in _RE_AP.findall(texto):
+        try:
+            metrics["map" if iou == "0.50:0.95" else "map50"] = float(valor)
+        except ValueError:
+            continue
+    ema = _RE_EMA.findall(texto)
+    if ema:
+        try:
+            metrics["map_ema"] = float(ema[-1][0])
+            metrics["map_ema_best"] = float(ema[-1][1])
+        except ValueError:
+            pass
+    return metrics
 
 
 def _collect_metrics(source: dict) -> dict:
@@ -382,6 +535,70 @@ def _modelo_fine_tune(dataset_dir: Path, resolution: int):
     )
 
 
+def _vram_gib() -> float | None:
+    """VRAM da placa que a RunPod REALMENTE entregou, lida de dentro do pod.
+
+    É a única fonte de verdade sobre o hardware da corrida: `create_pod` manda
+    `gpuTypeIds: [tipo]` e a plataforma pode entregar outra placa sem erro, e
+    `get_pod` devolve `gpuTypeIds: null`. Sem esta leitura, nada no sistema
+    registra em que hardware o modelo foi treinado.
+    """
+    try:
+        import torch  # noqa: PLC0415 — só existe dentro do pod
+
+        return torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
+    except Exception as exc:  # noqa: BLE001 — sem CUDA legível, quem chama decide
+        logger.warning("vram_gib: GPU ilegível (%s)", exc)
+        return None
+
+
+def _cap_de_batch() -> int:
+    """Maior batch que a placa desta corrida aguenta, medido no pod.
+
+    Não é escolha de performance, é guarda de OOM: o teto de 4 nasceu de um
+    estouro real em 24GB (job 90946c17, 23,38 GiB com batch 16 @616). Em 48GB
+    o 16 cabe com folga e o grad_accum deixa de ser necessário.
+
+    Falha para 4 — o valor que já rodava — quando não dá para ler a GPU. Um
+    palpite otimista aqui custa a corrida inteira em OOM na primeira época;
+    um palpite conservador custa tempo. A casa prefere perder tempo.
+
+    ⚠️ `BATCH_FIXO` desliga a adaptação. Existe porque adaptar-se à placa é
+    certo em PRODUÇÃO e errado num EXPERIMENTO, e o código não tinha como
+    distinguir os dois. Medido em 02/09: pedimos 4090 (24 GiB) nos dois braços
+    do A/B e a RunPod entregou uma A6000 (47,4 GiB) no segundo, sem erro e sem
+    registrar a troca (`get_pod` devolve `gpuTypeIds: null`). Este cap então
+    liberou 16 num braço e 4 no outro. O batch EFETIVO ficou 16 nos dois, mas
+    o caminho não: o DETR normaliza a loss por `num_boxes` a cada MICRO-lote,
+    então 4×4 normaliza sobre 4 imagens e 16×1 sobre 16 — diferença pequena e
+    real, que entraria na comparação disfarçada de diferença entre taxonomias.
+    Com `BATCH_FIXO`, uma placa que não comporta o valor pedido ABORTA em vez
+    de se adaptar: num experimento, morrer alto é melhor que divergir calado.
+    """
+    if BATCH_FIXO:
+        gib = _vram_gib()
+        cabe = 16 if (gib is None or gib >= 44) else 4
+        if BATCH > cabe:
+            raise RuntimeError(
+                f"BATCH_FIXO={BATCH} não cabe nesta placa "
+                f"({'VRAM ilegível' if gib is None else f'{gib:.1f} GiB'}, "
+                f"comporta {cabe}). A RunPod entrega placa diferente da pedida "
+                "sem avisar; num experimento controlado isso ABORTA em vez de "
+                "virar outro hiperparâmetro em silêncio."
+            )
+        logger.info("cap_de_batch: BATCH_FIXO=%d (adaptação desligada)", BATCH)
+        return BATCH
+
+    gib = _vram_gib()
+    if gib is None:
+        return 4
+    # 44 e não 48: a placa reporta menos que o nominal (uma A6000 de 48GB
+    # informa ~47,4 GiB) e parte fica com o contexto de CUDA.
+    cap = 16 if gib >= 44 else 4
+    logger.info("cap_de_batch: %.1f GiB na GPU → batch até %d", gib, cap)
+    return cap
+
+
 def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
     """Treina RF-DETR (Apache 2.0) e exporta ONNX.
 
@@ -405,9 +622,22 @@ def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
     # do v9). TrainConfig é pydantic extra="forbid": kwarg que a versão não
     # conhece mata o pod pago — toda mudança aqui exige conferir os campos na
     # MESMA versão pinada, não na do venv local.
+    # PIN `numpy<2`: a imagem runpod/pytorch:2.4.0 traz numpy 1.x COMPILADO
+    # (`numpy/core/_multiarray_umath...so`). Sem restrição, o pip resolve
+    # `supervision`/`scipy` novos que arrastam numpy 2.x, cujos .py entram por
+    # cima do .so 1.x e deixam a instalação MISTA — `numpy/_core/umath.py` (2.x)
+    # importando de `numpy.core._multiarray_umath` (1.x). O pod morre na época 0
+    # com "cannot import name '_center'", pela cadeia
+    # rfdetr → supervision → scipy → numpy.
+    # Isto NÃO é hipotético e NÃO é o mesmo ambiente de ontem: o job 04508616
+    # rodou às 15h25 de 02/09 e treinou 23 épocas; o b4d69cde, MESMO código e
+    # MESMA imagem, morreu às 18h38 do mesmo dia. Só mudou o que o PyPI
+    # oferecia no meio do caminho — que é exatamente o que um pin existe para
+    # congelar. Deixar `supervision` solto num pod que se paga por hora é
+    # apostar a corrida no calendário de release de terceiros.
     pip_install(
         "rfdetr==1.5.2", "rfdetr[onnx]==1.5.2", "onnx", "onnxruntime",
-        "supervision", "transformers<5",
+        "supervision", "transformers<5", "numpy<2", "typing_extensions>=4.13",
     )
     from rfdetr import RFDETRBase  # noqa: PLC0415
 
@@ -436,6 +666,9 @@ def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
         state["epoch"] += 1
         epoch = state["epoch"]
         metrics = _collect_metrics(log if isinstance(log, dict) else {})
+        # O dict do framework vem SEM mAP na 1.5.2 — o número está no texto
+        # que ele imprimiu. Sem esta linha o modelo nasce com métrica zero.
+        metrics.update(_metricas_do_log())
         # O número do framework não é descartado — vai para métrica com nome
         # que diz o que ele é, para o dia em que alguém precisar diagnosticá-lo.
         bruto = log.get("epoch") if isinstance(log, dict) else None
@@ -465,7 +698,12 @@ def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
     # RF-DETR base @616 com batch 16 estoura os 24GB da RTX 3090 (OOM real
     # no DEV, job 90946c17: 23,38 GiB em uso). Cap em 4; grad_accum preserva
     # o batch EFETIVO 16 (4 × 4) — mesma matemática, memória 1/4.
-    batch_size = min(max(BATCH, 1), 4)
+    #
+    # O cap está certo PARA 24GB e vira desperdício em 48GB, onde o 16 cabe
+    # inteiro e dispensa a acumulação. Quem decide é a placa que a RunPod
+    # sorteou nesta corrida, não uma constante: o mesmo job pode cair numa
+    # A6000 hoje e numa 3090 amanhã.
+    batch_size = min(max(BATCH, 1), _cap_de_batch())
     model.train(
         dataset_dir=str(dataset_dir),
         epochs=EPOCHS,
@@ -480,8 +718,14 @@ def train_rfdetr(dataset_dir: Path) -> tuple[Path, Path | None, dict]:
         lr_drop=15,
         # Para quando a validação empaca — não paga GPU depois do pico.
         # use_ema=True: a métrica estável do harness sempre foi a EMA.
+        #
+        # patience 15 (era 8): com teto de 100 épocas, 8 é curto demais. O
+        # `lr_drop=15` derruba o LR de 10× na época 15, e a val costuma dar um
+        # SEGUNDO salto logo depois — com patience 8 o run morre na 14ª parada
+        # sem nunca ver o efeito do próprio decay que este arquivo configura.
+        # Tunável por env para o dia em que a curva mostrar outro platô.
         early_stopping=True,
-        early_stopping_patience=8,
+        early_stopping_patience=PATIENCE,
         early_stopping_use_ema=True,
         resolution=resolution,
         output_dir=str(OUTPUT_DIR),
@@ -569,9 +813,60 @@ def validate_onnx(onnx_path: Path) -> None:
 
 # --------------------------------------------------------------------- main
 
+def _hardware_da_corrida() -> dict:
+    """Placa que a RunPod REALMENTE entregou — para o job registrar em que
+    hardware o modelo foi treinado.
+
+    Sem isto, NADA no sistema guarda essa informação: `create_pod` manda
+    `gpuTypeIds: [tipo]` e a plataforma pode entregar outra placa sem erro, e
+    `get_pod` devolve `gpuTypeIds: null`. Em 02/09 pedimos 4090 (24 GiB) nos
+    dois braços de um A/B e veio uma A6000 (47,4 GiB) no segundo — só deu para
+    descobrir cavando o `pod.log` no R2. Um modelo cuja placa não foi
+    registrada é um modelo cuja corrida não pode ser reproduzida nem auditada.
+
+    ⚠️ Vai DENTRO de `metrics`, como chave de primeiro nível dela. Duas razões,
+    ambas verificadas no código do backend:
+      - `_validate_callback_payload` (job_handlers.py) remonta o payload com um
+        conjunto FIXO de chaves; um `hardware` irmão de `metrics` seria
+        descartado em silêncio e nunca chegaria ao banco;
+      - a gravação funde com `metrics = COALESCE(metrics,'{}') || %s::jsonb`, e
+        o `||` do jsonb é RASO — gravar isto dentro de `provenance` substituiria
+        o objeto inteiro e apagaria o `runner_sha256`/`worker_commit` que o
+        dispatch escreveu antes do pod subir.
+
+    ⛔ NÃO IMPORTE `torch` (nem nada que puxe numpy) AQUI. Esta função roda
+    ANTES do `pip_install`, e importar torch carrega numpy e typing_extensions
+    NAS VERSÕES DA IMAGEM dentro de `sys.modules`. O `pip install` seguinte
+    atualiza o DISCO, mas o processo continua com os módulos velhos — e o
+    `from rfdetr import ...` estoura depois com um erro que aponta para o lugar
+    errado. Foi exatamente isso que matou os jobs 40e61279, b5569408, 58ae243f
+    e 15f42a12 em 02/09 com `ImportError: cannot import name 'Sentinel'`,
+    enquanto `_logar_versoes_resolvidas` (que lê o DISCO) jurava
+    typing_extensions 4.16.0. O job 04508616, que rodou ANTES desta função
+    existir, não teve o problema. A regressão nasceu no commit 3c292524 —
+    instrumentação de proveniência que envenenou o interpretador.
+
+    `nvidia-smi` é subprocesso: dá a mesma informação sem importar nada.
+    """
+    dados: dict = {"vram_gib": None, "gpu": None, "batch_fixo": BATCH_FIXO}
+    try:
+        saida = subprocess.run(  # noqa: S603
+            ["nvidia-smi", "--query-gpu=name,memory.total",
+             "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=30, check=True,
+        ).stdout.strip().splitlines()[0]
+        nome, mib = (p.strip() for p in saida.split(","))
+        dados["gpu"] = nome
+        dados["vram_gib"] = round(float(mib) / 1024, 1)
+    except Exception as exc:  # noqa: BLE001 — proveniência nunca derruba treino
+        logger.warning("hardware_da_corrida: nvidia-smi ilegível (%s)", exc)
+    logger.info("hardware_da_corrida: %s", dados)
+    return dados
+
+
 def main() -> int:
     post_callback({"status": "running", "progress": 1,
-                   "metrics": {"stage": 1.0}})
+                   "metrics": {"stage": 1.0, "hardware": _hardware_da_corrida()}})
     dataset_dir = prepare_dataset()
     post_callback({"status": "running", "progress": 5,
                    "metrics": {"stage": 2.0}})

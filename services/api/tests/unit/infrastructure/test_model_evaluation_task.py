@@ -27,9 +27,25 @@ _MINIMAL_COCO = json.dumps(
 ).encode("utf-8")
 
 
+def _holdout(split="test", frame_ids=None, coco_r2_key="dataset-exports/tenant/1/v1"):
+    """Holdout congelado (migration 131) — o que get_holdout devolve.
+
+    Default sem `frame_ids`: dataset_version anterior à membresia persistida,
+    que é o caso da maioria destes testes (foco na orquestração, não na
+    membresia — essa tem suíte própria em test_holdout_membresia.py).
+    """
+    return {
+        "dataset_version_id": DSV_ID, "coco_r2_key": coco_r2_key,
+        "split": split, "frame_ids": frame_ids, "frozen": bool(frame_ids),
+    }
+
+
 def _fake_repos(monkeypatch, registry=None, dataset=None, eval_repo=None, storage=None):
     registry = registry or MagicMock()
     dataset = dataset or MagicMock()
+    # Sem isto o holdout viria de um MagicMock e os testes passariam por
+    # acidente, sobre um split que ninguém declarou.
+    dataset.get_holdout.return_value = _holdout()
     eval_repo = eval_repo or MagicMock()
     storage = storage or MagicMock()
     monkeypatch.setattr(model_evaluation, "_get_registry_repo", lambda: registry)
@@ -125,12 +141,13 @@ class TestOrchestration:
         assert result["reason"] == "dataset_version_not_found"
 
     def test_missing_holdout_split_returns_error(self, monkeypatch):
-        """test_count==0 E val_count==0 — nunca gerar veredito sem holdout real."""
+        """Versão sem holdout nenhum — nunca gerar veredito sem prova real."""
         registry, dataset, *_ = _fake_repos(monkeypatch)
         registry.get_by_id.return_value = self._base_model()
         dataset.get_by_id.return_value = self._base_dataset_version(
             test_count=0, val_count=0
         )
+        dataset.get_holdout.return_value = None
         monkeypatch.setitem(sys.modules, "onnxruntime", MagicMock())
         monkeypatch.setitem(sys.modules, "cv2", MagicMock())
 
@@ -139,10 +156,14 @@ class TestOrchestration:
         assert result["reason"] == "no_holdout_split"
 
     def test_falls_back_to_val_split_when_test_count_zero(self, monkeypatch):
+        """A escolha test→val agora mora em DatasetRepository.get_holdout; a
+        task só obedece ao que o holdout declarou. Ver test_holdout_membresia.py
+        ::test_cai_para_val_quando_test_vazio para a escolha em si."""
         registry, dataset, eval_repo, storage = _fake_repos(monkeypatch)
         registry.get_by_id.return_value = self._base_model()
         registry.list_for_tenant.return_value = []
         dataset.get_by_id.return_value = self._base_dataset_version(test_count=0, val_count=3)
+        dataset.get_holdout.return_value = _holdout(split="val")
         storage.download_bytes.return_value = _MINIMAL_COCO
         eval_repo.create.return_value = {"id": "eval-1"}
         monkeypatch.setitem(sys.modules, "onnxruntime", MagicMock())
@@ -422,3 +443,112 @@ class TestClassNamesFromCoco:
         coco = {"categories": [{"id": 0, "name": "mascara"}, {"id": 10**7, "name": "oculos"}]}
         nomes = model_evaluation._class_names_from_coco(coco)
         assert nomes == ["mascara", "oculos"], "cai para a ordem, não aloca 10M"
+
+
+class TestClassThresholds:
+    """Limiar de produção por classe — o pico da curva F1, persistido no modelo."""
+
+    def test_so_classes_com_pico_entram(self):
+        limiares = model_evaluation._class_thresholds({
+            "per_class": {
+                "Luvas": {"best_threshold": 0.45},
+                "Botas": {"best_threshold": None},   # F1 zero em toda a grade
+                "Óculos": {"ap": None},              # sem GT no holdout
+            }
+        })
+        assert limiares == {"Luvas": 0.45}
+
+    def test_metrics_vazio_nao_explode(self):
+        assert model_evaluation._class_thresholds({}) == {}
+        assert model_evaluation._class_thresholds({"per_class": None}) == {}
+
+    def test_persistidos_em_trained_models_metrics_com_proveniencia(self, monkeypatch):
+        registry, dataset, eval_repo, storage = _fake_repos(monkeypatch)
+        registry.get_by_id.return_value = {
+            "id": MODEL_ID, "tenant_id": TENANT_ID, "module_code": "epi",
+            "framework": "rfdetr", "r2_onnx_key": "models/c.onnx",
+            "dataset_version_id": DSV_ID,
+        }
+        registry.list_for_tenant.return_value = []
+        dataset.get_by_id.return_value = {
+            "id": DSV_ID, "coco_r2_key": "dataset-exports/t/1/v1",
+            "test_count": 5, "val_count": 2,
+        }
+        dataset.get_holdout.return_value = {
+            "split": "test", "coco_r2_key": "dataset-exports/t/1/v1",
+            "frame_ids": None, "frozen": False,
+        }
+        storage.download_bytes.return_value = _MINIMAL_COCO
+        eval_repo.create.return_value = {"id": "eval-9"}
+        monkeypatch.setitem(sys.modules, "onnxruntime", MagicMock())
+        monkeypatch.setitem(sys.modules, "cv2", MagicMock())
+        monkeypatch.setattr(
+            model_evaluation, "_evaluate_model_on_split",
+            lambda model, storage, coco_r2_key, split, coco: {
+                "metrics": {
+                    "map50": 0.7, "map50_95": 0.5,
+                    "per_class": {
+                        "Luvas": {"ap": 0.7, "tp": 7, "fp": 2, "fn": 1,
+                                  "n_gt": 8, "best_threshold": 0.45},
+                        "Botas": {"ap": 0.0, "tp": 0, "fp": 3, "fn": 4,
+                                  "n_gt": 4, "best_threshold": None},
+                    },
+                },
+                "confusion_matrix": {}, "images_evaluated": 10,
+            },
+        )
+
+        result = model_evaluation.evaluate_challenger_model.apply(args=(MODEL_ID,)).get()
+
+        assert result["class_thresholds"] == {"Luvas": 0.45}
+        assert result["map50_95"] == 0.5
+        registry.merge_metrics.assert_called_once()
+        model_arg, payload = registry.merge_metrics.call_args.args
+        assert model_arg == MODEL_ID
+        assert payload["class_thresholds"] == {"Luvas": 0.45}
+        origem = payload["class_thresholds_origem"]
+        # o número tem de dizer de onde veio: método, prova, n e piso
+        assert origem["metodo"] == "pico da curva F1 por classe"
+        assert origem["evaluation_id"] == "eval-9"
+        assert origem["split"] == "test"
+        assert origem["confidence_floor"] == model_evaluation._EVAL_CONFIDENCE
+        assert origem["images_evaluated"] == 10
+        assert origem["n_gt_por_classe"] == {"Luvas": 8, "Botas": 4}
+        assert origem["sem_limiar"] == ["Botas"]
+
+    def test_falha_ao_persistir_nao_derruba_a_avaliacao(self, monkeypatch):
+        registry, dataset, eval_repo, storage = _fake_repos(monkeypatch)
+        registry.get_by_id.return_value = {
+            "id": MODEL_ID, "tenant_id": TENANT_ID, "module_code": "epi",
+            "framework": "rfdetr", "r2_onnx_key": "models/c.onnx",
+            "dataset_version_id": DSV_ID,
+        }
+        registry.list_for_tenant.return_value = []
+        registry.merge_metrics.side_effect = RuntimeError("banco fora")
+        dataset.get_by_id.return_value = {
+            "id": DSV_ID, "coco_r2_key": "dataset-exports/t/1/v1",
+            "test_count": 5, "val_count": 0,
+        }
+        dataset.get_holdout.return_value = {
+            "split": "test", "coco_r2_key": "dataset-exports/t/1/v1",
+            "frame_ids": None, "frozen": False,
+        }
+        storage.download_bytes.return_value = _MINIMAL_COCO
+        eval_repo.create.return_value = {"id": "eval-10"}
+        monkeypatch.setitem(sys.modules, "onnxruntime", MagicMock())
+        monkeypatch.setitem(sys.modules, "cv2", MagicMock())
+        monkeypatch.setattr(
+            model_evaluation, "_evaluate_model_on_split",
+            lambda model, storage, coco_r2_key, split, coco: {
+                "metrics": {
+                    "map50": 0.7,
+                    "per_class": {"Luvas": {"ap": 0.7, "tp": 7, "fp": 2,
+                                            "fn": 1, "n_gt": 8,
+                                            "best_threshold": 0.45}},
+                },
+                "confusion_matrix": {}, "images_evaluated": 10,
+            },
+        )
+
+        result = model_evaluation.evaluate_challenger_model.apply(args=(MODEL_ID,)).get()
+        assert result["status"] == "completed"  # a avaliação já está gravada

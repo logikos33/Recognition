@@ -32,8 +32,10 @@ class _FakeRFDETRModel:
     def __init__(self) -> None:
         self.callbacks: dict[str, list] = {"on_fit_epoch_end": []}
         self.epoch_logs: list[dict] = []
+        self.train_kwargs: dict = {}
 
     def train(self, **_kwargs) -> None:
+        self.train_kwargs = dict(_kwargs)
         for log in self.epoch_logs:
             for cb in self.callbacks["on_fit_epoch_end"]:
                 cb(log)
@@ -67,6 +69,114 @@ def _install_fake_rfdetr(monkeypatch, model: _FakeRFDETRModel) -> None:
     fake_pkg = types.ModuleType("rfdetr")
     fake_pkg.RFDETRBase = lambda: model
     monkeypatch.setitem(sys.modules, "rfdetr", fake_pkg)
+
+
+class TestCapDeBatch:
+    """O cap existe para não estourar a memória, não para ir rápido.
+
+    Errar para cima custa a corrida inteira num OOM na primeira época; errar
+    para baixo custa tempo. Por isso todo caminho de dúvida cai em 4.
+    """
+
+    def _fake_torch(self, gib):
+        """torch mínimo cuja GPU relata `gib` de memória."""
+        props = types.SimpleNamespace(total_memory=int(gib * (1024 ** 3)))
+        mod = types.ModuleType("torch")
+        mod.cuda = types.SimpleNamespace(get_device_properties=lambda _: props)
+        return mod
+
+    def test_placa_de_48g_libera_batch_16(self, remote_train_mod, monkeypatch) -> None:
+        monkeypatch.setitem(sys.modules, "torch", self._fake_torch(47.4))
+        assert remote_train_mod._cap_de_batch() == 16
+
+    def test_batch_fixo_nao_se_adapta_a_placa_grande(
+        self, remote_train_mod, monkeypatch,
+    ) -> None:
+        """O caso real de 02/09: pedimos 4090 (24G) nos dois braços do A/B e a
+        RunPod entregou A6000 (47,4G) no segundo. Sem BATCH_FIXO, um braço rodou
+        16×1 e o outro 4×4 — caminhos de normalização diferentes dentro do que
+        deveria ser o mesmo experimento."""
+        monkeypatch.setitem(sys.modules, "torch", self._fake_torch(47.4))
+        monkeypatch.setattr(remote_train_mod, "BATCH_FIXO", True)
+        monkeypatch.setattr(remote_train_mod, "BATCH", 4)
+        assert remote_train_mod._cap_de_batch() == 4
+
+    def test_batch_fixo_aborta_quando_a_placa_nao_comporta(
+        self, remote_train_mod, monkeypatch,
+    ) -> None:
+        """Num experimento, morrer alto é melhor que divergir calado."""
+        monkeypatch.setitem(sys.modules, "torch", self._fake_torch(23.7))
+        monkeypatch.setattr(remote_train_mod, "BATCH_FIXO", True)
+        monkeypatch.setattr(remote_train_mod, "BATCH", 16)
+        with pytest.raises(RuntimeError, match="não cabe nesta placa"):
+            remote_train_mod._cap_de_batch()
+
+    def test_placa_de_24g_mantem_o_cap_antigo(self, remote_train_mod, monkeypatch) -> None:
+        """A 3090 que causou o OOM real (job 90946c17) não pode ser liberada."""
+        monkeypatch.setitem(sys.modules, "torch", self._fake_torch(23.7))
+        assert remote_train_mod._cap_de_batch() == 4
+
+    def test_sem_torch_cai_no_conservador(self, remote_train_mod, monkeypatch) -> None:
+        quebrado = types.ModuleType("torch")
+        quebrado.cuda = types.SimpleNamespace(
+            get_device_properties=lambda _: (_ for _ in ()).throw(RuntimeError("no CUDA"))
+        )
+        monkeypatch.setitem(sys.modules, "torch", quebrado)
+        assert remote_train_mod._cap_de_batch() == 4
+
+    def test_batch_efetivo_16_nos_dois_caminhos(self, remote_train_mod, monkeypatch) -> None:
+        """batch × grad_accum tem de dar 16 com ou sem a placa grande —
+        senão a troca de GPU muda a matemática do treino, não só a velocidade."""
+        for gib, esperado in ((47.4, 16), (23.7, 4)):
+            model = _FakeRFDETRModel()
+            model.epoch_logs = [{"epoch": 1, "loss": 1.0}]
+            _install_fake_rfdetr(monkeypatch, model)
+            monkeypatch.setitem(sys.modules, "torch", self._fake_torch(gib))
+            monkeypatch.setattr(remote_train_mod, "BATCH", 16)
+            monkeypatch.setattr(remote_train_mod, "post_callback", lambda *_: None)
+            try:
+                remote_train_mod.train_rfdetr(Path("/tmp/ds"))  # noqa: S108
+            except RuntimeError:
+                pass
+            kw = model.train_kwargs
+            assert kw["batch_size"] == esperado
+            assert kw["batch_size"] * kw["grad_accum_steps"] == 16
+
+
+class TestEarlyStoppingPatience:
+    """A paciência do early-stop é o que decide quando o treino para.
+
+    Com `lr_drop=15` no mesmo `model.train(...)`, o LR só cai de 10× na época
+    15 — e a validação costuma dar um segundo salto DEPOIS disso. Uma
+    paciência menor que o próprio lr_drop mata o run antes de ele ver o efeito
+    do decay que este arquivo configura. Era 8, hardcoded.
+    """
+
+    def test_patience_vem_do_modulo_e_nao_e_menor_que_o_lr_drop(
+        self, remote_train_mod, monkeypatch,
+    ) -> None:
+        model = _FakeRFDETRModel()
+        model.epoch_logs = [{"epoch": 1, "loss": 1.0}]
+        _install_fake_rfdetr(monkeypatch, model)
+        monkeypatch.setattr(remote_train_mod, "post_callback", lambda *_: None)
+        monkeypatch.setattr(remote_train_mod, "PATIENCE", 15)
+
+        try:
+            remote_train_mod.train_rfdetr(Path("/tmp/ds"))  # noqa: S108
+        except RuntimeError:
+            pass  # export/onnx não roda no fake — irrelevante aqui
+
+        kwargs = model.train_kwargs
+        assert kwargs["early_stopping"] is True
+        # Reprova se alguém voltar a chumbar o número na chamada.
+        assert kwargs["early_stopping_patience"] == 15
+        assert kwargs["early_stopping_patience"] >= kwargs["lr_drop"], (
+            "paciência menor que lr_drop: o run morre antes de ver o decay"
+        )
+
+    def test_patience_default_do_modulo_e_15(self, remote_train_mod) -> None:
+        """Sem env, o default precisa ser o valor da regra — não o antigo 8."""
+        assert remote_train_mod.PATIENCE == 15
 
 
 class TestEpochCallbackAccumulatesMetrics:
@@ -401,3 +511,183 @@ class TestFineTuneDoNossoCheckpoint:
         monkeypatch.setitem(sys.modules, "torch", fake_torch)
         with pytest.raises(RuntimeError, match="class_embed.bias"):
             remote_train_mod._carregar_checkpoint(tmp_path / "w.pth")
+
+
+class TestHardwareDaCorrida:
+    """A placa que a RunPod entregou tem de chegar ao job.
+
+    Motivo (medido em 02/09): pedimos 4090 nos dois braços de um A/B e veio uma
+    A6000 no segundo, sem erro. `get_pod` devolve `gpuTypeIds: null`, então sem
+    esta leitura de dentro do pod nada registra em que hardware o modelo rodou.
+    """
+
+    def _smi(self, monkeypatch, mod, saida: str) -> None:
+        monkeypatch.setattr(
+            mod.subprocess, "run",
+            lambda *a, **k: types.SimpleNamespace(stdout=saida),
+        )
+
+    def test_reporta_vram_e_nome(self, remote_train_mod, monkeypatch) -> None:
+        self._smi(monkeypatch, remote_train_mod, "NVIDIA RTX A6000, 48538\n")
+        d = remote_train_mod._hardware_da_corrida()
+        assert d["vram_gib"] == 47.4
+        assert d["gpu"] == "NVIDIA RTX A6000"
+
+    def test_nao_importa_torch_antes_do_pip(self, remote_train_mod, monkeypatch) -> None:
+        """A REGRESSÃO 3c292524: importar torch aqui carrega numpy e
+        typing_extensions NAS VERSÕES DA IMAGEM em sys.modules; o pip seguinte
+        atualiza o disco e o processo segue com os módulos velhos. Matou quatro
+        pods em 02/09 com 'ImportError: Sentinel'."""
+        monkeypatch.delitem(sys.modules, "torch", raising=False)
+        armadilha = types.ModuleType("torch")
+
+        def _explode(*_a, **_k):
+            raise AssertionError("torch NÃO pode ser importado antes do pip_install")
+
+        armadilha.__getattr__ = _explode
+        monkeypatch.setitem(sys.modules, "torch", armadilha)
+        self._smi(monkeypatch, remote_train_mod, "NVIDIA GeForce RTX 4090, 24564\n")
+        d = remote_train_mod._hardware_da_corrida()
+        assert d["gpu"] == "NVIDIA GeForce RTX 4090"
+
+    def test_gpu_ilegivel_nao_derruba(self, remote_train_mod, monkeypatch) -> None:
+        """Proveniência é sensor, não guarda: falhar a leitura não mata o treino."""
+        monkeypatch.setattr(
+            remote_train_mod.subprocess, "run",
+            lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError("nvidia-smi")),
+        )
+        d = remote_train_mod._hardware_da_corrida()
+        assert d["vram_gib"] is None and d["gpu"] is None
+
+    def test_vai_dentro_de_metrics_no_primeiro_callback(
+        self, remote_train_mod, monkeypatch,
+    ) -> None:
+        """`_validate_callback_payload` remonta o payload com chaves FIXAS —
+        um `hardware` IRMÃO de `metrics` seria descartado em silêncio."""
+        self._smi(monkeypatch, remote_train_mod, "NVIDIA GeForce RTX 4090, 24564\n")
+        enviados: list = []
+        monkeypatch.setattr(remote_train_mod, "post_callback", enviados.append)
+        monkeypatch.setattr(
+            remote_train_mod, "prepare_dataset",
+            lambda: (_ for _ in ()).throw(RuntimeError("para aqui")),
+        )
+        with pytest.raises(RuntimeError, match="para aqui"):
+            remote_train_mod.main()
+        primeiro = enviados[0]
+        assert "hardware" not in primeiro, "hardware fora de metrics é descartado pelo backend"
+        assert primeiro["metrics"]["hardware"]["gpu"] == "NVIDIA GeForce RTX 4090"
+
+
+class TestMetricasDoLog:
+    """O modelo tem de nascer sabendo quanto vale.
+
+    O RF-DETR 1.5.2 não põe mAP no dict de `on_fit_epoch_end` — ele IMPRIME. Por
+    isso `trained_models` sempre gravou map50=0/precision=0/recall=0, em TODO
+    modelo do sistema, e o ranking campeão×desafiante comparava zeros. As linhas
+    abaixo são cópias LITERAIS do pod.log do job 04508616 (US$ 1,71 pagos).
+    """
+
+    LOG_REAL = (
+        "2026-09-02 17:20:51,022 INFO rf-detr -  Average Precision  (AP) @[ IoU=0.50:0.95 "
+        "| area=   all | maxDets=500 ] = 0.401\n"
+        "2026-09-02 17:20:51,023 INFO rf-detr -  Average Precision  (AP) @[ IoU=0.50      "
+        "| area=   all | maxDets=500 ] = 0.562\n"
+        "2026-09-02 17:20:51,024 INFO rf-detr -  Average Precision  (AP) @[ IoU=0.50:0.95 "
+        "| area= small | maxDets=500 ] = 0.300\n"
+        "2026-09-02 17:20:52,001 INFO rf-detr - Early stopping: Current mAP (EMA): 0.4301, "
+        "Best: 0.4386, Diff: 0.0085, Min delta: 0.001\n"
+    )
+
+    def test_extrai_do_log_real(self, remote_train_mod, monkeypatch) -> None:
+        monkeypatch.setattr(remote_train_mod, "_LOG_BUFFER", [self.LOG_REAL])
+        m = remote_train_mod._metricas_do_log()
+        assert m["map"] == 0.401       # AP@[.5:.95], area=all — NÃO o de area=small
+        assert m["map50"] == 0.562     # AP@0.50 — o que alimenta trained_models.map50
+        assert m["map_ema"] == 0.4301
+        # `Best` é o número que elege o checkpoint_best_total, que vira o ONNX
+        # servido: a métrica gravada é a DO ARTEFATO ENTREGUE, não a da última época.
+        assert m["map_ema_best"] == 0.4386
+
+    def test_ignora_area_small_e_medium(self, remote_train_mod, monkeypatch) -> None:
+        """`area=all` é a métrica do modelo; small/medium/large são recortes.
+        Casar o padrão errado gravaria 0,300 como se fosse o mAP."""
+        monkeypatch.setattr(remote_train_mod, "_LOG_BUFFER", [self.LOG_REAL])
+        assert remote_train_mod._metricas_do_log()["map"] != 0.300
+
+    def test_log_sem_metrica_nao_inventa(self, remote_train_mod, monkeypatch) -> None:
+        monkeypatch.setattr(remote_train_mod, "_LOG_BUFFER", ["pip install rfdetr\n"])
+        assert remote_train_mod._metricas_do_log() == {}
+
+
+class TestPinsQueJaMataramPod:
+    """Cada pin aqui nasceu de um pod pago que morreu. Remover um é reabrir a
+    cova — este teste existe para que a remoção seja deliberada, não distraída.
+
+    numpy<2 ....... job b4d69cde, época 0, 02/09 18h38: ImportError '_center'
+                    (numpy misto 1.x/2.x via rfdetr→supervision→scipy). O job
+                    04508616, MESMO código e imagem, rodara 3h antes.
+    transformers<5  jobs 9504a3a2 / pods m0amcgnl4: rfdetr importa
+                    BackboneConfigMixin, API removida na série 5.x.
+    rfdetr==1.5.2 . versão provada; >=1.9 exige transformers>=5.1 e o pip morre
+                    em ResolutionImpossible antes da época 0.
+    """
+
+    def test_train_rfdetr_pina_o_que_precisa(self, remote_train_mod, monkeypatch) -> None:
+        pedidos: list = []
+        monkeypatch.setattr(remote_train_mod, "pip_install", lambda *p: pedidos.extend(p))
+        monkeypatch.setattr(
+            remote_train_mod, "_cap_de_batch",
+            lambda: (_ for _ in ()).throw(RuntimeError("parar depois do pip")),
+        )
+        with pytest.raises(Exception):
+            remote_train_mod.train_rfdetr(Path("/tmp/ds"))
+        assert "numpy<2" in pedidos, "sem o pin o pod morre na época 0 (job b4d69cde)"
+        assert "transformers<5" in pedidos
+        assert "rfdetr==1.5.2" in pedidos
+
+    def test_versoes_resolvidas_nao_explode_sem_o_pacote(
+        self, remote_train_mod, caplog,
+    ) -> None:
+        """Roda no venv local, onde rfdetr/supervision não existem: a função tem
+        de registrar o que achar e ignorar o resto, nunca derrubar o install."""
+        remote_train_mod._logar_versoes_resolvidas()
+
+
+class TestLockDoAmbiente:
+    """O ambiente é artefato, não instalação repetida.
+
+    Em 02/09, com os MESMOS pacotes de topo, o pip montou ambientes diferentes
+    em horas diferentes do mesmo dia e matou dois pods na época 0. Pin de topo
+    não alcança a transitiva; o lock alcança.
+    """
+
+    def test_pip_usa_o_lock(self, monkeypatch, tmp_path) -> None:
+        # Instância LIMPA de propósito: a fixture `remote_train_mod` substitui
+        # `pip_install` por um stub, e um teste do pip_install que roda o stub
+        # não testa nada.
+        spec = importlib.util.spec_from_file_location("rt_lock", _MODULE_PATH)
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["rt_lock"] = mod
+        spec.loader.exec_module(mod)
+        chamadas: list = []
+        monkeypatch.setattr(mod, "_CONSTRAINTS_PATH", tmp_path / "c.txt")
+        monkeypatch.setattr(mod, "_logar_versoes_resolvidas", lambda: None)
+        monkeypatch.setattr(mod.subprocess, "run", lambda cmd, **k: chamadas.append(cmd))
+        mod.pip_install("rfdetr==1.5.2")
+        sys.modules.pop("rt_lock", None)
+        remote_train_mod = mod
+        cmd = chamadas[0]
+        assert "-c" in cmd, "sem -c o lock não é aplicado e a transitiva volta a flutuar"
+        assert cmd[cmd.index("-c") + 1] == str(tmp_path / "c.txt")
+        assert (tmp_path / "c.txt").read_text() == remote_train_mod._CONSTRAINTS
+
+    def test_lock_travou_o_que_ja_quebrou(self, remote_train_mod) -> None:
+        lock = remote_train_mod._CONSTRAINTS
+        assert "numpy==1.26.4" in lock          # matou o pod b4d69cde
+        assert "typing_extensions==4.16.0" in lock  # matou 40e61279 e b5569408
+        assert "pydantic-core==2.46.5" in lock  # quem importava Sentinel
+
+    def test_torch_fora_do_lock(self, remote_train_mod) -> None:
+        """A imagem traz 2.4.1+cu124, build que não existe no PyPI: pinar faria
+        o pip tentar buscar e falhar."""
+        assert "torch==" not in remote_train_mod._CONSTRAINTS

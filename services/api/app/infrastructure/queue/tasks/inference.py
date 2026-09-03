@@ -67,6 +67,22 @@ _VIOLATION_CLASSES: set[str] = {
 }
 _INFERENCE_EVERY_N: int = int(os.environ.get("YOLO_INFERENCE_EVERY_N_FRAMES", "5"))
 
+# ── Guarda de plausibilidade geométrica ───────────────────────────────────────
+# Rejeita a caixa cujo tamanho/forma não cabem na classe (pessoa inteira
+# marcada como "Uso incorreto de mascara" — observação do dono do produto na
+# folha de contato). Envelope e justificativa em domain/detectors/plausibilidade.
+#
+# NASCE DESLIGADA. É mudança de comportamento no caminho SERVIDO de um cliente
+# em onboarding: ligar por default trocaria um erro visível (caixa errada na
+# tela) por um invisível (alerta que nunca chega). Medido no baseline de campo
+# (6.469 detecções, 440 quadros): no limiar que o produto usa hoje (0,50) a
+# guarda rejeita ZERO — toda caixa de pessoa inteira já cai por confiança
+# (a maior delas tem 0,324). Ela só passa a valer se o limiar baixar: em 0,30
+# rejeita 13 de 207, em 0,05 rejeita 1.455 de 5.325 (27%).
+def _plausibilidade_ligada() -> bool:
+    """Lida a cada chamada — permite ligar/desligar sem redeploy do worker."""
+    return os.environ.get("GEOMETRY_GUARD_ENABLED", "").lower() == "true"
+
 # Abaixo disto o alerta vai para revisão por IA. Mesmo nome de env que o
 # socket_bridge usava antes de #132 — o comportamento migrou de lugar, não de
 # configuração.
@@ -949,6 +965,38 @@ def _no_escopo_da_camera(camera_id: str, detections: list[dict]) -> list[dict]:
     return dentro
 
 
+def _geometria_plausivel(camera_id: str, detections: list[dict], frame) -> list[dict]:
+    """Descarta caixa cuja geometria não cabe na classe. Desligada por default.
+
+    Chamada nos DOIS caminhos que viram alerta (`inference_loop` ao vivo e
+    `retroactive_inference`), logo depois do filtro de escopo e antes de
+    `_has_violation` — pegar só um dos dois deixaria metade do produto com a
+    caixa de pessoa inteira que o dono apontou.
+
+    `frame` é o ndarray BGR; a dimensão sai de `.shape` porque o envelope é em
+    FRAÇÃO DO QUADRO (ver domain/detectors/plausibilidade). Frame sem shape
+    utilizável → passa direto, sem inventar dimensão.
+    """
+    if not detections or not _plausibilidade_ligada():
+        return detections
+
+    forma = getattr(frame, "shape", None)
+    if not forma or len(forma) < 2:
+        logger.warning(
+            "plausibilidade_sem_dimensao: camera=%s — guarda ligada mas o frame "
+            "não expõe shape; deixando passar em vez de chutar o quadro",
+            camera_id,
+        )
+        return detections
+
+    from app.domain.detectors.plausibilidade import (  # noqa: PLC0415
+        filtrar_implausiveis,
+    )
+
+    altura, largura = int(forma[0]), int(forma[1])
+    return filtrar_implausiveis(detections, largura, altura, camera_id)
+
+
 def _invalidate_camera_detector(camera_id: str) -> None:
     """Remove o detector cacheado da câmera (evento camera:model_change)."""
     with _camera_detector_lock:
@@ -1144,6 +1192,7 @@ def inference_loop(
                 for _det in detections:
                     _det.setdefault("bbox_unidade", _BBOX_UNIDADE)
                 detections = _no_escopo_da_camera(camera_id, detections)
+                detections = _geometria_plausivel(camera_id, detections, frame)
                 has_violation = _has_violation(camera_id, detections)
 
             payload = {
@@ -1334,6 +1383,7 @@ def retroactive_inference(
         for det in detections:
             det.setdefault("bbox_unidade", _BBOX_UNIDADE)
         detections = _no_escopo_da_camera(camera_id, detections)
+        detections = _geometria_plausivel(camera_id, detections, frame_bgr)
 
         if not _has_violation(camera_id, detections):
             stats["sem_deteccao_violacao"] += 1

@@ -140,7 +140,15 @@ class TestViolationsByClass:
         )
         sql, params = _last_call(pool)
         assert sql.index("= ANY(%s::text[])") < sql.index("= ANY(%s)")
-        assert list(params) == [tenant, FROM_TS, TO_TS, "epi", ["capacete"], ["no_helmet"]]
+        # Os 4 params do escopo de módulo (migration 134) entram logo depois do
+        # module_code, na mesma ordem em que o predicado aparece no WHERE —
+        # ver `escopo_params`. Sem eles a taxa de conformidade contaria
+        # violação de câmera que o dono não declarou no módulo.
+        assert list(params) == [
+            tenant, FROM_TS, TO_TS, "epi",
+            tenant, "epi", tenant, "epi",
+            ["capacete"], ["no_helmet"],
+        ]
 
 
 class TestTopCamerasByAlerts:

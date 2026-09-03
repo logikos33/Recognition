@@ -13,6 +13,7 @@ tasks/model_validation.py::validate_onnx): worker sem as libs (imagem da
 API não instala ML) não quebra — task retorna status 'skipped'.
 """
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 from app.infrastructure.queue.celery_app import celery
@@ -20,6 +21,11 @@ from app.infrastructure.queue.celery_app import celery
 logger = logging.getLogger(__name__)
 
 _DEFAULT_IOU_THRESHOLD = 0.5
+# Piso de confiança com que o detector roda na avaliação. É o CHÃO da curva
+# P/R/F1: abaixo dele o detector não emite nada, então limiar de produção
+# medido abaixo disso não existiria. Baixo de propósito — a curva precisa de
+# espaço à esquerda do pico para o pico ser um pico, e não a borda da grade.
+_EVAL_CONFIDENCE = 0.25
 _MAP_REGRESSION_TOLERANCE = 0.01  # desafiante pode ficar até 1pp abaixo do campeão
 _RECALL_DROP_TOLERANCE = 0.05  # nenhuma classe pode cair mais de 5pp de recall
 _MAX_CATEGORIA_ID = 10_000  # teto de sanidade para indexar classes por id COCO
@@ -54,13 +60,45 @@ def _get_storage(tenant_id: str | None = None):  # type: ignore[no-untyped-def]
     return get_storage(tenant_id)
 
 
-def _resolve_holdout_split(dataset_version: dict[str, Any]) -> str | None:
-    """Prefere 'test'; cai pra 'val' se test_count==0; None se os dois forem 0."""
-    if int(dataset_version.get("test_count") or 0) > 0:
-        return "test"
-    if int(dataset_version.get("val_count") or 0) > 0:
-        return "val"
-    return None
+def _digital_do_holdout(frame_ids: list[str]) -> str:
+    """Impressão digital da prova: sha256 dos ids ORDENADOS, 12 hex.
+
+    Gravada em metrics junto do veredito. É o que torna o ranking auditável:
+    duas avaliações que dizem ter usado o mesmo holdout ou exibem a mesma
+    digital, ou uma delas está mentindo — e dá para provar qual, depois.
+    """
+    import hashlib
+    return hashlib.sha256("\n".join(sorted(frame_ids)).encode()).hexdigest()[:12]
+
+
+def _filtrar_coco_pela_membresia(
+    coco: dict[str, Any], frame_ids: list[str]
+) -> tuple[dict[str, Any], list[str]]:
+    """Recorta o COCO para EXATAMENTE os frames congelados na membresia.
+
+    O COCO vive no R2 e já foi reescrito por baixo antes (#515: o v9-freeze
+    declarava val=553 no artefato e 159 no banco). A membresia é a fonte de
+    verdade do que é a prova; o COCO é só onde as caixas estão guardadas.
+    Devolve (coco recortado, ids da membresia que sumiram do artefato).
+    """
+    por_id = {f: None for f in frame_ids}
+    images = [
+        img for img in coco.get("images", [])
+        if str(img.get("file_name", "")).rsplit(".", 1)[0] in por_id
+    ]
+    vistos = {str(img["file_name"]).rsplit(".", 1)[0] for img in images}
+    faltantes = [f for f in frame_ids if f not in vistos]
+    manter = {img["id"] for img in images}
+    return (
+        {
+            **coco,
+            "images": images,
+            "annotations": [
+                a for a in coco.get("annotations", []) if a["image_id"] in manter
+            ],
+        },
+        faltantes,
+    )
 
 
 def _run_split_inference(
@@ -158,7 +196,7 @@ def _evaluate_model_on_split(
         backend=backend,
         model_path=local_path,
         class_names=_class_names_from_coco(coco),
-        confidence=0.25,
+        confidence=_EVAL_CONFIDENCE,
     )
 
     per_image_preds, per_image_gts = _run_split_inference(
@@ -170,6 +208,8 @@ def _evaluate_model_on_split(
     )
     from app.domain.services.eval_metrics import (
         greedy_match,
+        map_by_size,
+        map_over_iou_sweep,
         merge_confusion_matrices,
         merge_match_results,
         precision_recall_map,
@@ -185,10 +225,33 @@ def _evaluate_model_on_split(
     ]
 
     merged_matches = merge_match_results(match_results)
-    pr_map = precision_recall_map(merged_matches)
+    pr_map = precision_recall_map(merged_matches, confidence_floor=_EVAL_CONFIDENCE)
     matrix = merge_confusion_matrices(confusion_results)
 
+    # Recasamento em 10 IoUs (mAP50-95) e por faixa de tamanho: as detecções já
+    # estão em memória, o custo é aritmética perto da inferência que as gerou.
+    pares = list(zip(per_image_preds, per_image_gts))
+    pr_map.update(map_over_iou_sweep(pares))
+    pr_map["per_size"] = map_by_size(pares, iou_threshold=_DEFAULT_IOU_THRESHOLD)
+    pr_map["confidence_floor"] = _EVAL_CONFIDENCE
+    pr_map["n_gt_total"] = sum(len(g) for g in per_image_gts)
+    pr_map["n_pred_total"] = sum(len(p) for p in per_image_preds)
+
     return {"metrics": pr_map, "confusion_matrix": matrix, "images_evaluated": len(per_image_preds)}
+
+
+def _class_thresholds(metrics: dict[str, Any]) -> dict[str, float]:
+    """{classe: limiar do pico de F1} — só as classes que TÊM pico.
+
+    Classe sem GT no holdout ou que o modelo nunca acerta sai de fora, e é
+    de propósito: o consumidor cai no limiar global e sabe que caiu, em vez
+    de receber um número inventado com cara de medida.
+    """
+    return {
+        cls: d["best_threshold"]
+        for cls, d in (metrics.get("per_class") or {}).items()
+        if d.get("best_threshold") is not None
+    }
 
 
 def _piso_de_medicao(metrics: dict[str, Any]) -> str | None:
@@ -297,9 +360,14 @@ def evaluate_challenger_model(self, model_id: str, dataset_version_id: str | Non
     if dataset_version is None:
         return {"status": "error", "model_id": model_id, "reason": "dataset_version_not_found"}
 
-    coco_r2_key = dataset_version.get("coco_r2_key")
-    split = _resolve_holdout_split(dataset_version)
-    if not coco_r2_key or split is None:
+    # O holdout é resolvido pelo ID DELE, e por nada do modelo. Era exatamente
+    # aqui que o ranking histórico se perdia: `_resolve_holdout_split` lia as
+    # contagens da dataset_version DO PRÓPRIO MODELO, então cada modelo prestava
+    # uma prova diferente e as notas eram comparadas como se fossem a mesma.
+    # Dois modelos com o mesmo `dsv_id` agora recebem a mesma lista de frames,
+    # byte a byte — e a digital gravada em metrics permite conferir isso depois.
+    holdout = dataset_repo.get_holdout(dsv_id)
+    if holdout is None or not holdout.get("coco_r2_key"):
         logger.warning(
             "evaluate_challenger_no_holdout: model=%s dataset_version=%s "
             "test_count=%s val_count=%s",
@@ -307,6 +375,9 @@ def evaluate_challenger_model(self, model_id: str, dataset_version_id: str | Non
             dataset_version.get("test_count"), dataset_version.get("val_count"),
         )
         return {"status": "error", "model_id": model_id, "reason": "no_holdout_split"}
+
+    coco_r2_key = holdout["coco_r2_key"]
+    split = holdout["split"]
 
     storage = _get_storage(tenant_id)
     try:
@@ -319,6 +390,29 @@ def evaluate_challenger_model(self, model_id: str, dataset_version_id: str | Non
             model_id, exc, exc_info=True,
         )
         return {"status": "error", "model_id": model_id, "reason": "coco_download_failed"}
+
+    frame_ids = holdout.get("frame_ids")
+    if frame_ids:
+        coco, faltantes = _filtrar_coco_pela_membresia(coco, frame_ids)
+        if faltantes:
+            logger.warning(
+                "evaluate_challenger_holdout_incompleto: dataset_version=%s split=%s "
+                "%d de %d frames congelados não estão mais no COCO do R2 — a prova "
+                "encolheu por baixo e é por isso que a membresia existe",
+                dsv_id, split, len(faltantes), len(frame_ids),
+            )
+        holdout_digital = _digital_do_holdout(frame_ids)
+    else:
+        # Versão anterior à migration 131: a membresia é irrecuperável. Roda
+        # sobre o COCO inteiro (comportamento legado) mas NUNCA se declara
+        # congelada — ausência de congelamento não é congelamento.
+        holdout_digital = None
+        logger.warning(
+            "evaluate_challenger_holdout_nao_congelado: dataset_version=%s split=%s "
+            "— build anterior à membresia persistida; esta nota não é comparável "
+            "com a de outro modelo",
+            dsv_id, split,
+        )
 
     try:
         challenger_result = _evaluate_model_on_split(model, storage, coco_r2_key, split, coco)
@@ -367,10 +461,17 @@ def evaluate_challenger_model(self, model_id: str, dataset_version_id: str | Non
     metrics_payload = {
         **challenger_result["metrics"],
         "split_used": split,
+        # Qual prova foi prestada, gravado junto da nota. Sem isto o ranking é
+        # uma coluna de números sem exame identificado.
+        "holdout_version_id": str(dsv_id),
+        "holdout_frozen": bool(frame_ids),
+        "holdout_fingerprint": holdout_digital,
+        "holdout_frame_count": len(frame_ids) if frame_ids else None,
         "iou_threshold": _DEFAULT_IOU_THRESHOLD,
         "images_evaluated": challenger_result["images_evaluated"],
         "champion_model_id": champion_id,
         "champion_map50": champion_metrics["map50"] if champion_metrics else None,
+        "champion_map50_95": (champion_metrics or {}).get("map50_95"),
     }
 
     evaluation = _get_eval_repo().create({
@@ -383,11 +484,48 @@ def evaluate_challenger_model(self, model_id: str, dataset_version_id: str | Non
         "verdict": verdict,
     })
 
+    # Limiar de produção POR CLASSE, junto do modelo. Antes disso o único
+    # limiar era DETECTION_CONFIDENCE_THRESHOLD=0.5 (tasks/inference.py:51),
+    # global e sem origem: ninguém sabia dizer de que medida ele saiu, porque
+    # não saiu de nenhuma. Agora sai do pico da curva F1 de cada classe, com o
+    # n e a proveniência ao lado — quem ler sabe de onde veio e em que split.
+    limiares = _class_thresholds(challenger_result["metrics"])
+    try:
+        registry_repo.merge_metrics(model_id, {
+            "class_thresholds": limiares,
+            "class_thresholds_origem": {
+                "metodo": "pico da curva F1 por classe",
+                "evaluation_id": str(evaluation["id"]) if evaluation else None,
+                "dataset_version_id": str(dsv_id),
+                "split": split,
+                "iou_threshold": _DEFAULT_IOU_THRESHOLD,
+                "confidence_floor": _EVAL_CONFIDENCE,
+                "images_evaluated": challenger_result["images_evaluated"],
+                "n_gt_por_classe": {
+                    cls: d.get("n_gt")
+                    for cls, d in (challenger_result["metrics"].get("per_class") or {}).items()
+                },
+                "sem_limiar": sorted(
+                    set(challenger_result["metrics"].get("per_class") or {}) - set(limiares)
+                ),
+                "gerado_em": datetime.now(timezone.utc).isoformat(),
+            },
+        })
+    except Exception as exc:  # noqa: BLE001 — a avaliação já está gravada
+        logger.warning(
+            "evaluate_challenger_thresholds_nao_persistidos: model=%s err=%s",
+            model_id, exc,
+        )
+
     logger.info(
         "evaluate_challenger_completed: model=%s champion=%s verdict=%s map50=%.4f "
-        "images=%d piso=%s",
+        "map50_95=%.4f images=%d n_gt=%d n_pred=%d limiares=%d piso=%s",
         model_id, champion_id, verdict, challenger_result["metrics"]["map50"],
+        challenger_result["metrics"].get("map50_95") or 0.0,
         challenger_result["images_evaluated"],
+        challenger_result["metrics"].get("n_gt_total") or 0,
+        challenger_result["metrics"].get("n_pred_total") or 0,
+        len(limiares),
         _piso_de_medicao(challenger_result["metrics"]) or "ok",
     )
     return {
@@ -396,4 +534,6 @@ def evaluate_challenger_model(self, model_id: str, dataset_version_id: str | Non
         "evaluation_id": str(evaluation["id"]) if evaluation else None,
         "verdict": verdict,
         "map50": challenger_result["metrics"]["map50"],
+        "map50_95": challenger_result["metrics"].get("map50_95"),
+        "class_thresholds": limiares,
     }

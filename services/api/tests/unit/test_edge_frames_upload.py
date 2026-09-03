@@ -35,17 +35,31 @@ def _tiny_jpeg_bytes() -> bytes:
     return buf.getvalue()
 
 
-def _setup_repos(monkeypatch, *, camera_found=True, recorder_found=True, frame_row=None):
+def _setup_repos(
+    monkeypatch,
+    *,
+    camera_found=True,
+    recorder_found=True,
+    frame_row=None,
+    serves_module=True,
+):
     camera_repo = MagicMock()
     camera_repo.get_by_id_and_tenant.return_value = {"id": CAMERA_ID} if camera_found else None
     recorder_repo = MagicMock()
     recorder_repo.get_by_id.return_value = {"id": RECORDER_ID} if recorder_found else None
     frame_repo = MagicMock()
     frame_repo.create.return_value = frame_row or {"id": "frame-pk-1"}
+    # Escopo de módulo (migration 134). Default True = escopo não declarado,
+    # que é o estado de todo tenant no dia do deploy — a coleta não muda.
+    camera_module_repo = MagicMock()
+    camera_module_repo.camera_serves_module.return_value = serves_module
 
     monkeypatch.setattr(edge_routes, "_get_camera_repo", lambda: camera_repo)
     monkeypatch.setattr(edge_routes, "_get_recorder_repo", lambda: recorder_repo)
     monkeypatch.setattr(edge_routes, "_get_frame_repo", lambda: frame_repo)
+    monkeypatch.setattr(
+        edge_routes, "_get_camera_module_repo", lambda: camera_module_repo
+    )
 
     storage = MagicMock()
     import app.infrastructure.storage.local_storage as local_storage_mod
@@ -246,6 +260,70 @@ def test_module_code_can_be_overridden(client, monkeypatch):
     assert kwargs["module_code"] == "quality"
 
 
+# ── vínculo recorte→frame de origem (migration 132) ─────────────────────────
+
+
+_CROP_ORIGIN_JSON = '{"box": [300, 100, 200, 100], "source_size": [1000, 500]}'
+
+
+def test_recorte_grava_o_vinculo_com_o_frame_de_origem(client, monkeypatch):
+    """O que o coletor sobe é o RECORTE da pessoa; sem esta caixa a anotação
+    feita nele não volta pro frame cheio — que é onde o modelo é servido."""
+    monkeypatch.setattr(device_auth, "authenticate_device", _authed(FRAMES_WRITE))
+    _, _, frame_repo, _ = _setup_repos(monkeypatch)
+
+    resp = _post_frame(
+        client, file_bytes=_tiny_jpeg_bytes(), crop_origin=_CROP_ORIGIN_JSON
+    )
+
+    assert resp.status_code == 201
+    _, kwargs = frame_repo.create.call_args
+    assert kwargs["crop_origin"] == {
+        "box": [300, 100, 200, 100],
+        "source_size": [1000, 500],
+    }
+
+
+def test_frame_cheio_sobe_sem_vinculo_e_sem_erro(client, monkeypatch):
+    """Fallback do coletor (detector off/indeterminado, recorte falhou): a
+    imagem JÁ É o quadro inteiro. Vínculo NULL é a resposta certa, não um dado
+    faltando — e não pode virar 422."""
+    monkeypatch.setattr(device_auth, "authenticate_device", _authed(FRAMES_WRITE))
+    _, _, frame_repo, _ = _setup_repos(monkeypatch)
+
+    resp = _post_frame(client, file_bytes=_tiny_jpeg_bytes())
+
+    assert resp.status_code == 201
+    _, kwargs = frame_repo.create.call_args
+    assert kwargs["crop_origin"] is None
+
+
+def test_vinculo_malformado_returns_422_e_nao_persiste(client, monkeypatch):
+    """Vínculo errado mente pior que vínculo ausente — parece existir. Aqui a
+    caixa estoura a borda do frame declarado."""
+    monkeypatch.setattr(device_auth, "authenticate_device", _authed(FRAMES_WRITE))
+    _, _, frame_repo, _ = _setup_repos(monkeypatch)
+
+    resp = _post_frame(
+        client,
+        file_bytes=_tiny_jpeg_bytes(),
+        crop_origin='{"box": [900, 0, 200, 100], "source_size": [1000, 500]}',
+    )
+
+    assert resp.status_code == 422
+    assert "crop_origin" in resp.get_json()["error"]
+    frame_repo.create.assert_not_called()
+
+
+def test_vinculo_nao_json_returns_422(client, monkeypatch):
+    monkeypatch.setattr(device_auth, "authenticate_device", _authed(FRAMES_WRITE))
+    _setup_repos(monkeypatch)
+    resp = _post_frame(
+        client, file_bytes=_tiny_jpeg_bytes(), crop_origin="isto nao e json"
+    )
+    assert resp.status_code == 422
+
+
 def test_route_registered(app):
     rules = {str(r) for r in app.url_map.iter_rules()}
     assert "/api/v1/edge/frames" in rules
@@ -305,3 +383,42 @@ def test_persist_failure_still_500_and_logs_orphan_key(client, monkeypatch, capl
 
     assert resp.status_code == 500
     assert any("órfão" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# Escopo de módulo na ingestão (public.camera_modules, migration 134)
+# ---------------------------------------------------------------------------
+
+def test_camera_fora_do_modulo_recusa_422_e_nao_toca_storage(client, monkeypatch):
+    """RÉGUA — o frame de câmera SEM vínculo não entra no pool, e a recusa é
+    ALTA (não é descarte silencioso).
+
+    422 e não 404: a câmera existe e é deste tenant. 404 aqui misturaria "não
+    é sua" (cross-tenant, C-01) com "não é deste módulo", e o agente do edge
+    não teria como distinguir.
+
+    O storage NÃO pode ser tocado: o upload acontece antes do INSERT, então um
+    descarte depois do upload deixaria objeto órfão no R2 a cada ciclo.
+    """
+    monkeypatch.setattr(device_auth, "authenticate_device", _authed(FRAMES_WRITE))
+    _, _, frame_repo, storage = _setup_repos(monkeypatch, serves_module=False)
+
+    resp = _post_frame(client, file_bytes=_tiny_jpeg_bytes())
+
+    assert resp.status_code == 422
+    assert "vinculada ao módulo" in resp.get_json()["error"]
+    storage.upload_bytes.assert_not_called()
+    frame_repo.create.assert_not_called()
+
+
+def test_escopo_nao_declarado_nao_para_a_coleta(client, monkeypatch):
+    """A tabela 134 nasce vazia e sem backfill. Enquanto o dono não declarar
+    nenhuma câmera do módulo, a coleta continua exatamente como hoje — senão o
+    deploy da migration desligaria a coleta de todos os tenants de uma vez."""
+    monkeypatch.setattr(device_auth, "authenticate_device", _authed(FRAMES_WRITE))
+    _, _, frame_repo, _ = _setup_repos(monkeypatch, serves_module=True)
+
+    resp = _post_frame(client, file_bytes=_tiny_jpeg_bytes())
+
+    assert resp.status_code == 201
+    frame_repo.create.assert_called_once()

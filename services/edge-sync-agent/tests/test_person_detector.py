@@ -182,7 +182,7 @@ class TestRecortePessoa:
 
         frame = self._jpeg(1920, 1080)
         r = crop_person(frame, PersonBox(x=1097, y=105, w=54, h=282, confidence=0.6))
-        assert len(r) < len(frame)
+        assert len(r.jpeg) < len(frame)
 
     def test_recorte_inclui_margem_ao_redor_da_pessoa(self):
         """Margem existe porque o alvo é EPI de CABEÇA — bbox justo corta
@@ -195,7 +195,7 @@ class TestRecortePessoa:
 
         caixa = PersonBox(x=800, y=300, w=100, h=280, confidence=0.7)
         r = crop_person(self._jpeg(1920, 1080), caixa)
-        w, h = Image.open(io.BytesIO(r)).size
+        w, h = Image.open(io.BytesIO(r.jpeg)).size
         assert w > caixa.w and h > caixa.h
 
     def test_recorte_nao_estoura_a_borda_do_frame(self):
@@ -209,7 +209,7 @@ class TestRecortePessoa:
 
         frame = self._jpeg(704, 480)
         r = crop_person(frame, PersonBox(x=0, y=0, w=60, h=200, confidence=0.5))
-        w, h = Image.open(io.BytesIO(r)).size
+        w, h = Image.open(io.BytesIO(r.jpeg)).size
         assert 0 < w <= 704 and 0 < h <= 480
 
     def test_recorte_preserva_resolucao_nativa(self):
@@ -222,7 +222,71 @@ class TestRecortePessoa:
 
         caixa = PersonBox(x=500, y=200, w=100, h=300, confidence=0.8)
         r = crop_person(self._jpeg(1920, 1080), caixa, margin_x=0.0, margin_y=0.0)
-        assert Image.open(io.BytesIO(r)).size == (100, 300)
+        assert Image.open(io.BytesIO(r.jpeg)).size == (100, 300)
+
+
+class TestOrigemDoRecorte:
+    """O recorte tem de dizer DE ONDE saiu (migration 132). Sem isso ele nasce
+    órfão: nenhuma anotação feita nele volta pro frame cheio, que é onde o
+    modelo é servido — foi assim que os 5.259 recortes do RVB se perderam."""
+
+    def _jpeg(self, w, h):
+        import io
+
+        from PIL import Image
+
+        b = io.BytesIO()
+        Image.new("RGB", (w, h), (120, 130, 140)).save(b, "JPEG")
+        return b.getvalue()
+
+    def test_origem_traz_a_caixa_e_o_tamanho_do_frame_original(self):
+        """Sem margem a caixa é exatamente a da pessoa — resposta conferível
+        de cabeça."""
+        from app.collector.person_detector import crop_person
+
+        caixa = PersonBox(x=500, y=200, w=100, h=300, confidence=0.8)
+        r = crop_person(self._jpeg(1920, 1080), caixa, margin_x=0.0, margin_y=0.0)
+
+        assert r.origin == {"box": [500, 200, 100, 300], "source_size": [1920, 1080]}
+
+    def test_caixa_da_origem_e_a_recortada_de_fato_com_margem(self):
+        """A margem faz parte do recorte, então tem de estar na caixa: margem
+        de 0.25/0.10 sobre 100x300 em (500,200) dá (475,170) e 150x360."""
+        from app.collector.person_detector import crop_person
+
+        caixa = PersonBox(x=500, y=200, w=100, h=300, confidence=0.8)
+        r = crop_person(self._jpeg(1920, 1080), caixa, margin_x=0.25, margin_y=0.10)
+
+        assert r.origin["box"] == [475, 170, 150, 360]
+
+    def test_caixa_da_origem_bate_com_o_tamanho_do_jpeg(self):
+        """O que a caixa promete é o que a imagem entrega — se divergirem, a
+        reprojeção erra em silêncio."""
+        import io
+
+        from PIL import Image
+
+        from app.collector.person_detector import crop_person
+
+        r = crop_person(
+            self._jpeg(1920, 1080), PersonBox(x=500, y=200, w=100, h=300, confidence=0.8)
+        )
+
+        assert Image.open(io.BytesIO(r.jpeg)).size == tuple(r.origin["box"][2:])
+
+    def test_pessoa_na_borda_tem_caixa_aparada_dentro_do_frame(self):
+        """Margem aparada na borda: a caixa não pode sair do frame, senão a
+        reprojeção joga a anotação para fora da imagem."""
+        from app.collector.person_detector import crop_person
+
+        r = crop_person(
+            self._jpeg(704, 480), PersonBox(x=0, y=0, w=60, h=200, confidence=0.5)
+        )
+
+        x, y, w, h = r.origin["box"]
+        sw, sh = r.origin["source_size"]
+        assert x == 0 and y == 0
+        assert x + w <= sw and y + h <= sh
 
 
 class TestTiles1x1Proibido:

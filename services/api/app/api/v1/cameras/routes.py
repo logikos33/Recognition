@@ -33,6 +33,7 @@ from .model_handlers import (
     set_camera_model,
 )
 from .module_handler import get_camera_module_current, patch_camera_module, put_camera_schedule
+from .modules_handler import list_camera_modules, put_camera_modules
 from .probe_handler import probe_camera
 from .retention_handler import get_camera_retention, put_camera_retention
 from .snapshot_handlers import get_camera_snapshot, refresh_camera_snapshot
@@ -122,6 +123,12 @@ cameras_bp.add_url_rule(
     "/<camera_id>/model-config/rollback",
     view_func=post_camera_model_config_rollback, methods=["POST"],
 )
+
+# Vínculo N:N câmera↔módulo (migration 134) — a tela de atribuição.
+# ⚠️ ANTES das rotas com <camera_id>, pelo mesmo motivo de "/model-config":
+# senão "modules" casa como id de câmera.
+cameras_bp.add_url_rule("/modules", view_func=list_camera_modules, methods=["GET"])
+cameras_bp.add_url_rule("/modules", view_func=put_camera_modules, methods=["PUT"])
 
 # Module + Schedule
 cameras_bp.add_url_rule("/<camera_id>/module", view_func=patch_camera_module, methods=["PATCH"])
