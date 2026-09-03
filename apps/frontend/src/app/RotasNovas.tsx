@@ -57,6 +57,9 @@ const ModeloEstudio = lazy(() => import('./estudio/Modelo').then((m) => ({ defau
 const ModelosPorCameraEstudio = lazy(() =>
   import('./estudio/ModelosPorCamera').then((m) => ({ default: m.ModelosPorCamera })),
 )
+const CamerasPorModuloEstudio = lazy(() =>
+  import('./estudio/CamerasPorModulo').then((m) => ({ default: m.CamerasPorModulo })),
+)
 const TreinoEstudio = lazy(() => import('./estudio/Treino').then((m) => ({ default: m.Treino })))
 const Admin = lazy(() => import('./admin/Admin').then((m) => ({ default: m.Admin })))
 const VisaoGeralAdmin = lazy(() => import('./admin/VisaoGeral').then((m) => ({ default: m.VisaoGeral })))
@@ -150,6 +153,7 @@ export const ROTAS_NOVAS: ReactElement[] = [
     <Route key="escls" path="classes" element={<ClassesEstudio />} />
     <Route key="esm" path="modelo" element={<ModeloEstudio />} />
     <Route key="esmc" path="modelos-por-camera" element={<ModelosPorCameraEstudio />} />
+    <Route key="escm" path="cameras-por-modulo" element={<CamerasPorModuloEstudio />} />
     <Route key="est" path="treino" element={<TreinoEstudio />} />
   </Route>,
 

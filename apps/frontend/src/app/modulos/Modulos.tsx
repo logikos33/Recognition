@@ -35,6 +35,7 @@ import { LogikosLoader } from '../shell/LogikosLoader'
 import { PREFIXO_NOVO } from '../RotasNovas'
 import { useMarcaDoTenant } from '../tokens/MarcaDoTenant'
 import { lk } from '../tokens/lk.css'
+import { ROTULO_MODULO } from './rotulos'
 import * as s from './Modulos.css'
 
 interface ModuloDaApi {
@@ -57,21 +58,24 @@ const CATALOGO: Record<
   { nome: string; desc: string; icone: typeof ShieldCheck; destino: string; externo: boolean }
 > = {
   epi: {
-    nome: 'EPI · Segurança',
+    // `nome` vem de `./rotulos` — mesma palavra que a tela de atribuição de
+    // câmeras usa para este módulo. `desc` continua sendo desta tela: aqui ela
+    // vende o módulo, lá ela explica o que acontece com a imagem da câmera.
+    nome: ROTULO_MODULO.epi,
     desc: 'Conformidade de EPI em zonas monitoradas',
     icone: ShieldCheck,
     destino: `${PREFIXO_NOVO}/epi/dashboard`,
     externo: false,
   },
   quality: {
-    nome: 'Qualidade',
+    nome: ROTULO_MODULO.quality,
     desc: 'Inspeção por ponto, gate e retrabalho',
     icone: ScanSearch,
     destino: '/quality',
     externo: true,
   },
   counting: {
-    nome: 'Carga',
+    nome: ROTULO_MODULO.counting,
     desc: 'Contagem e validação de expedição',
     icone: Boxes,
     destino: '/epi/counting',

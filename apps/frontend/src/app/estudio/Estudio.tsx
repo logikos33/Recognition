@@ -23,7 +23,8 @@
  */
 import { Suspense } from 'react'
 import {
-  Activity, ArrowLeft, Box, Cctv, Grid3x3, Images, SquareMousePointer, Tags,
+  Activity, ArrowLeft, Box, Cctv, Grid3x3, Images, SlidersHorizontal,
+  SquareMousePointer, Tags,
 } from 'lucide-react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 
@@ -40,6 +41,9 @@ const ITENS = [
   { rota: 'treino', rotulo: 'Treinos', Icone: Activity },
   { rota: 'modelo', rotulo: 'Modelos', Icone: Box },
   { rota: 'modelos-por-camera', rotulo: 'Modelos por câmera', Icone: Cctv },
+  // Fica ao lado de "Modelos por câmera" porque as duas respondem sobre a
+  // MESMA câmera — lá "qual modelo responde", aqui "para que ela serve".
+  { rota: 'cameras-por-modulo', rotulo: 'Uso das câmeras', Icone: SlidersHorizontal },
 ]
 
 export function Estudio() {
