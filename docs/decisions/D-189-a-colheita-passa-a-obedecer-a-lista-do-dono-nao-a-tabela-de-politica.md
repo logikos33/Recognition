@@ -60,6 +60,35 @@ Levantar o teto é o caminho de MENOS conversa com o gravador.
 marcava 15, então o teto para esta campanha em 60, que é justamente o piso da meta pedida. Honra as
 duas coisas sem escolher entre elas.
 
+## O que a rodada rendeu (medido no banco, 02/09 21:46–23:12)
+
+`created_at >= '2026-09-02 21:40' AND source='nvr'`, tenant RVB:
+
+| canal | câmera | antes | **novos** | total |
+|---|---|---|---|---|
+| 7 | Entrada Preparação | 17 | **274** | 291 |
+| 21 | Entrada Expedição 02 | 8 | **160** | 168 |
+| 2 | **Corredor Lateral usinagem Madeira** | **0** | **80** | **80** |
+| 8 | Entrada Usinagem Madeira 01 | 15 | **45** | **60** (teto) |
+| 1 | Entrada Expedição | 39 | **40** | 79 |
+| | **total** | | **599** | |
+
+599 novos, **todos** 1920×1080 (zero abaixo de 1280), zero recorte (`crop_origin IS NULL`),
+`module_code='epi'`, `is_annotated=false`, `dataset_role='pool'`. `captured_at` de
+**2026-09-01 07:00 a 2026-09-02 16:30** — relógio de parede da fábrica, horário de operação, sem
+deslocamento UTC aplicado.
+
+Custo: 464 janelas, 2,2 GB lidos do gravador na LAN (0,31 MB/s), **181 MB subidos** (0,042 MB/s),
+**delta de disco 0,9 MB** — 55 GB livres antes e 55 GB depois, reserva nunca ameaçada. 3 janelas
+perdidas em 464 (0,6%), todas em `2026-09-02 15:00:00` e em **todos** os canais: é buraco do
+gravador naquele minuto, não falha de câmera.
+
+⚠️ **O ch7 passou muito da meta (274 contra os 60–100 pedidos).** Sem o teto de 1/janela, a Entrada
+Preparação rende ~2,5 frames por janela — é bem mais movimentada do que os 17 frames anteriores
+faziam parecer. Trocar a concentração antiga (pátio/convivência) por uma nova (ch7) não é conserto.
+**Sobra, não defeito** — a fila de anotação pode amostrar —, mas quem for montar o próximo dataset
+tem de amostrar por câmera, não pegar tudo.
+
 ## Limite honesto
 
 - O dedup **não** foi afrouxado. Ele derrubou 118 de 136 frames-com-pessoa no recon (87%, e o modo
