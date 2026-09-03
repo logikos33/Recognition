@@ -32,6 +32,8 @@ USO
     python scripts/ops/marcar_gabarito.py --tenant <uuid> --ids gabarito.txt
     python scripts/ops/marcar_gabarito.py --tenant <uuid> --ids - --dry-run
     python scripts/ops/marcar_gabarito.py --tenant <uuid> --ids x.txt --papel pool
+    python scripts/ops/marcar_gabarito.py --tenant <uuid> \
+        --ids docs/quality/evidence/gabarito-v2/fila-gabarito-150.csv --ordem
 
 --dry-run mostra o que mudaria (contagem por papel atual) sem escrever.
 """
@@ -91,6 +93,29 @@ def ler_ids(origem: str) -> list[str]:
     return ids
 
 
+def ler_ordem(origem: str) -> "dict[str, int]":
+    """{frame_id: posicao} do CSV da fila. Só o CSV tem posto — os outros
+    formatos (txt/JSON) são listas de ids sem ordem declarada, e inferir a
+    ordem da posição da linha seria transformar formatação em decisão.
+
+    A ordem existe porque a fila JÁ foi decidida
+    (`fila_gabarito_v2.py` → `fila-gabarito-150.csv`: probabilidade de conter
+    ausência real × prioridade de câmera do dono). A tela de triagem apenas
+    OBEDECE — reordenar no cliente seria inventar uma segunda fila.
+    """
+    bruto = sys.stdin.read() if origem == "-" else pathlib.Path(origem).read_text()
+    linhas = bruto.strip().splitlines()
+    if not linhas or "frame_id" not in linhas[0] or "," not in linhas[0]:
+        raise SystemExit("--ordem exige o CSV da fila (com colunas frame_id,posicao)")
+    ordem: dict[str, int] = {}
+    for linha in csv.DictReader(io.StringIO(bruto.strip())):
+        posicao = linha.get("posicao")
+        if not posicao:
+            raise SystemExit("CSV sem coluna `posicao` — nada a ordenar")
+        ordem[str(UUID(linha["frame_id"]))] = int(posicao)
+    return ordem
+
+
 def _repo(dsn: str):
     from app.infrastructure.database.connection import DatabasePool
     from app.infrastructure.database.repositories.frame_repository import (
@@ -107,8 +132,20 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--tenant", required=True, help="tenant_id (escopo obrigatório)")
     p.add_argument("--ids", required=True, help="arquivo com os ids, ou '-' para stdin")
     p.add_argument("--papel", choices=("holdout", "pool"), default="holdout")
+    p.add_argument(
+        "--ordem",
+        action="store_true",
+        help="grava também training_frames.priority_rank = posicao do CSV "
+        "(a ordem que a tela de triagem obedece)",
+    )
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args(argv)
+
+    # `--ordem` relê o arquivo para pegar a coluna `posicao`; stdin não se lê
+    # duas vezes, e o segundo read voltaria vazio — ordem silenciosamente não
+    # gravada é pior que recusa explícita.
+    if args.ordem and args.ids == "-":
+        p.error("--ordem exige arquivo (o CSV da fila), não stdin")
 
     dsn = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_PUBLIC_URL")
     if not dsn:
@@ -148,6 +185,24 @@ def main(argv: list[str] | None = None) -> int:
         "papel '%s' aplicado: marcados=%d ja_no_papel=%d nao_encontrados=%d",
         args.papel, r["marcados"], r["ja_no_papel"], r["nao_encontrados"],
     )
+
+    if args.ordem:
+        # `priority_rank` reaproveitada: já existe, tem índice
+        # (idx_frames_priority), estava 100% NULL nos quadros do gabarito e
+        # não tem NENHUM leitor em Python — e "posto na fila por prioridade" é
+        # o que o nome já diz. Coluna nova para o mesmo fato seria migration
+        # a mais pelo mesmo dado.
+        # Escopo por tenant no WHERE, como todo o resto (C-01).
+        ordem = ler_ordem(args.ids)
+        tocados = repo._execute_mutation_no_return(
+            "UPDATE training_frames tf SET priority_rank = v.posicao "
+            "FROM (SELECT unnest(%s::uuid[]) AS id, unnest(%s::int[]) AS posicao) v "
+            "WHERE tf.id = v.id AND tf.tenant_id = %s "
+            "  AND tf.priority_rank IS DISTINCT FROM v.posicao",
+            (list(ordem.keys()), list(ordem.values()), args.tenant),
+        )
+        logger.info("ordem da fila gravada em priority_rank: %d linha(s)", tocados)
+
     return 0
 
 
