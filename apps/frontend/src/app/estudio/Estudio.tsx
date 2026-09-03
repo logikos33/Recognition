@@ -24,7 +24,7 @@
 import { Suspense } from 'react'
 import {
   Activity, ArrowLeft, Box, Cctv, Grid3x3, Images, SlidersHorizontal,
-  SquareMousePointer, Tags,
+  Smartphone, SquareMousePointer, Tags,
 } from 'lucide-react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 
@@ -37,6 +37,11 @@ const ITENS = [
   { rota: 'dados', rotulo: 'Dados', Icone: Images },
   { rota: 'cobertura', rotulo: 'Cobertura', Icone: Grid3x3 },
   { rota: 'classificar', rotulo: 'Classificar', Icone: SquareMousePointer },
+  // Vive FORA deste layout (rota em ROTAS_NOVAS_SEM_SHELL — tela de celular,
+  // onde lateral de 220px não cabe), mas o caminho é filho daqui, então o
+  // NavLink relativo alcança. Entra na lateral porque é por aqui que o dono
+  // acha a tela — rota sem porta de entrada é rota que ninguém usa.
+  { rota: 'gabarito', rotulo: 'Gabarito (celular)', Icone: Smartphone },
   { rota: 'classes', rotulo: 'Classes', Icone: Tags },
   { rota: 'treino', rotulo: 'Treinos', Icone: Activity },
   { rota: 'modelo', rotulo: 'Modelos', Icone: Box },

@@ -61,6 +61,9 @@ const CamerasPorModuloEstudio = lazy(() =>
   import('./estudio/CamerasPorModulo').then((m) => ({ default: m.CamerasPorModulo })),
 )
 const TreinoEstudio = lazy(() => import('./estudio/Treino').then((m) => ({ default: m.Treino })))
+const GabaritoEstudio = lazy(() =>
+  import('./estudio/Gabarito').then((m) => ({ default: m.Gabarito })),
+)
 const Admin = lazy(() => import('./admin/Admin').then((m) => ({ default: m.Admin })))
 const VisaoGeralAdmin = lazy(() => import('./admin/VisaoGeral').then((m) => ({ default: m.VisaoGeral })))
 const DispositivosAdmin = lazy(() => import('./admin/Dispositivos').then((m) => ({ default: m.Dispositivos })))
@@ -185,4 +188,16 @@ export const ROTAS_NOVAS_SEM_SHELL: ReactElement[] = [
   // re-vestido na identidade Logikos. A rota antiga `/tablet/:station`
   // (AppRoutes.tsx) segue intocada e é quem atende produção da RVB.
   <Route key="kio" path={`${PREFIXO_NOVO}/tablet/:station`} element={<Kiosk />} />,
+
+  // Triagem do gabarito do A/B (`/novo/estudio/gabarito`). Endereço DENTRO do
+  // Estúdio, layout FORA dele — de propósito: a lateral própria do Estúdio
+  // (220px) somada à topbar do Shell come metade da largura útil de um
+  // telefone em pé, e aqui a foto precisa de cada pixel. Mesmo precedente do
+  // Kiosk acima: tela de aparelho, não tela de escritório. O gate
+  // `frames:annotate` continua valendo — aplicado dentro do componente, já
+  // que não vem mais herdado do layout do Estúdio.
+  //
+  // Não colide com o `<Route path="estudio">` de ROTAS_NOVAS: aquele só serve
+  // as sub-rotas que declara, e `gabarito` não é uma delas.
+  <Route key="gab" path={`${PREFIXO_NOVO}/estudio/gabarito`} element={<GabaritoEstudio />} />,
 ]
