@@ -82,9 +82,22 @@ def mocked_repos(monkeypatch):
     monkeypatch.setattr(handlers, "_get_deployment_repo", lambda: deployment_repo)
     monkeypatch.setattr(handlers, "_get_registry_repo", lambda: registry_repo)
     monkeypatch.setattr(handlers, "_notify_model_change", MagicMock())
+    # Escopo de módulo (migration 134). Default True = escopo NÃO declarado,
+    # o estado de todo tenant no dia do deploy — a tela segue como hoje.
+    # Quem quiser o caso "câmera fora do módulo" re-patcha (ver
+    # TestModuleScope abaixo).
+    monkeypatch.setattr(
+        handlers, "_get_camera_module_repo", lambda: _module_repo(True)
+    )
     camera_repo.get_by_id_and_tenant.return_value = _camera_row()
     registry_repo.get_for_tenant.return_value = _model_row()
     return camera_repo, deployment_repo, registry_repo
+
+
+def _module_repo(serves: bool) -> MagicMock:
+    repo = MagicMock()
+    repo.camera_serves_module.return_value = serves
+    return repo
 
 
 # ---------------------------------------------------------------------------
@@ -318,3 +331,49 @@ class TestSerializeDatetime:
         assert out["created_at"] == "2026-08-21T10:00:00+00:00"
         aware = datetime(2026, 8, 21, 10, 0, 0, tzinfo=timezone.utc)
         assert handlers._serialize({"created_at": aware})["created_at"].endswith("+00:00")
+
+
+# ---------------------------------------------------------------------------
+# Escopo de módulo no DEPLOYMENT de modelo (public.camera_modules, migration 134)
+# ---------------------------------------------------------------------------
+
+class TestModuleScope:
+    """RÉGUA — apontar modelo para câmera fora do módulo é RECUSADO ALTO.
+
+    Escrita deliberada de humano. Ignorar em silêncio seria o pior desfecho:
+    a tela diria "salvo", a inferência nunca usaria o deployment, e o dono
+    ficaria esperando detecção de uma câmera que não está no módulo.
+    """
+
+    def test_camera_fora_do_modulo_recusa_422_e_nao_grava(
+        self, app, client, mocked_repos, monkeypatch
+    ):
+        _, deployment_repo, _ = mocked_repos
+        monkeypatch.setattr(
+            handlers, "_get_camera_module_repo", lambda: _module_repo(False)
+        )
+
+        resp = client.post(
+            f"/api/cameras/{CAMERA_ID}/model-config",
+            headers=_token(app),
+            json={"model_id": MODEL_ID, "config": _valid_config()},
+        )
+
+        assert resp.status_code == 422
+        assert "vinculada ao módulo" in resp.get_json()["error"]
+        deployment_repo.create.assert_not_called()
+        deployment_repo.deactivate_active_for_camera.assert_not_called()
+
+    def test_escopo_nao_declarado_deixa_gravar(self, app, client, mocked_repos):
+        """Sem nenhum vínculo declarado no módulo, a tela continua como hoje."""
+        _, deployment_repo, _ = mocked_repos
+        deployment_repo.create.return_value = _deployment_row()
+
+        resp = client.post(
+            f"/api/cameras/{CAMERA_ID}/model-config",
+            headers=_token(app),
+            json={"model_id": MODEL_ID, "config": _valid_config()},
+        )
+
+        assert resp.status_code == 201
+        deployment_repo.create.assert_called_once()

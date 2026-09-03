@@ -6,6 +6,10 @@ from uuid import UUID
 
 from app.core.rajada import DEDUP_WINDOW_SECONDS
 from app.infrastructure.database.repositories.base import BaseRepository
+from app.infrastructure.database.repositories.camera_module_repository import (
+    escopo_params,
+    escopo_sql,
+)
 
 
 class AlertRepository(BaseRepository):
@@ -551,10 +555,20 @@ class AlertRepository(BaseRepository):
         )
 
     def count_since(self, tenant_id: str, module_code: str, since: datetime) -> int:
-        """Conta alertas de um tenant/módulo desde uma data."""
+        """Conta alertas de um tenant/módulo desde uma data.
+
+        Escopo de câmera aplicado (ver `escopo_sql`): "alertas de hoje" do
+        módulo EPI não conta o que veio de câmera que o dono não declarou
+        como EPI.
+        """
         row = self._execute_one(
-            "SELECT COUNT(*) AS count FROM alerts WHERE tenant_id = %s AND module_code = %s AND created_at >= %s",
-            (tenant_id, module_code, since),
+            "SELECT COUNT(*) AS count FROM alerts a "
+            "WHERE a.tenant_id = %s AND a.module_code = %s AND a.created_at >= %s "
+            f"AND {escopo_sql('a.camera_id')}",
+            tuple(
+                [tenant_id, module_code, since]
+                + escopo_params(str(tenant_id), module_code)
+            ),
         )
         return row["count"] if row else 0
 
@@ -603,6 +617,22 @@ class AlertRepository(BaseRepository):
         if module_code:
             conditions.append(f"{alias}.module_code = %s")
             params.append(module_code)
+            # ESCOPO DE MÓDULO — só no ramo `alerts` (alias 'a').
+            #
+            # `alerts.module_code` diz sob que módulo o evento foi PRODUZIDO;
+            # o escopo diz se a CÂMERA serve esse módulo. As duas coisas
+            # divergem exatamente onde dói: a inferência hoje escolhe o módulo
+            # por `cameras.active_module`, que nasce com DEFAULT 'epi' — logo
+            # um evento da Guarita chega ao dashboard de EPI carimbado 'epi'
+            # sem que ninguém tenha decidido que a Guarita é EPI.
+            #
+            # `demo_events` (alias 'd') fica de fora: é evento sintético, com
+            # `camera_label` em vez de câmera real, e o vínculo não existe para
+            # ele. Aplicar o escopo ali apagaria a demonstração inteira no
+            # primeiro vínculo que o dono declarasse.
+            if alias == "a":
+                conditions.append(escopo_sql(f"{alias}.camera_id"))
+                params.extend(escopo_params(tenant_id, module_code))
         if from_ts:
             conditions.append(f"{alias}.created_at >= %s")
             params.append(from_ts)
@@ -796,6 +826,12 @@ class AlertRepository(BaseRepository):
         if module_code:
             conditions.append("a.module_code = %s")
             params.append(module_code)
+            # Escopo de módulo — mesmo predicado do `_event_filters`. Este é o
+            # caminho das JANELAS (alertas na última hora, horas-violação da
+            # taxa de conformidade): sem ele o denominador conta câmeras do
+            # módulo e o numerador conta alertas de qualquer câmera.
+            conditions.append(escopo_sql("a.camera_id"))
+            params.extend(escopo_params(str(tenant_id), module_code))
         if camera_ids:
             placeholders = ",".join(["%s"] * len(camera_ids))
             conditions.append(f"a.camera_id IN ({placeholders})")
