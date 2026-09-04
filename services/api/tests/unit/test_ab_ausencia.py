@@ -597,3 +597,80 @@ def test_recortar_aplica_margem_do_edge_e_recusa_recorte_degenerado():
     # margem 25% em x (10px de cada lado) e 8% em y (1px)
     assert recorte.shape[:2] == (20 + 2, 40 + 20)
     assert ab.recortar(frame, [0, 0, 0, 0]) is None
+
+
+# ── Gabarito do banco: 'nao_sei' fora do denominador, referências fora do ranking ──
+
+def test_nao_sei_sai_do_denominador_em_vez_de_virar_nao():
+    """A imagem sem resposta não pode virar FP — nem TP, nem FN.
+
+    Sem a exclusão, a imagem 3 (julgada `nao_sei`) contaria como falso positivo
+    e a precisão cairia de 100% para 50% por um veredito que ninguém deu.
+    """
+    acusadas = {"Sem Luvas": {1, 3}}
+    reais = {"Sem Luvas": {1}}
+    universo = {1, 2, 3}
+
+    sem_exclusao = ab.medir(acusadas, reais, universo)["Sem Luvas"]
+    assert (sem_exclusao["tp"], sem_exclusao["fp"]) == (1, 1)
+    assert sem_exclusao["precisao"] == 0.5
+
+    com_exclusao = ab.medir(
+        acusadas, reais, universo, sem_resposta={"Sem Luvas": {3}}
+    )["Sem Luvas"]
+    assert (com_exclusao["tp"], com_exclusao["fp"], com_exclusao["fn"]) == (1, 0, 0)
+    assert com_exclusao["precisao"] == 1.0
+
+
+def test_exclusao_e_por_classe_nao_pela_imagem_inteira():
+    """O mesmo quadro pode ter veredito firme numa classe e `nao_sei` na outra."""
+    medidas = ab.medir(
+        acusadas={"Sem Luvas": {7}, "Sem mascara": {7}},
+        reais={"Sem Luvas": set(), "Sem mascara": set()},
+        universo={7},
+        sem_resposta={"Sem mascara": {7}},
+    )
+    assert medidas["Sem Luvas"]["fp"] == 1        # respondida: a acusação é julgada
+    assert medidas["Sem mascara"]["n_acusacoes"] == 0  # sem resposta: nem TP nem FP
+
+
+def test_referencia_entra_na_tabela_mas_fica_fora_do_ranking():
+    """Baseline/servido são lidos como B (classe direta) e não disputam o veredito."""
+    saidas = {
+        "B": {1: [_det("Sem Luvas")]},
+        "SERVIDO": {1: [_det("Sem Luvas")]},
+    }
+    medidas = ab.medir_todas(
+        recortes_a={1: []}, saidas=saidas, reais={"Sem Luvas": {1}},
+        universo={1}, limiar=0.3, limiar_sobreposicao=0.5,
+    )
+    assert medidas["SERVIDO"]["Sem Luvas"]["tp"] == 1
+    assert ab.vencedor_classe(
+        {v: medidas[v]["Sem Luvas"] for v in medidas}
+    )[0] != "SERVIDO"
+
+
+def test_parse_referencia_recusa_rotulo_que_ocupa_coluna_de_candidato():
+    assert ab._parse_referencia("SERVIDO=/m.onnx=a,b") == ("SERVIDO", "/m.onnx", ["a", "b"])
+    with pytest.raises(SystemExit):
+        ab._parse_referencia("B=/m.onnx=a,b")
+    with pytest.raises(SystemExit):
+        ab._parse_referencia("sem_classes.onnx")
+
+
+def test_controle_nulo_denuncia_quem_acusou_tudo_que_julgou():
+    """Precisão acima de 50% não é medida quando a variante acusou 100% do que julgou.
+
+    Universo de 10, 6 reais, 2 abstenções. Acusar as 8 julgadas dá precisão 75%
+    — passa folgado na régua da ADR-0067 sem olhar para imagem nenhuma, porque
+    75% é só a prevalência (6/8) do conjunto julgado.
+    """
+    m = ab.contar(
+        acusadas=set(range(1, 9)), reais=set(range(1, 7)),
+        universo=set(range(1, 11)), abstencoes={9, 10},
+    )
+    assert m["precisao"] == 0.75
+    assert ab.sustenta_acusacao(m) is False or m["n_acusacoes"] < ab._N_MINIMO
+    acusacoes, julgadas, nulo = ab._controle_nulo(m)
+    assert (acusacoes, julgadas) == (8, 8)   # acusou tudo que julgou
+    assert nulo == 0.6                       # 6 reais em 10 avaliadas

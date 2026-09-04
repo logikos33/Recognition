@@ -156,6 +156,107 @@ def ausencias_reais(coco: dict[str, Any]) -> dict[str, set[int]]:
     return reais
 
 
+# `holdout_verdicts.class_id` vive em DOIS espaços de inteiros e a diferença já
+# mordeu esta casa: `5` no catálogo global é `no_gloves`/**Sem Luvas**, e `5` no
+# espaço do tenant é `Protetor auricular` — uma classe de PRESENÇA, arquivada.
+# Ler o namespace errado não dá erro: dá um gabarito trocado que parece medida.
+# Por isso o de-para é resolvido no BANCO, pelo mesmo critério de
+# `ModuleService.get_classes` (display_name do catálogo, name do tenant), nunca
+# por tabela digitada aqui.
+_SQL_GABARITO = """
+SELECT hv.frame_id::text                                AS frame_id,
+       hv.verdict                                       AS verdict,
+       COALESCE(mc.display_name, mc.class_name, yc.name) AS classe
+  FROM public.holdout_verdicts hv
+  LEFT JOIN public.module_classes mc
+         ON hv.class_id < %(offset)s
+        AND mc.class_id = hv.class_id
+        AND mc.module_code = %(module)s
+  LEFT JOIN public.yolo_classes yc
+         ON hv.class_id >= %(offset)s
+        AND yc.id = hv.class_id - %(offset)s
+ WHERE hv.tenant_id = %(tenant)s
+"""
+TENANT_CLASS_ID_OFFSET = 100_000  # app.domain.services.class_namespace
+
+
+def gabarito_do_banco(
+    dsn: str,
+    tenant_id: str,
+    module_code: str,
+    imagem_por_frame: dict[str, int],
+) -> tuple[dict[str, set[int]], dict[str, set[int]], dict[str, Any]]:
+    """`public.holdout_verdicts` → (reais, sem_resposta, procedência).
+
+    `reais[classe]`        = imagens julgadas **'sim'** — a ausência era real.
+    `sem_resposta[classe]` = imagens que NÃO respondem por esta classe: as
+                             julgadas `'nao_sei'` MAIS as que ninguém julgou.
+
+    ⚠️ `'nao_sei'` **não vira `'nao'`**. Convertê-lo inventaria gabarito: o
+    avaliador disse que não sabe, e transformar isso em "não havia ausência"
+    conta como FALSO POSITIVO toda acusação que talvez estivesse certa. Aqui
+    ele sai do numerador E do denominador — a classe é medida só onde há
+    resposta —, e o relatório declara quantas imagens ficaram de fora por isso.
+
+    O universo continua sendo o MESMO conjunto de imagens para todas as
+    variantes; o que muda por classe é quantas dele têm resposta. Por isso a
+    exclusão viaja separada do universo, e não como um universo por variante.
+    """
+    import psycopg2  # noqa: PLC0415
+
+    reais: dict[str, set[int]] = {c: set() for c in CLASSES_AUSENCIA}
+    respondidas: dict[str, set[int]] = {c: set() for c in CLASSES_AUSENCIA}
+    nao_sei: dict[str, set[int]] = {c: set() for c in CLASSES_AUSENCIA}
+    fora_do_holdout = 0
+    fora_da_taxonomia: set[str] = set()
+    total = 0
+
+    with psycopg2.connect(dsn) as conexao, conexao.cursor() as cur:
+        cur.execute(
+            _SQL_GABARITO,
+            {
+                "offset": TENANT_CLASS_ID_OFFSET,
+                "module": module_code,
+                "tenant": tenant_id,
+            },
+        )
+        linhas = cur.fetchall()
+
+    for frame_id, verdict, classe in linhas:
+        total += 1
+        if classe not in reais:
+            fora_da_taxonomia.add(str(classe))
+            continue
+        image_id = imagem_por_frame.get(frame_id)
+        if image_id is None:
+            fora_do_holdout += 1
+            continue
+        if verdict == "nao_sei":
+            nao_sei[classe].add(image_id)
+            continue
+        respondidas[classe].add(image_id)
+        if verdict == "sim":
+            reais[classe].add(image_id)
+
+    todas = set(imagem_por_frame.values())
+    sem_resposta = {c: todas - respondidas[c] for c in CLASSES_AUSENCIA}
+    procedencia = {
+        "linhas": total,
+        "fora_do_holdout": fora_do_holdout,
+        "fora_da_taxonomia": sorted(fora_da_taxonomia),
+        "por_classe": {
+            c: {
+                "sim": len(reais[c]),
+                "nao": len(respondidas[c] - reais[c]),
+                "nao_sei": len(nao_sei[c]),
+                "nao_julgada": len(todas - respondidas[c] - nao_sei[c]),
+            }
+            for c in CLASSES_AUSENCIA
+        },
+    }
+    return reais, sem_resposta, procedencia
+
+
 # ── Acusação ──────────────────────────────────────────────────────────────────
 
 def acusacoes_b(
@@ -353,7 +454,27 @@ def contar(
         "abstencoes": len(abstidas),
         "fn_por_abstencao": len(perdidas & abstidas),
         "taxa_abstencao": _razao(len(abstidas), len(universo)),
+        # Tamanho do universo DESTA classe — sem ele não dá para calcular o
+        # controle nulo ("acusar sempre"), e sem o controle nulo a régua de 50%
+        # elege quem não olhou para a imagem. Ver `_controle_nulo`.
+        "n_avaliadas": len(universo),
     }
+
+
+def _controle_nulo(m: dict[str, Any]) -> tuple[int, int, float | None]:
+    """(acusações, julgadas, precisão) da estratégia que ACUSA TUDO que julgou.
+
+    A precisão de "acusar sempre" é a PREVALÊNCIA da violação no conjunto — um
+    número do gabarito, não do modelo. Onde a prevalência passa de 50%, a régua
+    da ADR-0067 aprova sozinha quem nunca olhou para a imagem: basta acusar
+    todo mundo. Por isso toda precisão precisa ser lida contra este piso.
+
+    Quando `n_acusacoes == julgadas`, a variante É a estratégia nula: acusou
+    100% do que julgou, e a precisão dela é a prevalência, com igualdade
+    aritmética — não "parecida com", igual.
+    """
+    julgadas = m["n_avaliadas"] - m["abstencoes"]
+    return m["n_acusacoes"], julgadas, _razao(m["n_reais"], m["n_avaliadas"])
 
 
 def medir(
@@ -361,13 +482,22 @@ def medir(
     reais: dict[str, set[int]],
     universo: set[int],
     abstencoes: dict[str, set[int]] | None = None,
+    sem_resposta: dict[str, set[int]] | None = None,
 ) -> dict[str, dict[str, Any]]:
+    """`sem_resposta[classe]` sai do universo DAQUELA classe — e só dela.
+
+    É por onde entra o `'nao_sei'` do gabarito: imagem sem resposta não pode
+    julgar acusação nenhuma, então não vira TP, FP nem FN. A subtração é por
+    classe porque a resposta é por classe: o mesmo quadro pode ter veredito
+    firme para `Sem Luvas` e `nao_sei` para `Sem mascara`.
+    """
     abstencoes = abstencoes or {}
+    sem_resposta = sem_resposta or {}
     return {
         classe: contar(
             acusadas.get(classe, set()),
             reais.get(classe, set()),
-            universo,
+            universo - sem_resposta.get(classe, set()),
             abstencoes.get(classe, set()),
         )
         for classe in CLASSES_AUSENCIA
@@ -381,22 +511,32 @@ def medir_todas(
     universo: set[int],
     limiar: float,
     limiar_sobreposicao: float,
+    sem_resposta: dict[str, set[int]] | None = None,
 ) -> dict[str, dict[str, dict[str, Any]]]:
     """variante → classe → métrica, no MESMO limiar de confiança para todas.
 
     Um ponto de entrada só para a tabela principal e para cada passo da varredura
     — se cada uma montasse as variantes por conta própria, elas divergiriam.
+
+    Rótulo `"C"` é geométrico; QUALQUER outro rótulo em `saidas` é lido como a
+    B: emite a classe "Sem X" direto. É o que permite pôr o BASELINE e o modelo
+    SERVIDO na mesma tabela — os dois são B por forma de saída — sem que eles
+    virem candidatos ao veredito (o ranking só olha `ORDEM_SIMPLICIDADE`).
     """
     medidas: dict[str, dict[str, dict[str, Any]]] = {
         "A": medir(
-            acusacoes_a(recortes_a, limiar), reais, universo, abstencoes_a(recortes_a)
+            acusacoes_a(recortes_a, limiar), reais, universo,
+            abstencoes_a(recortes_a), sem_resposta,
         )
     }
-    if "B" in saidas:
-        medidas["B"] = medir(acusacoes_b(saidas["B"], limiar), reais, universo)
-    if "C" in saidas:
-        acusadas_c, abstencoes = acusacoes_c(saidas["C"], limiar, limiar_sobreposicao)
-        medidas["C"] = medir(acusadas_c, reais, universo, abstencoes)
+    for rotulo, saida in saidas.items():
+        if rotulo == "C":
+            acusadas_c, abstencoes = acusacoes_c(saida, limiar, limiar_sobreposicao)
+            medidas["C"] = medir(acusadas_c, reais, universo, abstencoes, sem_resposta)
+        else:
+            medidas[rotulo] = medir(
+                acusacoes_b(saida, limiar), reais, universo, None, sem_resposta
+            )
     return medidas
 
 
@@ -639,8 +779,15 @@ def render(
     varredura_sobreposicao: list[tuple[float, dict[str, dict[str, Any]]]],
 ) -> str:
     variantes = [v for v in ORDEM_SIMPLICIDADE if v in medidas]
+    # Referências (baseline, modelo servido) entram nas TABELAS mas ficam fora do
+    # ranking: a pergunta "qual variante adotar" e a pergunta "isto melhora o que
+    # o cliente tem hoje" são duas, e misturá-las elegeria um vencedor por
+    # comparação com o passado em vez de por régua.
+    referencias = [v for v in medidas if v not in ORDEM_SIMPLICIDADE]
+    linhas_tabela = variantes + referencias
+    rotulo = lambda v: ROTULO_VARIANTE.get(v, v)  # noqa: E731
     p: list[str] = []
-    p.append("# A/B de AUSÊNCIA — " + " × ".join(ROTULO_VARIANTE[v] for v in variantes) + "\n")
+    p.append("# A/B de AUSÊNCIA — " + " × ".join(rotulo(v) for v in variantes) + "\n")
     p.append(f"- **holdout:** `{ctx['holdout']}` — {ctx['imagens_holdout']} imagens no COCO, "
              f"**{len(ctx['universo'])} avaliadas em TODAS as variantes**")
     p.append(f"- **modelo A (presença):** `{ctx['modelo_a']}` — dicionário: {ctx['classes_a']}")
@@ -660,6 +807,11 @@ def render(
     p.append(f"- **estágio 1 (pessoa):** `{ctx['pessoa']}` — classe `{ctx['classe_pessoa']}`, "
              f"limiar {ctx['limiar_pessoa']:.2f}, margem de recorte "
              f"{_MARGEM_X:.0%}×{_MARGEM_Y:.0%} (a mesma do edge)")
+    for ref in referencias:
+        info = ctx.get("referencias", {}).get(ref, {})
+        p.append(f"- **referência `{ref}`:** `{info.get('caminho', '?')}` — "
+                 f"dicionário: {info.get('classes', '?')} — **fora do ranking**, "
+                 "entra só como régua do que o cliente já tem")
     p.append(f"- **limiar aplicado:** {ctx['limiar']:.2f} — **o MESMO para todas as variantes**")
     p.append(f"- **backend:** {ctx['backend']}")
     if ctx["falhas"]:
@@ -673,6 +825,38 @@ def render(
              f"{guarda['holdout_hasheadas']}/{guarda['holdout_imagens']} imagens do holdout "
              f"conferidas também por sha256; {guarda['treino_hasheadas']} imagens de treino "
              "hasheadas.\n")
+
+    gab = ctx.get("gabarito")
+    if gab:
+        p.append("## Procedência do gabarito\n")
+        p.append(
+            f"Fonte: `public.holdout_verdicts` (migration 135), tenant `{ctx['tenant']}`, "
+            f"módulo `{ctx['module']}` — **{gab['linhas']} julgamentos** sobre "
+            f"{len(ctx['universo'])} imagens. Não é anotação de treino e não tem geometria: "
+            "é a resposta por imagem×classe.\n")
+        p.append("**`nao_sei` NÃO virou `nao`.** Ele sai do numerador E do denominador da "
+                 "classe — a imagem simplesmente não é avaliada ali. Convertê-lo em `nao` "
+                 "contaria como falso positivo toda acusação que talvez estivesse certa, "
+                 "que é inventar gabarito. A coluna `fora` abaixo é o preço declarado disso.\n")
+        p.append("| classe | sim (n de reais) | nao | nao_sei | nunca julgada | **fora do "
+                 "denominador** | avaliadas |")
+        p.append("|---|---:|---:|---:|---:|---:|---:|")
+        for classe in CLASSES_AUSENCIA:
+            c = gab["por_classe"][classe]
+            fora = c["nao_sei"] + c["nao_julgada"]
+            p.append(f"| {classe} | {c['sim']} | {c['nao']} | {c['nao_sei']} | "
+                     f"{c['nao_julgada']} | {fora} | {len(ctx['universo']) - fora} |")
+        p.append("")
+        p.append("Resolução do `class_id`: **os dois namespaces resolvidos no banco** — "
+                 f"`class_id < {TENANT_CLASS_ID_OFFSET}` → `module_classes.class_id` "
+                 f"(catálogo global), `>= {TENANT_CLASS_ID_OFFSET}` → `yolo_classes.id` do "
+                 "tenant. Ler o namespace errado não daria erro: `5` no catálogo é "
+                 "**Sem Luvas**, e `5` no espaço do tenant é `Protetor auricular` — uma "
+                 "classe de PRESENÇA, arquivada. O de-para sai da query, nunca de tabela "
+                 "digitada no script.\n")
+        if gab["fora_do_holdout"] or gab["fora_da_taxonomia"]:
+            p.append(f"- ⚠️ {gab['fora_do_holdout']} julgamento(s) de quadro fora do holdout "
+                     f"avaliado; classes fora da taxonomia: {gab['fora_da_taxonomia']}\n")
 
     p.append("## Como ler a coluna abstenção\n")
     p.append(
@@ -690,11 +874,33 @@ def render(
         p.append(f"### {classe}\n")
         p.append("| variante | TP | FP | FN | precisão | recall | abstenção | n |")
         p.append("|---|---:|---:|---:|---:|---:|---:|---|")
-        for v in variantes:
-            p.append(_linha_tabela(ROTULO_VARIANTE[v], medidas[v][classe]))
+        for v in linhas_tabela:
+            p.append(_linha_tabela(rotulo(v), medidas[v][classe]))
         p.append("")
-        for v in variantes:
+        if all(medidas[v][classe]["n_reais"] == 0 for v in linhas_tabela):
+            p.append("- ⛔ **NÃO CONCLUSIVA — o gabarito não tem nenhum `sim` para esta "
+                     "classe.** Sem um positivo real não há recall para medir, e a precisão "
+                     "só pode dar 0%: toda acusação cai contra um denominador de zero "
+                     "verdades. Isso mede o gabarito, não o modelo. Nenhum veredito é "
+                     "emitido aqui — e a ausência dele é o resultado.\n")
+        base = medidas[linhas_tabela[0]][classe]
+        if base["n_reais"]:
+            p.append(f"- **controle nulo (acusar SEMPRE):** precisão "
+                     f"{_pct(_razao(base['n_reais'], base['n_avaliadas']))} "
+                     f"({base['n_reais']} reais em {base['n_avaliadas']} avaliadas), recall "
+                     "100%. É o piso: quem não superar isto não acrescentou informação "
+                     "nenhuma à decisão, por mais que passe na régua de 50%.")
+        for v in linhas_tabela:
             m = medidas[v][classe]
+            acus, julgadas, nulo = _controle_nulo(m)
+            if acus and acus == julgadas:
+                p.append(f"- ⛔ **{v}: acusou 100% do que julgou ({acus}/{julgadas}).** Esta "
+                         "precisão É a prevalência da violação entre os quadros que ela "
+                         "julgou — aritmeticamente, não por semelhança. A variante não "
+                         "distinguiu nada; o número é do gabarito, não do modelo.")
+            elif nulo is not None and m["precisao"] is not None and m["precisao"] <= nulo:
+                p.append(f"- ⚠️ **{v}: precisão {_pct(m['precisao'])} não supera o controle "
+                         f"nulo ({_pct(nulo)}).**")
             if sustenta_acusacao(m):
                 p.append(f"- {v}: **sustenta acusação** "
                          f"(precisão {_pct(m['precisao'])} ≥ {_REGUA_PRECISAO:.0%}, "
@@ -718,13 +924,13 @@ def render(
     p.append("A regra de justiça é limiar ÚNICO. A varredura está aqui para a escolha "
              "ficar explícita — não para cada variante escolher o seu.\n")
     p.append("| limiar | classe | " + " | ".join(
-        f"{v} precisão/recall (n)" for v in variantes) + " |")
-    p.append("|---:|---|" + "---|" * len(variantes))
+        f"{v} precisão/recall (n)" for v in linhas_tabela) + " |")
+    p.append("|---:|---|" + "---|" * len(linhas_tabela))
     for limiar, med in varredura:
         for classe in CLASSES_AUSENCIA:
             celulas = " | ".join(
                 f"{_pct(med[v][classe]['precisao'])} / {_pct(med[v][classe]['recall'])} "
-                f"({med[v][classe]['n_acusacoes']})" for v in variantes
+                f"({med[v][classe]['n_acusacoes']})" for v in linhas_tabela
             )
             p.append(f"| {limiar:.2f} | {classe} | {celulas} |")
     p.append("")
@@ -749,6 +955,15 @@ def render(
              "como empate, e empate vence a mais simples, na ordem declarada "
              f"{' < '.join(ORDEM_SIMPLICIDADE)}: A reusa o estágio 1 já servido; B só acrescenta "
              "classes ao que já se anota; C exige uma taxonomia nova de partes do corpo.\n")
+
+    p.append("## ⚠️ Aviso das réguas — o que NÃO pode ser comparado\n")
+    p.append(
+        "**Não compare o mAP do `val` de uma variante com o da outra.** A é medida sobre 5 "
+        "classes, B sobre 10, C sobre 10 de outra taxonomia — e mAP é média POR CLASSE: "
+        "tirar classes difíceis do dicionário sobe o número sem que o detector melhore em "
+        "nada. Um ranking feito assim premiaria a variante com menos classes. **Só este "
+        "holdout compara**, porque é a mesma prova, as mesmas imagens e o mesmo gabarito "
+        "para as três.\n")
 
     p.append("## O que este relatório NÃO mediu\n")
     p.append(
@@ -780,6 +995,12 @@ def render(
         "TODAS as variantes.\n"
         "- **A legitimidade da variante A em produção.** A ADR-0067 já a proíbe. Este número "
         "mede o preço dela, não a autoriza.\n"
+        "- **Acurácia sob quantização.** Isto roda em FP32 no `onnxruntime` — o MESMO runtime "
+        "e a MESMA precisão do caminho servido hoje (`onnx_rfdetr.py`, providers CUDA/CPU, "
+        "sem TensorRT), então o número é o do produto atual. Ele NÃO é transferível para um "
+        "edge INT8/TensorRT: a quantização pode mexer alguns pontos percentuais, e ordem "
+        "decidida por 2 pp não sobrevive a isso. Promover ao edge quantizado exige remedir "
+        "no artefato real.\n"
     )
     return "\n".join(p)
 
@@ -835,7 +1056,37 @@ def montar_parser() -> argparse.ArgumentParser:
                                         "MAPA_SOBREPOSICAO, senão o script recusa rodar")
     ap.add_argument("--varredura", default=",".join(f"{v:.2f}" for v in _VARREDURA_PADRAO),
                     help="limiares de confiança da varredura, separados por vírgula")
+    ap.add_argument("--gabarito-db", metavar="DSN|@ARQUIVO",
+                    help="DSN do Postgres com public.holdout_verdicts (migration 135). "
+                         "Prefira `@caminho`: o DSN é lido do arquivo e não aparece em "
+                         "`ps`. Sem esta flag o gabarito continua saindo das anotações "
+                         "'Sem X' do COCO do holdout.")
+    ap.add_argument("--tenant", help="tenant_id do gabarito (obrigatório com --gabarito-db)")
+    ap.add_argument("--module", default="epi",
+                    help="module_code para resolver o class_id do catálogo global")
+    ap.add_argument("--referencia", action="append", default=[],
+                    metavar="ROTULO=CAMINHO.onnx=cls0,cls1,...",
+                    help="modelo de REFERÊNCIA (baseline, modelo servido): entra nas "
+                         "tabelas com a mesma régua, lido como a variante B (emite a "
+                         "classe 'Sem X' direto), e fica FORA do ranking. Repetível.")
     return ap
+
+
+def _ler_dsn(valor: str) -> str:
+    """`@caminho` lê o DSN do arquivo — credencial não vai para a linha de comando."""
+    return Path(valor[1:]).read_text(encoding="utf-8").strip() if valor.startswith("@") else valor
+
+
+def _parse_referencia(valor: str) -> tuple[str, str, list[str]]:
+    rotulo, _, resto = valor.partition("=")
+    caminho, _, classes = resto.rpartition("=")
+    if not (rotulo and caminho and classes):
+        raise SystemExit(f"--referencia mal formada: {valor!r} "
+                         "(esperado ROTULO=CAMINHO.onnx=cls0,cls1,...)")
+    if rotulo in ORDEM_SIMPLICIDADE:
+        raise SystemExit(f"--referencia {rotulo!r} colide com a variante {rotulo} — "
+                         "uma referência não pode ocupar a coluna de um candidato.")
+    return rotulo, caminho, _parse_classes(classes)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -870,6 +1121,13 @@ def main(argv: list[str] | None = None) -> int:
         completos["C"] = _construir_detector(
             args.backend, args.modelo_c, classes_c, _LIMIAR_COLETA
         )
+    referencias: dict[str, dict[str, Any]] = {}
+    for bruta in args.referencia:
+        rot, caminho, classes = _parse_referencia(bruta)
+        referencias[rot] = {"caminho": caminho, "classes": classes}
+        completos[rot] = _construir_detector(
+            args.backend, caminho, classes, _LIMIAR_COLETA
+        )
 
     universo, saidas, recortes_a, falhas = inferir_holdout(
         coco, base_dir, det_a, det_pessoa, args.classe_pessoa, completos
@@ -880,9 +1138,30 @@ def main(argv: list[str] | None = None) -> int:
             f"registrar ausência de medida como medida. Falhas: {falhas[:5]}"
         )
 
-    reais = ausencias_reais(coco)
+    sem_resposta: dict[str, set[int]] | None = None
+    procedencia = None
+    if args.gabarito_db:
+        if not args.tenant:
+            raise SystemExit("--gabarito-db exige --tenant: gabarito sem filtro de tenant "
+                             "é gabarito de outro cliente misturado com o deste.")
+        imagem_por_frame = {
+            str(img["frame_id"]): img["id"]
+            for img in coco.get("images", [])
+            if img.get("frame_id") and img["id"] in universo
+        }
+        if not imagem_por_frame:
+            raise SystemExit(
+                "O COCO do holdout não traz `frame_id` nas imagens — sem ele não há como "
+                "casar o veredito de `holdout_verdicts` com a imagem inferida.")
+        reais, sem_resposta, procedencia = gabarito_do_banco(
+            _ler_dsn(args.gabarito_db), args.tenant, args.module, imagem_por_frame
+        )
+        print(f"[ab_ausencia] gabarito do banco: {procedencia['linhas']} julgamentos")
+    else:
+        reais = ausencias_reais(coco)
+
     medidas = medir_todas(
-        recortes_a, saidas, reais, universo, args.limiar, args.sobreposicao
+        recortes_a, saidas, reais, universo, args.limiar, args.sobreposicao, sem_resposta
     )
     vencedores: dict[str, str | None] = {}
     vereditos: dict[str, str] = {}
@@ -894,14 +1173,16 @@ def main(argv: list[str] | None = None) -> int:
     varredura = [
         (
             limiar,
-            medir_todas(recortes_a, saidas, reais, universo, limiar, args.sobreposicao),
+            medir_todas(recortes_a, saidas, reais, universo, limiar, args.sobreposicao,
+                        sem_resposta),
         )
         for limiar in (float(v) for v in args.varredura.split(","))
     ]
     varredura_sobreposicao = [
         (
             valor,
-            medir_todas(recortes_a, saidas, reais, universo, args.limiar, valor)["C"],
+            medir_todas(recortes_a, saidas, reais, universo, args.limiar, valor,
+                        sem_resposta)["C"],
         )
         for valor in _VARREDURA_SOBREPOSICAO
     ] if "C" in medidas else []
@@ -913,7 +1194,8 @@ def main(argv: list[str] | None = None) -> int:
         "limiar": args.limiar, "sobreposicao": args.sobreposicao, "backend": args.backend,
         "classes_a": classes_a, "classes_b": classes_b, "classes_c": classes_c,
         "universo": universo, "imagens_holdout": len(coco.get("images", [])),
-        "falhas": falhas, "guarda": guarda,
+        "falhas": falhas, "guarda": guarda, "referencias": referencias,
+        "gabarito": procedencia, "tenant": args.tenant, "module": args.module,
     }
     args.saida.write_text(
         render(ctx, medidas, vereditos, vencedores, varredura, varredura_sobreposicao),

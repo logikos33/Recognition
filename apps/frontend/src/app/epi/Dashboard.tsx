@@ -12,12 +12,22 @@
  *     exigiriam uma série de score por dia que não existe em endpoint nenhum.
  *     → o rodapé do cartão diz SEM HISTÓRICO em vez de desenhar uma linha.
  *
- *  2. **Ações (abertas / recentes).** A tela "EPI Ações" tem ZERO endpoints no
- *     contrato de migração (`contrato-dados.js`, 407 entradas) e não existe
- *     `actions:*` no registry de permissões — o mesmo achado que
- *     `navPorPerfil.ts` já registrou. → cartão e painel ficam de pé, marcados
- *     como indisponíveis. Inventar "6 abertas · 2 vencidas" seria prometer um
- *     plano de ação que o produto não guarda em lugar nenhum.
+ *  2. **Plano de ação com responsável e prazo.** Continua sem existir: não há
+ *     tabela, endpoint nem permissão `actions:*` para "ação corretiva
+ *     atribuída a fulano com vencimento". O que EXISTE — e é o que a tela
+ *     mostra agora — é a TRATATIVA do evento: `alerts.acknowledged` ("alguém
+ *     viu") e `alerts.verification_status` ("a detecção procede"), as duas
+ *     colunas que `/epi/acoes` já lê e escreve. O cartão morto que dizia "—"
+ *     e "Indisponível" saiu: era espaço de tela ocupado por um travessão.
+ *
+ *  2b. **Eixo do tempo = CAPTURA, não ingestão.** Todo painel temporal desta
+ *     tela lê `alerts.timestamp` (quando o frame foi capturado), nunca
+ *     `created_at` (quando a linha entrou no banco). Os dois só coincidem com
+ *     ingestão ao vivo. Medido no DEV: a captura se espalha das 10h às 19h —
+ *     o dia da fábrica — enquanto o `created_at` empilha tudo em 3 horários,
+ *     que são os momentos em que a carga rodou. "Em que horário a fábrica
+ *     gera violação" respondido sobre `created_at` é "a que horas o servidor
+ *     gravou", e isso não é informação de segurança nenhuma.
  *
  *  3. **Seletor de site.** Nenhum dos endpoints desta tela aceita escopo de
  *     site (`/modules/epi/stats` é do tenant; `/v1/events/*` filtra por câmera).
@@ -71,6 +81,7 @@ import { moduleService, type ModuleStats } from '../../services/moduleService'
 import { eventsService } from '../../services/eventsService'
 import { violationLabel } from '../../components/dashboard/widgets/violationLabels'
 import { fillBuckets, formatBucketLabel } from '../../utils/timeBuckets'
+import { agregarPerfil, picoDeViolacao, rotuloDia } from '../../utils/perfilEventos'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import { lk } from '../tokens/lk.css'
 import * as s from './Dashboard.css'
@@ -111,12 +122,20 @@ function janelaDoTurno(turno: IdTurno, agora = new Date()) {
 
 // ── Preferência de widgets (ordem + visibilidade) ───────────────────────────
 
-type IdWidget = 'eventos-hora' | 'violacoes-classe' | 'acoes-recentes' | 'cameras-eventos'
+type IdWidget =
+  | 'violacoes-horario'
+  | 'volume-dia'
+  | 'composicao'
+  | 'eventos-hora'
+  | 'violacoes-classe'
+  | 'cameras-eventos'
 
 const WIDGETS: Array<{ id: IdWidget; rotulo: string }> = [
+  { id: 'violacoes-horario', rotulo: 'Violações por horário do dia' },
+  { id: 'volume-dia', rotulo: 'Volume por dia' },
+  { id: 'composicao', rotulo: 'Composição dos eventos' },
   { id: 'eventos-hora', rotulo: 'Eventos por hora' },
   { id: 'violacoes-classe', rotulo: 'Violações por classe' },
-  { id: 'acoes-recentes', rotulo: 'Ações recentes' },
   { id: 'cameras-eventos', rotulo: 'Câmeras com mais eventos' },
 ]
 
@@ -128,6 +147,19 @@ const WIDGETS: Array<{ id: IdWidget; rotulo: string }> = [
  */
 const JANELA_RANKING_DIAS = 30
 const ROTULO_JANELA_RANKING = `ÚLTIMOS ${JANELA_RANKING_DIAS} DIAS`
+
+/**
+ * Janela do perfil temporal. 90 dias porque o acervo do cliente tem MESES, não
+ * dias: uma curva de horário montada sobre dois dias é ruído, e a mesma curva
+ * sobre um trimestre é padrão de turno. 90 e não 92 (`_MAX_SUMMARY_DAYS`) para
+ * a borda do arredondamento nunca cair do lado do 400.
+ *
+ * O rótulo do painel NÃO promete 90 dias de operação — quem diz o alcance real
+ * é a legenda, que sai de `primeira_captura`/`ultima_captura`. Prometer no
+ * título uma janela que o dado não preenche é a mesma mentira de desenhar
+ * série longa em cima de série curta.
+ */
+const JANELA_PERFIL_DIAS = 90
 
 const PADRAO: IdWidget[] = WIDGETS.map((w) => w.id)
 const CHAVE_PREF = 'lk-epi-dashboard-widgets'
@@ -318,6 +350,9 @@ export function Dashboard() {
         to: janela.ate,
         bucket: 'hour',
         moduleCode: 'epi',
+        // Captura, não ingestão (ver item 2b do cabeçalho). Sem isto o painel
+        // de hoje desenha o horário em que a carga rodou.
+        timeField: 'captured',
       }),
     staleTime: 30_000,
     refetchInterval: 60_000,
@@ -353,12 +388,32 @@ export function Dashboard() {
     refetchInterval: 60_000,
   })
 
+  const janelaPerfil = useMemo(() => {
+    const agora = new Date()
+    const inicio = new Date(agora)
+    inicio.setDate(inicio.getDate() - JANELA_PERFIL_DIAS)
+    return { de: inicio.toISOString(), ate: agora.toISOString() }
+  }, [])
+
+  // Um pedido só alimenta três painéis (horário do dia, volume por dia,
+  // composição) e o cartão de tratativa — todos falam do MESMO conjunto de
+  // eventos, e buscá-los em quatro chamadas abriria a porta para quatro
+  // números que não fecham na mesma tela.
+  const perfil = useQuery({
+    queryKey: ['epi', 'profile', janelaPerfil.de, janelaPerfil.ate],
+    queryFn: () =>
+      eventsService.getProfile({ from: janelaPerfil.de, to: janelaPerfil.ate, moduleCode: 'epi' }),
+    staleTime: 60_000,
+    refetchInterval: 120_000,
+  })
+
   const atualizar = useCallback(() => {
     void estatisticas.refetch()
     void linhaDoTempo.refetch()
     void resumo.refetch()
     void rankingCameras.refetch()
-  }, [estatisticas, linhaDoTempo, resumo, rankingCameras])
+    void perfil.refetch()
+  }, [estatisticas, linhaDoTempo, resumo, rankingCameras, perfil])
 
   const alterarPref = useCallback((proxima: Preferencia) => {
     setPref(proxima)
@@ -479,7 +534,292 @@ export function Dashboard() {
     janela.faixa.fim,
   ).padStart(2, '0')}H`
 
+  // ── Perfil temporal (horário do dia · dia · composição) ───────────────────
+
+  const situacao = perfil.data?.situacao
+  const dadosPerfil = agregarPerfil(perfil.data?.rows ?? [])
+  const picoHora = picoDeViolacao(dadosPerfil.porHora)
+  const maxHoraDia = dadosPerfil.porHora.reduce((m, p) => (p.total > m ? p.total : m), 0)
+  const maxDia = dadosPerfil.porDia.reduce((m, p) => (p.total > m ? p.total : m), 0)
+  const perfilVazio = dadosPerfil.total === 0
+
+  /**
+   * Alcance REAL do dado, não a janela pedida. Sem isto o painel diz "últimos
+   * 90 dias" e o leitor supõe 90 dias de operação — a mesma suposição que
+   * `SCORE SEM SÉRIE` existe para impedir do outro lado da tela.
+   */
+  const alcancePerfil = (() => {
+    if (!situacao?.primeira_captura || !situacao.ultima_captura) return null
+    const de = new Date(situacao.primeira_captura.replace(/Z?$/, 'Z'))
+    const ate = new Date(situacao.ultima_captura.replace(/Z?$/, 'Z'))
+    if (Number.isNaN(de.getTime()) || Number.isNaN(ate.getTime())) return null
+    const dia = (d: Date) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+    return { texto: `${dia(de)} a ${dia(ate)}`, dias: dadosPerfil.diasComRegistro }
+  })()
+
+  const legendaAlcance = alcancePerfil
+    ? `${alcancePerfil.texto} · ${numero(alcancePerfil.dias)} dia(s) com registro`
+    : null
+
+  /** Rótulo de dia só quando cabe — 60 barras com data embaixo vira borrão. */
+  const mostrarRotuloDia = dadosPerfil.porDia.length <= 16
+
+  const taxaViolacao =
+    dadosPerfil.total > 0 ? Math.round((dadosPerfil.violacoes / dadosPerfil.total) * 100) : null
+
+  /**
+   * Dia de maior volume. A série real é irregular (a coleta é por campanha, não
+   * contínua), então uma barra alta esmaga as outras e o painel se lê como
+   * vazio. A frase põe o número na tela mesmo quando a barra do vizinho tem
+   * dois pixels — e ela é o mesmo dado do gráfico, não um resumo à parte.
+   */
+  const diaPico = dadosPerfil.porDia.reduce<(typeof dadosPerfil.porDia)[number] | null>(
+    (maior, p) => (p.total > 0 && (maior === null || p.total > maior.total) ? p : maior),
+    null,
+  )
+
+  const revisados = (situacao?.procedentes ?? 0) + (situacao?.improcedentes ?? 0)
+
+  const COMPOSICAO: Array<{ chave: 'violacao' | 'conformidade' | 'indefinido'; rotulo: string }> = [
+    { chave: 'violacao', rotulo: 'Violação' },
+    { chave: 'conformidade', rotulo: 'Conformidade (EPI em uso)' },
+    { chave: 'indefinido', rotulo: 'Não definida' },
+  ]
+
+  /** Vazio comum aos três painéis do perfil — mesma causa, mesma frase. */
+  const vazioPerfil = (
+    <VazioPainel
+      texto="Nenhum evento capturado no período."
+      cta={{ texto: 'Ver eventos →', to: rotaNova('/epi/eventos') }}
+    />
+  )
+
   const painelPorId: Record<IdWidget, ReactNode> = {
+    'violacoes-horario': (
+      <Painel
+        key="violacoes-horario"
+        id="violacoes-horario"
+        titulo="Violações por horário do dia"
+        nota={legendaAlcance ? undefined : 'HORÁRIO DE CAPTURA'}
+      >
+        {perfil.isError ? (
+          <VazioPainel
+            texto="Não foi possível carregar o perfil por horário."
+            aoRetentar={() => void perfil.refetch()}
+          />
+        ) : perfil.isPending ? (
+          <VazioPainel texto="Carregando…" />
+        ) : perfilVazio ? (
+          vazioPerfil
+        ) : (
+          <>
+            <div className={s.destaqueLinha}>
+              {picoHora ? (
+                <>
+                  A fábrica concentra violação às{' '}
+                  <span className={s.destaqueNumero}>
+                    {String(picoHora.hora).padStart(2, '0')}h
+                  </span>{' '}
+                  — <span className={s.destaqueNumero}>{numero(picoHora.violacoes)}</span> de{' '}
+                  {numero(picoHora.total)} evento(s) daquele horário.
+                </>
+              ) : (
+                <>
+                  Nenhuma violação neste período — {numero(dadosPerfil.total)} evento(s)
+                  registrados, todos fora do balde de violação.
+                </>
+              )}
+            </div>
+            <div
+              className={s.barras}
+              role="group"
+              aria-label="Violações por horário do dia, últimos 90 dias"
+            >
+              {dadosPerfil.porHora.map((p) => {
+                const alturaTotal = maxHoraDia > 0 ? (p.total / maxHoraDia) * 100 : 0
+                const fatiaViolacao = p.total > 0 ? (p.violacoes / p.total) * 100 : 0
+                return (
+                  <div
+                    key={p.hora}
+                    className={s.colunaEmpilhada}
+                    title={`${String(p.hora).padStart(2, '0')}h · ${numero(p.violacoes)} violação(ões) de ${numero(p.total)} evento(s)`}
+                    aria-label={`${String(p.hora).padStart(2, '0')} horas: ${numero(p.violacoes)} violações de ${numero(p.total)} eventos`}
+                  >
+                    <div className={s.pilha} style={{ height: `${alturaTotal}%` }}>
+                      <div
+                        className={s.segmentoViolacao}
+                        style={{ height: `${fatiaViolacao}%` }}
+                      />
+                      <div
+                        className={s.segmentoRestante}
+                        style={{ height: `${100 - fatiaViolacao}%` }}
+                      />
+                    </div>
+                    {/*
+                      Rótulo a cada 6h. Com 3h os "18h"/"21h" encavalavam: o
+                      painel tem ~300px para 24 colunas (12px cada) e "18h" em
+                      mono de 9,5px pede o dobro disso. A cada 6h cada rótulo
+                      tem 72px só seus, e o eixo continua legível.
+                    */}
+                    <span className={s.rotuloEixo}>
+                      {p.hora % 6 === 0 ? `${String(p.hora).padStart(2, '0')}h` : ''}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+            <div className={s.chaveCores}>
+              <span className={s.chaveItem}>
+                <span className={s.chaveMarca} style={{ background: lk.estado.nc }} />
+                Violação
+              </span>
+              <span className={s.chaveItem}>
+                <span className={s.chaveMarca} style={{ background: lk.cor.borda }} />
+                Demais eventos
+              </span>
+            </div>
+            {legendaAlcance && <span className={s.legenda}>{legendaAlcance}</span>}
+          </>
+        )}
+      </Painel>
+    ),
+
+    'volume-dia': (
+      <Painel key="volume-dia" id="volume-dia" titulo="Volume por dia">
+        {perfil.isError ? (
+          <VazioPainel
+            texto="Não foi possível carregar o volume por dia."
+            aoRetentar={() => void perfil.refetch()}
+          />
+        ) : perfil.isPending ? (
+          <VazioPainel texto="Carregando…" />
+        ) : perfilVazio ? (
+          vazioPerfil
+        ) : (
+          <>
+            {diaPico && (
+              <div className={s.destaqueLinha}>
+                Maior volume em{' '}
+                <span className={s.destaqueNumero}>{rotuloDia(diaPico.dia)}</span> —{' '}
+                <span className={s.destaqueNumero}>{numero(diaPico.total)}</span> evento(s),{' '}
+                {numero(diaPico.violacoes)} violação(ões).
+              </div>
+            )}
+            <div className={s.barras} role="group" aria-label="Volume de eventos por dia">
+              {dadosPerfil.porDia.map((p) => {
+                const alturaTotal = maxDia > 0 ? (p.total / maxDia) * 100 : 0
+                const fatiaViolacao = p.total > 0 ? (p.violacoes / p.total) * 100 : 0
+                return (
+                  <div
+                    key={p.dia}
+                    className={s.colunaEmpilhada}
+                    title={`${rotuloDia(p.dia)} · ${numero(p.violacoes)} violação(ões) de ${numero(p.total)} evento(s)`}
+                    aria-label={`${rotuloDia(p.dia)}: ${numero(p.violacoes)} violações de ${numero(p.total)} eventos`}
+                  >
+                    <div className={s.pilha} style={{ height: `${alturaTotal}%` }}>
+                      <div
+                        className={s.segmentoViolacao}
+                        style={{ height: `${fatiaViolacao}%` }}
+                      />
+                      <div
+                        className={s.segmentoRestante}
+                        style={{ height: `${100 - fatiaViolacao}%` }}
+                      />
+                    </div>
+                    {mostrarRotuloDia && (
+                      <span className={s.rotuloEixo}>{rotuloDia(p.dia)}</span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            <div className={s.chaveCores}>
+              <span className={s.chaveItem}>
+                <span className={s.chaveMarca} style={{ background: lk.estado.nc }} />
+                Violação
+              </span>
+              <span className={s.chaveItem}>
+                <span className={s.chaveMarca} style={{ background: lk.cor.borda }} />
+                Demais eventos
+              </span>
+            </div>
+            <span className={s.legenda}>
+              {legendaAlcance ?? `${numero(dadosPerfil.porDia.length)} dia(s)`}
+            </span>
+          </>
+        )}
+      </Painel>
+    ),
+
+    composicao: (
+      <Painel key="composicao" id="composicao" titulo="Composição dos eventos">
+        {perfil.isError ? (
+          <VazioPainel
+            texto="Não foi possível carregar a composição."
+            aoRetentar={() => void perfil.refetch()}
+          />
+        ) : perfil.isPending ? (
+          <VazioPainel texto="Carregando…" />
+        ) : perfilVazio ? (
+          vazioPerfil
+        ) : (
+          <>
+            {COMPOSICAO.map(({ chave, rotulo }) => {
+              const valor = dadosPerfil.porTipo[chave]
+              return (
+                <div key={chave} className={s.classeLinha}>
+                  <span className={s.classeNome} title={rotulo}>
+                    {rotulo}
+                  </span>
+                  <div className={s.classeTrilho}>
+                    <div
+                      className={s.polaridadePreenchimento[chave]}
+                      style={{
+                        width: `${dadosPerfil.total > 0 ? Math.round((valor / dadosPerfil.total) * 100) : 0}%`,
+                      }}
+                    />
+                  </div>
+                  <span className={s.classeValor}>{numero(valor)}</span>
+                </div>
+              )
+            })}
+            <span className={s.legenda}>
+              {taxaViolacao}% dos {numero(dadosPerfil.total)} eventos do período são violação. Um
+              evento de conformidade é EPI registrado EM USO — soma ao total, não ao risco.
+            </span>
+            <div className={s.rankingDivisor} />
+            <div className={s.linhaResumo}>
+              <span>Revisados por pessoa</span>
+              <span className={s.linhaResumoValor}>
+                {numero(revisados)}
+                {revisados > 0 && (
+                  <>
+                    {' '}
+                    <span className={s.legenda}>
+                      ({numero(situacao?.procedentes ?? 0)} procedentes ·{' '}
+                      {numero(situacao?.improcedentes ?? 0)} descartados)
+                    </span>
+                  </>
+                )}
+              </span>
+            </div>
+            {situacao?.confianca_media != null && (
+              <div className={s.linhaResumo}>
+                <span>Confiança média do detector</span>
+                <span className={s.linhaResumoValor}>
+                  {Math.round(situacao.confianca_media * 100)}%
+                </span>
+              </div>
+            )}
+            <div className={s.linhaResumo}>
+              <span>Câmeras com evento no período</span>
+              <span className={s.linhaResumoValor}>{numero(situacao?.cameras ?? 0)}</span>
+            </div>
+          </>
+        )}
+      </Painel>
+    ),
+
     'eventos-hora': (
       <Painel key="eventos-hora" id="eventos-hora" titulo="Eventos por hora" nota={faixaTurno}>
         {linhaDoTempo.isError ? (
@@ -591,32 +931,6 @@ export function Dashboard() {
             </span>
           </>
         )}
-      </Painel>
-    ),
-
-    'acoes-recentes': (
-      <Painel
-        key="acoes-recentes"
-        id="acoes-recentes"
-        titulo="Ações recentes"
-        acao={
-          can('alerts:read') ? (
-            <Link to={rotaNova('/epi/acoes')} className={s.atalhoInline}>
-              todas →
-            </Link>
-          ) : undefined
-        }
-      >
-        {/* Sem endpoint no backend (ver cabeçalho). Vazio honesto, não exemplo. */}
-        <div className={s.itemAcao}>
-          <span className={s.itemAcaoTitulo}>Ações ainda não são registradas</span>
-          <div className={s.itemAcaoMeta}>
-            <span>SEM FONTE DE DADOS</span>
-          </div>
-        </div>
-        <span className={s.legenda}>
-          Quando o plano de ação existir no sistema, as ações do período aparecem aqui.
-        </span>
       </Painel>
     ),
 
@@ -855,13 +1169,40 @@ export function Dashboard() {
           )}
         </section>
 
-        {/* Ações abertas — sem endpoint no backend (ver cabeçalho) */}
-        <section className={`${s.cartaoKpi} ${s.acento.neutro}`} aria-label="Ações abertas">
-          <span className={s.overline}>Ações abertas</span>
-          <span className={s.kpiValor}>—</span>
-          <Estado nivel="atencao" palavra="Indisponível" />
-          <span className={s.legenda}>ações ainda não são registradas no sistema</span>
-        </section>
+        {/* Aguardando tratativa — `alerts.acknowledged`, a mesma coluna que
+            `/epi/acoes` escreve. Não é "plano de ação com prazo" (isso não
+            existe, ver cabeçalho): é quantos eventos ninguém abriu ainda. */}
+        {perfil.isSuccess && (
+          <section
+            className={`${s.cartaoKpi} ${
+              (situacao?.nao_reconhecidos ?? 0) > 0 ? s.acento.atencao : s.acento.ok
+            }`}
+            aria-label="Aguardando tratativa"
+          >
+            <span className={s.overline}>Aguardando tratativa</span>
+            <Link
+              to={linkParaEventos({ start_date: janelaPerfil.de, end_date: janelaPerfil.ate })}
+              className={`${s.kpiValor} ${s.linkLimpo}`}
+              aria-label={`Aguardando tratativa: ${numero(situacao?.nao_reconhecidos ?? 0)} · ver eventos`}
+            >
+              {numero(situacao?.nao_reconhecidos ?? 0)}
+            </Link>
+            <Estado
+              nivel={(situacao?.nao_reconhecidos ?? 0) > 0 ? 'atencao' : 'ok'}
+              palavra={
+                (situacao?.nao_reconhecidos ?? 0) > 0 ? 'Sem reconhecimento' : 'Tudo reconhecido'
+              }
+            />
+            <span className={s.legenda}>
+              de {numero(situacao?.total ?? 0)} evento(s) no período
+            </span>
+            {can('alerts:read') && (
+              <Link to={rotaNova('/epi/acoes')} className={s.atalho}>
+                tratar eventos →
+              </Link>
+            )}
+          </section>
+        )}
 
         {/* Câmeras ativas — não existe telemetria de conectividade por câmera
             (ver cabeçalho, item 4): "online" prometeria um dado que o

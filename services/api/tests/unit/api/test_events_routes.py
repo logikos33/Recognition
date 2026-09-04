@@ -87,7 +87,12 @@ class FakeAlertRepo:
         class_names=None,
         module_code=None,
         include_demo=True,
+        time_column="created_at",
     ) -> list:
+        # A rota só pede o eixo de CAPTURA quando `time_field=captured` vem na
+        # query. O default tem de seguir sendo a ingestão — senão a troca deixa
+        # de ser opt-in e muda a timeline de quem não pediu nada.
+        self.ultimo_time_column = time_column
         rows = [
             e for e in EVENTS
             if e["tenant_id"] == tenant_id
@@ -101,6 +106,30 @@ class FakeAlertRepo:
             ts = r["created_at"].replace(minute=0, second=0, microsecond=0)
             counts[ts] += 1
         return [{"bucket": k, "count": v} for k, v in sorted(counts.items())]
+
+    def capture_profile(self, tenant_id, from_ts, to_ts, module_code=None) -> list:
+        rows = [e for e in EVENTS if e["tenant_id"] == tenant_id]
+        from collections import defaultdict
+        counts: dict = defaultdict(int)
+        for r in rows:
+            ts = r["created_at"].replace(minute=0, second=0, microsecond=0)
+            counts[(ts, "violacao")] += 1
+        return [
+            {"bucket": k[0], "kind": k[1], "count": v} for k, v in sorted(counts.items())
+        ]
+
+    def review_situation(self, tenant_id, from_ts, to_ts, module_code=None) -> dict:
+        rows = [e for e in EVENTS if e["tenant_id"] == tenant_id]
+        return {
+            "total": len(rows),
+            "nao_reconhecidos": len(rows),
+            "procedentes": 0,
+            "improcedentes": 0,
+            "cameras": 1,
+            "primeira_captura": rows[0]["created_at"] if rows else None,
+            "ultima_captura": rows[-1]["created_at"] if rows else None,
+            "confianca_media": 0.5,
+        }
 
 
 @pytest.fixture
@@ -231,8 +260,95 @@ class TestEventsTimeline:
             assert "count" in b
             assert isinstance(b["count"], int)
 
+    def test_eixo_de_tempo_default_e_ingestao(self, app, client, fake_repo):
+        """Sem `time_field`, nada muda para quem já chamava a timeline."""
+        client.get(
+            "/api/v1/events/timeline"
+            "?from=2026-06-30T13:00:00Z&to=2026-06-30T17:00:00Z",
+            headers={"Authorization": _auth(app, TENANT_A)},
+        )
+        assert fake_repo.ultimo_time_column == "created_at"
+
+    def test_time_field_captured_troca_o_eixo_para_a_captura(self, app, client, fake_repo):
+        """`captured` agrega por `alerts.timestamp` — a hora da fábrica.
+
+        Numa carga em lote `created_at` é o instante em que o processo de
+        ingestão rodou; um gráfico "eventos por hora" montado sobre ele
+        responde a que horas o servidor gravou, não quando houve violação.
+        """
+        client.get(
+            "/api/v1/events/timeline"
+            "?from=2026-06-30T13:00:00Z&to=2026-06-30T17:00:00Z&time_field=captured",
+            headers={"Authorization": _auth(app, TENANT_A)},
+        )
+        assert fake_repo.ultimo_time_column == "timestamp"
+
+    def test_time_field_desconhecido_cai_no_default(self, app, client, fake_repo):
+        """Valor fora da whitelist nunca vira nome de coluna."""
+        client.get(
+            "/api/v1/events/timeline"
+            "?from=2026-06-30T13:00:00Z&to=2026-06-30T17:00:00Z"
+            "&time_field=created_at; DROP TABLE alerts--",
+            headers={"Authorization": _auth(app, TENANT_A)},
+        )
+        assert fake_repo.ultimo_time_column == "created_at"
+
     def test_requires_auth(self, client):
         res = client.get(
             "/api/v1/events/timeline?from=2026-06-30T13:00:00Z&to=2026-06-30T17:00:00Z"
         )
         assert res.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# /api/v1/events/profile
+# ---------------------------------------------------------------------------
+
+class TestEventsProfile:
+    def test_requires_auth(self, client):
+        res = client.get(
+            "/api/v1/events/profile?from=2026-06-30T13:00:00Z&to=2026-06-30T17:00:00Z"
+        )
+        assert res.status_code == 401
+
+    def test_requires_from_and_to(self, app, client, fake_repo):
+        res = client.get(
+            "/api/v1/events/profile?from=2026-06-30T13:00:00",
+            headers={"Authorization": _auth(app, TENANT_A)},
+        )
+        assert res.status_code == 400
+
+    def test_tenant_isolation(self, app, client, fake_repo):
+        """O perfil de TENANT_A não conta evento de TENANT_B (C-01)."""
+        res = client.get(
+            "/api/v1/events/profile"
+            "?from=2026-06-30T00:00:00Z&to=2026-06-30T23:00:00Z&module_code=epi",
+            headers={"Authorization": _auth(app, TENANT_A)},
+        )
+        assert res.status_code == 200
+        data = res.get_json()["data"]
+        assert sum(r["count"] for r in data["rows"]) == 3
+        assert data["situacao"]["total"] == 3
+
+    def test_serializa_bucket_e_situacao(self, app, client, fake_repo):
+        res = client.get(
+            "/api/v1/events/profile"
+            "?from=2026-06-30T00:00:00Z&to=2026-06-30T23:00:00Z",
+            headers={"Authorization": _auth(app, TENANT_A)},
+        )
+        data = res.get_json()["data"]
+        for row in data["rows"]:
+            assert isinstance(row["bucket"], str)
+            assert row["kind"] in {"violacao", "conformidade", "indefinido"}
+        situacao = data["situacao"]
+        for chave in ("nao_reconhecidos", "procedentes", "improcedentes", "cameras"):
+            assert isinstance(situacao[chave], int)
+        assert isinstance(situacao["primeira_captura"], str)
+
+    def test_janela_gigante_recusada(self, app, client, fake_repo):
+        """Mesmo teto do summary — janela sem limite castiga o banco."""
+        res = client.get(
+            "/api/v1/events/profile?from=2020-01-01T00:00:00Z&to=2026-06-30T00:00:00Z",
+            headers={"Authorization": _auth(app, TENANT_A)},
+        )
+        assert res.status_code == 400

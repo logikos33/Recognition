@@ -605,12 +605,19 @@ class AlertRepository(BaseRepository):
         min_confidence: float | None = None,
         camera_ids: list[str] | None = None,
         class_names: list[str] | None = None,
+        time_column: str = "created_at",
     ) -> tuple[str, list[Any]]:
         """Gera WHERE + params para um branch de eventos (alerts ou demo_events).
 
         `alias` é literal interno ('a'/'d'), nunca input do usuário.
         Todos os VALORES são parametrizados via %s — zero f-string de input.
+
+        `time_column` também é literal interno, validado contra whitelist:
+        'created_at' (ingestão) ou 'timestamp' (captura). Só `alerts` tem
+        `timestamp` — `demo_events` não, e quem chama passa 'created_at' para
+        aquele ramo.
         """
+        col = time_column if time_column in AlertRepository._TIME_COLUMNS else "created_at"
         conditions: list[str] = [f"{alias}.tenant_id = %s"]
         params: list[Any] = [tenant_id]
 
@@ -634,10 +641,10 @@ class AlertRepository(BaseRepository):
                 conditions.append(escopo_sql(f"{alias}.camera_id"))
                 params.extend(escopo_params(tenant_id, module_code))
         if from_ts:
-            conditions.append(f"{alias}.created_at >= %s")
+            conditions.append(f"{alias}.{col} >= %s")
             params.append(from_ts)
         if to_ts:
-            conditions.append(f"{alias}.created_at <= %s")
+            conditions.append(f"{alias}.{col} <= %s")
             params.append(to_ts)
         if min_confidence is not None:
             conditions.append(f"{alias}.confidence >= %s")
@@ -762,20 +769,28 @@ class AlertRepository(BaseRepository):
         class_names: list[str] | None = None,
         module_code: str | None = None,
         include_demo: bool = True,
+        time_column: str = "created_at",
     ) -> list[dict[str, Any]]:
         """Agrega contagem de eventos por bucket de tempo (sem N+1).
 
         bucket: 'hour' | 'day' | 'week' — passado como literal validado, não f-string de input.
         include_demo=True (default) agrega alerts + demo_events via UNION ALL explícita,
         cada branch com o MESMO where tenant-scoped.
+
+        `time_column`: 'created_at' (default, comportamento histórico) ou
+        'timestamp' — o instante da CAPTURA do frame. Ver `capture_profile`
+        para por que a diferença importa. `demo_events` não tem `timestamp`
+        e continua sempre em `created_at`; o alias da UNION uniformiza as duas
+        colunas em `ts`, então os dois ramos continuam somando no mesmo eixo.
         """
         # Validate bucket to prevent SQL injection (only accepted literals)
         valid_buckets = {"hour", "day", "week", "minute"}
         safe_bucket = bucket if bucket in valid_buckets else "hour"
+        col_a = time_column if time_column in self._TIME_COLUMNS else "created_at"
 
         where_a, params_a = self._event_filters(
             "a", tenant_id, module_code, from_ts, to_ts,
-            None, camera_ids, class_names,
+            None, camera_ids, class_names, time_column=col_a,
         )
 
         if include_demo:
@@ -785,28 +800,34 @@ class AlertRepository(BaseRepository):
             )
             return self._execute(
                 f"""SELECT
-                    date_trunc('{safe_bucket}', ev.created_at) AS bucket,
+                    date_trunc('{safe_bucket}', ev.ts) AS bucket,
                     COUNT(*) AS count
                 FROM (
-                    SELECT a.created_at FROM alerts a WHERE {where_a}
+                    SELECT a.{col_a} AS ts FROM alerts a WHERE {where_a}
                     UNION ALL
-                    SELECT d.created_at FROM demo_events d WHERE {where_d}
+                    SELECT d.created_at AS ts FROM demo_events d WHERE {where_d}
                 ) ev
-                GROUP BY date_trunc('{safe_bucket}', ev.created_at)
+                GROUP BY date_trunc('{safe_bucket}', ev.ts)
                 ORDER BY bucket""",
                 tuple(params_a + params_d),
             )
 
         return self._execute(
             f"""SELECT
-                date_trunc('{safe_bucket}', a.created_at) AS bucket,
+                date_trunc('{safe_bucket}', a.{col_a}) AS bucket,
                 COUNT(*) AS count
             FROM alerts a
             WHERE {where_a}
-            GROUP BY date_trunc('{safe_bucket}', a.created_at)
+            GROUP BY date_trunc('{safe_bucket}', a.{col_a})
             ORDER BY bucket""",
             tuple(params_a),
         )
+
+    #: Colunas de tempo aceitas numa janela. `created_at` é quando a LINHA
+    #: entrou no banco; `timestamp` é quando o FRAME foi capturado. Numa carga
+    #: em lote os dois divergem por dias — ver `capture_profile`. Whitelist,
+    #: não input: nome de coluna nunca vem do usuário.
+    _TIME_COLUMNS = frozenset({"created_at", "timestamp"})
 
     def _window_conditions(
         self,
@@ -815,12 +836,14 @@ class AlertRepository(BaseRepository):
         to_ts: datetime,
         module_code: str | None = None,
         camera_ids: list[str] | None = None,
+        time_column: str = "created_at",
     ) -> tuple[list[str], list[Any]]:
         """Condições comuns de janela temporal — só literais fixos no SQL, valores via %s."""
+        col = time_column if time_column in self._TIME_COLUMNS else "created_at"
         conditions: list[str] = [
             "a.tenant_id = %s",
-            "a.created_at >= %s",
-            "a.created_at <= %s",
+            f"a.{col} >= %s",
+            f"a.{col} <= %s",
         ]
         params: list[Any] = [str(tenant_id), from_ts, to_ts]
         if module_code:
@@ -958,6 +981,104 @@ class AlertRepository(BaseRepository):
             LIMIT %s""",
             tuple(params),
         )
+
+    def capture_profile(
+        self,
+        tenant_id: str,
+        from_ts: datetime,
+        to_ts: datetime,
+        module_code: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Volume por HORA DE CAPTURA × polaridade, no período.
+
+        ⚠️ Janela e agrupamento em `alerts.timestamp` (quando o frame foi
+        capturado), NÃO em `created_at` (quando a linha entrou no banco). Os
+        dois só coincidem quando a ingestão é ao vivo; em qualquer carga em
+        lote divergem por dias. Medido no DEV com 423 alertas do RVB: a
+        captura se espalha das 10h às 19h — o dia da fábrica — enquanto o
+        `created_at` empilha tudo em 3 horários, que são os momentos em que o
+        processo de ingestão rodou. Um gráfico de "em que horário a fábrica
+        gera violação" montado sobre `created_at` responde "a que horas o
+        servidor gravou", que não é pergunta de segurança nenhuma.
+
+        A polaridade sai dos MESMOS predicados de `list_with_filters` (ADR-0065
+        + contrato A1), e por isso são TRÊS baldes e não dois:
+          conformidade — toda classe do alerta é de PRESENÇA (EPI em uso);
+          violacao     — ≥1 classe de violação de verdade, ou entrada sem
+                         `class` (o `camera_gap` do liveness);
+          indefinido   — ninguém decidiu a polaridade da classe
+                         (`is_violation IS NULL` ou fora do catálogo).
+        Somar os três num "total de alertas" sem dizer o que ele soma é o
+        número sem significado: no acervo do RVB a maioria das linhas é
+        'Protetor auditivo', que é CONFORMIDADE, não violação.
+
+        Ordem dos %s segue o texto: presença (CASE), violação (CASE), janela.
+        """
+        conditions, params = self._window_conditions(
+            tenant_id, from_ts, to_ts, module_code, time_column="timestamp"
+        )
+        where = " AND ".join(conditions)
+        # Conformidade primeiro: exige que TODA classe seja de presença, então
+        # não disputa linha com o predicado de violação (que é ANY).
+        case_params: list[Any] = [
+            self.presence_class_names(tenant_id, module_code),
+            self.violation_class_names(tenant_id, module_code),
+        ]
+        return self._execute(
+            f"""SELECT
+                date_trunc('hour', a.timestamp) AS bucket,
+                CASE
+                    WHEN {self._IS_COMPLIANCE_SQL} THEN 'conformidade'
+                    WHEN {self._IS_VIOLATION_SQL} THEN 'violacao'
+                    ELSE 'indefinido'
+                END AS kind,
+                COUNT(*) AS count
+            FROM alerts a
+            WHERE {where}
+            GROUP BY 1, 2
+            ORDER BY 1""",  # noqa: S608 — só literais internos; valores via %s
+            tuple(case_params + params),
+        )
+
+    def review_situation(
+        self,
+        tenant_id: str,
+        from_ts: datetime,
+        to_ts: datetime,
+        module_code: str | None = None,
+    ) -> dict[str, Any]:
+        """Situação de tratamento dos eventos capturados no período.
+
+        Mesma janela de captura do `capture_profile` — os dois cartões falam do
+        MESMO conjunto de eventos, e ler um em horário de captura e o outro em
+        horário de ingestão faria dois números que não fecham na mesma tela.
+
+        `verification_status` é a coluna que a fila de verificação escreve
+        (`human_approved` / `human_rejected` / `pending`); `acknowledged` é o
+        outro eixo, independente ("alguém viu"), e é o que sustenta a contagem
+        de eventos ainda sem tratativa.
+        """
+        conditions, params = self._window_conditions(
+            tenant_id, from_ts, to_ts, module_code, time_column="timestamp"
+        )
+        where = " AND ".join(conditions)
+        row = self._execute_one(
+            f"""SELECT
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE NOT a.acknowledged) AS nao_reconhecidos,
+                COUNT(*) FILTER (WHERE a.verification_status = 'human_approved')
+                    AS procedentes,
+                COUNT(*) FILTER (WHERE a.verification_status = 'human_rejected')
+                    AS improcedentes,
+                COUNT(DISTINCT a.camera_id) AS cameras,
+                MIN(a.timestamp) AS primeira_captura,
+                MAX(a.timestamp) AS ultima_captura,
+                AVG(a.confidence) AS confianca_media
+            FROM alerts a
+            WHERE {where}""",  # noqa: S608 — só literais internos; valores via %s
+            tuple(params),
+        )
+        return dict(row) if row else {}
 
     def camera_hours_with_violation(
         self, tenant_id: str, module_code: str, since: datetime
