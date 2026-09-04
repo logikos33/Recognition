@@ -30,7 +30,8 @@ caixas) — `montar_dataset_v2.py` documenta a medição. Termina nos 3 modelos.
 
 AS GUARDAS, E ONDE ELAS VIVEM
 ────────────────────────────────────────────────────────────────────────────────
-épocas/early-stop   `remote_train.py` (EPOCHS=100, EARLY_STOPPING_PATIENCE=15,
+épocas/early-stop   `remote_train.py` (EPOCHS=`EPOCAS_TETO`, hoje 60;
+                    EARLY_STOPPING_PATIENCE=15,
                     artefato = `_checkpoint_best`)  — nada a fazer aqui.
 timeout/teto        env `RUNPOD_TIMEOUT_SECONDS_TRAIN` / `RUNPOD_MAX_USD_TRAIN`,
                     lidas por `runpod_runner`. A conta que os justifica está em
@@ -113,7 +114,14 @@ IMGSZ = 560
 # comportar, em vez de escolher outro valor calado. Batch efetivo segue 16
 # (4 × grad_accum 4) em qualquer placa que venha.
 BATCH = int(os.environ.get("BATCH", "16"))
-EPOCAS_TETO = 100   # TETO, não alvo — quem encerra é o early-stop (paciência 15)
+# TETO, não alvo — quem encerra é o early-stop (paciência 15). Era 100; caiu para
+# 60 porque as TRÊS corridas que chegaram ao fim pararam em 23, 23 e 20 épocas
+# (`training_jobs`, experimento `v2-tres-variantes`) — o pico da validação ficou
+# entre a 5ª e a 8ª e a paciência 15 fechou logo depois. 100 nunca foi alcançado;
+# o que ele fazia era inflar o timeout, e com ele o custo ESTIMADO que a guarda de
+# saldo checa. 60 é ~2,6× a corrida mais longa já observada: folga real sem
+# comprar relógio que ninguém usa.
+EPOCAS_TETO = 60
 
 
 # ══════════════════════════════════════════════════════════════════ a conta ══
@@ -152,36 +160,54 @@ N_TREINOS = 3
 
 
 # ── A MEDIÇÃO QUE SUBSTITUI A EXTRAPOLAÇÃO ────────────────────────────────────
-# Medido NO POD REAL do treino A (job 04508616, pod tep7xhdt469zoy, RTX 4090
-# SECURE, batch 4 × grad_accum 4, imgsz 560, 3.560 train + 1.175 val):
-#     ép.3→4 = 274 s   ·   ép.4→5 = 288 s   →   281 s/época
-#     setup (pod criado → época 1) = 444 s
-# A extrapolação dizia 171 s/época — errou 1,64× para baixo, porque o nosso val
-# é 1,8× o da referência e o RF-DETR valida a CADA época. Com medida na mão, o
-# fator de loteria da COMMUNITY sai da conta: ele existia para cobrir a máquina
-# sorteada, e esta máquina não é mais hipótese — está rodando. A margem de 1,5×
-# FICA (cobre a variação entre épocas e o export final).
-S_POR_EPOCA_MEDIDO = 281.0
+# A primeira versão desta conta usou 281 s/época, medido ENTRE AS ÉPOCAS 3 e 5 do
+# pod do treino A. Era o que havia na hora; hoje há coisa melhor. As TRÊS corridas
+# terminaram, e o relógio delas é fim-a-fim — não uma janela no meio:
+#
+#   job       variante        imgs   ép.  wall_s   s/época líquido   s/ép por 1000 img
+#   11f1303c  v17c-partes     4735   20    6900         302,8              63,95
+#   04508616  v17a-presenca   4735   23    8303         324,3              68,49
+#   9cc62fd6  v17b-ausencia   4735   23    8625         338,3              71,45  ← pior
+#
+# (líquido = (wall − setup 444 − export 400) ÷ épocas; query em
+#  `training_jobs ⋈ dataset_versions`, status='completed'.)
+#
+# O 281 subestimava em 1,20× o pior caso real. Normalizar por 1000 imagens é o que
+# permite projetar para um dataset de OUTRO tamanho — o v18 tem 5.751 (train+val)
+# contra 4.735, e o RF-DETR valida a cada época, então o custo escala com os dois
+# splits juntos. Usa-se o PIOR dos três, nunca a média.
+#
+# O fator de loteria da COMMUNITY sai da conta: ele cobria a máquina sorteada, e
+# estas três já rodaram. A margem de 1,5× FICA (variação entre épocas + export).
+S_POR_EPOCA_POR_1000_IMG = 71.45   # job 9cc62fd6, o pior dos três
 SETUP_MEDIDO_S = 444
+EXPORT_MEDIDO_S = 400
 
 
 def projetar_timeout_medido(
-    preco_usd_h: float = 0.74, teto_rodada: float = TETO_RODADA_USD,
+    imagens: int, preco_usd_h: float = 0.74, teto_rodada: float = TETO_RODADA_USD,
 ) -> dict[str, Any]:
-    """Timeout a partir do s/época MEDIDO no pod, não de extrapolação."""
-    bruto = S_POR_EPOCA_MEDIDO * EPOCAS_TETO + SETUP_MEDIDO_S + 400  # +export/upload
+    """Timeout a partir do s/época MEDIDO nas corridas que terminaram.
+
+    `imagens` = train + val da versão que vai rodar (o RF-DETR valida a cada
+    época, então o val entra no relógio igual ao train).
+    """
+    s_por_epoca = S_POR_EPOCA_POR_1000_IMG * imagens / 1000.0
+    bruto = s_por_epoca * EPOCAS_TETO + SETUP_MEDIDO_S + EXPORT_MEDIDO_S
     por_cobertura = int(bruto * MARGEM)
     por_orcamento = int(teto_rodada / N_TREINOS / preco_usd_h * 3600)
     timeout = min(por_cobertura, por_orcamento)
     return {
-        "fonte": "medido no pod tep7xhdt469zoy",
-        "s_por_epoca": S_POR_EPOCA_MEDIDO,
-        "cem_epocas_s": int(bruto),
+        "fonte": "3 corridas completas (11f1303c/04508616/9cc62fd6), pior caso",
+        "imagens": imagens,
+        "s_por_epoca": round(s_por_epoca, 1),
+        "epocas_teto": EPOCAS_TETO,
+        "teto_epocas_s": int(bruto),
         "timeout_s": timeout,
         "horas": round(timeout / 3600, 2),
         "restricao": "orcamento" if por_orcamento < por_cobertura else "cobertura",
         "custo_estimado_usd": round(preco_usd_h * timeout / 3600, 2),
-        "folga_sobre_cem_epocas": round(timeout / bruto, 2),
+        "folga_sobre_teto_epocas": round(timeout / bruto, 2),
     }
 
 
@@ -215,9 +241,10 @@ def projetar_timeout(
     timeout = min(por_cobertura, por_orcamento)
     return {
         "imagens": imagens,
+        "epocas_teto": EPOCAS_TETO,
         "s_por_epoca_bom": round(s_bom, 1),
         "s_por_epoca_pior": round(s_pior, 1),
-        "pior_caso_100_epocas_s": int(pior_caso_s),
+        "pior_caso_teto_s": int(pior_caso_s),
         "timeout_por_cobertura_s": por_cobertura,
         "timeout_por_orcamento_s": por_orcamento,
         "restricao": "orcamento" if por_orcamento < por_cobertura else "cobertura",
@@ -535,12 +562,15 @@ def disparar(variante: str) -> dict[str, Any]:
         raise SystemExit(f"variante {variante}: exporte antes (`exportar`).")
 
     nuvem = os.environ.get("RUNPOD_CLOUD_TYPE", "COMMUNITY").upper()
-    proj = projetar_timeout_medido(preco_usd_h=PRECO_REAL_USD_H.get(nuvem, 0.74))
+    proj = projetar_timeout_medido(
+        int(dsv["train_count"] or 0) + int(dsv["val_count"] or 0),
+        preco_usd_h=PRECO_REAL_USD_H.get(nuvem, 0.74),
+    )
     proj["nuvem"] = nuvem
     if str(os.environ.get("RUNPOD_TIMEOUT_SECONDS_TRAIN", "")) == "":
         raise SystemExit(
             "RUNPOD_TIMEOUT_SECONDS_TRAIN não setado — o default 3600 MATA um "
-            f"treino de 100 épocas. Projeção desta variante: {proj}"
+            f"treino de {EPOCAS_TETO} épocas. Projeção desta variante: {proj}"
         )
 
     # ⚠️ SEM `name`: `public.training_jobs` (onde os 40 jobs reais vivem, e
@@ -631,25 +661,33 @@ def autoteste() -> None:
         # Pior caso = bom × fator de loteria medido (3,31×), NUNCA a mediana.
         assert abs(p["s_por_epoca_pior"] / p["s_por_epoca_bom"] - FATOR_LOTERIA) < 0.01
         # A REGRA QUE NÃO PODE CEDER: mesmo depois de cortado pelo orçamento, o
-        # timeout ainda cobre 100 épocas no PIOR s/época já medido. Foi o
+        # timeout ainda cobre o TETO DE ÉPOCAS no pior s/época já medido. Foi o
         # contrário disso que matou o job 5894a860 na época 16 de 50.
-        assert p["timeout_s"] > p["pior_caso_100_epocas_s"], p
+        assert p["timeout_s"] > p["pior_caso_teto_s"], p
         # E os 3 treinos têm de caber nos US$ 40 da rodada, ao preço REAL.
         assert teto_custo(p["timeout_s"], preco) * N_TREINOS <= TETO_RODADA_USD, p
+        # `restricao` tem de dizer QUAL das duas de fato mordeu — rótulo que não
+        # bate com o número é pior que rótulo nenhum.
+        assert p["restricao"] == (
+            "orcamento" if p["timeout_por_orcamento_s"] < p["timeout_por_cobertura_s"]
+            else "cobertura"
+        ), p
         print(json.dumps({"preco": preco, "projecao": p,
                           "teto_usd_por_treino": teto_custo(p["timeout_s"], preco)}))
-    # A projeção MEDIDA (a que B e C usam) tem de cobrir 100 épocas do ritmo real
-    # e caber no orçamento aos 3 treinos, ao preço REAL do tier em uso.
-    m = projetar_timeout_medido(preco_usd_h=PRECO_REAL_USD_H["SECURE"])
-    assert m["timeout_s"] > m["cem_epocas_s"], m
+    # A projeção MEDIDA (a que o v18 usa) tem de cobrir o teto de épocas no ritmo
+    # real e caber no orçamento aos 3 treinos, ao preço REAL do tier em uso.
+    m = projetar_timeout_medido(5751, preco_usd_h=PRECO_REAL_USD_H["SECURE"])
+    assert m["timeout_s"] > m["teto_epocas_s"], m
     assert m["custo_estimado_usd"] * N_TREINOS <= TETO_RODADA_USD, m
     # E tem de ser MAIOR que a extrapolação achava necessário por época: medir
-    # revelou 281 s/época contra os 171 projetados — 1,64× de erro para baixo.
-    assert S_POR_EPOCA_MEDIDO > projetar_timeout(3560, 1175)["s_por_epoca_bom"]
+    # revelou o pior caso em ~411 s/época no volume do v18 contra os ~208 que a
+    # extrapolação projeta para o mesmo volume — quase 2× de erro para baixo.
+    assert m["s_por_epoca"] > projetar_timeout(4594, 1157)["s_por_epoca_bom"]
+    # Volume MAIOR tem de dar timeout MAIOR — a projeção escala com o dataset,
+    # não é constante disfarçada de medida.
+    assert (projetar_timeout_medido(5751)["timeout_s"]
+            > projetar_timeout_medido(4735)["timeout_s"])
     print(json.dumps({"medido": m}))
-    # Em SECURE quem manda é o orçamento; em COMMUNITY, a cobertura.
-    assert projetar_timeout(3560, 1175, 0.74)["restricao"] == "orcamento"
-    assert projetar_timeout(3560, 1175, 0.34)["restricao"] == "cobertura"
     print("autoteste OK")
 
 
@@ -668,13 +706,26 @@ def main() -> int:
     if args.comando == "autoteste":
         autoteste()
     elif args.comando == "plano":
-        saida = {"referencia": {"job": REF_JOB, "imagens": REF_IMAGENS,
+        # Volume REAL da versão que vai rodar, lido do banco — projetar sobre um
+        # número digitado à mão é como o timeout de 100 épocas nasceu errado.
+        _bootstrap()
+        alvo = args.variante or "m"
+        dsv = _repo()._execute_one(
+            "SELECT train_count, val_count FROM dataset_versions WHERE tenant_id = %s "
+            "AND dataset_id = %s AND version = %s",
+            (TENANT_RVB, DATASET_RVB, VARIANTES[alvo]["versao"]),
+        )
+        imgs = (int(dsv["train_count"]) + int(dsv["val_count"])) if dsv else 0
+        saida = {"variante": alvo, "versao": VARIANTES[alvo]["versao"],
+                 "imagens_train_mais_val": imgs, "epocas_teto": EPOCAS_TETO,
+                 "referencia": {"job": REF_JOB, "imagens": REF_IMAGENS,
                                 "s_por_epoca": REF_S_POR_EPOCA},
                  "fator_loteria_medido": round(FATOR_LOTERIA, 2), "nuvens": {}}
         for nuvem, preco in PRECO_REAL_USD_H.items():
             p = projetar_timeout(3560, 1175, preco_usd_h=preco)
             saida["nuvens"][nuvem] = {
-                "projecao": p,
+                "extrapolada": p,
+                "MEDIDA": projetar_timeout_medido(imgs, preco_usd_h=preco) if imgs else None,
                 "teto_usd_por_treino": teto_custo(p["timeout_s"], preco),
                 "teto_usd_3_treinos": round(teto_custo(p["timeout_s"], preco) * N_TREINOS, 2),
             }
