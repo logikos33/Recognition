@@ -84,12 +84,16 @@ class TestFilaGabarito:
         dados = resp.get_json()["data"]
         assert dados["total"] == 1
         assert dados["frames"][0]["verdicts"] == {"5": "sim"}
-        # As duas primeiras são o FOCO — é o que trava o A/B, e a tela precisa
-        # dessa hierarquia para não apresentar cinco perguntas de peso igual.
+        # As primeiras são o FOCO — é o que trava o A/B, e a tela precisa dessa
+        # hierarquia para não apresentar cinco perguntas de peso igual. Desde
+        # 2026-09-04 o foco são as três classes de CABEÇA: `Sem Luvas` e
+        # `Sem mascara` já saíram do zero (69 e 47 `sim` em 246 quadros), as
+        # três não — porque ficaram atrás do acordeão em 195 desses 246.
+        # Ver GABARITO_CLASSES em app/constants.py.
         assert [(c["nome"], c["foco"]) for c in dados["classes"]] == [
-            ("Sem Luvas", True),
-            ("Sem mascara", True),
-            ("Sem Óculos", False),
+            ("Sem Óculos", True),
+            ("Sem Luvas", False),
+            ("Sem mascara", False),
         ]
 
     def test_classe_ausente_no_ambiente_nao_vira_botao(self, app, client):

@@ -169,27 +169,39 @@ class HoldoutVerdictReason(StrEnum):
 
 # Classes de ausência que o gabarito do A/B julga, por NOME.
 #
-# Por nome e não por id: as duas primeiras vêm do catálogo global
-# (`module_classes`, class_id pequeno 0-based) e as três últimas são classes
+# Por nome e não por id: `Sem Luvas`/`Sem mascara` vêm do catálogo global
+# (`module_classes`, class_id pequeno 0-based) e as outras três são classes
 # do tenant (`yolo_classes`, class_id namespaced +100000 — ver
 # domain/services/class_namespace.py). Fixar o inteiro aqui prenderia a régua
 # aos ids que o DEV tem hoje; o nome é o que o dono do produto reconhece e o
 # que sobrevive a outro ambiente. `ModuleService.get_classes` já devolve as
 # duas origens na MESMA lista — a resolução acontece lá, não aqui.
 #
-# ⚠️ ORDEM É CONTEÚDO. As duas primeiras são o FOCO: são as que têm gabarito
-# ZERO no holdout do RVB e por isso deixaram o A/B das três variantes NÃO
-# CONCLUSIVO. As outras três valem se sobrar atenção — e a tela diz isso na
-# cara, em vez de apresentar cinco perguntas de peso igual.
+# ⚠️ ORDEM É CONTEÚDO. As primeiras são o FOCO — as que têm gabarito ZERO e
+# por isso travam o A/B. As demais valem se sobrar atenção, e a tela diz isso
+# na cara (acordeão "Mais N classes") em vez de apresentar cinco perguntas de
+# peso igual.
+#
+# ⚠️ A ORDEM VIROU EM 2026-09-04, e o motivo está medido. Na primeira sentada
+# `Sem Luvas` e `Sem mascara` eram o foco e saíram do zero (69 e 47 `sim` em
+# 246 quadros). As outras TRÊS não saíram — e não por serem raras, mas porque
+# ficaram atrás do acordeão: foram perguntadas em 51 dos 246 quadros (20,7%),
+# e justamente nos de pessoa MENOR (mediana 322 px, contra 536 px nos quadros
+# que renderam `sim`). Na faixa < 350 px NENHUMA classe rendeu `sim`, nem as
+# de foco (0 em 53). O zero mediu a amostra, não a fábrica: entre os 2.705
+# recortes de pessoa já anotados à mão, 33,3% têm pelo menos uma destas três
+# — contra 18,7% para as duas de cima. `Sem protetor de ouvido` sozinha é a
+# ausência MAIS comum do acervo (18,7% dos recortes, contra 11,3% de
+# `Sem Luvas`). Ver docs/quality/evidence/gabarito-v3/ROTEIRO-DA-SENTADA.md.
 GABARITO_CLASSES = (
-    "Sem Luvas",
-    "Sem mascara",
-    "Sem Óculos",
     "Sem protetor de ouvido",
     "Uso incorreto de mascara",
+    "Sem Óculos",
+    "Sem Luvas",
+    "Sem mascara",
 )
 
-GABARITO_CLASSES_FOCO = GABARITO_CLASSES[:2]
+GABARITO_CLASSES_FOCO = GABARITO_CLASSES[:3]
 
 
 class DatasetVersionStatus(StrEnum):
