@@ -70,6 +70,12 @@ USER_RVB = "11111111-0000-0000-0000-000000000002"      # vitor@logikosvision.com
 RAIZ_DATASET = Path(
     os.environ.get("DATASET_V2_DIR", "/Users/vitoremanuel/Logikos-mutirao/dataset-v2")
 )
+# Onde `montar_dataset_multiescala.py` deixou as imagens PÚBLICAS. Elas nunca
+# passaram por `training_frames` — não têm `r2_key` para copiar, então sobem de
+# disco. Mesma raiz que o `--publico` do montador.
+RAIZ_PUBLICO = Path(os.environ.get(
+    "DATASETS_PUBLICOS_DIR", "/Users/vitoremanuel/Logikos-mutirao/datasets-publicos"
+))
 SPLITS = ("train", "val", "test")
 COCO_JSON = "_annotations.coco.json"
 
@@ -79,7 +85,20 @@ VARIANTES: dict[str, dict[str, str]] = {
     "a": {"versao": "v17a-presenca", "resumo": "presença (5 classes)"},
     "b": {"versao": "v17b-ausencia", "resumo": "presença + ausência como classe"},
     "c": {"versao": "v17c-partes", "resumo": "parte do corpo + EPI"},
+    # v2.1 — o dataset unificado de `montar_dataset_multiescala.py`. A taxonomia
+    # é a MESMA da variante B (12 categorias); o que muda é a ESCALA. Por isso o
+    # rótulo não é "v17d": não é uma quarta taxonomia, é o conserto do que o A/B
+    # reprovou nas três (`docs/quality/AB-HOLDOUT-V2-VEREDITO.md`).
+    "m": {"versao": "v18-multiescala", "resumo": "multi-escala unificado (taxonomia B)",
+          "dir": os.environ.get(
+              "DATASET_MULTIESCALA_DIR",
+              "/Users/vitoremanuel/Logikos-mutirao/dataset-v2-multiescala")},
 }
+
+# Etiqueta do experimento em `hyperparams` — é por ela que `status` acha os jobs.
+# A rodada multi-escala é outra pergunta, então ganha etiqueta própria em vez de
+# se esconder entre as três variantes que já foram reprovadas.
+EXPERIMENTO = {"m": "v2-multiescala"}
 
 # ── Hiperparâmetros do treino ──────────────────────────────────────────────────
 # imgsz 560: RF-DETR exige múltiplo de 56 (`train_rfdetr` reajusta) e 560 é o
@@ -240,10 +259,29 @@ def _storage():
     return get_storage(TENANT_RVB)
 
 
+def _raiz(variante: str) -> Path:
+    """Raiz em disco do dataset da variante (o montador multi-escala escreve
+    numa pasta própria, não em `variante-<letra>/`)."""
+    return Path(VARIANTES[variante].get("dir") or (RAIZ_DATASET / f"variante-{variante}"))
+
+
 def _coco(variante: str, split: str) -> dict[str, Any]:
-    return json.loads(
-        (RAIZ_DATASET / f"variante-{variante}" / split / COCO_JSON).read_text()
-    )
+    return json.loads((_raiz(variante) / split / COCO_JSON).read_text())
+
+
+def _fonte_local(variante: str, file_name: str) -> Path | None:
+    """Caminho em DISCO da imagem, ou None quando ela vem do R2.
+
+    O COCO do multi-escala mistura três procedências e o `file_name` já as
+    distingue — `<uuid>.jpg` é frame do RVB (está no R2, cópia server-side),
+    `sinteticos/<id>.jpg` é recorte cortado localmente e `<dataset>/…` é imagem
+    pública. Sem esta distinção o export cobraria `r2_key` de quem nunca passou
+    por `training_frames` e abortaria a rodada inteira.
+    """
+    if "/" not in file_name:
+        return None
+    raiz = _raiz(variante) if file_name.startswith("sinteticos/") else RAIZ_PUBLICO
+    return raiz / file_name
 
 
 def _base_key(versao: str) -> str:
@@ -268,10 +306,17 @@ def exportar(variante: str, somente_registro: bool = False) -> dict[str, Any]:
     st, repo = _storage(), _repo()
 
     cocos = {s: _coco(variante, s) for s in SPLITS}
-    ids = sorted({
-        img["file_name"].rsplit(".", 1)[0]
-        for c in cocos.values() for img in c["images"]
-    })
+    # DISTINTOS por split: o treino multi-escala repete a mesma imagem N vezes
+    # para balancear domínio (4.594 entradas, 3.513 arquivos). Subir N cópias do
+    # mesmo byte é pagar N vezes pelo mesmo objeto — a repetição vive no COCO,
+    # que declara a imagem N vezes apontando para o MESMO `file_name`.
+    alvos: dict[tuple[str, str], Path | None] = {}
+    for split, coco in cocos.items():
+        for img in coco["images"]:
+            fn = str(img["file_name"])
+            alvos[(split, fn)] = _fonte_local(variante, fn)
+
+    ids = sorted({fn.rsplit(".", 1)[0] for (_s, fn), loc in alvos.items() if loc is None})
     linhas = repo._execute(
         "SELECT id::text AS id, r2_key FROM training_frames "
         "WHERE id = ANY(%s::uuid[]) AND tenant_id = %s",
@@ -286,24 +331,37 @@ def exportar(variante: str, somente_registro: bool = False) -> dict[str, Any]:
             f"{len(faltando)} frames sem r2_key no tenant RVB (ex.: {faltando[:3]}) "
             "— nada foi exportado."
         )
+    # Mesma régua para o lado do disco, e ANTES de subir qualquer objeto: metade
+    # do dataset no R2 e metade não é pior que nenhum — o pré-flight passa (os
+    # prefixos existem) e a falha só aparece no `_conferir_zip_contra_coco`.
+    sem_arquivo = sorted(
+        {str(loc) for loc in alvos.values() if loc is not None and not loc.is_file()}
+    )
+    if sem_arquivo:
+        raise SystemExit(
+            f"{len(sem_arquivo)} imagens declaradas no COCO não existem em disco "
+            f"(ex.: {sem_arquivo[:3]}) — nada foi exportado. Rode o montador com "
+            "`--gravar` antes."
+        )
 
-    def _copiar(par: tuple[str, str, str]) -> str | None:
-        split, fid, dest = par
+    def _enviar(par: tuple[str, str, Path | None]) -> str | None:
+        split, fn, local = par
+        dest = f"{base}/{split}/{fn}"
         try:
-            st.copy_object(origem[fid], dest)
+            if local is None:
+                st.copy_object(origem[fn.rsplit(".", 1)[0]], dest)
+            else:
+                st.upload_bytes(dest, local.read_bytes(), "image/jpeg")
             return None
         except Exception as exc:  # noqa: BLE001
-            return f"{split}/{fid}: {exc}"
+            return f"{split}/{fn}: {exc}"
 
-    tarefas: list[tuple[str, str, str]] = []
-    for split, coco in cocos.items():
-        for img in coco["images"]:
-            fid = img["file_name"].rsplit(".", 1)[0]
-            tarefas.append((split, fid, f"{base}/{split}/{img['file_name']}"))
+    tarefas = [(split, fn, loc) for (split, fn), loc in alvos.items()]
+    de_disco = sum(1 for _s, _f, loc in tarefas if loc is not None)
 
     if not somente_registro:
         with ThreadPoolExecutor(max_workers=16) as pool:
-            erros = [e for e in pool.map(_copiar, tarefas) if e]
+            erros = [e for e in pool.map(_enviar, tarefas) if e]
         if erros:
             raise SystemExit(f"{len(erros)} cópias falharam (ex.: {erros[:3]}) — abortado.")
 
@@ -373,6 +431,8 @@ def exportar(variante: str, somente_registro: bool = False) -> dict[str, Any]:
         "variante": variante, "versao": versao, "dataset_version_id": dsv_id,
         "coco_r2_key": base,
         "copiadas": 0 if somente_registro else len(tarefas),
+        "do_r2": 0 if somente_registro else len(tarefas) - de_disco,
+        "do_disco": 0 if somente_registro else de_disco,
         "contagens": contagens,
         "classes_com_anotacao": len([k for k in dist if not k.startswith("__")]),
         "classes_sem_instancia": vazias,
@@ -498,7 +558,8 @@ def disparar(variante: str) -> dict[str, Any]:
         " 'rfdetr', 'base', %s::jsonb)",
         (job_id, USER_RVB, EPOCAS_TETO, TENANT_RVB, dsv["id"],
          json.dumps({
-             "experimento": "v2-tres-variantes", "variante": meta["versao"],
+             "experimento": EXPERIMENTO.get(variante, "v2-tres-variantes"),
+             "variante": meta["versao"],
              "imgsz": IMGSZ, "gpu": os.environ.get("RUNPOD_GPU_TYPE", "4090"),
              "batch": BATCH, "batch_fixo": os.environ.get("BATCH_FIXO", ""),
              "timeout_s": int(os.environ["RUNPOD_TIMEOUT_SECONDS_TRAIN"]),
@@ -527,9 +588,9 @@ def status() -> list[dict[str, Any]]:
         "       tj.started_at, tj.completed_at, tj.metrics, tj.error_message, "
         "       tm.display_name, tm.id::text AS model_id "
         "FROM training_jobs tj LEFT JOIN trained_models tm ON tm.job_id = tj.id "
-        "WHERE tj.hyperparams->>'experimento' = 'v2-tres-variantes' "
+        "WHERE tj.hyperparams->>'experimento' = ANY(%s) "
         "ORDER BY tj.created_at",
-        (),
+        (["v2-tres-variantes", *sorted(set(EXPERIMENTO.values()))],),
     )
     saida = []
     for r in linhas:
