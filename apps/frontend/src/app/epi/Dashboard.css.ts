@@ -240,6 +240,9 @@ export const kpiValor = style({
   fontWeight: 700,
   fontSize: '34px',
   lineHeight: 1,
+  // Número em coluna com o cartão de baixo: largura de dígito fixa mantém a
+  // vírgula do milhar alinhada entre cartões e entre atualizações.
+  fontVariantNumeric: 'tabular-nums',
 })
 
 export const kpiValorSufixo = style({ fontSize: '20px', color: lk.cor.cinzaNevoa })
@@ -362,29 +365,130 @@ export const classePreenchimento = style({ height: '100%', background: lk.estado
 export const classeValor = style({
   fontFamily: lk.fonte.mono,
   fontSize: '13px',
-  width: '24px',
+  width: '38px',
   textAlign: 'right',
+  fontVariantNumeric: 'tabular-nums',
 })
 
-// Ações recentes
-export const itemAcao = style({
+// ── Violações por horário do dia ────────────────────────────────────────────
+//
+// Barra EMPILHADA: o segmento de baixo é o total do horário, o de cima é a
+// fatia que foi violação. Só a violação sai colorida — a leitura de relance é
+// "onde está o vermelho", e o resto do volume fica como contexto neutro.
+
+export const colunaEmpilhada = style({
+  flex: 1,
+  minWidth: 0,
   display: 'flex',
   flexDirection: 'column',
-  gap: '3px',
-  padding: '10px 12px',
-  background: lk.cor.preto,
-  border: `1px solid ${lk.cor.borda}`,
-  borderRadius: lk.raio.s,
+  alignItems: 'center',
+  gap: '5px',
+  height: '100%',
+  justifyContent: 'flex-end',
+  '@media': { [TELA_ESTREITA]: { minWidth: '9px' } },
 })
 
-export const itemAcaoTitulo = style({ fontSize: '12.5px', fontWeight: 600 })
-
-export const itemAcaoMeta = style({
+export const pilha = style({
+  width: '100%',
   display: 'flex',
-  gap: lk.espaco.x1,
+  flexDirection: 'column',
+  justifyContent: 'flex-end',
+  borderRadius: '3px 3px 0 0',
+  overflow: 'hidden',
+  background: 'transparent',
+})
+
+/**
+ * Rótulo do eixo com LARGURA ZERO. Uma coluna de flex respeita o min-content
+ * dos filhos, então "18h" em mono (~22px) alargava a coluna rotulada e
+ * espremia as vizinhas: as barras saíam do passo regular e o rótulo passava a
+ * apontar para a barra errada — num gráfico de "em que HORA", ler uma hora ao
+ * lado é o erro que importa. Zero de largura + overflow visível deixa o texto
+ * centrado sem participar da conta da grade.
+ */
+export const rotuloEixo = style({
+  width: 0,
+  overflow: 'visible',
+  whiteSpace: 'nowrap',
+  textAlign: 'center',
   fontFamily: lk.fonte.mono,
-  fontSize: '10.5px',
+  fontSize: '9.5px',
   color: lk.cor.cinzaNevoa,
+  // ALTURA FIXA, e não a do texto: só uma coluna em cada seis leva rótulo, e
+  // um <span> vazio tem zero de altura — as colunas sem rótulo desciam 11px a
+  // mais e a base das barras deixava de ser uma linha só. Numa comparação
+  // visual de alturas, base torta é erro de leitura direto.
+  height: '12px',
+  lineHeight: '12px',
+  flex: 'none',
+})
+
+export const segmentoViolacao = style({ width: '100%', background: lk.estado.nc })
+
+export const segmentoRestante = style({ width: '100%', background: lk.cor.borda })
+
+/** Legenda de cor do gráfico — cor + palavra, nunca cor sozinha. */
+export const chaveCores = style({
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: '14px',
+  fontSize: '11.5px',
+  color: lk.cor.cinzaNevoa,
+})
+
+export const chaveItem = style({ display: 'flex', alignItems: 'center', gap: '6px' })
+
+export const chaveMarca = style({
+  width: '9px',
+  height: '9px',
+  flex: 'none',
+  borderRadius: '2px',
+})
+
+/** Frase de destaque do painel: o padrão que o gráfico revelou, em texto. */
+export const destaqueLinha = style({
+  fontSize: '13px',
+  lineHeight: 1.5,
+  color: lk.cor.cinzaNevoa,
+})
+
+export const destaqueNumero = style({
+  fontFamily: lk.fonte.mono,
+  fontWeight: 700,
+  fontSize: '15px',
+  color: lk.cor.brancoSinal,
+  fontVariantNumeric: 'tabular-nums',
+})
+
+// ── Composição dos eventos ──────────────────────────────────────────────────
+
+/**
+ * Uma paleta por eixo: aqui o eixo é POLARIDADE (violação · conformidade · não
+ * definida), e ela não empresta o ciano da marca nem a cor de reconhecimento —
+ * mesma regra que `Eventos.tsx` e `Acoes.tsx` já seguem.
+ */
+export const polaridadePreenchimento = styleVariants({
+  violacao: { height: '100%', background: lk.estado.nc },
+  conformidade: { height: '100%', background: lk.estado.ok },
+  indefinido: { height: '100%', background: lk.cor.cinzaNevoa },
+})
+
+export const linhaResumo = style({
+  display: 'flex',
+  alignItems: 'baseline',
+  justifyContent: 'space-between',
+  gap: '10px',
+  fontSize: '12.5px',
+  color: lk.cor.cinzaNevoa,
+  '@media': { [TELA_ESTREITA]: { flexWrap: 'wrap' } },
+})
+
+export const linhaResumoValor = style({
+  fontFamily: lk.fonte.mono,
+  fontSize: '13px',
+  fontWeight: 700,
+  color: lk.cor.brancoSinal,
+  fontVariantNumeric: 'tabular-nums',
 })
 
 // Câmeras com mais eventos
@@ -411,14 +515,19 @@ export const rankingPos = style({
 })
 
 export const rankingNome = style({
-  width: '190px',
-  flex: 'none',
+  // `flex: none` + 190px fixos comiam a coluna inteira: o painel ocupa uma
+  // faixa de ~330px na grade de 3 colunas, e 190 (nome) + 18 (posição) + 44
+  // (valor) + gaps deixavam ~50px de trilho. A barra — que é O DADO — virava
+  // um risco de 3px e a lista se lia como tabela sem gráfico. O nome passa a
+  // ceder espaço (`flex-shrink`), com piso de 80px e reticências.
+  flex: '0 1 190px',
+  minWidth: '80px',
   fontSize: '13.5px',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
   // Sobra menos coluna pro nome — dá respiro pro trilho, que é o dado.
-  '@media': { [TELA_ESTREITA]: { width: '96px' } },
+  '@media': { [TELA_ESTREITA]: { flexBasis: '96px', minWidth: '64px' } },
 })
 
 /** Regra do ciano: só as 3 primeiras posições saem em destaque — resto neutro. */
@@ -428,12 +537,15 @@ export const rankingDestaque = styleVariants({
 })
 
 export const rankingTrilho = style({
-  flex: 1,
-  minWidth: 0,
+  flex: '1 1 auto',
+  // Piso: abaixo de ~90px a diferença entre 647 e 77 deixa de ser visível e o
+  // trilho vira enfeite. Quem cede espaço para ele é o nome, não o número.
+  minWidth: '90px',
   height: '22px',
   borderRadius: '4px',
   background: lk.cor.preto,
   overflow: 'hidden',
+  '@media': { [TELA_ESTREITA]: { minWidth: '60px' } },
 })
 
 export const rankingPreenchimento = styleVariants({
@@ -448,6 +560,7 @@ export const rankingValor = style({
   fontFamily: lk.fonte.mono,
   fontSize: '13px',
   fontWeight: 700,
+  fontVariantNumeric: 'tabular-nums',
 })
 
 export const rankingDivisor = style({ height: '1px', background: lk.cor.borda })

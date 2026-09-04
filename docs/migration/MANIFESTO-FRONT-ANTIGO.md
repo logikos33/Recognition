@@ -14,11 +14,11 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 390 arquivos, 65.812 linhas
+## Situação — 391 arquivos, 66.013 linhas
 
 | status | arquivos |
 |---|---:|
-| `INFRA` | 230 |
+| `INFRA` | 231 |
 | `PENDENTE` | 143 |
 | `SEM-DESENHO` | 7 |
 | `SUBSTITUIDA` | 6 |
@@ -229,7 +229,7 @@ apagado não são a mesma coisa.
 | `src/services/crossTenantCameras.ts` | `INFRA` | — | 107 |
 | `src/services/dashboardEdgeService.ts` | `INFRA` | — | 103 |
 | `src/services/edgeService.ts` | `INFRA` | — | 197 |
-| `src/services/eventsService.ts` | `INFRA` | — | 85 |
+| `src/services/eventsService.ts` | `INFRA` | — | 138 |
 | `src/services/impersonation.ts` | `INFRA` | — | 93 |
 | `src/services/modelDisplay.ts` | `INFRA` | — | 33 |
 | `src/services/moduleService.ts` | `INFRA` | — | 54 |
@@ -267,6 +267,7 @@ apagado não são a mesma coisa.
 | `src/utils/concurrencyQueue.ts` | `INFRA` | — | 39 |
 | `src/utils/errorTranslator.ts` | `INFRA` | — | 76 |
 | `src/utils/labels.ts` | `INFRA` | — | 253 |
+| `src/utils/perfilEventos.ts` | `INFRA` | — | 148 |
 | `src/utils/rajadas.ts` | `INFRA` | — | 120 |
 | `src/utils/statusColors.ts` | `INFRA` | — | 18 |
 | `src/utils/timeBuckets.ts` | `INFRA` | — | 106 |
