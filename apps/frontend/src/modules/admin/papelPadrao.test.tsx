@@ -22,8 +22,11 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getUsers, getTenants, createUser, getTenant } = vi.hoisted(() => ({
+const {
+  getUsers, getTenants, createUser, getTenant, getUserPermissions, getRoles,
+} = vi.hoisted(() => ({
   getUsers: vi.fn(), getTenants: vi.fn(), createUser: vi.fn(), getTenant: vi.fn(),
+  getUserPermissions: vi.fn(), getRoles: vi.fn(),
 }))
 // As três telas puxam métodos diferentes do mesmo serviço (a de tenant sozinha
 // chama meia dúzia). Enumerar todos aqui só criaria manutenção: o que estes
@@ -31,7 +34,7 @@ const { getUsers, getTenants, createUser, getTenant } = vi.hoisted(() => ({
 vi.mock('./services/adminService', () => ({
   adminService: new Proxy(
     {
-      getUsers, getTenants, createUser, getTenant,
+      getUsers, getTenants, createUser, getTenant, getUserPermissions, getRoles,
     } as Record<string, unknown>,
     { get: (alvo, chave: string) => alvo[chave] ?? (() => Promise.resolve([])) },
   ),
@@ -40,6 +43,7 @@ vi.mock('./services/adminService', () => ({
 import { Usuarios } from '../../app/admin/Usuarios'
 import { CreateUserWizard } from './components/CreateUserWizard'
 import { AdminTenantDetailPage } from './pages/AdminTenantDetailPage'
+import { UserPermissionsDrawer } from './components/UserPermissionsDrawer'
 
 const TENANTS = [{ id: 't-rvb', name: 'RVB Isolantes', slug: 'rvb' }]
 const TENANT_DETALHE = {
@@ -52,6 +56,10 @@ beforeEach(() => {
   getTenants.mockReset().mockResolvedValue(TENANTS)
   getTenant.mockReset().mockResolvedValue(TENANT_DETALHE)
   createUser.mockReset()
+  getRoles.mockReset().mockResolvedValue({ roles: [] })
+  getUserPermissions.mockReset().mockResolvedValue({
+    role: 'operator', custom_role: null, overrides: [], role_permissions: [],
+  })
 })
 
 function seletorPapel(): HTMLSelectElement {
@@ -120,6 +128,29 @@ describe('nenhuma tela de criação nasce com papel escolhido', () => {
   })
 })
 
+describe('a gaveta que CONSERTA o papel errado fala a mesma língua', () => {
+  // É para cá que o dono vem quando alguém criado como "Operador" toma 403 no
+  // Estúdio. Se aqui a descrição do Operador não contar o limite, o conserto
+  // vira adivinhação — e o rótulo do Admin ainda mudava de nome no caminho
+  // ("Administrador" na gaveta, "Admin" na criação).
+  const USUARIO = { id: 'u-1', email: 'anotador@rvb.com.br', role: 'operator' as const, tenant_id: 't-rvb' }
+
+  it('mostra o limite do Operador — o mesmo texto da tela de criação', async () => {
+    render(<UserPermissionsDrawer open onClose={() => {}} user={USUARIO} />)
+    await screen.findByLabelText('Role base do usuário')
+
+    expect(screen.getByText(/curar, classes, gabarito e treino recusam \(403\)/i)).toBeTruthy()
+  })
+
+  it('usa os mesmos rótulos da criação — papel não troca de nome entre telas', async () => {
+    render(<UserPermissionsDrawer open onClose={() => {}} user={USUARIO} />)
+    const select = await screen.findByLabelText('Role base do usuário')
+
+    const rotulos = [...select.querySelectorAll('option')].map((o) => o.textContent)
+    expect(rotulos).toEqual(['Admin', 'Operador', 'Analista', 'Treinador', 'Visualizador'])
+  })
+})
+
 describe('guarda do padrão — vale para as telas que ainda nem existem', () => {
   const RAIZ = join(__dirname, '..', '..')
 
@@ -143,11 +174,24 @@ describe('guarda do padrão — vale para as telas que ainda nem existem', () =>
     ])
   })
 
+  const telasQueTrocam = arquivos(RAIZ)
+    .map((c) => [c, readFileSync(c, 'utf8')] as const)
+    .filter(([, src]) => /updateUser\([^)]*\{\s*role:/.test(src))
+
+  it('as telas que TROCAM papel também são conhecidas', () => {
+    expect(telasQueTrocam.map(([c]) => c.slice(RAIZ.length + 1)).sort()).toEqual([
+      'modules/admin/components/UserPermissionsDrawer.tsx',
+    ])
+  })
+
   it('nenhuma delas semeia um papel — todas usam o vocabulário único', () => {
-    for (const [caminho, src] of telasQueCriam) {
+    for (const [caminho, src] of [...telasQueCriam, ...telasQueTrocam]) {
       const rel = caminho.slice(RAIZ.length + 1)
       expect(src, `${rel} ainda tem papel literal pré-selecionado`).not.toMatch(/'operator'/)
       expect(src, `${rel} não usa modules/admin/papeis`).toMatch(/PAPEIS_ATRIBUIVEIS/)
+    }
+    for (const [caminho, src] of telasQueCriam) {
+      const rel = caminho.slice(RAIZ.length + 1)
       expect(src, `${rel} não parte de SEM_PAPEL`).toMatch(/SEM_PAPEL/)
     }
   })

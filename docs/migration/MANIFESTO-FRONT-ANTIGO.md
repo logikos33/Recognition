@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 392 arquivos, 66.130 linhas
+## Situação — 392 arquivos, 66.132 linhas
 
 | status | arquivos |
 |---|---:|
@@ -294,7 +294,7 @@ apagado não são a mesma coisa.
 | `src/modules/admin/components/TenantCard.tsx` | `PENDENTE` | — | 28 |
 | `src/modules/admin/components/TicketRow.tsx` | `PENDENTE` | — | 30 |
 | `src/modules/admin/components/TrainingApprovalCard.tsx` | `PENDENTE` | — | 49 |
-| `src/modules/admin/components/UserPermissionsDrawer.tsx` | `PENDENTE` | — | 334 |
+| `src/modules/admin/components/UserPermissionsDrawer.tsx` | `PENDENTE` | — | 336 |
 | `src/modules/admin/components/UserRoleBadge.tsx` | `PENDENTE` | — | 16 |
 | `src/modules/admin/components/WorkerStatusBadge.tsx` | `PENDENTE` | — | 25 |
 | `src/modules/admin/constants/integrationCatalog.ts` | `PENDENTE` | — | 100 |
