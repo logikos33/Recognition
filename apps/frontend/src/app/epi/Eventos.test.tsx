@@ -542,10 +542,48 @@ describe('rajada (ux2/dedup) — representante + N repetições, nunca esconde',
     expect(screen.getAllByText('Reconhecer')).toHaveLength(3)
   })
 
-  it('badge do cabeçalho conta SITUAÇÕES (total_situacoes), não linhas', async () => {
+  it('badge do cabeçalho conta SITUAÇÕES (total_situacoes), não linhas — e diz o EIXO', async () => {
     montar()
-    await screen.findByText('1 SITUAÇÕES NO PERÍODO · 3 EVENTOS')
+    // O eixo entra no rótulo porque os dois números da tela NÃO são a mesma
+    // regra: `total_situacoes` agrupa por hora de GRAVAÇÃO (`created_at`) e as
+    // linhas abaixo agrupam por hora de CAPTURA (`timestamp`). Medido no DEV
+    // em 2026-09-05 (RVB, 30 dias, todos os tipos): 3.308 pela gravação,
+    // 3.385 pela captura, 3.658 somando página a página — a MESMA frase
+    // "mesma câmera+classe em <60s" valendo três números. Enquanto o backend
+    // não muda de eixo, a tela ao menos não chama as duas coisas de
+    // "situações" sem qualificar. Ver cabeçalho de `Eventos.tsx`.
+    // Cabeçalho e rodapé passam a dizer a MESMA frase — antes o rodapé
+    // omitia "NO PERÍODO" e cada um parecia contar uma coisa.
+    expect(await screen.findAllByText('1 SITUAÇÕES (POR HORA DE GRAVAÇÃO) · 3 EVENTOS')).toHaveLength(2)
     expect(screen.queryByText('3 NO PERÍODO')).toBeNull()
+  })
+
+  it('o rótulo da rajada diz que a janela de 60s é de CAPTURA', async () => {
+    montar()
+    // A linha promete a regra que a tela de fato aplica (`timestamp ??
+    // created_at`), não a que o badge usou. Sem o "de captura" as duas
+    // frases se leem como a mesma coisa e nenhum operador consegue
+    // reconciliar os números.
+    expect(await screen.findByText(/\+2 repetições da mesma câmera\+classe em <60s de captura/)).toBeTruthy()
+  })
+
+  it('agrupa por CAPTURA: gravadas juntas, capturadas longe = DUAS linhas', async () => {
+    // O conserto errado do desencontro acima seria mover a tela para
+    // `created_at` "para bater com o badge". Medido no DEV: 175 alertas do
+    // RVB foram GRAVADOS a menos de 60s do anterior e CAPTURADOS a mais de
+    // 60s — carga em lote escrevendo no mesmo segundo o que a fábrica viveu
+    // em dias distintos. Agrupar por gravação esconderia essas 175 linhas
+    // atrás de um "+N repetições". Este caso trava o eixo certo.
+    h.pagina = {
+      alerts: [
+        { ...RAJADA[0], id: 'x1', created_at: '2026-09-01T10:00:00', timestamp: '2026-08-20T08:00:00' },
+        { ...RAJADA[1], id: 'x2', created_at: '2026-09-01T10:00:10', timestamp: '2026-08-25T17:30:00' },
+      ],
+      total: 2, total_situacoes: 1, page: 1, per_page: 20, pages: 1,
+    } as never
+    montar()
+    await waitFor(() => expect(screen.getAllByText('CAM-09 Rajada')).toHaveLength(2))
+    expect(screen.queryByText(/repetiç/)).toBeNull()
   })
 
   it('sem total_situacoes (backend/mock antigo), o badge cai para o total de linhas', async () => {

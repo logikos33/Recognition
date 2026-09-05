@@ -42,7 +42,12 @@ import * as s from './Relatorios.css'
 
 // ── Contrato de dados (services/api/app/domain/services/compliance_report_service.py)
 export interface ResumoCompliance {
-  compliance_rate: number
+  /** `null` quando o backend não pôde apurar — ver `compliance_reason`. NUNCA
+   *  tratar como 0: `Math.round(null)` é 0, e 0 nesta tela é "Crítico". */
+  compliance_rate: number | null
+  /** Por que o score veio `null` (`compliance_report_service.py`). As chaves
+   *  são as mesmas do Dashboard; a tela nunca deduz a razão do valor. */
+  compliance_reason?: string | null
   total_violations: number
   top_cameras: Array<{ camera_id: string; count: number }>
   trend_by_hour: Array<{ hour: string; count: number }>
@@ -265,13 +270,27 @@ export function Relatorios() {
       && resumo.top_cameras.length === 0
       && resumo.trend_by_hour.length === 0)
 
+  /**
+   * Agregação que FALHOU chega aqui idêntica ao período vazio: zero evento,
+   * zero câmera, zero tendência. Antes o backend devolvia `compliance_rate:
+   * 100` nesse caso; agora devolve `null` com a razão — e a razão é a única
+   * coisa que separa "não houve evento" de "não consegui apurar". Sem ela a
+   * tela afirmaria "o período não tem eventos registrados" com o banco fora
+   * do ar, que é a mesma mentira de antes com outra roupa.
+   */
+  const naoApurado = resumo?.compliance_reason === 'nao_foi_possivel_apurar'
+
   if (vazio) {
     return (
       <div className={s.centro}>
         <FileText size={36} strokeWidth={1.5} aria-hidden="true" className={s.aviso.neutro} />
-        <span className={s.centroTitulo}>Sem dados no período selecionado</span>
+        <span className={s.centroTitulo}>
+          {naoApurado ? 'Não foi possível apurar o período' : 'Sem dados no período selecionado'}
+        </span>
         <span className={s.centroTexto}>
-          O período selecionado não tem eventos registrados. Amplie o intervalo.
+          {naoApurado
+            ? 'A consulta não respondeu — isto não quer dizer que não houve eventos. Tente de novo.'
+            : 'O período selecionado não tem eventos registrados. Amplie o intervalo.'}
         </span>
         {periodo === 'trinta' ? (
           <button type="button" className={s.botaoCentro} onClick={() => setTentativa((t) => t + 1)}>
@@ -410,8 +429,16 @@ export function Relatorios() {
 
           <div className={s.painel}>
             <div className={s.scoreLinha}>
-              <span className={s.score}>{Math.round(resumo.compliance_rate)}</span>
-              <span className={s.scoreLegenda}>score de conformidade · {janela}</span>
+              {/* `Math.round(null)` é 0, e 0 aqui é o pior número possível:
+                  "conformidade zero" no lugar de "não apurado". Travessão. */}
+              <span className={s.score}>
+                {resumo.compliance_rate == null ? '—' : Math.round(resumo.compliance_rate)}
+              </span>
+              <span className={s.scoreLegenda}>
+                {resumo.compliance_rate == null
+                  ? `score não apurado · ${janela}`
+                  : `score de conformidade · ${janela}`}
+              </span>
             </div>
             <div className={s.fatos}>
               <span>

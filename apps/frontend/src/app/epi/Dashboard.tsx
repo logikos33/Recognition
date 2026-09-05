@@ -92,7 +92,22 @@ import { rotaNova } from '../RotasNovas'
  * chaves originais; `module_service.get_stats` devolve também os KPIs de BI.
  * Declarado aqui, opcional, para não mexer num arquivo que outras telas usam.
  */
-type EstatisticasEpi = ModuleStats & { compliance_rate?: number | null }
+type EstatisticasEpi = ModuleStats & {
+  compliance_rate?: number | null
+  /** Por que o score veio `null` — ver `_com_score_honesto` em
+   *  `app/api/v1/modules/routes.py`. A tela NUNCA deduz a razão do valor. */
+  compliance_reason?: string | null
+}
+
+/**
+ * Frase do vazio do score. Chave desconhecida (backend mais novo que a tela)
+ * cai na frase genérica — nunca some, nunca vira 100.
+ */
+const RAZAO_SEM_SCORE: Record<string, string> = {
+  sem_cameras_ativas: 'sem câmera ativa para calcular',
+  sem_sinal_no_periodo: 'sem dado no período — nada chegou nas últimas 24 h',
+  nao_foi_possivel_apurar: 'não foi possível apurar agora',
+}
 
 // ── Turno ───────────────────────────────────────────────────────────────────
 
@@ -227,20 +242,54 @@ function horaCurta(ms: number) {
 }
 
 /**
+ * Tipo de evento que um painel CONTOU. É o `kind` do backend, e a única razão
+ * de existir é obrigar cada link a declará-lo: sem isso o número do cartão e o
+ * número da tela de destino falam de conjuntos diferentes.
+ *
+ * `'todos'` vira `kind=` (vazio) na URL — que é exatamente a opção "Todos os
+ * tipos" do seletor de `Eventos.tsx`. Não é omissão: omitir o parâmetro faz o
+ * destino cair no default 'violation'.
+ */
+type TipoContado = 'todos' | 'violation'
+
+/**
  * Monta o link para `/epi/eventos` na querystring que aquela tela já lê
- * (`start_date`/`end_date`/`camera_id`/`violation_type` — ver `Eventos.tsx`).
- * Não inventa parâmetro novo: só usa o que o destino já suporta.
+ * (`start_date`/`end_date`/`camera_id`/`violation_type`/`acknowledged`/`kind`
+ * — ver `Eventos.tsx`). Não inventa parâmetro novo: só usa o que o destino já
+ * suporta.
+ *
+ * ⚠️ `kind` é OBRIGATÓRIO, e é o conserto de um defeito medido no DEV
+ * (2026-09-05, tenant RVB, janela de 30 dias):
+ *
+ *   painel "Câmeras com mais eventos"  (GET /v1/events/summary) → 4.629 eventos
+ *   destino do clique, como estava     (GET /api/alerts, sem kind) →   495
+ *
+ * O link não mandava `kind`; `Eventos.tsx` assume `'violation'` quando o
+ * parâmetro está AUSENTE, então a lista mostrava só as violações de um cartão
+ * que tinha contado tudo — 10× menos, sem uma palavra dizendo por quê. Um
+ * cartão que se desmente ao ser clicado é pior que cartão nenhum: quem clica
+ * conclui que um dos dois números está quebrado, e não sabe qual.
+ *
+ * Regra: o link carrega o MESMO recorte que produziu o número. Painel que
+ * contou todo evento manda `'todos'`; painel de violação manda `'violation'`.
  */
 function linkParaEventos(params: {
+  kind: TipoContado
   start_date?: string
   end_date?: string
   camera_id?: string
   violation_type?: string
+  acknowledged?: string
 }) {
   const q = new URLSearchParams()
-  for (const [chave, valor] of Object.entries(params)) if (valor) q.set(chave, valor)
-  const query = q.toString()
-  return rotaNova(`/epi/eventos${query ? `?${query}` : ''}`)
+  for (const [chave, valor] of Object.entries(params)) {
+    if (chave === 'kind') continue
+    if (valor) q.set(chave, valor)
+  }
+  // Sempre presente, inclusive vazio: `?kind=` é "todos os tipos" para o
+  // destino, e a AUSÊNCIA é que reativaria o default 'violation'.
+  q.set('kind', params.kind === 'todos' ? '' : params.kind)
+  return rotaNova(`/epi/eventos?${q.toString()}`)
 }
 
 interface PainelProps {
@@ -497,6 +546,8 @@ export function Dashboard() {
   // ── Derivações (todas a partir de dado real) ──────────────────────────────
 
   const score = dados.compliance_rate
+  const razaoSemScore =
+    RAZAO_SEM_SCORE[dados.compliance_reason ?? ''] ?? 'não foi possível apurar agora'
   const nivelScore: Severidade =
     score == null ? 'atencao' : score >= 90 ? 'ok' : score >= 70 ? 'atencao' : 'nc'
   const palavraScore = score == null ? 'Indisponível' : score >= 90 ? 'Conforme' : score >= 70 ? 'Atenção' : 'Crítico'
@@ -834,7 +885,13 @@ export function Dashboard() {
             texto="Sem eventos no período."
             cta={{
               texto: 'Ver últimos 30 dias →',
-              to: linkParaEventos({ start_date: janela30d.de, end_date: janela30d.ate }),
+              // `/v1/events/timeline` não filtra kind: este painel conta TODO
+              // evento do módulo, e o link tem de pedir o mesmo.
+              to: linkParaEventos({
+                kind: 'todos',
+                start_date: janela30d.de,
+                end_date: janela30d.ate,
+              }),
             }}
           />
         ) : (
@@ -853,7 +910,11 @@ export function Dashboard() {
                 return (
                   <Link
                     key={p.bucket}
-                    to={linkParaEventos({ start_date: p.bucket, end_date: fimHora })}
+                    to={linkParaEventos({
+                      kind: 'todos',
+                      start_date: p.bucket,
+                      end_date: fimHora,
+                    })}
                     className={`${s.colunaBarra} ${s.linkLimpo}`}
                     title={`${p.rotulo} · ${numero(p.count)} evento(s)`}
                     aria-label={`${p.rotulo} · ${numero(p.count)} evento(s) · ver eventos`}
@@ -893,7 +954,13 @@ export function Dashboard() {
             texto="Sem violações no período."
             cta={{
               texto: 'Ver últimos 30 dias →',
-              to: linkParaEventos({ start_date: janela30d.de, end_date: janela30d.ate }),
+              // `by_class` do resumo já é só violação (mesmo predicado de
+              // `list_with_filters(kind='violation')`) — o link mantém o corte.
+              to: linkParaEventos({
+                kind: 'violation',
+                start_date: janela30d.de,
+                end_date: janela30d.ate,
+              }),
             }}
           />
         ) : (
@@ -902,6 +969,7 @@ export function Dashboard() {
               <Link
                 key={c.class}
                 to={linkParaEventos({
+                  kind: 'violation',
                   start_date: janela.de,
                   end_date: janela.ate,
                   violation_type: c.class,
@@ -987,6 +1055,9 @@ export function Dashboard() {
                   <Link
                     key={c.camera_id}
                     to={linkParaEventos({
+                      // `top_cameras_by_alerts` conta TODO alerta da câmera,
+                      // não só violação.
+                      kind: 'todos',
                       start_date: janela30d.de,
                       end_date: janela30d.ate,
                       camera_id: c.camera_id,
@@ -1108,8 +1179,10 @@ export function Dashboard() {
           {dicaAberta && (
             <div className={s.dica} role="note">
               Como é calculado: 100 × (1 − horas-câmera com violação ÷ (câmeras ativas × 24)) nas
-              últimas 24 h. Sem câmera ativa o score não é calculado — aparece como indisponível,
-              nunca como 100.
+              últimas 24 h. O score só é calculado quando ALGUM evento chegou nessas 24 h — sem
+              câmera ativa, sem nada chegando, ou com a consulta falhando ele aparece como
+              indisponível, nunca como 100. Zero violação em zero hora observada é ausência de
+              medição, não conformidade.
             </div>
           )}
           <div className={s.scoreLinha}>
@@ -1117,9 +1190,7 @@ export function Dashboard() {
             <div className={s.scoreLado}>
               <Estado nivel={nivelScore} palavra={palavraScore} />
               <span className={s.legenda}>
-                {score == null
-                  ? 'sem câmera ativa para calcular'
-                  : 'últimas 24 h · todas as câmeras do módulo'}
+                {score == null ? razaoSemScore : 'últimas 24 h · todas as câmeras do módulo'}
               </span>
             </div>
           </div>
@@ -1141,7 +1212,12 @@ export function Dashboard() {
         <section className={`${s.cartaoKpi} ${s.acento.neutro}`} aria-label="Eventos hoje">
           <span className={s.overline}>Eventos hoje</span>
           <Link
-            to={linkParaEventos({ start_date: janelaHoje.de, end_date: janelaHoje.ate })}
+            // `alerts_today` conta TODO alerta do módulo, não só violação.
+            to={linkParaEventos({
+              kind: 'todos',
+              start_date: janelaHoje.de,
+              end_date: janelaHoje.ate,
+            })}
             className={`${s.kpiValor} ${s.linkLimpo}`}
             aria-label={`Eventos hoje: ${numero(eventosHoje)} · ver eventos`}
           >
@@ -1181,7 +1257,15 @@ export function Dashboard() {
           >
             <span className={s.overline}>Aguardando tratativa</span>
             <Link
-              to={linkParaEventos({ start_date: janelaPerfil.de, end_date: janelaPerfil.ate })}
+              // `nao_reconhecidos` = todo evento do período AINDA SEM
+              // ciência. Sem `acknowledged=false` o destino mostrava também o
+              // que já foi tratado — o cartão dizia 396 e a lista, 423.
+              to={linkParaEventos({
+                kind: 'todos',
+                acknowledged: 'false',
+                start_date: janelaPerfil.de,
+                end_date: janelaPerfil.ate,
+              })}
               className={`${s.kpiValor} ${s.linkLimpo}`}
               aria-label={`Aguardando tratativa: ${numero(situacao?.nao_reconhecidos ?? 0)} · ver eventos`}
             >
