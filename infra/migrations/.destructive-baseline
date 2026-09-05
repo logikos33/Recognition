@@ -1,0 +1,19 @@
+# Migrations HISTÓRICAS que apagam dado ou reescrevem credencial (issues #683/#694).
+#
+# Elas já estão aplicadas em produção e são forward-only: não podem ser editadas
+# (o ledger aborta o boot por checksum divergente). O que mudou é que o runner
+# não as reexecuta mais num banco que já tem tenant — ver a guarda de redeploy em
+# infra/migrations/runner_core.py.
+#
+# Esta lista existe para o guard-rail de CI não nascer vermelho por dívida antiga.
+# Ela deve ENCOLHER e NUNCA crescer: migration NOVA com DROP TABLE / DROP COLUMN /
+# DELETE FROM / TRUNCATE / atribuição a password_hash é proibida pelo CLAUDE.md
+# (forward-only) e, se escrita mesmo assim, seria PULADA em produção — reescreva-a
+# sem o comando destrutivo em vez de adicionar uma linha aqui.
+#
+# Um nome de arquivo por linha. "#" comenta; linhas vazias ignoradas.
+013_consolidate_cameras.sql
+027_superadmin_vitor.sql
+040_reset_superadmin_password.sql
+046_deactivate_default_tenant.sql
+049_counting_deepsort_rebuild.sql
