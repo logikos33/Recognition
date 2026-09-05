@@ -34,6 +34,36 @@
  * · **Status "descartado".** O desenho traz três estados numa coluna só;
  *   `alerts.acknowledged` é booleano. Descartar, na prática, é o veredito
  *   "falso positivo" — que é OUTRO eixo e tem coluna própria.
+ *
+ * ⚠️ **SITUAÇÕES: uma palavra, dois eixos de tempo.** Medido no DEV em
+ * 2026-09-05 (tenant RVB, 30 dias, todos os tipos, 5.122 linhas), a MESMA
+ * regra "mesma câmera+classe em <60s" dá três números diferentes conforme
+ * onde e sobre qual coluna é aplicada:
+ *
+ *   3.308  `total_situacoes` do backend — gap encadeado sobre `created_at`
+ *          (GRAVAÇÃO). É o número que esta tela imprime.
+ *   3.385  a mesma regra sobre `timestamp` (CAPTURA) no conjunto inteiro.
+ *   3.658  a regra aplicada página a página, somando as 257 páginas — rajada
+ *          cortada na virada da página vira duas.
+ *
+ * A verdade é 3.385. "Situação" é um fato do CHÃO DE FÁBRICA, e o eixo do
+ * chão de fábrica é a captura — é a regra que o resto do produto já segue
+ * (`capture_profile`, `review_situation`, o Dashboard inteiro). Medidas as
+ * linhas que os dois eixos discordam: 175 alertas foram GRAVADOS a menos de
+ * 60s do anterior mas CAPTURADOS a mais de 60s — o `created_at` funde
+ * situações distintas só porque a carga em lote as escreveu no mesmo
+ * segundo, e some com 77 situações reais.
+ *
+ * Esta tela não pode consertar o número: `total_situacoes` nasce em
+ * `AlertRepository.list_with_filters`. O que ela faz, e é o que está
+ * travado em teste aqui:
+ *   1. agrupa a página pela CAPTURA (`timestamp ?? created_at`) — o eixo
+ *      certo. Trocar para `created_at` para "bater com o badge" esconderia
+ *      aquelas 175 linhas atrás de um "+N repetições";
+ *   2. NOMEIA o eixo de cada número na tela, em vez de escrever "situações"
+ *      como se os dois fossem a mesma coisa.
+ * PEDIDO-AO-BACKEND: `total_situacoes` sobre `timestamp` (uma palavra na
+ * CTE) — aí os dois viram um só.
  */
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, useSearchParams } from 'react-router-dom'
@@ -591,9 +621,12 @@ export function Eventos() {
           <span className={s.meta}>
             {/* ux2/dedup: badge conta SITUAÇÕES (rajadas), não linhas — "1/66
                 reconhecidas" media repetição, não trabalho. `total_situacoes`
-                vem do filtro INTEIRO (todas as páginas), não só a carregada. */}
+                vem do filtro INTEIRO (todas as páginas), não só a carregada.
+                O eixo vai no rótulo: o backend agrupa por hora de GRAVAÇÃO e
+                as linhas abaixo agrupam por hora de CAPTURA — dois números
+                da mesma regra que não fecham (ver cabeçalho do arquivo). */}
             {dados.total_situacoes != null && dados.total_situacoes !== dados.total
-              ? `${dados.total_situacoes} SITUAÇÕES NO PERÍODO · ${dados.total} EVENTOS`
+              ? `${dados.total_situacoes} SITUAÇÕES (POR HORA DE GRAVAÇÃO) · ${dados.total} EVENTOS`
               : `${dados.total} NO PERÍODO`}
           </span>
         )}
@@ -781,7 +814,7 @@ export function Eventos() {
                             {expandido
                               ? <ChevronDown size={12} strokeWidth={1.7} aria-hidden="true" />
                               : <ChevronRight size={12} strokeWidth={1.7} aria-hidden="true" />}
-                            {' '}+{grupo.tamanho - 1} repetiç{grupo.tamanho - 1 === 1 ? 'ão' : 'ões'} da mesma câmera+classe em &lt;60s
+                            {' '}+{grupo.tamanho - 1} repetiç{grupo.tamanho - 1 === 1 ? 'ão' : 'ões'} da mesma câmera+classe em &lt;60s de captura
                           </td>
                         </tr>
                       )}
@@ -799,7 +832,7 @@ export function Eventos() {
           <div className={s.rodape}>
             <span>
               {dados?.total_situacoes != null && dados.total_situacoes !== dados.total
-                ? `${dados.total_situacoes} SITUAÇÕES · ${dados.total} EVENTOS`
+                ? `${dados.total_situacoes} SITUAÇÕES (POR HORA DE GRAVAÇÃO) · ${dados.total} EVENTOS`
                 : `${dados?.total ?? 0} EVENTOS`}
             </span>
             <span className={s.espacador} />

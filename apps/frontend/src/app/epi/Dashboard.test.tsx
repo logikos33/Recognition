@@ -18,10 +18,11 @@
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Dashboard } from './Dashboard'
+import { Eventos } from './Eventos'
 
 const getStats = vi.fn()
 const getTimeline = vi.fn()
@@ -37,6 +38,69 @@ vi.mock('../../services/eventsService', () => ({
     getSummary: (...a: unknown[]) => getSummary(...a),
     getProfile: (...a: unknown[]) => getProfile(...a),
   },
+}))
+
+/**
+ * A tela de DESTINO (`Eventos`) roda de verdade neste arquivo — é a única
+ * forma de provar que o número do cartão e o número da lista são o MESMO
+ * número, e não duas leituras que ninguém confrontou. Os mocks abaixo
+ * existem só para ela.
+ *
+ * `api.get('/alerts?…')` não devolve um total fixo: ele APLICA o recorte que
+ * a querystring pediu sobre `ACERVO`, exatamente como o backend faz
+ * (`kind` ausente = 'violation' é decisão da TELA, não do backend — o
+ * backend sem `kind` devolve tudo). Um mock de total fixo passaria com o
+ * link quebrado.
+ */
+const ACERVO = Array.from({ length: 24 }, (_, i) => ({
+  id: `e${i}`,
+  camera_id: 'c1',
+  camera_name: 'Entrada Expedição',
+  // 1 em cada 4 é violação de verdade; o resto é conformidade (EPI em uso),
+  // que é a maioria do acervo real do RVB.
+  violations: [{ class: i % 4 === 0 ? 'no_helmet' : 'helmet', confidence: 0.9 }],
+  event_kind: (i % 4 === 0 ? 'violation' : 'compliance') as 'violation' | 'compliance',
+  acknowledged: i % 2 === 0,
+  created_at: `2026-08-2${(i % 9) + 1}T13:0${i % 6}:00`,
+  timestamp: `2026-08-2${(i % 9) + 1}T13:0${i % 6}:00`,
+  verification_verdict: null,
+  verified_by: null,
+}))
+
+function servirAlerts(rota: string) {
+  const q = new URLSearchParams(rota.split('?')[1] ?? '')
+  const kind = q.get('kind')
+  const ack = q.get('acknowledged')
+  const alerts = ACERVO.filter(
+    (e) =>
+      (kind === null || kind === '' || e.event_kind === kind) &&
+      (ack === null || e.acknowledged === (ack === 'true')),
+  )
+  return { success: true, data: { alerts, total: alerts.length, page: 1, per_page: 20, pages: 1 } }
+}
+
+vi.mock('../../services/api', () => ({
+  ApiError: class extends Error { status = 500 },
+  getToken: () => 't',
+  api: {
+    get: vi.fn((rota: string) => Promise.resolve(servirAlerts(rota))),
+    post: vi.fn(() => Promise.resolve({ success: true })),
+    downloadBlob: vi.fn(() => Promise.resolve(new Blob(['a']))),
+  },
+}))
+vi.mock('../../services/cameraService', () => ({ cameraService: { list: () => Promise.resolve([]) } }))
+vi.mock('../../hooks/useModuleClasses', () => ({
+  useModuleClasses: () => ({
+    classes: [
+      { class_name: 'no_helmet', display_name: 'Sem capacete', polaridade: 'violacao' },
+      { class_name: 'helmet', display_name: 'Capacete', polaridade: 'conformidade' },
+    ],
+    loading: false,
+    classLabel: (c: string) => (c === 'no_helmet' ? 'Sem capacete' : 'Capacete'),
+  }),
+}))
+vi.mock('../../components/ui/Toast/useToast', () => ({
+  useToast: () => ({ error: vi.fn(), success: vi.fn(), info: vi.fn() }),
 }))
 
 /**
@@ -553,5 +617,157 @@ describe('EPI Dashboard — perfil temporal (violações por horário, volume po
     montar()
     await screen.findByText('87')
     await waitFor(() => expect(screen.queryByLabelText('Aguardando tratativa')).toBeNull())
+  })
+})
+
+/**
+ * O DEEP-LINK QUE SE DESMENTE (bloco 2, achado 2).
+ *
+ * Medido no DEV em 2026-09-05 (tenant RVB, janela de 30 dias):
+ *
+ *   painel "Câmeras com mais eventos"  GET /v1/events/summary   → 4.629
+ *   destino do clique, como estava     GET /api/alerts (s/ kind) →   495
+ *
+ * O link não mandava `kind`; `Eventos.tsx` assume 'violation' quando o
+ * parâmetro está AUSENTE. O cartão contava tudo, a lista mostrava só as
+ * violações — 10× menos, sem uma palavra explicando.
+ *
+ * Estes casos rodam as DUAS telas: leem o href que o Dashboard escreveu e
+ * montam `Eventos` nele, contra o mesmo acervo. Se os dois números
+ * divergirem, o teste falha — que é a única maneira de o link não voltar a
+ * mentir por omissão.
+ */
+describe('EPI Dashboard — o link carrega o filtro que produziu o número', () => {
+  const kindDe = (href: string) => new URLSearchParams(href.split('?')[1]).get('kind')
+
+  it('painel que contou TODO evento manda kind explícito de "todos"', async () => {
+    getSummary.mockResolvedValue({
+      total: 24,
+      by_class: [],
+      by_camera: [{ camera_id: 'c1', camera_name: 'Entrada Expedição', count: 24 }],
+    })
+    montar()
+    const painel = await screen.findByLabelText('Câmeras com mais eventos')
+    const href = within(painel).getByRole('link', { name: /Entrada Expedição/ }).getAttribute('href') ?? ''
+    // `''` (presente e vazio) = "Todos os tipos". `null` (ausente) é o que
+    // fazia o destino cair no default 'violation'.
+    expect(kindDe(href)).toBe('')
+  })
+
+  it('painel de VIOLAÇÃO por classe mantém o corte de violação no link', async () => {
+    getSummary.mockResolvedValue({
+      total: 12,
+      by_class: [{ class: 'no_helmet', count: 12 }],
+      by_camera: [],
+    })
+    montar()
+    const painel = await screen.findByLabelText('Violações por classe')
+    const href = within(painel).getByRole('link', { name: /Sem capacete/ }).getAttribute('href') ?? ''
+    expect(kindDe(href)).toBe('violation')
+    expect(href).toContain('violation_type=no_helmet')
+  })
+
+  it('"Aguardando tratativa" leva o acknowledged=false que produziu o número', async () => {
+    getProfile.mockResolvedValue(PERFIL_RVB)
+    montar()
+    const cartao = await screen.findByLabelText('Aguardando tratativa')
+    const href = cartao.querySelector('a')?.getAttribute('href') ?? ''
+    expect(kindDe(href)).toBe('')
+    expect(href).toContain('acknowledged=false')
+  })
+
+  it('PROVA FIM-A-FIM: o número do cartão é o número que a lista de destino mostra', async () => {
+    getSummary.mockResolvedValue({
+      total: 24,
+      by_class: [],
+      by_camera: [{ camera_id: 'c1', camera_name: 'Entrada Expedição', count: 24 }],
+    })
+    const dashboard = montar()
+    const painel = await screen.findByLabelText('Câmeras com mais eventos')
+    const linha = within(painel).getByRole('link', { name: /Entrada Expedição/ })
+    // O número que o cartão AFIRMA, lido da tela — não da fixture.
+    const doCartao = Number(within(painel).getByText('24').textContent)
+    const href = linha.getAttribute('href') ?? ''
+    dashboard.unmount()
+
+    // A tela de destino, no MESMO link, contra o MESMO acervo.
+    render(
+      <MemoryRouter initialEntries={[href.replace('/novo', '')]}>
+        <Routes>
+          <Route path="/epi/eventos" element={<Eventos />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    // Esperar a LISTA chegar: o rodapé existe desde o primeiro render com
+    // "0 EVENTOS", e ler antes da carga daria um zero de loading.
+    await screen.findAllByText('Entrada Expedição')
+    const rodape = await screen.findByText(/EVENTOS$/)
+    const daLista = Number((rodape.textContent ?? '').replace(/\D/g, ''))
+
+    expect(daLista).toBe(doCartao)
+  })
+})
+
+/**
+ * SCORE 100 SOBRE O VAZIO (bloco 2, achado 1) — lado da tela.
+ *
+ * O backend passou a devolver `compliance_rate: null` + `compliance_reason`
+ * quando nada chegou na janela (ver
+ * `tests/unit/api/test_modules_stats_score_honesto.py`). Aqui trava que a
+ * tela DIZ a razão em vez de deixar o "—" mudo, e que não existe caminho
+ * em que ela pinte 100 · Conforme sobre 24 h sem dado.
+ */
+describe('EPI Dashboard — score não afirma mais do que sabe', () => {
+  it('sem sinal de ingestão nas 24 h: "—" com a razão, nunca 100 em verde', async () => {
+    // A resposta REAL do DEV, já com o conserto do backend aplicado.
+    getStats.mockResolvedValue({
+      ...STATS_RVB,
+      cameras_active: 17,
+      cameras_total: 17,
+      alerts_today: 0,
+      alerts_week: 127,
+      compliance_rate: null,
+      compliance_reason: 'sem_sinal_no_periodo',
+    })
+    montar()
+    const cartao = await screen.findByLabelText('Score de conformidade')
+    expect(within(cartao).getByText('—')).toBeTruthy()
+    expect(within(cartao).getByText('Indisponível')).toBeTruthy()
+    expect(within(cartao).getByText(/sem dado no período/)).toBeTruthy()
+    expect(within(cartao).queryByText('100')).toBeNull()
+    expect(within(cartao).queryByText('Conforme')).toBeNull()
+  })
+
+  it('sem câmera ativa continua dizendo a razão antiga, não a nova', async () => {
+    getStats.mockResolvedValue({
+      ...STATS_RVB,
+      cameras_active: 0,
+      compliance_rate: null,
+      compliance_reason: 'sem_cameras_ativas',
+    })
+    montar()
+    const cartao = await screen.findByLabelText('Score de conformidade')
+    expect(within(cartao).getByText(/sem câmera ativa para calcular/)).toBeTruthy()
+  })
+
+  it('razão desconhecida (backend novo, tela velha) não vira número nem some', async () => {
+    getStats.mockResolvedValue({
+      ...STATS_RVB,
+      compliance_rate: null,
+      compliance_reason: 'motivo_que_a_tela_nao_conhece',
+    })
+    montar()
+    const cartao = await screen.findByLabelText('Score de conformidade')
+    expect(within(cartao).getByText('—')).toBeTruthy()
+    expect(within(cartao).getByText(/não foi possível apurar agora/)).toBeTruthy()
+  })
+
+  it('a dica explica que zero em zero hora observada não é conformidade', async () => {
+    montar()
+    await screen.findByText('87')
+    fireEvent.click(screen.getByLabelText('Como o score é calculado'))
+    expect(
+      await screen.findByText(/ausência de medição, não conformidade/),
+    ).toBeTruthy()
   })
 })
