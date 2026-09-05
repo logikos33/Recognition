@@ -11,7 +11,7 @@
  */
 import { globalStyle, style, styleVariants } from '@vanilla-extract/css'
 
-import { lk, OVERLINE_TRACKING } from '../tokens/lk.css'
+import { lk, OVERLINE_TRACKING, TELA_ESTREITA } from '../tokens/lk.css'
 
 /** Preto do desenho a 75% — fundo das tarjas sobre o vídeo. */
 const VEU = `color-mix(in srgb, ${lk.cor.preto} 75%, transparent)`
@@ -174,7 +174,14 @@ export const botaoTrilho = styleVariants({
 
 // ── Área: grade (ou destaque) + gaveta ──────────────────────────────────────
 
-export const area = style({ display: 'flex', gap: '16px', minHeight: 0 })
+export const area = style({
+  display: 'flex',
+  gap: '16px',
+  minHeight: 0,
+  // Celular: parede em cima, gaveta embaixo. Lado a lado, a gaveta de 360px
+  // sozinha já passa da tela.
+  '@media': { [TELA_ESTREITA]: { flexDirection: 'column' } },
+})
 
 export const coluna = style({ flex: 1, minWidth: 0 })
 
@@ -182,6 +189,20 @@ export const grade = style({
   display: 'grid',
   gap: '10px',
   alignContent: 'start',
+  /**
+   * `!important` — e o motivo, por extenso, porque a exceção tem de se
+   * justificar: o número de colunas é escolha do operador e chega como
+   * `style={{ gridTemplateColumns: ... }}` INLINE (AoVivo.tsx), que ganha de
+   * qualquer classe. Sem `!important` a media query não tem efeito nenhum.
+   *
+   * Por que sobrepor a escolha dele: em 375px, 2×2 dá ladrilhos de 160px e o
+   * 4×3 dá 80px. Medido na captura desta rodada com 2 colunas — as tarjas
+   * "CAM-01", "OFFLINE" e "SEM SINAL" se atravessam e o texto do player sai
+   * cortado ("ANDO · CAM-01"). Uma parede que não se lê não é uma parede.
+   * Uma coluna dá 343px por câmera, que é o vídeo inteiro; as outras estão a
+   * um rolar de distância. O controle de colunas segue valendo no desktop.
+   */
+  '@media': { [TELA_ESTREITA]: { gridTemplateColumns: 'minmax(0, 1fr) !important' } },
 })
 
 // ── Ladrilho de câmera ──────────────────────────────────────────────────────
@@ -330,7 +351,15 @@ export const rotuloCaixa = styleVariants({
 
 // ── Modo DESTAQUE ───────────────────────────────────────────────────────────
 
-export const destaque = style({ display: 'flex', gap: '10px', minHeight: 0, flex: 1 })
+export const destaque = style({
+  display: 'flex',
+  gap: '10px',
+  minHeight: 0,
+  flex: 1,
+  // Foco em cima, trilho de miniaturas embaixo — no celular não há largura
+  // para as duas colunas do modo DESTAQUE.
+  '@media': { [TELA_ESTREITA]: { flexDirection: 'column' } },
+})
 
 export const trilhoLateral = style({
   flex: 1,
@@ -340,6 +369,16 @@ export const trilhoLateral = style({
   flexDirection: 'column',
   gap: '8px',
   overflow: 'auto',
+  // Empilhado, o trilho é uma tira de miniaturas que rola DENTRO de si.
+  '@media': {
+    [TELA_ESTREITA]: {
+      minWidth: 0,
+      maxWidth: 'none',
+      flex: 'none',
+      flexDirection: 'row',
+      overflowX: 'auto',
+    },
+  },
 })
 
 export const focoColuna = style({ flex: 2.4, minWidth: 0, display: 'flex' })
@@ -349,6 +388,8 @@ export const focoColuna = style({ flex: 2.4, minWidth: 0, display: 'flex' })
 export const gaveta = style({
   width: '360px',
   flex: 'none',
+  // 360px fixos estouram uma tela de 375 assim que o padding entra.
+  '@media': { [TELA_ESTREITA]: { width: '100%' } },
   display: 'flex',
   flexDirection: 'column',
   gap: '14px',

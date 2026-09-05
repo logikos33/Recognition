@@ -278,6 +278,21 @@ const seloBase = style({
   fontSize: '11px',
   letterSpacing: '0.1em',
   pointerEvents: 'none',
+  /**
+   * Os dois selos são absolutos — um ancorado à esquerda, outro à direita — e
+   * em tela larga nunca se encontram. Em 375px eles se ATRAVESSAM: medido na
+   * captura desta rodada, o nome da câmera saía "CAM-01 · EXP" com a data
+   * impressa por cima. Teto de metade da caixa + reticências separa os dois
+   * sem esconder nenhum dos dados.
+   */
+  '@media': {
+    [TELA_ESTREITA]: {
+      maxWidth: 'calc(50% - 14px)',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+    },
+  },
 })
 
 export const selo = styleVariants({
