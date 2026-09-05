@@ -1,4 +1,5 @@
 """Health check endpoints (Railway healthcheck + admin metrics)."""
+import hashlib
 import logging
 import os
 import re
@@ -15,20 +16,103 @@ logger = logging.getLogger(__name__)
 # Marca de boot do PROCESSO (não do request) — usada só por /livez.
 _PROCESS_STARTED_AT = time.monotonic()
 
-# Commit servido, resolvido UMA vez no import.
+# ---------------------------------------------------------------------------
+# Proveniência: o que me DISSERAM  ×  o que eu SOU
+# ---------------------------------------------------------------------------
 #
 # Por que existe: não havia como perguntar à API que código ela está rodando,
 # e isso mordeu duas vezes em uma semana — um `railway up` sobrescreveu um
 # deploy por git e ninguém conseguiu provar o que estava no ar sem adivinhar.
 #
-# "unknown" NÃO é um caso degradado silencioso: é o sinal de que o deploy veio
-# de upload local (`railway up`), que não carrega proveniência. Deploy por git
-# sempre traz o SHA. Ver a regra em docs/REGISTRO_DE_DECISOES.md (D-156).
+# ⚠️ A PRIMEIRA VERSÃO DISTO SE AUTO-ENGANAVA. Ela lia um SHA de env var e o
+# devolvia como se fosse fato. Env var e código servido são coisas
+# INDEPENDENTES: o CI grava `GIT_COMMIT_SHA` ANTES de subir, então basta o
+# upload falhar, subir outra árvore, ou alguém dar um `railway up` do laptop
+# (que não toca a variável) para o `/livez` afirmar, com confiança, um SHA que
+# não está rodando. Trocar "não sei" (`unknown`) por "acho que sei" DESLIGOU o
+# único sinal honesto que existia. Ver o runbook SINAIS_DEGRADACAO.md.
+#
+# O conserto: além do SHA declarado, devolver um digest derivado do PRÓPRIO
+# CÓDIGO EM DISCO. Ninguém escreve esse valor — ele é o que o processo é.
+
+#: SHA que ALGUÉM declarou. Não é prova de nada por si só.
 _COMMIT_SHA = (
     os.environ.get("RAILWAY_GIT_COMMIT_SHA")
     or os.environ.get("GIT_COMMIT_SHA")
     or ""
 ).strip() or "unknown"
+
+#: QUEM declarou — e isso muda o peso da declaração.
+#:
+#: `RAILWAY_GIT_COMMIT_SHA` é injetado pela plataforma num deploy por git:
+#: descreve o artefato, ninguém digita. `GIT_COMMIT_SHA` é variável que uma
+#: pessoa ou um workflow escreveu, e ela SOBREVIVE a um deploy que subiu outra
+#: coisa — é declaração, não proveniência. `None` = ninguém declarou.
+_COMMIT_SOURCE = (
+    "RAILWAY_GIT_COMMIT_SHA"
+    if (os.environ.get("RAILWAY_GIT_COMMIT_SHA") or "").strip()
+    else "GIT_COMMIT_SHA"
+    if (os.environ.get("GIT_COMMIT_SHA") or "").strip()
+    else None
+)
+
+#: Raiz do pacote servido: .../app/api/v1/health/routes.py → .../app
+_PACOTE_SERVIDO = os.path.dirname(  # app
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
+
+
+def _digest_da_arvore_servida(raiz: str) -> str | None:
+    """Impressão digital do código Python que ESTE processo tem em disco.
+
+    Usa o hash de blob do git (`sha1("blob <n>\0" + conteúdo)`) por arquivo,
+    para que qualquer pessoa recomponha o valor esperado a partir do
+    repositório SEM checkout e SEM rede:
+
+        git ls-tree -r <sha> -- services/api/app   # → mesmos hashes
+
+    É isso que separa prova de declaração: o SHA da env var é o que alguém
+    disse; este digest é o que o processo é. Se os dois discordam, quem mente
+    é a env var.
+
+    `None` quando não deu para calcular — nunca levanta: este código roda no
+    import do blueprint do `/livez`, e um `/livez` que não sobe vira loop de
+    restart no Railway.
+
+    ponytail: cobre só `app/**/*.py` — não pega dependências instaladas,
+    migrations nem o frontend. Estenda a varredura se algum desses virar a
+    pergunta.
+    """
+    try:
+        entradas = []
+        for pasta, _subpastas, arquivos in os.walk(raiz):
+            for nome in arquivos:
+                if not nome.endswith(".py"):
+                    continue
+                caminho = os.path.join(pasta, nome)
+                with open(caminho, "rb") as fh:
+                    dados = fh.read()
+                # sha1 aqui NÃO é escolha de segurança: é o formato do git,
+                # que é justamente o que torna o valor conferível de fora.
+                blob = hashlib.sha1(  # noqa: S324
+                    b"blob %d\0" % len(dados) + dados, usedforsecurity=False
+                ).hexdigest()
+                relativo = os.path.relpath(caminho, raiz).replace(os.sep, "/")
+                entradas.append(f"{blob} {relativo}")
+        if not entradas:
+            return None
+        # Ordenação explícita pela linha inteira: `os.walk` e `git ls-tree` não
+        # entregam na mesma ordem, e sem isto os dois lados nunca casariam.
+        corpo = "\n".join(sorted(entradas))
+        return hashlib.sha256(corpo.encode()).hexdigest()[:16]
+    except Exception as exc:  # pragma: no cover - defensivo, nunca derruba /livez
+        logger.warning("tree_digest_falhou: %s", exc)
+        return None
+
+
+#: Resolvido UMA vez no import (~340 arquivos): o `/livez` é probe de liveness
+#: e não pode pagar I/O por request.
+_TREE_DIGEST = _digest_da_arvore_servida(_PACOTE_SERVIDO)
 
 
 @health_bp.route("/health")
@@ -84,11 +168,24 @@ def liveness_check() -> tuple:
       HTTP. Serve para "reiniciar se travou" — não para "promover deploy":
       isso é o /readyz. Sempre 200 enquanto o processo estiver vivo.
 
-      Devolve também `commit`: o SHA que este processo está servindo, ou
-      "unknown" quando o deploy veio de upload local (`railway up`), que não
-      carrega proveniência. Sem autenticação de propósito — SHA de commit não
-      é segredo, e a pergunta "o que está no ar?" precisa ser respondível
-      mesmo com o banco fora.
+      Proveniência, em dois campos que NÃO são a mesma coisa:
+
+      - `commit` + `commit_source`: o SHA que ALGUÉM DECLAROU, e quem
+        declarou. `RAILWAY_GIT_COMMIT_SHA` vem da plataforma num deploy por
+        git (descreve o artefato); `GIT_COMMIT_SHA` é variável escrita por
+        um workflow ou por uma pessoa e SOBREVIVE a um deploy que subiu
+        outra coisa. `unknown` = ninguém declarou.
+      - `tree_digest`: o que este processo DE FATO tem em disco — digest dos
+        hashes de blob git de `app/**/*.py`. Ninguém escreve esse valor.
+        Confira de fora, sem checkout:
+        `git ls-tree -r <sha> -- services/api/app`.
+
+      ⚠️ `commit` sozinho NÃO é prova: a variável e o código servido são
+      independentes. Prova é `tree_digest` casar com o da árvore esperada.
+
+      Sem autenticação de propósito — SHA de commit não é segredo, e a
+      pergunta "o que está no ar?" precisa ser respondível mesmo com o banco
+      fora.
 
       E `running_jobs`: quantos jobs de treino estão em voo (queued|running),
       LIDO DO CACHE do refresher de readiness — este handler continua sem
@@ -108,6 +205,8 @@ def liveness_check() -> tuple:
         "status": "alive",
         "uptime_seconds": round(uptime, 1),
         "commit": _COMMIT_SHA,
+        "commit_source": _COMMIT_SOURCE,
+        "tree_digest": _TREE_DIGEST,
         "running_jobs": _readiness_cache.peek_running_jobs(),
     }), 200
 

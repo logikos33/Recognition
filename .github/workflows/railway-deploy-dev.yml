@@ -16,6 +16,21 @@ name: Deploy → Railway Desenvolvimento
 #
 # ⚠️ O SHA é medido no checkout (`git rev-parse HEAD`), nunca fixo: fixar a
 # proveniência é pior que não ter, porque passa a mentir com confiança.
+#
+# 🔴 E GRAVAR A VARIÁVEL NÃO É PROVA — corrigido em 05/09.
+#    A variável e o código servido são INDEPENDENTES. Ela é escrita ANTES do
+#    upload e sobrevive a ele: se o `railway up` falhar, subir outra árvore, ou
+#    alguém subir de fora deste workflow (o que não toca a variável), o
+#    `/livez` passa a afirmar, com confiança, um SHA que não está rodando.
+#    Esse conserto trocou "não sei" (`unknown`) por "acho que sei" — pior,
+#    porque desligou o único sinal honesto que existia.
+#
+#    Por isso o passo final deste job não é mais um smoke test de `/health`
+#    (que só prova que ALGUÉM está de pé): é a checagem de proveniência, que
+#    compara o `tree_digest` do serviço com o digest derivado da árvore que
+#    acabamos de enviar. Ela reprova o deploy quando a declaração não confere
+#    com o código. `--carencia-min 0` porque aqui não há o que esperar: o
+#    deploy é este, agora.
 
 # Dispara somente quando CI verde no develop.
 # Pré-requisito: adicione RAILWAY_TOKEN como GitHub Secret
@@ -69,12 +84,20 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
-      - name: Smoke test /health
+      # Estava aqui um `curl /health || echo warning`: não reprovava nada e só
+      # provava que algum processo respondia. A pergunta certa é outra —
+      # "o que subiu é o que eu mandei subir?".
+      - name: Provar que o que subiu é o que foi enviado
         run: |
-          sleep 30
-          curl -f --retry 5 --retry-delay 10 \
-            https://api-v3-desenvolvimento.up.railway.app/health \
-            || echo "::warning::Smoke test falhou — verifique logs Railway"
+          URL=https://api-v3-desenvolvimento.up.railway.app/livez
+
+          # O deploy é assíncrono (`--detach`): espera o processo NOVO atender.
+          # `--retry-all-errors` cobre o 502 do intervalo entre matar o antigo
+          # e promover o novo.
+          curl -fsS --retry 12 --retry-delay 15 --retry-all-errors "$URL" > /dev/null
+
+          python3 scripts/checa_proveniencia.py --url "$URL" \
+            --branch HEAD --carencia-min 0
 
   deploy-frontend:
     name: Frontend → Desenvolvimento
