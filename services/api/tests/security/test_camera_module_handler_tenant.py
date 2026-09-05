@@ -34,7 +34,12 @@ def _auth(app, tenant_id: str) -> dict[str, str]:
             additional_claims={
                 "tenant_id": tenant_id,
                 "tenant_schema": "tenant_test",
-                "role": "operator",
+                # admin: PATCH /module e PUT /schedule passaram a exigir
+                # cameras:configure (superadmin, admin) — mesma chave que
+                # o irmão em lote PUT /api/cameras/modules já usava. Só o
+                # papel do token muda; as asserções de escopo por tenant
+                # (404 cross-tenant, C-01) são as mesmas.
+                "role": "admin",
                 "modules": ["epi", "quality", "counting"],
             },
         )

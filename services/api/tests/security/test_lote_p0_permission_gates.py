@@ -421,3 +421,113 @@ class TestRegistryEnforcedHonesto:
             "quality:read",
         ):
             assert PERMISSION_REGISTRY[chave]["enforced"] is True, chave
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6. MÓDULO E AGENDAMENTO POR CÂMERA — as irmãs que o lote P0 deixou abertas
+#
+# Achado da revisão cética do próprio lote. As rotas do pacote `cameras` são
+# registradas por `add_url_rule`, não por `@bp.route`, então some de qualquer
+# varredura que só olhe decorator de rota — foi assim que estas duas passaram:
+#
+#   PATCH /api/cameras/<id>/module    liga/desliga o módulo naquela câmera.
+#                                     Pôr 'none' faz o EPI parar de olhar
+#                                     aquele ponto — e publica no Redis para
+#                                     o worker recarregar o modelo.
+#   PUT   /api/cameras/<id>/schedule  janelas horárias em que o módulo roda.
+#
+# Nas duas só havia @jwt_required(): o `raise AuthorizationError` que existe em
+# patch_camera_module é outra coisa — checa se o MÓDULO está habilitado para o
+# tenant, não se o USUÁRIO pode mexer.
+#
+# Chave: cameras:configure — não é design novo, é a MESMA que a irmã em lote
+# `PUT /api/cameras/modules` (modules_handler.put_camera_modules) já usava.
+# A versão em lote barrava viewer; a por câmera, que faz o mesmo estrago numa
+# câmera de cada vez, não. Nenhuma tela chama estas duas rotas hoje
+# (grep em apps/frontend/src: zero chamadas) — o front usa a rota em lote.
+#
+# NÃO gateado aqui de propósito: PATCH /api/cameras/<id>/config (fps_target,
+# quality_preset, collection_subtype). O furo existe — viewer e analyst mudam
+# a config por curl — mas quem decide o papel dono dela está em contradição
+# ANTES deste PR: o registry e o front novo dizem admin
+# (app/epi/Cameras.tsx:844 `podeConfigurar` desabilita o Salvar), enquanto o
+# front legado (components/cameras/CameraFpsConfig.tsx:49 EDIT_ROLES) e um
+# teste que existe justamente para fixar a decisão
+# (tests/unit/test_camera_config_propagation.py::test_operator_can_trigger_
+# propagation, "intencional (WS10)") dizem operator. Fechar isso é reverter
+# uma decisão de produto documentada a dois dias do go-live — vira issue, não
+# commit de madrugada.
+# ═══════════════════════════════════════════════════════════════════════════
+
+@pytest.fixture()
+def camera_module_repo():
+    """Repo mockado — side effect observável (update_module/update_schedule)."""
+    repo = MagicMock()
+    repo.get_by_id_and_tenant.return_value = {"id": CAM, "active_module": "epi"}
+    base = "app.api.v1.cameras.module_handler."
+    with ExitStack() as st:
+        st.enter_context(patch(base + "_get_camera_repo", return_value=repo))
+        st.enter_context(patch(base + "_is_module_allowed", return_value=True))
+        st.enter_context(patch(base + "_notify_module_changed"))
+        yield repo
+
+
+class TestModuloEAgendamentoPorCamera:
+    MODULE = f"/api/cameras/{CAM}/module"
+    SCHEDULE = f"/api/cameras/{CAM}/schedule"
+    REGRA = [{"days": [1], "start": "08:00", "end": "18:00", "module": "epi"}]
+
+    @pytest.mark.parametrize("role", SEM_PODER)
+    def test_papel_sem_permissao_nao_desliga_modulo(
+        self, app, client, camera_module_repo, role
+    ):
+        """FALHA-ANTES: 200 com {'active_module': 'none'} e repo.update_module()
+        executado — qualquer papel do tenant cegava a câmera."""
+        resp = client.patch(
+            self.MODULE, json={"module": "none"}, headers=_auth(app, role)
+        )
+        assert resp.status_code == 403, f"{role}: {resp.get_json()}"
+        camera_module_repo.update_module.assert_not_called()
+
+    @pytest.mark.parametrize("role", SEM_PODER)
+    def test_papel_sem_permissao_nao_muda_agendamento(
+        self, app, client, camera_module_repo, role
+    ):
+        """FALHA-ANTES: 200 e repo.update_schedule() executado."""
+        resp = client.put(
+            self.SCHEDULE, json={"rules": self.REGRA}, headers=_auth(app, role)
+        )
+        assert resp.status_code == 403, f"{role}: {resp.get_json()}"
+        camera_module_repo.update_schedule.assert_not_called()
+
+    def test_admin_continua_configurando(self, app, client, camera_module_repo):
+        """O gate barra quem não tem a chave — não fecha a tela de quem tem."""
+        h = _auth(app, "admin")
+        assert client.patch(
+            self.MODULE, json={"module": "epi"}, headers=h
+        ).status_code == 200
+        camera_module_repo.update_module.assert_called_once()
+        assert client.put(
+            self.SCHEDULE, json={"rules": self.REGRA}, headers=h
+        ).status_code == 200
+        camera_module_repo.update_schedule.assert_called_once()
+
+    def test_le_o_registry_nao_uma_lista_embutida(
+        self, app, client, camera_module_repo
+    ):
+        """Override granular manda: viewer COM a chave passa, admin SEM é barrado.
+        Prova que o gate consulta a claim `perms`, não um tuple de papéis."""
+        ok = client.patch(
+            self.MODULE, json={"module": "epi"},
+            headers=_auth(app, "viewer", perms=["cameras:configure"]),
+        )
+        assert ok.status_code == 200, ok.get_json()
+        camera_module_repo.update_module.assert_called_once()
+
+        camera_module_repo.update_module.reset_mock()
+        negado = client.patch(
+            self.MODULE, json={"module": "epi"},
+            headers=_auth(app, "admin", perms=["cameras:read"]),
+        )
+        assert negado.status_code == 403, negado.get_json()
+        camera_module_repo.update_module.assert_not_called()
