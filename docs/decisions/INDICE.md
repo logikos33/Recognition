@@ -5,7 +5,7 @@
 Uma decisão por arquivo (`docs/decisions/D-NNN-slug.md`). Convenção e motivo:
 [`README.md`](./README.md). Histórico congelado: [`../REGISTRO_DE_DECISOES.md`](../REGISTRO_DE_DECISOES.md).
 
-**186 decisões** · última: D-191
+**187 decisões** · última: D-192
 
 | # | Decisão | Data | Status |
 |---|---|---|---|
@@ -195,3 +195,4 @@ Uma decisão por arquivo (`docs/decisions/D-NNN-slug.md`). Convenção e motivo:
 | [D-189](./D-189-a-colheita-passa-a-obedecer-a-lista-do-dono-nao-a-tabela-de-politica.md) | A colheita passa a obedecer a lista do dono, não a tabela de política | 02/09 | — |
 | [D-190](./D-190-sem-action-de-segunda-opiniao-risk-security-ja-para-na-fila.md) | Sem Action de segunda opinião: `risk:security` já para na fila do humano | 2026-09-02 | ✅ vigente |
 | [D-191](./D-191-frontend-tests-so-vira-required-check-depois-de-os-flaky.md) | Frontend tests só vira required check depois de os flaky morrerem | 2026-09-02 | ✅ vigente |
+| [D-192](./D-192-gate-de-ci-mora-em-script-testavel-nao-em-heredoc-de-yaml.md) | Gate de CI mora em script testável, ⛔ não em heredoc de YAML | 2026-09-05 | ✅ vigente |
