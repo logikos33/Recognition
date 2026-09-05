@@ -143,6 +143,10 @@ class TestTrainingAnnotations:
             {"id": str(uuid4()), "class_id": 1, "x_center": 0.5,
              "y_center": 0.5, "width": 0.3, "height": 0.4},
         ]
+        # Duplê que não imita o service de verdade testa a si mesmo: a rota
+        # devolve `version` (token de concorrência do #801) e um MagicMock cru
+        # não é serializável — a resposta virava 500.
+        mock_svc.annotations_version.return_value = "v1"
         with patch("app.api.v1.training.annotation_handlers.get_annotation_service", return_value=mock_svc):
             res = client.get(
                 f"/api/training/frames/{fid}/annotations", headers=auth_headers
@@ -155,6 +159,7 @@ class TestTrainingAnnotations:
         fid = uuid4()
         mock_svc = MagicMock()
         mock_svc.save_annotations.return_value = 2
+        mock_svc.annotations_version.return_value = "v2"
         with patch("app.api.v1.training.annotation_handlers.get_annotation_service", return_value=mock_svc):
             res = client.post(
                 f"/api/training/frames/{fid}/annotations",
@@ -170,6 +175,7 @@ class TestTrainingAnnotations:
         fid = uuid4()
         mock_svc = MagicMock()
         mock_svc.save_annotations.return_value = 0
+        mock_svc.annotations_version.return_value = "vazio"
         with patch("app.api.v1.training.annotation_handlers.get_annotation_service", return_value=mock_svc):
             res = client.post(
                 f"/api/training/frames/{fid}/annotations",

@@ -70,7 +70,10 @@ class TestAnnotationService:
         ]
         result = self.service.save_annotations(fid, annotations, uid)
         assert result == 1
-        self.annotation_repo.save_batch.assert_called_once_with(fid, annotations, uid)
+        # `versao_esperada=None` = chamada sem cliente (guarda do #801 é opt-in).
+        self.annotation_repo.save_batch.assert_called_once_with(
+            fid, annotations, uid, versao_esperada=None
+        )
 
     def test_save_annotations_frame_not_found(self) -> None:
         self.frame_repo.get_by_id.return_value = None
