@@ -7,12 +7,17 @@ via patch.dict(sys.modules) to avoid needing celery installed.
 """
 import sys
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
+from uuid import uuid4
 
-from app.domain.services.verification_service import VerificationService
+from app.core.exceptions import ConflictError
+from app.domain.services.verification_service import (
+    VerificationService,
+    _ha_quanto_tempo,
+)
 
 _POOL_PATH = "app.domain.services.verification_service.DatabasePool"
 _VERIFICATION_MODULE = "app.infrastructure.queue.tasks.verification"
@@ -317,10 +322,13 @@ def _classe_de(a: dict) -> str:
     return viols[0].get("class", "") if viols else ""
 
 
-def _ordem_real_por_rajada(candidatos: list[dict], window_seconds: float) -> list[dict]:
+def _ordem_real_com_rank(candidatos: list[dict], window_seconds: float) -> list[tuple[int, dict]]:
     """Oráculo: reproduz a ordenação de 2 camadas real (rank_na_rajada, depois
     incerteza) — sessioniza por (câmera, classe) com gap > window_seconds
-    (gaps-and-islands), rank 1 = o mais incerto de cada sessão."""
+    (gaps-and-islands), rank 1 = o mais incerto de cada sessão.
+
+    Devolve `(rank, alerta)` porque o rodízio precisa do rank: ele gira DENTRO
+    do tier, nunca por cima dele (ver `_rodizio`)."""
     grupos: dict[tuple, list[dict]] = {}
     for a in candidatos:
         grupos.setdefault((a.get("camera_id"), _classe_de(a)), []).append(a)
@@ -340,11 +348,37 @@ def _ordem_real_por_rajada(candidatos: list[dict], window_seconds: float) -> lis
             for rank, a in enumerate(sorted(sessao, key=lambda a: (_incerteza(a), a["created_at"])), start=1):
                 ranqueados.append((rank, a))
 
-    ranqueados.sort(key=lambda t: (t[0], _incerteza(t[1])))
-    return [a for _, a in ranqueados]
+    # `str(id)` fecha o desempate — espelha o `id ASC` do ROW_NUMBER real, que
+    # existe pra `pos` (logo, a trilha do rodízio) não dançar entre polls.
+    ranqueados.sort(key=lambda t: (t[0], _incerteza(t[1]), str(t[1]["id"])))
+    return ranqueados
 
 
-_ORDER_BY_REAL = "ORDER BY r.rank_na_rajada ASC, ABS(COALESCE(a.confidence, 1.0) - 0.5) ASC"
+def _ordem_real_por_rajada(candidatos: list[dict], window_seconds: float) -> list[dict]:
+    return [a for _, a in _ordem_real_com_rank(candidatos, window_seconds)]
+
+
+def _rodizio(ranqueados: list[tuple[int, dict]], offset: int, trilhas: int) -> list[dict]:
+    """Oráculo do rodízio: `ORDER BY rank_na_rajada, (pos - 1 + offset) % trilhas, pos`.
+
+    `rank` PRIMEIRO — girar a lista inteira intercalaria irmão de rajada entre
+    representantes, desfazendo a camada 1. NINGUÉM some: é permutação dentro
+    do tier, não filtro.
+    """
+    return [
+        item for _, item in sorted(
+            ((rank, (i + offset) % trilhas, i), a)
+            for i, (rank, a) in enumerate(ranqueados)
+        )
+    ]
+
+
+#: ORDER BY canônico — hoje mora DENTRO do `ROW_NUMBER()` da CTE `ordenados`
+#: (o de fora só gira por trilha, ver `_RODIZIO_REAL`).
+_ORDER_BY_REAL = (
+    "ORDER BY rank_na_rajada ASC, ABS(COALESCE(confidence, 1.0) - 0.5) ASC, id ASC"
+)
+_RODIZIO_REAL = "ORDER BY o.rank_na_rajada ASC, (o.pos - 1 + %s) %% %s, o.pos"
 
 
 class _FakeDbCursor:
@@ -410,8 +444,12 @@ class _FakeDbCursor:
         if not is_list and not is_count:
             raise AssertionError(f"nem lista nem contagem reconhecidas: {query!r}")
         window = limit = None
+        offset = trilhas = None
         if is_list:
             window = params[idx]; idx += 1
+            if _RODIZIO_REAL in query:
+                offset = params[idx]; idx += 1
+                trilhas = params[idx]; idx += 1
             limit = params[idx]; idx += 1
 
         def _e_conformidade(a: dict) -> bool:
@@ -436,15 +474,27 @@ class _FakeDbCursor:
         #    texto. Um ORDER BY diferente do real produz uma ordem DIFERENTE
         #    (efeito observável), não a mesma resposta disfarçada — é o que
         #    faz este fake pegar M3/M4 (ver testes de mutação abaixo).
+        ranqueados: list[tuple[int, dict]] = []
         if is_list:
             if _ORDER_BY_REAL in query:
-                candidatos = _ordem_real_por_rajada(candidatos, window)
+                ranqueados = _ordem_real_com_rank(candidatos, window)
+                candidatos = [a for _, a in ranqueados]
             elif "ORDER BY a.created_at DESC" in query:
                 candidatos = sorted(candidatos, key=lambda a: a["created_at"], reverse=True)
             elif "ORDER BY ABS(COALESCE(a.confidence, 1.0) - 0.5) ASC" in query:
                 candidatos = sorted(candidatos, key=_incerteza)
             else:
                 raise AssertionError(f"ORDER BY não reconhecido: {query!r}")
+            # Rodízio DEPOIS da ordem canônica e ANTES do limit — é
+            # exatamente onde o SQL o aplica (permuta as posições, e só então
+            # o LIMIT corta). Aplicar depois do corte esconderia o efeito.
+            if trilhas is not None:
+                # Sem `_ORDER_BY_REAL` (mutações M3/M4) não há rank — o
+                # rodízio degrada para tier único, que é o que o SQL mutado
+                # faria de fato.
+                candidatos = _rodizio(
+                    ranqueados or [(1, a) for a in candidatos], offset, trilhas,
+                )
             if limit is not None:
                 candidatos = candidatos[:limit]
 
@@ -592,7 +642,13 @@ class TestFilaCriterioHonestoNaoENeedsHumanFantasma:
         a ordem é por incerteza — nunca por `created_at`, que poria
         `pending-4` (o mais recente) primeiro."""
         cursor = _FakeDbCursor(_rvb_like_alerts("tenant-1"), presence_names=_PRESENCA)
-        with patch(_POOL_PATH) as pool_cls:
+        # `_TRILHAS = 1` mede a ordem CANÔNICA: o rodízio por operador
+        # (bloco 4) gira DENTRO do tier de representantes de propósito — é o
+        # que impede dois operadores de abrirem o mesmo alerta. A propriedade
+        # "incerteza crescente" é do ranking, não da fatia entregue a UM
+        # operador; com o rodízio ligado ela é medida por trilha, no teste
+        # `test_rodizio_*` abaixo.
+        with patch(_POOL_PATH) as pool_cls, patch.object(VerificationService, "_TRILHAS", 1):
             pool_cls.get_instance.return_value = _pool_with_cursor(cursor)
             result = _make_service().get_human_queue(tenant_id="tenant-1")
         # pending-4 (offset mais recente, confiança 0,55) NÃO pode ser o
@@ -757,8 +813,13 @@ class TestHumanReview:
         assert "human_rejected" in params
 
     def test_no_rows_affected_returns_false(self):
+        """UPDATE não pegou linha E o alerta não existe no tenant → `False`
+        (a rota traduz em 404). `fetchone() is None` é o que o Postgres
+        devolve nesse caso — o MagicMock cru devolveria um objeto truthy e
+        mascararia a distinção 404 × 409."""
         mock_cursor = MagicMock()
         mock_cursor.rowcount = 0
+        mock_cursor.fetchone.return_value = None
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
             result = _make_service().human_review("a-1", "approve", "u-1", "tenant-1")
@@ -850,12 +911,164 @@ class TestHumanReview:
         """tenant_a_id nunca aparece nos params quando o request é do tenant_b."""
         mock_cursor = MagicMock()
         mock_cursor.rowcount = 0  # simula: WHERE não bate pois alerta é do tenant_a
+        mock_cursor.fetchone.return_value = None  # e o alerta não existe pro tenant_b
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
             result = _make_service().human_review("alert-of-tenant-a", "approve", "u-1", "tenant-b")
-        _, params = mock_cursor.execute.call_args[0]
-        assert "tenant-b" in params
+        # `call_args_list[0]` = o UPDATE (a 2ª chamada é a leitura que
+        # desambigua 404 × 409, e ela também é escopada por tenant).
+        for chamada in mock_cursor.execute.call_args_list:
+            assert "tenant-b" in chamada[0][1]
+            assert "tenant-a" not in chamada[0][1]
         assert result is False
+
+
+# ---------------------------------------------------------------------------
+# human_review — colisão multiusuário (bloco 4)
+# ---------------------------------------------------------------------------
+
+class TestColisaoDeVeredito:
+    """A guarda `verification_verdict IS NULL OR verified_by = <eu>`.
+
+    A prova de que a CORRIDA de verdade não sobrescreve está em
+    `tests/integration/test_verification_veredito_concorrente.py` (Postgres
+    real, duas threads). Aqui é o contrato do texto da query e da resposta —
+    o que roda no job principal do CI mesmo sem banco de integração.
+    """
+
+    def _cursor_ja_julgado(self, *, verdict="approve", verified_by="user:maria-id",
+                           autor_nome="Maria Silva", quando=None):
+        cur = MagicMock()
+        cur.rowcount = 0
+        cur.fetchone.return_value = {
+            "verification_verdict": verdict,
+            "verified_at": quando or datetime.now(timezone.utc) - timedelta(minutes=2),
+            "verified_by": verified_by,
+            "autor_nome": autor_nome,
+        }
+        return cur
+
+    def test_update_exige_veredito_vazio_ou_o_proprio_autor(self):
+        """FALHA se a guarda sumir do WHERE — que é o estado que deixava o
+        segundo operador sobrescrever o primeiro em silêncio."""
+        cur = MagicMock()
+        cur.rowcount = 1
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(cur)
+            _make_service().human_review("a-1", "approve", "u-1", "t-1")
+        query, params = cur.execute.call_args[0]
+        assert "verification_verdict IS NULL OR verified_by = %s" in query
+        # o próprio autor entra DUAS vezes: grava `verified_by` e libera a
+        # re-revisão dele mesmo.
+        assert [p for p in params if p == "user:u-1"] == ["user:u-1", "user:u-1"]
+
+    def test_veredito_alheio_levanta_conflito_409_com_nome_e_quando(self):
+        cur = self._cursor_ja_julgado()
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(cur)
+            with pytest.raises(ConflictError) as exc:
+                _make_service().human_review("a-1", "reject", "joao-id", "t-1")
+        assert exc.value.status_code == 409
+        assert "Maria Silva" in exc.value.message
+        assert "há 2 minutos" in exc.value.message
+        # NUNCA o id interno na mensagem que vai pra tela.
+        assert "maria-id" not in exc.value.message
+
+    def test_veredito_da_ia_e_nomeado_sem_uuid(self):
+        cur = self._cursor_ja_julgado(verified_by="claude-haiku", autor_nome=None)
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(cur)
+            with pytest.raises(ConflictError) as exc:
+                _make_service().human_review("a-1", "reject", "u-1", "t-1")
+        assert "verificação automática" in exc.value.message
+
+    def test_alerta_inexistente_e_404_nao_409(self):
+        """O conflito não pode virar oráculo de existência (C-01)."""
+        cur = MagicMock()
+        cur.rowcount = 0
+        cur.fetchone.return_value = None
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(cur)
+            assert _make_service().human_review("a-1", "approve", "u-1", "t-1") is False
+
+    def test_texto_relativo_do_quando(self):
+        agora = datetime.now(timezone.utc)
+        assert _ha_quanto_tempo(agora) == "agora há pouco"
+        assert _ha_quanto_tempo(agora - timedelta(minutes=1)) == "há 1 minuto"
+        assert _ha_quanto_tempo(agora - timedelta(minutes=40)) == "há 40 minutos"
+        assert _ha_quanto_tempo(agora - timedelta(hours=3)) == "há 3 horas"
+        assert "em " in _ha_quanto_tempo(agora - timedelta(days=2))
+        # datetime naive (mock antigo) é lido como UTC, não estoura.
+        assert _ha_quanto_tempo(agora.replace(tzinfo=None)) == "agora há pouco"
+        assert _ha_quanto_tempo(None) == "antes de você"
+
+
+class TestRodizioDeTrilha:
+    """Rodízio por operador — reduz a colisão ANTES do 409."""
+
+    def test_trilha_e_estavel_para_o_mesmo_usuario(self):
+        """A tela reabastece por dedup de id e não reordena o que já está
+        nela: uma trilha que mudasse a cada poll faria a ordem dançar."""
+        uid = str(uuid4())
+        assert VerificationService._trilha(uid) == VerificationService._trilha(uid)
+
+    def test_trilha_cobre_todas_as_faixas(self):
+        vistas = {VerificationService._trilha(str(uuid4())) for _ in range(300)}
+        assert vistas == set(range(VerificationService._TRILHAS))
+
+    def test_sem_user_id_cai_na_trilha_zero(self):
+        """Chamador antigo (badge/count) não regride para ordem aleatória."""
+        assert VerificationService._trilha(None) == 0
+        assert VerificationService._trilha("") == 0
+
+    def test_query_gira_dentro_do_tier_nunca_por_cima_dele(self):
+        cursor = _FakeDbCursor(_rvb_like_alerts("tenant-1"), presence_names=_PRESENCA)
+        with patch(_POOL_PATH) as pool_cls:
+            pool_cls.get_instance.return_value = _pool_with_cursor(cursor)
+            _make_service().get_human_queue(tenant_id="tenant-1", user_id="qualquer")
+        query, _ = cursor.calls[-1]
+        assert _RODIZIO_REAL in query
+        # `rank_na_rajada` continua sendo a PRIMEIRA chave do ORDER BY: sem
+        # isso o rodízio intercalaria irmão de rajada entre representantes.
+        assert query.index("o.rank_na_rajada ASC") < query.index("(o.pos - 1 + %s)")
+
+    def test_operadores_de_trilhas_diferentes_abrem_alertas_diferentes(self):
+        """O objetivo do recurso: três pessoas na mesma fila não abrem o
+        MESMO alerta. Mesmo conjunto para todos — só o começo muda."""
+        alerts = _rvb_like_alerts("tenant-1")
+        primeiros, conjuntos = [], []
+        for trilha in range(VerificationService._TRILHAS):
+            uid = next(
+                u for u in (str(uuid4()) for _ in range(500))
+                if VerificationService._trilha(u) == trilha
+            )
+            cursor = _FakeDbCursor(alerts, presence_names=_PRESENCA)
+            with patch(_POOL_PATH) as pool_cls:
+                pool_cls.get_instance.return_value = _pool_with_cursor(cursor)
+                r = _make_service().get_human_queue(tenant_id="tenant-1", user_id=uid)
+            primeiros.append(r[0]["id"])
+            conjuntos.append(frozenset(a["id"] for a in r))
+
+        assert len(set(primeiros)) == VerificationService._TRILHAS, primeiros
+        # Rodízio é PERMUTAÇÃO, não filtro — ninguém perde trabalho de vista.
+        assert len(set(conjuntos)) == 1
+
+    def test_representante_antes_do_irmao_em_TODAS_as_trilhas(self):
+        """A camada 1 (rodada 3) não pode ter sido desfeita pelo rodízio."""
+        alerts = _rvb_like_alerts("tenant-1")
+        for trilha in range(VerificationService._TRILHAS):
+            uid = next(
+                u for u in (str(uuid4()) for _ in range(500))
+                if VerificationService._trilha(u) == trilha
+            )
+            cursor = _FakeDbCursor(alerts, presence_names=_PRESENCA)
+            with patch(_POOL_PATH) as pool_cls:
+                pool_cls.get_instance.return_value = _pool_with_cursor(cursor)
+                ids = [a["id"] for a in _make_service().get_human_queue(
+                    tenant_id="tenant-1", user_id=uid)]
+            irmao = min(ids.index("rajada-0a"), ids.index("rajada-0b"))
+            ultimo_representante = max(ids.index(f"pending-{i}") for i in range(5))
+            assert irmao > ultimo_representante, (trilha, ids)
 
 
 # ---------------------------------------------------------------------------
