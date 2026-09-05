@@ -40,20 +40,12 @@ import { useToast } from '../../components/ui/Toast/useToast'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import { lk } from '../tokens/lk.css'
 import { rotaNova } from '../RotasNovas'
+import {
+  PAPEIS_ATRIBUIVEIS, PAPEL_LABEL, ROTULO_SEM_PAPEL, SEM_PAPEL,
+} from '../../modules/admin/papeis'
 import * as s from './Usuarios.css'
 
 const PAGE_SIZE = 20
-
-const PAPEL_LABEL: Record<UserRole, string> = {
-  superadmin: 'Superadmin',
-  admin: 'Admin',
-  operator: 'Operador',
-  analyst: 'Analista',
-  trainer: 'Treinador',
-  viewer: 'Visualizador',
-}
-
-const PAPEIS_ATRIBUIVEIS: UserRole[] = ['admin', 'operator', 'analyst', 'trainer', 'viewer']
 
 const iniciais = (texto: string) => texto.trim().slice(0, 2).toUpperCase()
 
@@ -119,12 +111,15 @@ function ModalConvidar({
   onCriado: (cred: { email: string; senha: string }) => void
 }) {
   const [email, setEmail] = useState('')
-  const [papel, setPapel] = useState<UserRole>('operator')
+  const [papel, setPapel] = useState<UserRole | typeof SEM_PAPEL>(SEM_PAPEL)
   const [tenantId, setTenantId] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
+  const papelEscolhido = PAPEIS_ATRIBUIVEIS.find((p) => p.valor === papel) ?? null
+
   const criar = async () => {
+    if (!papelEscolhido) return
     setSalvando(true)
     setErro(null)
     try {
@@ -147,8 +142,15 @@ function ModalConvidar({
 
         <label className={s.campoLabel} htmlFor="us-papel">Papel</label>
         <select id="us-papel" className={s.campo} value={papel} onChange={(e) => setPapel(e.target.value as UserRole)}>
-          {PAPEIS_ATRIBUIVEIS.map((r) => <option key={r} value={r}>{PAPEL_LABEL[r]}</option>)}
+          <option value={SEM_PAPEL}>{ROTULO_SEM_PAPEL}</option>
+          {PAPEIS_ATRIBUIVEIS.map((p) => <option key={p.valor} value={p.valor}>{p.rotulo}</option>)}
         </select>
+        {papelEscolhido && (
+          <>
+            <span className={s.subtitulo}>{papelEscolhido.resumo}</span>
+            <span className={s.aviso}>{papelEscolhido.alerta}</span>
+          </>
+        )}
 
         <label className={s.campoLabel} htmlFor="us-tenant">Tenant</label>
         <select id="us-tenant" className={s.campo} value={tenantId} onChange={(e) => setTenantId(e.target.value)}>
@@ -162,7 +164,7 @@ function ModalConvidar({
           <button
             type="button"
             className={s.botaoPrimario}
-            disabled={salvando || !email || !tenantId}
+            disabled={salvando || !email || !tenantId || !papelEscolhido}
             onClick={() => void criar()}
           >
             {salvando ? 'Criando...' : 'Criar usuário'}
