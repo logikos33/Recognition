@@ -275,16 +275,33 @@ describe('front novo e front antigo convivem', () => {
     // passa: não há endereço fixo para julgar, e é assim que se escreve certo.)
     const saltos: string[] = []
     for (const p of MODULOS_DO_FRONT_NOVO) {
+      const rel = path.relative(SRC, p)
+      // TELA (`app/`): proibido, ponto — sem resolver destino nenhum. Tela nova
+      // navega com `navegar(rotaNova(...))`; trocar a aplicação inteira nunca
+      // é o que ela quer. Era esta a regra que pegou o 5º furo
+      // (`window.location.href = c.destino`, destino vindo de uma TABELA — nem
+      // literal, nem identificador simples: NENHUMA resolução o alcança).
+      // Afrouxá-la para "só reprovo se eu conseguir LER o destino" trocaria um
+      // guard que mede por um que quase nunca mede — medido: com a regra, o
+      // mutante do 5º furo dá vermelho; sem ela, verde.
+      //
+      // SERVIÇO/HOOK (fora de `app/`): recarregar a página inteira é o
+      // mecanismo legítimo deles (a troca de token exige releitura do
+      // localStorage por todo hook montado). Aqui o que se cobra é o DESTINO,
+      // resolvido por literal ou por identificador — inclusive default de
+      // assinatura, que é onde #760 se escondeu.
+      const eTela = rel.startsWith('app/')
       const texto = fs.readFileSync(p, 'utf-8')
       const constantes = literaisNomeados(texto)
       texto.split('\n').forEach((linha, i) => {
         const m = linha.match(
-          /window\.location\s*(?:\.href\s*=|\.assign\(|\.replace\()\s*(?:"(\/[^"]*)"|'(\/[^']*)'|`(\/[^`]*)`|([A-Za-z_$][\w$]*))/,
+          /window\.location\s*(?:\.href\s*=|\.assign\(|\.replace\()\s*(?:"(\/[^"]*)"|'(\/[^']*)'|`(\/[^`]*)`|([A-Za-z_$][\w$]*))?/,
         )
         if (!m) return
         const destino = m[1] ?? m[2] ?? m[3] ?? constantes.get(m[4] ?? '')
-        if (destino && !ehDoFrontNovo(destino)) {
-          saltos.push(`${path.relative(SRC, p)}:${i + 1}  → ${destino}   ${linha.trim()}`)
+        const vaza = eTela ? true : destino !== undefined && !ehDoFrontNovo(destino)
+        if (vaza) {
+          saltos.push(`${rel}:${i + 1}  → ${destino ?? '(destino não literal)'}   ${linha.trim()}`)
         }
       })
     }
