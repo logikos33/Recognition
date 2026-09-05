@@ -34,7 +34,11 @@ import pytest
 from app.infrastructure.database.repositories.annotation_repository import (
     AnnotationRepository,
 )
+from app.infrastructure.database.repositories.frame_repository import (
+    FrameRepository,
+)
 from app.infrastructure.queue.tasks.versioning_v2 import (
+    _contar_gabaritos,
     _fetch_annotations,
     _snapshot_labeled_frames,
 )
@@ -264,3 +268,117 @@ class TestArchivedClassAnnotationFilter:
         rows, _universo = _fetch_annotations(repo, tenant_id, "epi")
         frame_ids = {str(r["frame_id"]) for r in rows}
         assert frames["excluded"] not in frame_ids
+
+
+class TestTravaHoldoutOnly:
+    """Migration 133: o quadro de GABARITO nunca entra em export de treino.
+
+    Por que existe: o A/B das variantes saiu não conclusivo por falta de prova,
+    e a prova só vale enquanto o gabarito não treinar — modelo treinado no
+    próprio exame decora a resposta e toda medição posterior mente para cima
+    sem que nada acuse. A regra do dono do produto ("um quadro só tem UM
+    emprego para sempre") passa a ser trava de banco + predicado de SQL, não
+    combinado verbal.
+
+    Falha-antes/passa-depois: remova `AND tf.dataset_role = 'pool'` de
+    `_snapshot_labeled_frames` e `test_gabarito_nao_entra_no_pool` reprova
+    (executado — o frame marcado volta a aparecer no pool de treino).
+
+    Os dois testes andam em par de propósito: o do vazamento sozinho passaria
+    com um export que não devolve NADA. O de não-regressão é quem garante que
+    a trava recusa só o gabarito.
+    """
+
+    def test_gabarito_nao_entra_no_pool(
+        self, pg_pool, pg_raw, tenant_id: str, frames: dict[str, str],
+        seeded_annotations: None,
+    ) -> None:
+        repo = AnnotationRepository(pg_pool)
+        frame_repo = FrameRepository(pg_pool)
+        frame_repo.set_dataset_role([frames["active"]], "holdout", tenant_id)
+
+        ids = {str(r["id"]) for r in _snapshot_labeled_frames(repo, tenant_id, "epi")}
+        assert frames["active"] not in ids
+
+        # E as caixas dele também somem — as duas queries do pool concordam.
+        rows, _universo = _fetch_annotations(repo, tenant_id, "epi")
+        assert frames["active"] not in {str(r["frame_id"]) for r in rows}
+
+    def test_frame_normal_continua_no_pool(
+        self, pg_pool, tenant_id: str, frames: dict[str, str],
+        seeded_annotations: None,
+    ) -> None:
+        """NÃO-REGRESSÃO — o mais importante da suíte: a trava não pode
+        encolher o dataset de quem não é gabarito. `dataset_role` nasce 'pool'
+        em todo frame (DEFAULT da migration), então o caminho padrão é
+        exatamente o de antes."""
+        repo = AnnotationRepository(pg_pool)
+        ids = {str(r["id"]) for r in _snapshot_labeled_frames(repo, tenant_id, "epi")}
+        assert frames["active"] in ids
+
+        rows, _universo = _fetch_annotations(repo, tenant_id, "epi")
+        assert frames["active"] in {str(r["frame_id"]) for r in rows}
+
+    def test_contagem_de_recusados_confere(
+        self, pg_pool, tenant_id: str, frames: dict[str, str],
+        seeded_annotations: None,
+    ) -> None:
+        repo = AnnotationRepository(pg_pool)
+        frame_repo = FrameRepository(pg_pool)
+        assert _contar_gabaritos(repo, tenant_id, "epi") == 0
+
+        frame_repo.set_dataset_role([frames["active"]], "holdout", tenant_id)
+        assert _contar_gabaritos(repo, tenant_id, "epi") == 1
+
+        # O frame 'excluida' na curadoria NÃO conta como recusado pela trava:
+        # ele não entraria no export de qualquer jeito, e contá-lo faria o
+        # número virar ruído.
+        frame_repo.set_dataset_role([frames["excluded"]], "holdout", tenant_id)
+        assert _contar_gabaritos(repo, tenant_id, "epi") == 1
+
+    def test_marcacao_e_idempotente(
+        self, pg_pool, pg_raw, tenant_id: str, user_id: str,
+        frames: dict[str, str],
+    ) -> None:
+        """Marcar duas vezes não quebra, não duplica e — o que importa — não
+        move `dataset_role_set_at`: essa data é a prova de que o quadro já era
+        gabarito antes do treino X."""
+        frame_repo = FrameRepository(pg_pool)
+        alvo = [frames["active"]]
+
+        primeira = frame_repo.set_dataset_role(alvo, "holdout", tenant_id)
+        assert primeira == {"marcados": 1, "ja_no_papel": 0, "nao_encontrados": 0}
+
+        with pg_raw.cursor() as cur:
+            cur.execute(
+                "SELECT dataset_role, dataset_role_set_at FROM public.training_frames "
+                "WHERE id = %s", (frames["active"],),
+            )
+            depois_da_primeira = cur.fetchone()
+
+        segunda = frame_repo.set_dataset_role(alvo, "holdout", tenant_id)
+        assert segunda == {"marcados": 0, "ja_no_papel": 1, "nao_encontrados": 0}
+
+        with pg_raw.cursor() as cur:
+            cur.execute(
+                "SELECT dataset_role, dataset_role_set_at, COUNT(*) OVER () AS linhas "
+                "FROM public.training_frames WHERE id = %s", (frames["active"],),
+            )
+            depois_da_segunda = cur.fetchone()
+
+        assert depois_da_segunda["linhas"] == 1
+        assert depois_da_segunda["dataset_role"] == "holdout"
+        assert (
+            depois_da_segunda["dataset_role_set_at"]
+            == depois_da_primeira["dataset_role_set_at"]
+        )
+
+    def test_marcacao_nao_atravessa_tenant(
+        self, pg_pool, tenant_id: str, user_id: str, frames: dict[str, str],
+    ) -> None:
+        """C-01: id de outro tenant não casa o WHERE — não marca e não vaza
+        existência (sai como 'nao_encontrados', igual a um id inexistente)."""
+        frame_repo = FrameRepository(pg_pool)
+        outro_tenant = str(uuid4())
+        r = frame_repo.set_dataset_role([frames["active"]], "holdout", outro_tenant)
+        assert r == {"marcados": 0, "ja_no_papel": 0, "nao_encontrados": 1}

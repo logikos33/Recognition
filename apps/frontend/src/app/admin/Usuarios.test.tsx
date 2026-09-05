@@ -147,8 +147,15 @@ describe('Usuarios', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Convidar usuário' }))
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'novo@rvb.com.br' } })
+    // O papel NÃO vem escolhido (ver `modules/admin/papelPadrao.test.tsx`) —
+    // aqui ele é dito de propósito, como quem cria terá de fazer na tela.
+    fireEvent.change(screen.getByLabelText('Papel'), { target: { value: 'trainer' } })
     fireEvent.change(screen.getByLabelText('Tenant'), { target: { value: 't-rvb' } })
     fireEvent.click(screen.getByRole('button', { name: 'Criar usuário' }))
+
+    expect(createUser).toHaveBeenCalledWith(
+      { email: 'novo@rvb.com.br', role: 'trainer', tenant_id: 't-rvb' },
+    )
 
     expect(await screen.findByText('LK-AAAA-BBBB')).toBeTruthy()
     // O token "de convite" não é exibido como link — é infra morta (ver cabeçalho do arquivo).

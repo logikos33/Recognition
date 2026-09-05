@@ -35,6 +35,7 @@ import { LogikosLoader } from '../shell/LogikosLoader'
 import { PREFIXO_NOVO } from '../RotasNovas'
 import { useMarcaDoTenant } from '../tokens/MarcaDoTenant'
 import { lk } from '../tokens/lk.css'
+import { ROTULO_MODULO } from './rotulos'
 import * as s from './Modulos.css'
 
 interface ModuloDaApi {
@@ -47,35 +48,44 @@ interface ModuloDaApi {
 /**
  * Rótulo, ícone e destino por código REAL do backend.
  *
- * `destino` com `externo: true` sai do front novo para o antigo — é
- * deliberado e não acidente: esses módulos ainda não foram migrados (F4/F5).
- * Por isso usa `<a href>` e navegação de página inteira: trocar de shell não é
- * navegação de rota, é trocar de aplicação.
+ * Os TRÊS destinos são rotas do front NOVO. Até 05/09 dois deles não eram:
+ * Qualidade apontava para `/quality` e Contagem para `/epi/counting`, com um
+ * `externo: true` que saltava de página inteira (`window.location`) para o
+ * front ANTIGO. O comentário chamava isso de "deliberado, esses módulos ainda
+ * não foram migrados" — e estava desatualizado: `RotasNovas.tsx` registra
+ * `quality` (mais gestão/revisão/configuração) e `carga` desde F4, e o
+ * `MANIFESTO-FRONT-ANTIGO.md` marca `pages/CountingPage.tsx` como SUBSTITUIDA
+ * por `app/carga/Carga.tsx`. O de-para é o do `DELTA-PRE-MIGRACAO.md:99`
+ * (`/epi/counting` · `/fueling/*` → `/carga/*`).
+ *
+ * Se um dia um módulo REALMENTE não tiver tela nova, ele não entra aqui:
+ * cartão que não leva a lugar nenhum é pior que ausência (é a regra que já
+ * mantém `basic` e `analytics` fora).
  */
 const CATALOGO: Record<
   string,
-  { nome: string; desc: string; icone: typeof ShieldCheck; destino: string; externo: boolean }
+  { nome: string; desc: string; icone: typeof ShieldCheck; destino: string }
 > = {
   epi: {
-    nome: 'EPI · Segurança',
+    // `nome` vem de `./rotulos` — mesma palavra que a tela de atribuição de
+    // câmeras usa para este módulo. `desc` continua sendo desta tela: aqui ela
+    // vende o módulo, lá ela explica o que acontece com a imagem da câmera.
+    nome: ROTULO_MODULO.epi,
     desc: 'Conformidade de EPI em zonas monitoradas',
     icone: ShieldCheck,
     destino: `${PREFIXO_NOVO}/epi/dashboard`,
-    externo: false,
   },
   quality: {
-    nome: 'Qualidade',
+    nome: ROTULO_MODULO.quality,
     desc: 'Inspeção por ponto, gate e retrabalho',
     icone: ScanSearch,
-    destino: '/quality',
-    externo: true,
+    destino: `${PREFIXO_NOVO}/quality`,
   },
   counting: {
-    nome: 'Carga',
+    nome: ROTULO_MODULO.counting,
     desc: 'Contagem e validação de expedição',
     icone: Boxes,
-    destino: '/epi/counting',
-    externo: true,
+    destino: `${PREFIXO_NOVO}/carga`,
   },
 }
 
@@ -145,8 +155,7 @@ export function Modulos() {
   const abrir = useCallback(
     (c: (typeof cartoes)[number]) => {
       registrarVisita(c.codigo)
-      if (c.externo) window.location.href = c.destino
-      else navegar(c.destino)
+      navegar(c.destino)
     },
     [navegar],
   )
@@ -160,8 +169,7 @@ export function Modulos() {
     if (cartoes.length === 1) {
       const unico = cartoes[0]
       registrarVisita(unico.codigo)
-      if (unico.externo) window.location.replace(unico.destino)
-      else navegar(unico.destino, { replace: true })
+      navegar(unico.destino, { replace: true })
     }
   }, [cartoes, navegar])
 

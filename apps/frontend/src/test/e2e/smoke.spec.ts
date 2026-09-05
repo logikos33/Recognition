@@ -8,6 +8,7 @@ test('login page renders', async ({ page }) => {
 
   await page.goto('/')
 
-  await expect(page.locator('h1')).toContainText('Recognition')
+  // A porta passou a servir a tela NOVA de login (`app/acesso/Entrar`) — PR #659.
+  await expect(page.locator('h1')).toContainText('Entrar')
   await expect(page.locator('input[type="email"]')).toBeVisible()
 })

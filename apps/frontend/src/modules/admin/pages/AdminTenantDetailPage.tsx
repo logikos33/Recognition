@@ -14,13 +14,13 @@ import { useToast } from '../../../components/ui/Toast/useToast'
 import { startImpersonation } from '../../../services/impersonation'
 import * as s from '../components/admin.css'
 import type { AdminUser, ModuleCatalogEntry, Tenant } from '../types/admin'
+import { PAPEIS_ATRIBUIVEIS, ROTULO_SEM_PAPEL, SEM_PAPEL } from '../papeis'
 import { vars } from '../../../styles/theme.css'
 
 // Fallback local caso o catálogo dinâmico falhe (fonte única: backend)
 const FALLBACK_MODULES: ModuleCatalogEntry[] = [
   'epi', 'counting', 'quality', 'basic', 'analytics', 'fueling',
 ].map((code) => ({ code, label: code, description: '', status: 'active' as const }))
-const ROLES = ['admin', 'operator', 'analyst', 'trainer', 'viewer']
 const RETENTION_TIERS = [1, 7, 30, 90]
 
 type Tab = 'overview' | 'users' | 'worker' | 'modules' | 'config' | 'integrations' | 'flags' | 'history'
@@ -233,7 +233,7 @@ function isCustomizedUser(u: AdminUser): boolean {
 function UsersTab({ tenantId, tenant, onReload }: { tenantId: string; tenant: Tenant; onReload: () => void }) {
   const toast = useToast()
   const [showAdd, setShowAdd] = useState(false)
-  const [form, setForm] = useState({ email: '', role: 'operator' })
+  const [form, setForm] = useState({ email: '', role: SEM_PAPEL as string })
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [permissionsUser, setPermissionsUser] = useState<DrawerUser | null>(null)
@@ -256,13 +256,16 @@ function UsersTab({ tenantId, tenant, onReload }: { tenantId: string; tenant: Te
     }
   }
 
+  const papelEscolhido = PAPEIS_ATRIBUIVEIS.find((p) => p.valor === form.role) ?? null
+
   const handleAdd = async () => {
+    if (!papelEscolhido) return
     setSaving(true); setErr(null)
     try {
       const res = await adminService.createUser({ email: form.email, role: form.role, tenant_id: tenantId })
       alert(`Usuário criado!\nSenha temporária: ${res.temp_password}`)
       setShowAdd(false)
-      setForm({ email: '', role: 'operator' })
+      setForm({ email: '', role: SEM_PAPEL as string })
       onReload()
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : 'Erro ao criar usuário')
@@ -299,14 +302,25 @@ function UsersTab({ tenantId, tenant, onReload }: { tenantId: string; tenant: Te
               className={s.input} placeholder="email@empresa.com" style={{ flex: 1, minWidth: 200 }}
               value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
             />
-            <select className={s.select} value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}>
-              {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+            <select
+              aria-label="Papel"
+              className={s.select}
+              value={form.role}
+              onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
+            >
+              <option value={SEM_PAPEL}>{ROTULO_SEM_PAPEL}</option>
+              {PAPEIS_ATRIBUIVEIS.map((p) => <option key={p.valor} value={p.valor}>{p.rotulo}</option>)}
             </select>
-            <button className={s.btnPrimary} onClick={handleAdd} disabled={saving || !form.email}>
+            <button className={s.btnPrimary} onClick={handleAdd} disabled={saving || !form.email || !papelEscolhido}>
               {saving ? 'Criando...' : 'Criar'}
             </button>
             <button className={s.btnGhost} onClick={() => { setShowAdd(false); setErr(null) }}>Cancelar</button>
           </div>
+          {papelEscolhido && (
+            <div className={s.muted} style={{ marginTop: 8 }}>
+              {papelEscolhido.resumo} <strong>{papelEscolhido.alerta}</strong>
+            </div>
+          )}
           {err && <div className={s.alertBanner.danger} style={{ marginTop: 8 }}>{err}</div>}
         </div>
       )}

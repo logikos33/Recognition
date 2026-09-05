@@ -20,10 +20,13 @@ export const cyberpunkTheme = createTheme(vars, {
     textMuted: '#64748b',
     textDim: '#475569',
 
-    primary: '#8b5cf6',
-    primaryLight: '#a78bfa',
-    primaryDark: '#7c3aed',
-    primaryAlpha: 'rgba(139, 92, 246, 0.12)',
+    // Rodada V1 (set/2026) — mesmo motivo de `professional.css.ts`: família
+    // primary lia roxo travado. Passa a ler as CSS vars de white-label, com
+    // o ciano da marca como default.
+    primary: 'var(--color-primary, #06b6d4)',
+    primaryLight: 'var(--color-primary-light, #22d3ee)',
+    primaryDark: 'var(--color-primary-dark, #0891b2)',
+    primaryAlpha: 'var(--color-primary-alpha, rgba(6, 182, 212, 0.12))',
 
     accent: '#22d3ee',
     accentLight: '#67e8f9',
@@ -37,9 +40,9 @@ export const cyberpunkTheme = createTheme(vars, {
     danger: '#ef4444',
     dangerMuted: 'rgba(239, 68, 68, 0.15)',
 
-    borderSubtle: 'rgba(139, 92, 246, 0.20)',
-    borderDefault: 'rgba(139, 92, 246, 0.32)',
-    borderStrong: 'rgba(139, 92, 246, 0.52)',
+    borderSubtle: 'rgba(6, 182, 212, 0.20)',
+    borderDefault: 'rgba(6, 182, 212, 0.32)',
+    borderStrong: 'rgba(6, 182, 212, 0.52)',
 
     overlay: 'rgba(0, 0, 0, 0.75)',
     textOnPrimary: '#ffffff',
@@ -71,7 +74,7 @@ export const cyberpunkTheme = createTheme(vars, {
     sm: '0 2px 8px rgba(0, 0, 0, 0.4)',
     md: '0 4px 16px rgba(0, 0, 0, 0.5)',
     lg: '0 8px 32px rgba(0, 0, 0, 0.6)',
-    glow: '0 0 20px rgba(139, 92, 246, 0.4), 0 0 40px rgba(139, 92, 246, 0.15)',
+    glow: '0 0 20px rgba(6, 182, 212, 0.4), 0 0 40px rgba(6, 182, 212, 0.15)',
     glowCyan: '0 0 20px rgba(34, 211, 238, 0.4), 0 0 40px rgba(34, 211, 238, 0.15)',
     glowDanger: '0 0 20px rgba(239, 68, 68, 0.4)',
   },

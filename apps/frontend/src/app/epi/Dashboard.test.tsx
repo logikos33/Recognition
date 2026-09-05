@@ -18,14 +18,16 @@
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Dashboard } from './Dashboard'
+import { Eventos } from './Eventos'
 
 const getStats = vi.fn()
 const getTimeline = vi.fn()
 const getSummary = vi.fn()
+const getProfile = vi.fn()
 
 vi.mock('../../services/moduleService', () => ({
   moduleService: { getStats: (...a: unknown[]) => getStats(...a) },
@@ -34,7 +36,71 @@ vi.mock('../../services/eventsService', () => ({
   eventsService: {
     getTimeline: (...a: unknown[]) => getTimeline(...a),
     getSummary: (...a: unknown[]) => getSummary(...a),
+    getProfile: (...a: unknown[]) => getProfile(...a),
   },
+}))
+
+/**
+ * A tela de DESTINO (`Eventos`) roda de verdade neste arquivo — é a única
+ * forma de provar que o número do cartão e o número da lista são o MESMO
+ * número, e não duas leituras que ninguém confrontou. Os mocks abaixo
+ * existem só para ela.
+ *
+ * `api.get('/alerts?…')` não devolve um total fixo: ele APLICA o recorte que
+ * a querystring pediu sobre `ACERVO`, exatamente como o backend faz
+ * (`kind` ausente = 'violation' é decisão da TELA, não do backend — o
+ * backend sem `kind` devolve tudo). Um mock de total fixo passaria com o
+ * link quebrado.
+ */
+const ACERVO = Array.from({ length: 24 }, (_, i) => ({
+  id: `e${i}`,
+  camera_id: 'c1',
+  camera_name: 'Entrada Expedição',
+  // 1 em cada 4 é violação de verdade; o resto é conformidade (EPI em uso),
+  // que é a maioria do acervo real do RVB.
+  violations: [{ class: i % 4 === 0 ? 'no_helmet' : 'helmet', confidence: 0.9 }],
+  event_kind: (i % 4 === 0 ? 'violation' : 'compliance') as 'violation' | 'compliance',
+  acknowledged: i % 2 === 0,
+  created_at: `2026-08-2${(i % 9) + 1}T13:0${i % 6}:00`,
+  timestamp: `2026-08-2${(i % 9) + 1}T13:0${i % 6}:00`,
+  verification_verdict: null,
+  verified_by: null,
+}))
+
+function servirAlerts(rota: string) {
+  const q = new URLSearchParams(rota.split('?')[1] ?? '')
+  const kind = q.get('kind')
+  const ack = q.get('acknowledged')
+  const alerts = ACERVO.filter(
+    (e) =>
+      (kind === null || kind === '' || e.event_kind === kind) &&
+      (ack === null || e.acknowledged === (ack === 'true')),
+  )
+  return { success: true, data: { alerts, total: alerts.length, page: 1, per_page: 20, pages: 1 } }
+}
+
+vi.mock('../../services/api', () => ({
+  ApiError: class extends Error { status = 500 },
+  getToken: () => 't',
+  api: {
+    get: vi.fn((rota: string) => Promise.resolve(servirAlerts(rota))),
+    post: vi.fn(() => Promise.resolve({ success: true })),
+    downloadBlob: vi.fn(() => Promise.resolve(new Blob(['a']))),
+  },
+}))
+vi.mock('../../services/cameraService', () => ({ cameraService: { list: () => Promise.resolve([]) } }))
+vi.mock('../../hooks/useModuleClasses', () => ({
+  useModuleClasses: () => ({
+    classes: [
+      { class_name: 'no_helmet', display_name: 'Sem capacete', polaridade: 'violacao' },
+      { class_name: 'helmet', display_name: 'Capacete', polaridade: 'conformidade' },
+    ],
+    loading: false,
+    classLabel: (c: string) => (c === 'no_helmet' ? 'Sem capacete' : 'Capacete'),
+  }),
+}))
+vi.mock('../../components/ui/Toast/useToast', () => ({
+  useToast: () => ({ error: vi.fn(), success: vi.fn(), info: vi.fn() }),
 }))
 
 /**
@@ -79,11 +145,52 @@ function montar({
   )
 }
 
+/** Vazio de `/events/profile` — nenhum evento capturado na janela. */
+const PERFIL_VAZIO = {
+  rows: [],
+  situacao: {
+    total: 0,
+    nao_reconhecidos: 0,
+    procedentes: 0,
+    improcedentes: 0,
+    cameras: 0,
+    primeira_captura: null,
+    ultima_captura: null,
+    confianca_media: null,
+  },
+}
+
+/**
+ * Perfil com os números REAIS medidos no DEV (RVB, 423 alertas): 302
+ * conformidade, 66 violação, 55 não definida — a proporção importa, porque é
+ * ela que prova que "423 alertas" não é "423 violações".
+ */
+const PERFIL_RVB = {
+  rows: [
+    { bucket: '2026-08-21T13:00:00', kind: 'violacao', count: 40 },
+    { bucket: '2026-08-21T13:00:00', kind: 'conformidade', count: 97 },
+    { bucket: '2026-08-21T17:00:00', kind: 'violacao', count: 26 },
+    { bucket: '2026-08-21T17:00:00', kind: 'conformidade', count: 205 },
+    { bucket: '2026-08-23T13:00:00', kind: 'indefinido', count: 55 },
+  ],
+  situacao: {
+    total: 423,
+    nao_reconhecidos: 396,
+    procedentes: 60,
+    improcedentes: 62,
+    cameras: 14,
+    primeira_captura: '2026-08-21T10:30:00',
+    ultima_captura: '2026-08-23T13:41:30',
+    confianca_media: 0.5622104018912525,
+  },
+}
+
 beforeEach(() => {
   vi.stubGlobal('localStorage', new MemoriaStorage())
   getStats.mockResolvedValue({ ...STATS_RVB })
   getTimeline.mockResolvedValue({ bucket: 'hour', timeline: [] })
   getSummary.mockResolvedValue({ total: 0, by_class: [], by_camera: [] })
+  getProfile.mockResolvedValue(PERFIL_VAZIO)
 })
 
 afterEach(() => vi.clearAllMocks())
@@ -127,12 +234,16 @@ describe('EPI Dashboard — números', () => {
 })
 
 describe('EPI Dashboard — o que o backend não tem', () => {
-  it('ações aparecem como indisponíveis, sem número inventado', async () => {
+  it('não sobra cartão morto na tela: o travessão de "Ações abertas" saiu', async () => {
+    getProfile.mockResolvedValue(PERFIL_RVB)
     montar()
-    const cartao = await screen.findByLabelText('Ações abertas')
-    expect(within(cartao).getByText('—')).toBeTruthy()
-    expect(within(cartao).getByText('Indisponível')).toBeTruthy()
-    // Os exemplos do protótipo não podem aparecer como se fossem dado.
+    await screen.findByText('87')
+    // O cartão inventava um domínio (ação corretiva com prazo e responsável)
+    // que não existe em tabela nenhuma, e ocupava um quarto da faixa de KPI
+    // com um "—". Espaço de tela não se gasta com placeholder.
+    expect(screen.queryByLabelText('Ações abertas')).toBeNull()
+    expect(screen.queryByText('Indisponível')).toBeNull()
+    // Os exemplos do protótipo continuam banidos.
     expect(screen.queryByText(/Reforçar DDS na doca/i)).toBeNull()
     expect(screen.queryByText(/CARLOS M\./i)).toBeNull()
   })
@@ -392,19 +503,271 @@ describe('EPI Dashboard — painéis', () => {
   it('esconder um widget o tira da tela e a preferência sobrevive à remontagem', async () => {
     // `region` = o <section> do painel. O checkbox do popover carrega o mesmo
     // rótulo, e por nome só a busca pegaria os dois.
-    const painelAcoes = () => screen.queryByRole('region', { name: 'Ações recentes' })
+    const painel = () => screen.queryByRole('region', { name: 'Composição dos eventos' })
 
     const tela = montar()
     await screen.findByText('87')
-    expect(painelAcoes()).toBeTruthy()
+    expect(painel()).toBeTruthy()
 
     fireEvent.click(screen.getByText('Personalizar widgets'))
-    fireEvent.click(await screen.findByLabelText('Ações recentes', { selector: 'input' }))
-    await waitFor(() => expect(painelAcoes()).toBeNull())
+    fireEvent.click(await screen.findByLabelText('Composição dos eventos', { selector: 'input' }))
+    await waitFor(() => expect(painel()).toBeNull())
 
     tela.unmount()
     montar()
     await screen.findByText('87')
-    expect(painelAcoes()).toBeNull()
+    expect(painel()).toBeNull()
+  })
+
+  it('os painéis novos entram no "Personalizar widgets", como os vizinhos', async () => {
+    montar()
+    await screen.findByText('87')
+    fireEvent.click(screen.getByText('Personalizar widgets'))
+    for (const rotulo of ['Violações por horário do dia', 'Volume por dia', 'Composição dos eventos']) {
+      expect(await screen.findByLabelText(rotulo, { selector: 'input' })).toBeTruthy()
+    }
+  })
+})
+
+/**
+ * O bloco que impede o painel de mentir. Cada widget novo tem DOIS casos: um
+ * com dado (mostra o número que veio do banco) e um SEM dado (diz que não há,
+ * em vez de desenhar barra de enfeite ou escrever zero como se fosse medição).
+ */
+describe('EPI Dashboard — perfil temporal (violações por horário, volume por dia, composição)', () => {
+  it('lê o perfil pelo horário de CAPTURA, não pelo de ingestão', async () => {
+    montar()
+    await screen.findByText('87')
+    // A linha do tempo de hoje também: sem `timeField: 'captured'` o painel
+    // desenha a hora em que a carga rodou, não a hora da fábrica.
+    await waitFor(() => expect(getTimeline).toHaveBeenCalled())
+    const params = getTimeline.mock.calls.at(-1)?.[0] as { timeField?: string }
+    expect(params.timeField).toBe('captured')
+  })
+
+  it('aponta a hora de PICO DE VIOLAÇÃO, não a hora de maior volume', async () => {
+    getProfile.mockResolvedValue(PERFIL_RVB)
+    montar()
+    const painel = await screen.findByLabelText('Violações por horário do dia')
+    // 13h UTC tem 40 violações em 137 eventos; 17h UTC tem 26 em 231. O pico
+    // de VIOLAÇÃO é o das 13h — o de volume seria o das 17h.
+    const horaLocal = String(new Date('2026-08-21T13:00:00Z').getHours()).padStart(2, '0')
+    await waitFor(() =>
+      expect(within(painel).getByText(`${horaLocal}h`, { selector: 'span' })).toBeTruthy(),
+    )
+    expect(within(painel).getByText('40')).toBeTruthy()
+  })
+
+  it('sem evento capturado, os três painéis dizem isso em vez de desenhar barra', async () => {
+    montar()
+    for (const nome of ['Violações por horário do dia', 'Volume por dia', 'Composição dos eventos']) {
+      const painel = await screen.findByLabelText(nome)
+      expect(within(painel).getByText('Nenhum evento capturado no período.')).toBeTruthy()
+      // Nada de "0" ou "—" ocupando o lugar de um número que não existe.
+      expect(within(painel).queryByText('—')).toBeNull()
+      expect(within(painel).queryByRole('group')).toBeNull()
+    }
+  })
+
+  it('a composição separa violação de conformidade — o total não é "tudo violação"', async () => {
+    getProfile.mockResolvedValue(PERFIL_RVB)
+    montar()
+    const painel = await screen.findByLabelText('Composição dos eventos')
+    await waitFor(() => expect(within(painel).getByText('66')).toBeTruthy())
+    expect(within(painel).getByText('302')).toBeTruthy()
+    expect(within(painel).getByText('55')).toBeTruthy()
+    expect(within(painel).getByText('Conformidade (EPI em uso)')).toBeTruthy()
+    expect(within(painel).getByText('Não definida')).toBeTruthy()
+    // 66 de 423 = 16%, e a frase tem de dizer isso e não "423 violações".
+    expect(within(painel).getByText(/16% dos 423 eventos do período são violação/)).toBeTruthy()
+  })
+
+  it('mostra a revisão humana e a confiança média que vieram da API', async () => {
+    getProfile.mockResolvedValue(PERFIL_RVB)
+    montar()
+    const painel = await screen.findByLabelText('Composição dos eventos')
+    await waitFor(() => expect(within(painel).getByText(/122/)).toBeTruthy())
+    expect(within(painel).getByText(/60 procedentes · 62 descartados/)).toBeTruthy()
+    expect(within(painel).getByText('56%')).toBeTruthy()
+    expect(within(painel).getByText('14')).toBeTruthy()
+  })
+
+  it('declara o alcance REAL do dado em vez de deixar supor 90 dias de operação', async () => {
+    getProfile.mockResolvedValue(PERFIL_RVB)
+    montar()
+    const painel = await screen.findByLabelText('Violações por horário do dia')
+    // 2 dias com registro (21 e 23/08) numa série de 3 dias — o buraco de 22
+    // aparece no gráfico e não conta como dia operado.
+    await waitFor(() =>
+      expect(within(painel).getByText(/21\/08 a 23\/08 · 2 dia\(s\) com registro/)).toBeTruthy(),
+    )
+  })
+
+  it('"Aguardando tratativa" traz o número real de eventos sem reconhecimento', async () => {
+    getProfile.mockResolvedValue(PERFIL_RVB)
+    montar()
+    const cartao = await screen.findByLabelText('Aguardando tratativa')
+    expect(within(cartao).getByText('396')).toBeTruthy()
+    expect(within(cartao).getByText('Sem reconhecimento')).toBeTruthy()
+    expect(within(cartao).getByText(/de 423 evento\(s\) no período/)).toBeTruthy()
+  })
+
+  it('sem perfil carregado o cartão de tratativa não entra — não inventa um zero', async () => {
+    getProfile.mockRejectedValue(new Error('timeout'))
+    montar()
+    await screen.findByText('87')
+    await waitFor(() => expect(screen.queryByLabelText('Aguardando tratativa')).toBeNull())
+  })
+})
+
+/**
+ * O DEEP-LINK QUE SE DESMENTE (bloco 2, achado 2).
+ *
+ * Medido no DEV em 2026-09-05 (tenant RVB, janela de 30 dias):
+ *
+ *   painel "Câmeras com mais eventos"  GET /v1/events/summary   → 4.629
+ *   destino do clique, como estava     GET /api/alerts (s/ kind) →   495
+ *
+ * O link não mandava `kind`; `Eventos.tsx` assume 'violation' quando o
+ * parâmetro está AUSENTE. O cartão contava tudo, a lista mostrava só as
+ * violações — 10× menos, sem uma palavra explicando.
+ *
+ * Estes casos rodam as DUAS telas: leem o href que o Dashboard escreveu e
+ * montam `Eventos` nele, contra o mesmo acervo. Se os dois números
+ * divergirem, o teste falha — que é a única maneira de o link não voltar a
+ * mentir por omissão.
+ */
+describe('EPI Dashboard — o link carrega o filtro que produziu o número', () => {
+  const kindDe = (href: string) => new URLSearchParams(href.split('?')[1]).get('kind')
+
+  it('painel que contou TODO evento manda kind explícito de "todos"', async () => {
+    getSummary.mockResolvedValue({
+      total: 24,
+      by_class: [],
+      by_camera: [{ camera_id: 'c1', camera_name: 'Entrada Expedição', count: 24 }],
+    })
+    montar()
+    const painel = await screen.findByLabelText('Câmeras com mais eventos')
+    const href = within(painel).getByRole('link', { name: /Entrada Expedição/ }).getAttribute('href') ?? ''
+    // `''` (presente e vazio) = "Todos os tipos". `null` (ausente) é o que
+    // fazia o destino cair no default 'violation'.
+    expect(kindDe(href)).toBe('')
+  })
+
+  it('painel de VIOLAÇÃO por classe mantém o corte de violação no link', async () => {
+    getSummary.mockResolvedValue({
+      total: 12,
+      by_class: [{ class: 'no_helmet', count: 12 }],
+      by_camera: [],
+    })
+    montar()
+    const painel = await screen.findByLabelText('Violações por classe')
+    const href = within(painel).getByRole('link', { name: /Sem capacete/ }).getAttribute('href') ?? ''
+    expect(kindDe(href)).toBe('violation')
+    expect(href).toContain('violation_type=no_helmet')
+  })
+
+  it('"Aguardando tratativa" leva o acknowledged=false que produziu o número', async () => {
+    getProfile.mockResolvedValue(PERFIL_RVB)
+    montar()
+    const cartao = await screen.findByLabelText('Aguardando tratativa')
+    const href = cartao.querySelector('a')?.getAttribute('href') ?? ''
+    expect(kindDe(href)).toBe('')
+    expect(href).toContain('acknowledged=false')
+  })
+
+  it('PROVA FIM-A-FIM: o número do cartão é o número que a lista de destino mostra', async () => {
+    getSummary.mockResolvedValue({
+      total: 24,
+      by_class: [],
+      by_camera: [{ camera_id: 'c1', camera_name: 'Entrada Expedição', count: 24 }],
+    })
+    const dashboard = montar()
+    const painel = await screen.findByLabelText('Câmeras com mais eventos')
+    const linha = within(painel).getByRole('link', { name: /Entrada Expedição/ })
+    // O número que o cartão AFIRMA, lido da tela — não da fixture.
+    const doCartao = Number(within(painel).getByText('24').textContent)
+    const href = linha.getAttribute('href') ?? ''
+    dashboard.unmount()
+
+    // A tela de destino, no MESMO link, contra o MESMO acervo.
+    render(
+      <MemoryRouter initialEntries={[href.replace('/novo', '')]}>
+        <Routes>
+          <Route path="/epi/eventos" element={<Eventos />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    // Esperar a LISTA chegar: o rodapé existe desde o primeiro render com
+    // "0 EVENTOS", e ler antes da carga daria um zero de loading.
+    await screen.findAllByText('Entrada Expedição')
+    const rodape = await screen.findByText(/EVENTOS$/)
+    const daLista = Number((rodape.textContent ?? '').replace(/\D/g, ''))
+
+    expect(daLista).toBe(doCartao)
+  })
+})
+
+/**
+ * SCORE 100 SOBRE O VAZIO (bloco 2, achado 1) — lado da tela.
+ *
+ * O backend passou a devolver `compliance_rate: null` + `compliance_reason`
+ * quando nada chegou na janela (ver
+ * `tests/unit/api/test_modules_stats_score_honesto.py`). Aqui trava que a
+ * tela DIZ a razão em vez de deixar o "—" mudo, e que não existe caminho
+ * em que ela pinte 100 · Conforme sobre 24 h sem dado.
+ */
+describe('EPI Dashboard — score não afirma mais do que sabe', () => {
+  it('sem sinal de ingestão nas 24 h: "—" com a razão, nunca 100 em verde', async () => {
+    // A resposta REAL do DEV, já com o conserto do backend aplicado.
+    getStats.mockResolvedValue({
+      ...STATS_RVB,
+      cameras_active: 17,
+      cameras_total: 17,
+      alerts_today: 0,
+      alerts_week: 127,
+      compliance_rate: null,
+      compliance_reason: 'sem_sinal_no_periodo',
+    })
+    montar()
+    const cartao = await screen.findByLabelText('Score de conformidade')
+    expect(within(cartao).getByText('—')).toBeTruthy()
+    expect(within(cartao).getByText('Indisponível')).toBeTruthy()
+    expect(within(cartao).getByText(/sem dado no período/)).toBeTruthy()
+    expect(within(cartao).queryByText('100')).toBeNull()
+    expect(within(cartao).queryByText('Conforme')).toBeNull()
+  })
+
+  it('sem câmera ativa continua dizendo a razão antiga, não a nova', async () => {
+    getStats.mockResolvedValue({
+      ...STATS_RVB,
+      cameras_active: 0,
+      compliance_rate: null,
+      compliance_reason: 'sem_cameras_ativas',
+    })
+    montar()
+    const cartao = await screen.findByLabelText('Score de conformidade')
+    expect(within(cartao).getByText(/sem câmera ativa para calcular/)).toBeTruthy()
+  })
+
+  it('razão desconhecida (backend novo, tela velha) não vira número nem some', async () => {
+    getStats.mockResolvedValue({
+      ...STATS_RVB,
+      compliance_rate: null,
+      compliance_reason: 'motivo_que_a_tela_nao_conhece',
+    })
+    montar()
+    const cartao = await screen.findByLabelText('Score de conformidade')
+    expect(within(cartao).getByText('—')).toBeTruthy()
+    expect(within(cartao).getByText(/não foi possível apurar agora/)).toBeTruthy()
+  })
+
+  it('a dica explica que zero em zero hora observada não é conformidade', async () => {
+    montar()
+    await screen.findByText('87')
+    fireEvent.click(screen.getByLabelText('Como o score é calculado'))
+    expect(
+      await screen.findByText(/ausência de medição, não conformidade/),
+    ).toBeTruthy()
   })
 })

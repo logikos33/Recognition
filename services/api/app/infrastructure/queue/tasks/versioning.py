@@ -63,6 +63,13 @@ def build_dataset_version(
         # AI_NOTE (A-2): LEFT JOIN — após a migration 094, video_id pode ser
         # NULL (frames de upload/auto-captura); INNER JOIN os excluiria
         # silenciosamente. Frames sem vídeo entram pelo escopo do tenant.
+        #
+        # ⛔ TRAVA HOLDOUT-ONLY (migration 133): `dataset_role = 'pool'`.
+        # Esta task é LEGADA (a oficial é versioning_v2.build_dataset_version_v2)
+        # e hoje nenhuma rota a dispara — mas ela continua REGISTRADA no Celery
+        # (celery_app.py:152, fila 'versioning'), o que basta para alguém
+        # chamá-la por nome. Trava que cobre um caminho e deixa outro aberto é
+        # pior que trava nenhuma: dá confiança sem dar garantia.
         annotated_frames = annotation_repo._execute(
             """
             SELECT tf.id, tf.video_id, tf.filename, tf.r2_key, tf.frame_number,
@@ -72,6 +79,7 @@ def build_dataset_version(
             LEFT JOIN training_videos tv ON tv.id = tf.video_id
             WHERE (tv.user_id = %s OR (tf.video_id IS NULL AND tf.tenant_id = %s))
               AND tf.is_annotated = TRUE
+              AND tf.dataset_role = 'pool'
             ORDER BY tf.video_id, tf.frame_number
             """,
             (user_id, tenant_id),

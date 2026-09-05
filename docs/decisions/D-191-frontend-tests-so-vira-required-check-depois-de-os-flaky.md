@@ -1,4 +1,4 @@
-# D-189 · Frontend tests só vira required check depois de os flaky morrerem
+# D-191 · Frontend tests só vira required check depois de os flaky morrerem
 
 **Data:** 2026-09-02 · **Status:** ✅ vigente
 
@@ -17,3 +17,9 @@ correta é fundação primeiro: conserta a causa, prova por mutação, só entã
 
 **Descartado:** promover agora e conviver com rerun (ensina a ignorar vermelho);
 promover só o `tsc`/`vitest` sem o e2e (parte o check em dois e esconde o e2e do gate).
+
+**Executada em 2026-09-05 (#681).** A condição foi cumprida: #654 (`mata duas famílias de
+teste instável`) mergeado às 16:31. Os 5 required checks foram aplicados nas três branches
+(`develop`, `staging`, `main`) e conferidos por `gh api .../required_status_checks`. Blast
+radius medido antes de aplicar: os 11 PRs abertos no momento já reportavam `Frontend tests`
+e `TypeScript check` **verdes** — nenhum ficou refém.

@@ -158,6 +158,14 @@ def list_training_images_handler():
                        só frames com proposta PENDENTE de alguma dessas
                        classes em `pre_annotations`. Nome, não id (os dois
                        catálogos colidem em id — task-077).
+      module           código do módulo (default 'epi'; 'all' desliga). Só
+                       frames de câmera declarada para o módulo em
+                       public.camera_modules (migration 134) — frame sem
+                       câmera (upload/vídeo) sempre entra, e o escopo só passa
+                       a valer quando o dono declara a primeira câmera. A
+                       resposta traz `fora_do_modulo` = quantos ficaram de
+                       fora, para a tela poder dizer que existe material
+                       escondido em vez de sumir com ele calada.
 
     Compat: sem source/status/camera_id/curation_status/pending_review o
     caminho legado (user-scoped via training_videos) é mantido byte a byte. Caminho
@@ -207,6 +215,14 @@ def list_training_images_handler():
         # preferência de ordem, não filtro — errar aqui não pode tirar a fila
         # do ar.
         ordenar = request.args.get("ordenar", "recente").strip().lower()
+        # ESCOPO DE MÓDULO: esta galeria/fila é a de UM módulo (default 'epi',
+        # o mesmo default das outras telas de treinamento). Só entram frames de
+        # câmera que o dono declarou para ele — e, enquanto ele não declarar
+        # nenhuma, entram todas (ver escopo_sql em camera_module_repository).
+        # `module=all` desliga o escopo de propósito: é o jeito de ver o acervo
+        # inteiro sem precisar de um segundo caminho de leitura.
+        module_arg = (request.args.get("module") or "epi").strip()
+        module_code = None if module_arg == "all" else module_arg
         if ordenar not in _ORDENACOES:
             logger.warning("ordenar_desconhecido: %r — usando 'recente'", ordenar)
             ordenar = "recente"
@@ -313,6 +329,7 @@ def list_training_images_handler():
                 cursor=cursor,
                 proposal_classes=proposal_classes,
                 ordenar=ordenar,
+                module_code=module_code,
             )
 
         # Serialise UUIDs (video_id/camera_id podem ser NULL)
@@ -600,6 +617,9 @@ def get_image_facets_handler():
                 except ValueError:
                     return error(f"camera_ids inválido (esperado UUID): {cid!r}", 400)
 
+        # Mesmo escopo (e mesmo default) da galeria — se os dois divergirem, a
+        # barra lateral anuncia frames que a galeria não entrega.
+        facet_module = (request.args.get("module") or "epi").strip()
         repo = _get_frame_repo()
         facets = repo.get_facets(
             tenant_id=tenant_id,
@@ -607,6 +627,7 @@ def get_image_facets_handler():
             camera_id=camera_id,
             camera_ids=camera_ids,
             curation_status=curation_status,
+            module_code=None if facet_module == "all" else facet_module,
         )
         return success(facets)
     except EpiMonitorError:

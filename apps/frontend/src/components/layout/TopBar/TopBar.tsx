@@ -2,7 +2,6 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { Menu } from 'lucide-react'
 import type { User } from '../../../hooks/useAuth'
 import { useAppStore } from '../../../stores/appStore'
-import { ThemeToggle } from '../../ui/ThemeToggle/ThemeToggle'
 import { NotificationBell } from '../../ui/NotificationBell/NotificationBell'
 import { vars } from '../../../styles/theme.css'
 import {
@@ -93,7 +92,6 @@ export function TopBar({ user, onLogout }: TopBarProps) {
 
       <div className={rightSection}>
         <NotificationBell />
-        <ThemeToggle />
 
         <div className={userInfo}>
           <span className={userName}>{user.name}</span>

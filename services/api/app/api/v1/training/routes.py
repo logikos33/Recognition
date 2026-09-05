@@ -28,12 +28,26 @@ Routes compatíveis com AnnotationInterface.jsx:
   GET  /api/v1/training/search/jobs/<id>
   POST /api/v1/training/search/jobs/<id>/callback           (interno GPU→API)
   POST /api/v1/training/search/jobs/<id>/promote             (achado → proposta pendente)
+  GET  /api/training/gabarito/fila                          (triagem do gabarito do A/B — migration 135)
+  PUT  /api/training/gabarito/frames/<frame_id>             (veredito por imagem+classe; NÃO é anotação)
+
+Gate por rota (registry canônico — app/core/permissions.py):
+  frames:annotate  (superadmin, admin, operator, trainer) — desenhar/validar
+                   anotação. É a MESMA chave que libera o Estúdio no front
+                   (app/estudio/Estudio.tsx); usar training:write aqui tiraria
+                   o operator, que é justamente quem anota.
+  training:write   (superadmin, admin, trainer) — criar/parar job, subir vídeo
+                   e imagem, configurar cenário do modelo.
+  training:approve (superadmin) — ativar/deployar modelo.
+Rotas mutantes SEM gate eram furo P0 (só @jwt_required = qualquer papel do
+tenant). Prova: tests/security/test_lote_p0_permission_gates.py.
 """
 from flask import Blueprint
 from flask_jwt_extended import jwt_required
 
 from app.core.auth import require_training_role
 from app.core.rate_limiting import get_rate_limit_identifier
+from app.core.tenant import require_permission
 from app.extensions import limiter
 
 from .annotation_handlers import (
@@ -49,6 +63,10 @@ from .annotation_handlers import (
     update_class_handler,
 )
 from .coverage_handlers import get_coverage_matrix_handler
+from .gabarito_handlers import (
+    get_gabarito_fila_handler,
+    save_gabarito_verdicts_handler,
+)
 from .image_handlers import (
     active_learning_queue_handler,
     curate_frames_handler,
@@ -112,6 +130,7 @@ def list_videos():  # type: ignore[no-untyped-def]
 
 @training_bp.route("/api/training/videos", methods=["POST"])
 @jwt_required()
+@require_training_role("write")
 def create_video():  # type: ignore[no-untyped-def]
     return create_video_handler()
 
@@ -140,6 +159,7 @@ def get_annotations(frame_id: str):  # type: ignore[no-untyped-def]
 
 @training_bp.route("/api/training/frames/<frame_id>/annotations", methods=["POST"])
 @jwt_required()
+@require_permission("frames:annotate")
 def save_annotations(frame_id: str):  # type: ignore[no-untyped-def]
     return save_annotations_handler(frame_id)
 
@@ -210,6 +230,7 @@ def delete_class(class_id: int):  # type: ignore[no-untyped-def]
 @training_bp.route("/api/training/jobs", methods=["POST"])
 @limiter.limit("20 per day", key_func=get_rate_limit_identifier)
 @jwt_required()
+@require_training_role("write")
 def create_job():  # type: ignore[no-untyped-def]
     return create_job_handler()
 
@@ -334,6 +355,7 @@ def activate_model(model_id: str):  # type: ignore[no-untyped-def]
 
 @training_bp.route("/api/training/frames/<frame_id>/validate", methods=["POST"])
 @jwt_required()
+@require_permission("frames:annotate")
 def validate_frame(frame_id: str):  # type: ignore[no-untyped-def]
     return validate_frame_handler(frame_id)
 
@@ -371,6 +393,26 @@ def get_training_coverage_matrix():  # type: ignore[no-untyped-def]
     return get_coverage_matrix_handler()
 
 
+# --- Gabarito do A/B de ausência (migration 135) ---
+#
+# Mesmo gate da anotação (`training:write`): quem pode rotular pode julgar.
+# O que se grava aqui NÃO é anotação — vai para public.holdout_verdicts, que
+# nenhuma query de export de treino conhece (ver gabarito_handlers.py).
+
+@training_bp.route("/api/training/gabarito/fila", methods=["GET"])
+@jwt_required()
+@require_training_role("write")
+def get_gabarito_fila():  # type: ignore[no-untyped-def]
+    return get_gabarito_fila_handler()
+
+
+@training_bp.route("/api/training/gabarito/frames/<frame_id>", methods=["PUT"])
+@jwt_required()
+@require_training_role("write")
+def save_gabarito_verdicts(frame_id: str):  # type: ignore[no-untyped-def]
+    return save_gabarito_verdicts_handler(frame_id)
+
+
 # --- Curadoria de frames (migration 110) ---
 
 @training_bp.route("/api/training/frames/curation", methods=["POST"])
@@ -398,6 +440,7 @@ def get_current_job_status():  # type: ignore[no-untyped-def]
 
 @training_bp.route("/api/training/jobs/<job_id>/stop", methods=["POST"])
 @jwt_required()
+@require_training_role("write")
 def stop_job(job_id: str):  # type: ignore[no-untyped-def]
     return stop_job_handler(job_id)
 
@@ -426,6 +469,7 @@ def get_job_progress(job_id: str):  # type: ignore[no-untyped-def]
 
 @training_bp.route("/api/training/scenarios/<model_id>/config", methods=["PUT"])
 @jwt_required()
+@require_training_role("write")
 def upsert_scenario_config(model_id: str):  # type: ignore[no-untyped-def]
     return upsert_scenario_config_handler(model_id)
 

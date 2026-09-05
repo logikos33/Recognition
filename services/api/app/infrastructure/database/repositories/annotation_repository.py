@@ -71,16 +71,26 @@ class AnnotationRepository(BaseRepository):
         porque este INSERT nunca a incluía; NULL é o estado de nascimento, não
         caso de borda).
         """
+        # `violation_decision`/`violation_decided_at` (migration 136): a MARCA de
+        # que a polaridade foi decidida por gente. Sem ela, o que este INSERT
+        # grava é reescrito no boot seguinte — em modo legado a 125 e a 127
+        # reexecutam a cada deploy e passam por cima de `is_violation`. Só marca
+        # quando houve decisão (is_violation não-nulo): caller que não decide não
+        # ganha marca, e o padrão das migrations continua valendo pra linha dele.
         return self._execute_mutation(
             "INSERT INTO yolo_classes "
-            "(user_id, name, color, tenant_id, module_code, is_violation) "
-            "VALUES (%s, %s, %s, %s, COALESCE(%s, 'epi'), %s) RETURNING *",
+            "(user_id, name, color, tenant_id, module_code, is_violation, "
+            " violation_decision, violation_decided_at) "
+            "VALUES (%s, %s, %s, %s, COALESCE(%s, 'epi'), %s, %s, "
+            "        CASE WHEN %s IS NULL THEN NULL ELSE NOW() END) RETURNING *",
             (
                 str(user_id),
                 name,
                 color,
                 str(tenant_id),
                 module_code,
+                is_violation,
+                is_violation,
                 is_violation,
             ),
         )  # type: ignore[return-value]
@@ -211,11 +221,18 @@ class AnnotationRepository(BaseRepository):
     # Mesmo universo do export de treino (_fetch_annotations,
     # versioning_v2.py:105): só anotação HUMANA (source='manual') ou
     # pré-anotação APROVADA (reviewed_by NOT NULL); frame anotado, não excluído
-    # na curadoria (110), classe não arquivada (110). Decodifica o offset de
+    # na curadoria (110), classe não arquivada (110), papel de treino
+    # (dataset_role='pool', 133). Decodifica o offset de
     # namespace de classe (class_namespace.TENANT_CLASS_ID_OFFSET = 100000)
     # exatamente como o export. Fragmento ESTÁTICO — os únicos valores de
     # request (tenant_id, module_code) entram por %s, nunca por f-string.
     # "Tela que conta diferente do export mente."
+    #
+    # dataset_role = 'pool' entrou junto com a trava holdout-only: o gabarito
+    # é trabalho humano REAL, mas não é cobertura de TREINO — é a prova. Sem
+    # este predicado a matriz passaria a contar caixas que o export recusa, e
+    # `scripts/ops/verify_coverage_matches_export.py` (que compara os dois
+    # SQLs extraídos do fonte) acusaria a divergência, com razão.
     _COVERAGE_UNIVERSE = """
           FROM frame_annotations a
           JOIN yolo_classes c
@@ -226,6 +243,7 @@ class AnnotationRepository(BaseRepository):
             ON pc.id = tf.camera_id AND pc.tenant_id = tf.tenant_id
          WHERE tf.tenant_id = %s AND tf.module_code = %s
            AND tf.is_annotated = TRUE AND tf.curation_status <> 'excluida'
+           AND tf.dataset_role = 'pool'
            AND c.archived_at IS NULL
            AND (COALESCE(a.source, 'manual') = 'manual' OR a.reviewed_by IS NOT NULL)
     """
@@ -426,6 +444,12 @@ class AnnotationRepository(BaseRepository):
             if col in fields:
                 set_parts.append(f"{col} = %s")
                 params.append(fields[col])
+        if "is_violation" in fields:
+            # Marca de decisão humana (migration 136) — sem ela a 125/127
+            # desfazem este PATCH no próximo boot em modo legado.
+            set_parts.append("violation_decision = %s")
+            params.append(fields["is_violation"])
+            set_parts.append("violation_decided_at = NOW()")
         if "archived" in fields:
             set_parts.append("archived_at = NOW()" if fields["archived"] else "archived_at = NULL")
 

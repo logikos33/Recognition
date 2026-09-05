@@ -15,6 +15,7 @@ pattern as OnvifRecorderClient constructing its client once in __init__.
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
 from typing import Any
@@ -37,20 +38,31 @@ def upload_frame(
     frame_bytes: bytes,
     module_code: str,
     captured_at: datetime,
+    crop_origin: dict[str, Any] | None = None,
     timeout: float = _DEFAULT_TIMEOUT_SECONDS,
 ) -> str:
-    """POSTs one frame; returns the created frame_id. Raises FrameUploadError on failure."""
+    """POSTs one frame; returns the created frame_id. Raises FrameUploadError on failure.
+
+    *crop_origin* liga o RECORTE ao frame de onde ele saiu
+    ({"box": [x,y,w,h], "source_size": [W,H]}, migration 132). Vai como campo
+    de form JSON, e só quando existe: frame cheio não tem recorte, então omitir
+    é a resposta certa — a coluna nasce NULL e ninguém precisa distinguir
+    "não sei" de "não se aplica".
+    """
     url = f"{api_base_url.rstrip('/')}/api/v1/edge/frames"
+    data = {
+        "camera_id": camera_id,
+        "recorder_id": recorder_id,
+        "module_code": module_code,
+        "captured_at": captured_at.isoformat(),
+    }
+    if crop_origin is not None:
+        data["crop_origin"] = json.dumps(crop_origin)
     try:
         resp = http_client.post(
             url,
             headers={"Authorization": f"Bearer {bearer}"},
-            data={
-                "camera_id": camera_id,
-                "recorder_id": recorder_id,
-                "module_code": module_code,
-                "captured_at": captured_at.isoformat(),
-            },
+            data=data,
             files={"file": ("frame.jpg", frame_bytes, "image/jpeg")},
             timeout=timeout,
         )

@@ -20,6 +20,7 @@ import { ConfirmDialog } from '../../../components/ui/ConfirmDialog/ConfirmDialo
 import { Tooltip } from '../../../components/ui/Tooltip/Tooltip'
 import { useToast } from '../../../components/ui/Toast/useToast'
 import { usePermissions } from '../hooks/usePermissions'
+import { PAPEIS_ATRIBUIVEIS } from '../papeis'
 import { adminService } from '../services/adminService'
 import * as s from './admin.css'
 import type {
@@ -30,13 +31,6 @@ import type {
   UserRole,
 } from '../types/admin'
 
-export const ROLE_OPTIONS: { value: UserRole; label: string; description: string }[] = [
-  { value: 'admin', label: 'Administrador', description: 'Gerencia o próprio tenant: câmeras, usuários, treinamentos e configurações.' },
-  { value: 'operator', label: 'Operador', description: 'Opera câmeras, testa conexões e acompanha alertas do dia a dia.' },
-  { value: 'analyst', label: 'Analista', description: 'Visualiza dashboards e relatórios; dá feedback em alertas.' },
-  { value: 'trainer', label: 'Treinador', description: 'Anota frames e cria jobs de treinamento de modelo.' },
-  { value: 'viewer', label: 'Visualizador', description: 'Somente visualização (read-only).' },
-]
 
 export interface DrawerUser {
   id: string
@@ -103,6 +97,12 @@ export function UserPermissionsDrawer({ open, onClose, user, onChanged }: UserPe
   }, [registry])
 
   const selectedCustomRole = tenantRoles.find((r) => r.id === customRoleId)
+
+  // Esta gaveta é onde o papel errado é CONSERTADO. Se aqui a descrição não
+  // contasse o mesmo limite que a tela de criação conta, o conserto viraria
+  // adivinhação — e o Admin ainda trocava de nome no caminho ("Administrador"
+  // aqui, "Admin" lá). Vocabulário único: `modules/admin/papeis.ts`.
+  const papelBase = PAPEIS_ATRIBUIVEIS.find((r) => r.valor === baseRole) ?? null
 
   /** Estado herdado (sem override): role base ∪ role customizada selecionada. */
   const inherited = useCallback((key: string): boolean => {
@@ -204,13 +204,15 @@ export function UserPermissionsDrawer({ open, onClose, user, onChanged }: UserPe
                   onChange={(e) => setBaseRole(e.target.value as UserRole)}
                   aria-label="Role base do usuário"
                 >
-                  {ROLE_OPTIONS.map((r) => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
+                  {PAPEIS_ATRIBUIVEIS.map((r) => (
+                    <option key={r.valor} value={r.valor}>{r.rotulo}</option>
                   ))}
                 </select>
-                <div className={s.muted} style={{ fontSize: 11, marginTop: 4 }}>
-                  {ROLE_OPTIONS.find((r) => r.value === baseRole)?.description}
-                </div>
+                {papelBase && (
+                  <div className={s.muted} style={{ fontSize: 11, marginTop: 4 }}>
+                    {papelBase.resumo} <strong>{papelBase.alerta}</strong>
+                  </div>
+                )}
               </div>
 
               {/* Role customizada */}

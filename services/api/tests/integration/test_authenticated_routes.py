@@ -41,6 +41,34 @@ def auth_headers(app, user_id):
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest.fixture
+def admin_headers(app, user_id):
+    """Token de ADMIN — para as rotas que exigem gate de permissão.
+
+    `auth_headers` é `operator` de propósito (é o papel mais comum e prova que
+    leitura funciona sem privilégio). Mas cadastrar câmera, subir vídeo de
+    treino e criar/parar job pedem `cameras:write` / `training:write`, que o
+    operator não tem no registry canônico (app/core/permissions.py) — antes
+    essas rotas não tinham gate NENHUM e o operator passava, o que era o furo
+    fechado no lote P0. Mesmo motivo do token inline de `test_create_class_ok`
+    (WS-A1), agora numa fixture em vez de copiado.
+
+    Quem prova que o papel errado é barrado:
+    tests/security/test_lote_p0_permission_gates.py.
+    """
+    with app.app_context():
+        from flask_jwt_extended import create_access_token
+        token = create_access_token(
+            identity=str(user_id),
+            additional_claims={
+                "tenant_id": str(uuid4()),
+                "role": "admin",
+                "tenant_schema": "public",
+            },
+        )
+    return {"Authorization": f"Bearer {token}"}
+
+
 # ---------------------------------------------------------------------------
 # Training — Videos
 # ---------------------------------------------------------------------------
@@ -65,7 +93,7 @@ class TestTrainingVideos:
             res = client.get("/api/training/videos", headers=auth_headers)
         assert res.status_code == 200
 
-    def test_create_video_ok(self, client, auth_headers) -> None:
+    def test_create_video_ok(self, client, admin_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.create_video.return_value = {
             "id": str(uuid4()), "filename": "video.mp4", "status": "uploaded",
@@ -75,7 +103,7 @@ class TestTrainingVideos:
                 "filename": "video.mp4",
                 "original_filename": "original.mp4",
                 "file_size": 1024,
-            }, headers=auth_headers)
+            }, headers=admin_headers)
         assert res.status_code in (200, 201)
 
     def test_get_video_frames_ok(self, client, auth_headers, user_id) -> None:
@@ -196,7 +224,7 @@ class TestTrainingClasses:
 
 class TestTrainingJobs:
 
-    def test_create_job_ok(self, client, auth_headers) -> None:
+    def test_create_job_ok(self, client, admin_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.create_job.return_value = {
             "id": str(uuid4()), "status": "queued", "preset": "balanced",
@@ -207,10 +235,10 @@ class TestTrainingJobs:
              patch("app.api.v1.training.job_handlers.get_dataset_service", return_value=mock_dataset_svc):
             res = client.post("/api/training/jobs", json={
                 "preset": "balanced", "model_size": "yolo26n", "total_epochs": 100,
-            }, headers=auth_headers)
+            }, headers=admin_headers)
         assert res.status_code in (200, 201)
 
-    def test_create_job_resolves_latest_dataset_version_when_omitted(self, client, auth_headers) -> None:
+    def test_create_job_resolves_latest_dataset_version_when_omitted(self, client, admin_headers) -> None:
         """task B2: sem dataset_version_id no body, resolve pra versão mais recente do usuário."""
         dsv_id = str(uuid4())
         mock_svc = MagicMock()
@@ -224,13 +252,13 @@ class TestTrainingJobs:
              patch("app.api.v1.training.job_handlers.get_dataset_service", return_value=mock_dataset_svc):
             res = client.post("/api/training/jobs", json={
                 "preset": "balanced", "model_size": "yolo26n", "total_epochs": 100,
-            }, headers=auth_headers)
+            }, headers=admin_headers)
         assert res.status_code in (200, 201)
         mock_svc.create_job.assert_called_once()
         assert mock_svc.create_job.call_args.kwargs["dataset_version_id"] == dsv_id
         assert res.get_json()["data"]["dataset_version_id"] == dsv_id
 
-    def test_create_job_respects_explicit_dataset_version_id(self, client, auth_headers) -> None:
+    def test_create_job_respects_explicit_dataset_version_id(self, client, admin_headers) -> None:
         """task B2: dataset_version_id explícito no body vence — sem lookup."""
         explicit_dsv_id = str(uuid4())
         mock_svc = MagicMock()
@@ -244,7 +272,7 @@ class TestTrainingJobs:
             res = client.post("/api/training/jobs", json={
                 "preset": "balanced", "model_size": "yolo26n", "total_epochs": 100,
                 "dataset_version_id": explicit_dsv_id,
-            }, headers=auth_headers)
+            }, headers=admin_headers)
         assert res.status_code in (200, 201)
         assert mock_svc.create_job.call_args.kwargs["dataset_version_id"] == explicit_dsv_id
         # Body já trouxe o id — não precisa consultar a versão mais recente
@@ -368,7 +396,7 @@ class TestCameraRoutesAuthenticated:
             res = client.get("/api/cameras", headers=auth_headers)
         assert res.status_code in (200, 500)
 
-    def test_create_camera_ok(self, client, auth_headers) -> None:
+    def test_create_camera_ok(self, client, admin_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.create_camera.return_value = {
             "id": str(uuid4()), "name": "Cam 1", "host": "192.168.1.100",
@@ -377,7 +405,7 @@ class TestCameraRoutesAuthenticated:
             res = client.post("/api/cameras", json={
                 "name": "Cam 1", "host": "192.168.1.100",
                 "manufacturer": "generic", "port": 554,
-            }, headers=auth_headers)
+            }, headers=admin_headers)
         assert res.status_code in (200, 201, 500)
 
     def test_get_camera_ok(self, client, auth_headers) -> None:
@@ -447,12 +475,12 @@ class TestTrainingErrorPaths:
             res = client.get("/api/training/videos", headers=auth_headers)
         assert res.status_code == 500
 
-    def test_create_video_error_path(self, client, auth_headers) -> None:
+    def test_create_video_error_path(self, client, admin_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.create_video.side_effect = RuntimeError("DB error")
         with patch("app.api.v1.training.video_handlers.get_video_service", return_value=mock_svc):
             res = client.post("/api/training/videos", json={"filename": "v.mp4"},
-                              headers=auth_headers)
+                              headers=admin_headers)
         assert res.status_code == 500
 
     def test_get_frames_error_path(self, client, auth_headers, user_id) -> None:
@@ -507,11 +535,11 @@ class TestTrainingErrorPaths:
                               headers={"Authorization": f"Bearer {token}"})
         assert res.status_code == 500
 
-    def test_create_job_error_path(self, client, auth_headers) -> None:
+    def test_create_job_error_path(self, client, admin_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.create_job.side_effect = RuntimeError("DB error")
         with patch("app.api.v1.training.job_handlers.get_training_service", return_value=mock_svc):
-            res = client.post("/api/training/jobs", json={}, headers=auth_headers)
+            res = client.post("/api/training/jobs", json={}, headers=admin_headers)
         assert res.status_code == 500
 
     def test_list_jobs_error_path(self, client, auth_headers) -> None:
@@ -723,16 +751,16 @@ class TestVideoErrorPaths:
 
 class TestCameraRoutesCoverage:
 
-    def test_delete_camera_ok(self, client, auth_headers) -> None:
+    def test_delete_camera_ok(self, client, admin_headers) -> None:
         cam_id = uuid4()
         mock_svc = MagicMock()
         mock_svc.delete_camera.return_value = None
         with patch("app.api.v1.cameras.crud_handlers._get_camera_service", return_value=mock_svc), \
              patch("app.api.v1.cameras.crud_handlers._is_admin", return_value=False):
-            res = client.delete(f"/api/cameras/{cam_id}", headers=auth_headers)
+            res = client.delete(f"/api/cameras/{cam_id}", headers=admin_headers)
         assert res.status_code in (200, 204, 500)
 
-    def test_update_camera_ok(self, client, auth_headers) -> None:
+    def test_update_camera_ok(self, client, admin_headers) -> None:
         cam_id = uuid4()
         mock_svc = MagicMock()
         mock_svc.update_camera.return_value = {
@@ -741,7 +769,7 @@ class TestCameraRoutesCoverage:
         with patch("app.api.v1.cameras.crud_handlers._get_camera_service", return_value=mock_svc), \
              patch("app.api.v1.cameras.crud_handlers._is_admin", return_value=False):
             res = client.put(f"/api/cameras/{cam_id}",
-                             json={"name": "Updated"}, headers=auth_headers)
+                             json={"name": "Updated"}, headers=admin_headers)
         assert res.status_code in (200, 405, 500)
 
     def test_camera_not_found_error(self, client, auth_headers) -> None:

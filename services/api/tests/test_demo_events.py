@@ -429,7 +429,13 @@ class TestAlertRepositoryEvents:
         assert "a.module_code = %s" in page_sql
         assert "d.module_code = %s" in page_sql
         params = list(page_params)
-        assert params.count("epi") == 2
+        # 4 = 1 (a.module_code) + 2 (escopo de câmera, migration 134, só no
+        # ramo `alerts`) + 1 (d.module_code). O escopo NÃO entra em
+        # demo_events: evento sintético tem camera_label, não câmera real, e
+        # aplicá-lo ali apagaria a demonstração no primeiro vínculo declarado.
+        assert params.count("epi") == 4
+        assert "cm_e.module_code = %s" in page_sql   # escopo no ramo alerts
+        assert page_sql.count("camera_modules") == 2  # 1 EXISTS + 1 NOT EXISTS
         assert params.count('%"class": "no_helmet"%') == 2
         # Zero interpolação do valor do filtro no SQL
         assert "no_helmet" not in page_sql

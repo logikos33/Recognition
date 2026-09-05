@@ -154,11 +154,85 @@ def merge_confusion_matrices(
     return merged
 
 
-def precision_recall_map(matches_by_class: dict[str, dict]) -> dict:
+# Grade de limiares da curva P/R/F1. 19 pontos (0,05..0,95) em vez de um ponto
+# por predição: cabe no JSONB, dá pra plotar, e o pico serve de limiar de
+# produção sem fingir precisão de 4 casas num número que veio de contagem.
+_THRESHOLD_GRID = tuple(round(0.05 * i, 2) for i in range(1, 20))
+
+
+def f1_curve(
+    matches: list[tuple[float, bool]],
+    n_gt: int,
+    confidence_floor: float = 0.0,
+) -> list[dict]:
+    """Curva P/R/F1 por limiar de confiança, para UMA classe.
+
+    `matches` vem de greedy_match/merge_match_results — pares (confiança,
+    é_tp) já ordenados por confiança desc. Subir o limiar só REMOVE as
+    predições de menor confiança, que são as últimas da ordem gulosa: o
+    casamento das que sobram não muda, então recontar tp/fp por corte é
+    exato, não aproximação.
+
+    `confidence_floor` = limiar com que o detector rodou. Ponto de grade
+    abaixo dele é fantasia (o detector nunca emitiu aquelas caixas) e é
+    descartado — um limiar "ótimo" de 0,05 medido num detector que só
+    emite acima de 0,25 seria número sem origem, exatamente o que este
+    módulo existe para acabar.
+
+    n_gt == 0 → curva vazia: sem ground-truth não há recall nem F1.
+    """
+    if n_gt <= 0:
+        return []
+    pontos: list[dict] = []
+    for limiar in _THRESHOLD_GRID:
+        if limiar < confidence_floor:
+            continue
+        tp = sum(1 for conf, is_tp in matches if conf >= limiar and is_tp)
+        fp = sum(1 for conf, is_tp in matches if conf >= limiar and not is_tp)
+        precision = tp / (tp + fp) if (tp + fp) else 0.0
+        recall = tp / n_gt
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+        pontos.append({
+            "threshold": limiar,
+            "precision": round(precision, 4),
+            "recall": round(recall, 4),
+            "f1": round(f1, 4),
+            "tp": tp,
+            "fp": fp,
+            "fn": n_gt - tp,
+        })
+    return pontos
+
+
+def best_f1_threshold(curve: list[dict]) -> float | None:
+    """Limiar do PICO de F1 — a origem do limiar de produção da classe.
+
+    None quando não há pico: curva vazia (classe sem GT) ou F1 zero em
+    toda a grade (classe que o modelo não acerta nunca). Devolver um
+    número nesses casos seria inventar limiar — é a ausência de medida
+    virando medida, o mesmo erro do issue #417.
+
+    Empate → o MENOR limiar (mais recall). Em EPI, deixar de ver é pior
+    que ver demais: o falso positivo vira fila de verificação humana, o
+    falso negativo vira ninguém sabendo.
+    """
+    melhor = max(curve, key=lambda p: (p["f1"], -p["threshold"]), default=None)
+    if melhor is None or melhor["f1"] <= 0.0:
+        return None
+    return melhor["threshold"]
+
+
+def precision_recall_map(
+    matches_by_class: dict[str, dict], confidence_floor: float = 0.0
+) -> dict:
     """AP por classe + mAP50 (média só das classes com n_gt > 0).
 
     Classes sem nenhum GT no split não entram na média (não há o que
     avaliar) mas aparecem no resultado com ap=None para transparência.
+
+    Por classe, além do AP: `curve` (P/R/F1 por limiar), `best_threshold`
+    (pico de F1 — o limiar de produção daquela classe) e `n_pred` (quantas
+    predições entraram na conta). Todo número sai com o n ao lado.
     """
     per_class: dict[str, dict] = {}
     aps: list[float] = []
@@ -166,24 +240,126 @@ def precision_recall_map(matches_by_class: dict[str, dict]) -> dict:
         n_gt = data["n_gt"]
         if n_gt == 0:
             per_class[cls] = {
-                "ap": None, "n_gt": 0, "tp": data["tp"], "fp": data["fp"], "fn": data["fn"],
+                "ap": None, "n_gt": 0, "n_pred": len(data["matches"]),
+                "tp": data["tp"], "fp": data["fp"], "fn": data["fn"],
+                "curve": [], "best_threshold": None, "best_f1": None,
             }
             continue
         ap = average_precision(data["matches"], n_gt)
         aps.append(ap)
         precision = data["tp"] / (data["tp"] + data["fp"]) if (data["tp"] + data["fp"]) else 0.0
         recall = data["tp"] / n_gt if n_gt else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+        curve = f1_curve(data["matches"], n_gt, confidence_floor)
+        limiar = best_f1_threshold(curve)
         per_class[cls] = {
             "ap": round(ap, 4),
             "precision": round(precision, 4),
             "recall": round(recall, 4),
+            "f1": round(f1, 4),
             "n_gt": n_gt,
+            "n_pred": len(data["matches"]),
             "tp": data["tp"],
             "fp": data["fp"],
             "fn": data["fn"],
+            "curve": curve,
+            "best_threshold": limiar,
+            "best_f1": next(
+                (p["f1"] for p in curve if p["threshold"] == limiar), None
+            ),
         }
     map50 = round(sum(aps) / len(aps), 4) if aps else 0.0
     return {"map50": map50, "per_class": per_class}
+
+
+# --------------------------------------------------------- mAP50-95 e tamanho
+
+# COCO: mAP50-95 = média do mAP em IoU 0,50:0,05:0,95 (10 pontos).
+COCO_IOU_SWEEP = tuple(round(0.5 + 0.05 * i, 2) for i in range(10))
+
+# COCO: small < 32², medium < 96², large o resto — em pixels de ÁREA da caixa.
+_COCO_SMALL_MAX = 32 * 32
+_COCO_MEDIUM_MAX = 96 * 96
+SIZE_BUCKETS = ("small", "medium", "large")
+
+
+def size_bucket(bbox: list[float]) -> str:
+    """Faixa de tamanho COCO de uma bbox [x, y, w, h] — por área w*h."""
+    area = float(bbox[2]) * float(bbox[3])
+    if area < _COCO_SMALL_MAX:
+        return "small"
+    if area < _COCO_MEDIUM_MAX:
+        return "medium"
+    return "large"
+
+
+def map_over_iou_sweep(
+    per_image: list[tuple[list[dict], list[dict]]],
+) -> dict:
+    """mAP50-95 COCO + o mAP de cada IoU da varredura.
+
+    `per_image`: [(preds, gts), ...] — uma entrada por imagem, bboxes
+    absolutas (casar entre imagens diferentes seria incorreto, por isso o
+    casamento é por imagem e só o resultado é agregado).
+
+    Recasar em 10 limiares custa 10 passadas de greedy_match sobre
+    detecções que JÁ estão em memória — barato perto da inferência que as
+    produziu, e é a única forma de ter o número que o dono pediu.
+    """
+    por_iou: dict[str, float] = {}
+    for limiar in COCO_IOU_SWEEP:
+        merged = merge_match_results(
+            [greedy_match(preds, gts, iou_threshold=limiar) for preds, gts in per_image]
+        )
+        por_iou[f"{limiar:.2f}"] = precision_recall_map(merged)["map50"]
+    valores = list(por_iou.values())
+    return {
+        "map50_95": round(sum(valores) / len(valores), 4) if valores else 0.0,
+        "map_por_iou": por_iou,
+    }
+
+
+def map_by_size(
+    per_image: list[tuple[list[dict], list[dict]]], iou_threshold: float = 0.5
+) -> dict[str, dict]:
+    """mAP50 e n por faixa de tamanho COCO (small/medium/large).
+
+    APROXIMAÇÃO DOCUMENTADA — não é o pycocotools. O COCO filtra o
+    ground-truth pela faixa e IGNORA (não penaliza) predição que casou com
+    GT de fora dela; aqui as predições também são filtradas, pela ÁREA DA
+    PRÓPRIA CAIXA. Efeito: uma predição cuja GT verdadeira caiu na faixa
+    vizinha conta como falso positivo em vez de ser ignorada — o número
+    sai igual ou mais SEVERO que o do COCO, nunca mais generoso. Como
+    IoU >= 0,5 exige áreas dentro de 2× uma da outra, só caixa em cima da
+    fronteira da faixa diverge.
+
+    Cada faixa vem com `n_gt` e `n_pred`: faixa com n_gt=0 tem map50=0,0
+    porque não há o que medir, não porque o modelo falhou — ler o mAP sem
+    o n ao lado é como o gate aprovava modelo cego.
+    """
+    saida: dict[str, dict] = {}
+    for faixa in SIZE_BUCKETS:
+        pares = [
+            (
+                [p for p in preds if size_bucket(p["bbox"]) == faixa],
+                [g for g in gts if size_bucket(g["bbox"]) == faixa],
+            )
+            for preds, gts in per_image
+        ]
+        merged = merge_match_results(
+            [greedy_match(p, g, iou_threshold=iou_threshold) for p, g in pares]
+        )
+        resultado = precision_recall_map(merged)
+        saida[faixa] = {
+            "map50": resultado["map50"],
+            "n_gt": sum(len(g) for _, g in pares),
+            "n_pred": sum(len(p) for p, _ in pares),
+            "per_class": {
+                cls: {"ap": d["ap"], "n_gt": d["n_gt"], "n_pred": d["n_pred"]}
+                for cls, d in resultado["per_class"].items()
+            },
+        }
+    return saida
 
 
 _BACKGROUND = "background"

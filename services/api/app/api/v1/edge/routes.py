@@ -32,9 +32,13 @@ from app.core.edge_offline import (
 from app.core.exceptions import AuthenticationError, StorageError
 from app.core.responses import error, success
 from app.core.tenant import has_permission
+from app.domain.services.crop_origin import parse_crop_origin
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.edge_heartbeat_repository import (
     EdgeHeartbeatRepository,
+)
+from app.infrastructure.database.repositories.camera_module_repository import (
+    CameraModuleRepository,
 )
 from app.infrastructure.database.repositories.camera_repository import CameraRepository
 from app.infrastructure.database.repositories.edge_site_repository import (
@@ -329,6 +333,11 @@ def _get_recorder_repo() -> RecorderRepository:
 def _get_frame_repo() -> FrameRepository:
     pool = DatabasePool.get_instance()
     return FrameRepository(pool)  # type: ignore[arg-type]
+
+
+def _get_camera_module_repo() -> CameraModuleRepository:
+    pool = DatabasePool.get_instance()
+    return CameraModuleRepository(pool)  # type: ignore[arg-type]
 
 
 def _image_dimensions(data: bytes) -> "tuple[int, int] | None":
@@ -718,6 +727,15 @@ def upload_edge_frame() -> tuple:
         except ValueError:
             return error("captured_at inválido (ISO 8601 esperado)", 422)
 
+    # Vínculo do RECORTE com o frame de onde ele saiu (migration 132). Ausente
+    # = a imagem é o quadro inteiro (fallback do coletor quando o detector está
+    # off/indeterminado): `crop_origin` fica NULL, e isso é a leitura certa, não
+    # um dado faltando.
+    try:
+        crop_origin = parse_crop_origin(request.form.get("crop_origin"))
+    except ValueError as exc:
+        return error(f"crop_origin inválido: {exc}", 422)
+
     # C-01: camera_id/recorder_id devem pertencer ao tenant do device
     # (do enrollment, nunca do payload) — cross-tenant -> 404, não vaza existência.
     if _get_camera_repo().get_by_id_and_tenant(camera_id_raw, tenant_id) is None:
@@ -726,6 +744,42 @@ def upload_edge_frame() -> tuple:
         return error("Gravador não encontrado", 404)
 
     module_code = request.form.get("module_code") or "epi"
+
+    # ESCOPO DE MÓDULO NA INGESTÃO — recusa ALTO, e antes do R2.
+    #
+    # Aqui a recusa é ruidosa de propósito, ao contrário do pool de anotação
+    # (que filtra em silêncio e devolve a contagem). O modo de falha decide:
+    #
+    #  - descartar em silêncio: o coletor do edge continuaria subindo o mesmo
+    #    frame a cada ciclo, para sempre, contra uma câmera que o dono não
+    #    declarou. Custo de banda e de R2 real, invisível nos dois lados —
+    #    ninguém aprende que a câmera não está vinculada. E como o upload
+    #    acontece ANTES do INSERT, cada descarte silencioso deixaria um objeto
+    #    órfão no bucket.
+    #  - recusar alto: o agente do edge vê o 422 no log, para de tentar
+    #    naquela câmera, e o dono tem uma pergunta concreta para responder na
+    #    tela de atribuição. Nada se perde: não há trabalho humano nesse frame
+    #    ainda — é o único ponto do fluxo onde a recusa não custa anotação.
+    #
+    # 422 e não 404: a câmera EXISTE e é deste tenant (acabou de ser conferida
+    # acima). 404 aqui misturaria "não é sua" com "não é deste módulo" e o edge
+    # não teria como distinguir — cross-tenant continua sendo 404, C-01 intacto.
+    #
+    # Enquanto o dono não declarar NENHUMA câmera para o módulo, camera_serves_
+    # module devolve True para todas: escopo não declarado não bloqueia coleta.
+    if not _get_camera_module_repo().camera_serves_module(
+        tenant_id, camera_id_raw, module_code
+    ):
+        logger.warning(
+            "edge_frame_fora_do_modulo: device=%s camera=%s module=%s (recusado)",
+            device_id, camera_id_raw, module_code,
+        )
+        return error(
+            f"Câmera não está vinculada ao módulo '{module_code}' — "
+            "vincule na tela de atribuição de módulos antes de coletar",
+            422,
+        )
+
     r2_key = f"{R2Prefix.TRAINING_IMAGES}/{tenant_id}/nvr/{recorder_id_raw}/{uuid4()}.jpg"
 
     # Storage e banco em blocos separados: falha de storage é operacional
@@ -765,6 +819,7 @@ def upload_edge_frame() -> tuple:
             captured_at=captured_at,
             tenant_id=tenant_id,
             module_code=module_code,
+            crop_origin=crop_origin,
         )
     except Exception:
         # Objeto já está no R2 mas a linha não entrou: fica órfão. Logado com

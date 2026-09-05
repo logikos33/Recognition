@@ -58,7 +58,7 @@ class _FakeClock:
 def _fake_upload_fn(calls: list):
     def _upload(
         http_client, api_base_url, bearer, camera_id, recorder_id,
-        frame_bytes, module_code, captured_at,
+        frame_bytes, module_code, captured_at, crop_origin=None,
     ):
         calls.append(
             {
@@ -66,6 +66,7 @@ def _fake_upload_fn(calls: list):
                 "recorder_id": recorder_id,
                 "frame_bytes": frame_bytes,
                 "module_code": module_code,
+                "crop_origin": crop_origin,
             }
         )
         return f"frame-{len(calls)}"
@@ -520,6 +521,54 @@ class TestDesfechoC:
         loop.tick(stop)
         loop.tick(stop)
         assert person.calls == 1, f"inferência rodou {person.calls}x no mesmo frame"
+
+
+class TestVinculoComOFrameDeOrigem:
+    """Todo recorte que sobe leva a caixa de onde saiu (migration 132).
+
+    Sem isso o recorte nasce órfão: nenhuma anotação feita nele volta pro frame
+    cheio, que é onde o modelo é SERVIDO. Foi assim que 5.259 recortes anotados
+    do RVB ficaram irreprojetáveis.
+    """
+
+    def _sobe_um(self, person_detector):
+        uploads: list = []
+        recorder = _FakeRecorder({_CAMERA: [_BLACK, _WHITE, _GRAY, _BLACK]})
+        loop = _make_loop(
+            recorder, uploads, burst_count=1, person_detector=person_detector
+        )
+        stop = threading.Event()
+        loop.tick(stop)
+        loop.tick(stop)
+        assert uploads, "deveria ter subido algo"
+        return uploads
+
+    def test_recorte_sobe_com_a_caixa_e_o_tamanho_do_original(self):
+        uploads = self._sobe_um(_FakePerson([_com_pessoa()] * 6))
+
+        origem = uploads[0]["crop_origin"]
+        assert origem is not None, "recorte subiu órfão — sem vínculo com o frame"
+        assert set(origem) == {"box", "source_size"}
+        x, y, w, h = origem["box"]
+        sw, sh = origem["source_size"]
+        # _WHITE/_GRAY/_BLACK são os frames sintéticos do módulo; a caixa tem de
+        # caber no frame de origem, senão a reprojeção sai da imagem.
+        assert w > 0 and h > 0
+        assert 0 <= x and 0 <= y and x + w <= sw and y + h <= sh
+
+    def test_frame_cheio_do_fallback_sobe_com_vinculo_nulo(self):
+        """Detector indeterminado: não houve recorte. NULL é a leitura certa —
+        a imagem já É o quadro inteiro — e não pode virar erro."""
+        uploads = self._sobe_um(
+            _FakePerson([PersonResult(found=False, undetermined=True)] * 6)
+        )
+
+        assert uploads[0]["crop_origin"] is None
+
+    def test_sem_detector_tambem_sobe_com_vinculo_nulo(self):
+        uploads = self._sobe_um(None)
+
+        assert uploads[0]["crop_origin"] is None
 
 
 class TestConfigEfetivaNoBoot:

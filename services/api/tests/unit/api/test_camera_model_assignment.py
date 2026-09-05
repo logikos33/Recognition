@@ -50,6 +50,15 @@ def mocked_repos(monkeypatch):
     monkeypatch.setattr(model_handlers, "_get_camera_repo", lambda: camera_repo)
     monkeypatch.setattr(model_handlers, "_get_training_repo", lambda: training_repo)
     monkeypatch.setattr(model_handlers, "_notify_model_assignment", MagicMock())
+    # Escopo de módulo (migration 134): True = escopo NÃO declarado, o estado
+    # de todo tenant no dia do deploy — a atribuição segue como hoje. A recusa
+    # quando a câmera está fora do módulo é coberta em
+    # test_camera_model_routes.py::TestCameraModuleScope.
+    module_repo = MagicMock()
+    module_repo.camera_serves_module.return_value = True
+    monkeypatch.setattr(
+        model_handlers, "_get_camera_module_repo", lambda: module_repo
+    )
     return camera_repo, training_repo
 
 

@@ -34,13 +34,61 @@ a contagem certa de novo — mas grava veredito em alertas que ninguém olhou.
 Até essa decisão, cada alerta é julgado individualmente e o contador mostra
 o trabalho real (114 no tenant RVB), não os 15 eventos.
 """
+import hashlib
 import logging
+from datetime import datetime, timezone
 
+from app.core.exceptions import ConflictError
 from app.core.rajada import DEDUP_WINDOW_SECONDS
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.alert_repository import AlertRepository
 
 logger = logging.getLogger(__name__)
+
+
+#: Prefixo que `human_review` grava em `verified_by` — a ÚNICA prova de que
+#: quem julgou foi GENTE (`tasks/verification.py` grava 'claude-haiku' na mesma
+#: coluna). O front lê a mesma regra em `VereditoHumano.tsx`.
+_PREFIXO_HUMANO = "user:"
+
+
+def _ha_quanto_tempo(quando: datetime | None) -> str:
+    """Texto relativo ("há 2 minutos") pro aviso de conflito.
+
+    Relativo, não data absoluta: o operador precisa saber se foi AGORA (o
+    colega ao lado, na mesma fila) ou semana passada. `verified_at` é
+    `timestamptz`; datetime naive (mock/teste antigo) é lido como UTC.
+    """
+    if quando is None:
+        return "antes de você"
+    if quando.tzinfo is None:
+        quando = quando.replace(tzinfo=timezone.utc)
+    segundos = int((datetime.now(timezone.utc) - quando).total_seconds())
+    if segundos < 60:
+        return "agora há pouco"
+    if segundos < 3600:
+        m = segundos // 60
+        return f"há {m} minuto{'s' if m > 1 else ''}"
+    if segundos < 86400:
+        h = segundos // 3600
+        return f"há {h} hora{'s' if h > 1 else ''}"
+    return f"em {quando.astimezone().strftime('%d/%m/%Y %H:%M')}"
+
+
+def _quem_julgou(verified_by: str | None, autor_nome: str | None) -> str:
+    """Nome de quem já julgou. NUNCA o UUID cru (`user:<uuid>` é id interno —
+    mesma regra de `EventoDetalhe`/`correcao_ultima`: mostra-se NOME).
+
+    Só pessoa chega aqui: veredito sem o prefixo `user:` (a IA) NÃO bloqueia o
+    UPDATE, logo nunca vira conflito. Os dois ramos abaixo são a rede: nome
+    apagado do banco → "Outro operador", nunca o UUID na tela.
+    """
+    if autor_nome:
+        return autor_nome
+    if verified_by and not verified_by.startswith(_PREFIXO_HUMANO):
+        # Inalcançável pela guarda atual (veredito de máquina é sobrescrevível)
+        return "A verificação automática"
+    return "Outro operador"
 
 
 def _get_pool():
@@ -71,6 +119,36 @@ class VerificationService:
     #: query (não só no catálogo), porque HOJE a query mistura alertas de
     #: todos os módulos do tenant sem filtrar por linha.
     _MODULE_CODE = "epi"
+
+    #: RODÍZIO DE FILA (bloco 4). A fila é determinística: mesma ordem, mesmo
+    #: `LIMIT` → dois operadores abriam o MESMO alerta e duplicavam 100% do
+    #: trabalho. Aqui a lista continua a MESMA (ninguém some, `get_queue_count`
+    #: não muda) — só o ponto de partida gira por usuário: as posições são
+    #: distribuídas em `_TRILHAS` faixas e cada operador começa pela sua.
+    #: Com 3 operadores (RVB, segunda) em trilhas DIFERENTES eles abrem 1º, 3º
+    #: e 2º item da fila em vez dos três o mesmo. Medido (segundo cético): a
+    #: trilha é hash do id, então 3 operadores caem em 3 trilhas distintas em
+    #: ~22% dos sorteios e dois deles dividem trilha em ~1/3 das duplas — isto
+    #: REDUZ a colisão, não a elimina. A garantia dura é o 409 do
+    #: `human_review`; o rodízio é só o que evita chegar nele o tempo todo.
+    #: ponytail: constante, não contagem de sessões ativas — 3 é o time real
+    #: da RVB. Se um dia importar de verdade quantos estão logados, é aqui que
+    #: o número deixa de ser fixo (nada mais muda).
+    _TRILHAS = 3
+
+    @classmethod
+    def _trilha(cls, user_id: str | None) -> int:
+        """Faixa (0.._TRILHAS-1) do operador — estável entre polls.
+
+        Estável é requisito, não detalhe: a tela reabastece por dedup de id
+        (`anexarSemRepetir`) e NUNCA reordena o que já está na tela; um offset
+        que mudasse a cada request faria a ordem dançar entre os polls de 15s.
+        Hash do id, não `random`.
+        """
+        if not user_id:
+            return 0
+        digest = hashlib.blake2b(user_id.encode(), digest_size=4).hexdigest()
+        return int(digest, 16) % cls._TRILHAS
 
     def submit_for_verification(
         self,
@@ -143,6 +221,7 @@ class VerificationService:
         tenant_id: str,
         limit: int = 50,
         camera_id: str | None = None,
+        user_id: str | None = None,
     ) -> list[dict]:
         """Lista TODO o trabalho real do tenant, ordenado pra maximizar
         eventos distintos vistos cedo (C-01) — nunca some ninguém.
@@ -162,6 +241,15 @@ class VerificationService:
              camada — mesmo raciocínio de antes: os mais recentes medidos no
              DEV tinham confiança 0,90-1,00 (o modelo já tinha certeza) e
              bbox não-projetável.
+
+          3. `trilha` — rodízio por operador (`_trilha`), aplicado DENTRO da
+             camada 1, nunca por cima dela: as posições são repartidas em
+             `_TRILHAS` faixas e cada operador começa pela SUA. Com 3
+             operadores na mesma fila eles abrem representantes DIFERENTES
+             (1º, 3º e 2º da lista) em vez dos três o mesmo — e todo
+             representante continua vindo antes de qualquer irmão de rajada.
+             Ninguém é filtrado: cada um vê a fila inteira, só a partir de um
+             ponto diferente.
 
         Nenhum alerta é FILTRADO por rajada — só reordenado. Julgar o
         representante NÃO decide os irmãos (nenhuma propagação de veredito
@@ -203,14 +291,33 @@ class VerificationService:
                            ORDER BY ABS(COALESCE(confidence, 1.0) - 0.5) ASC, created_at ASC
                        ) AS rank_na_rajada
                 FROM sessoes
+            ),
+            ordenados AS (
+                SELECT id, rank_na_rajada,
+                       ROW_NUMBER() OVER (
+                           ORDER BY rank_na_rajada ASC, ABS(COALESCE(confidence, 1.0) - 0.5) ASC, id ASC
+                       ) AS pos
+                FROM ranked
             )
             SELECT a.*, cam.name AS camera_name
             FROM alerts a
-            JOIN ranked r ON r.id = a.id
+            JOIN ordenados o ON o.id = a.id
             LEFT JOIN public.cameras cam ON cam.id = a.camera_id
-            ORDER BY r.rank_na_rajada ASC, ABS(COALESCE(a.confidence, 1.0) - 0.5) ASC
+            ORDER BY o.rank_na_rajada ASC, (o.pos - 1 + %s) %% %s, o.pos
             LIMIT %s
         """
+        # `pos` materializa a ordem canônica (rajada → incerteza → id) numa
+        # coluna, e o `ORDER BY` de fora a GIRA por trilha DENTRO do tier.
+        # Três decisões deliberadas:
+        #   · `o.rank_na_rajada` continua sendo a PRIMEIRA chave — o rodízio
+        #     não pode desfazer a camada 1 (todo representante de rajada antes
+        #     de qualquer irmão). Girar a lista inteira intercalaria irmão
+        #     entre representantes, que é a ordem que a rodada 1 já reprovou.
+        #   · `id ASC` fecha o desempate — sem ele, empate de incerteza saía
+        #     em ordem livre do Postgres e `pos` (logo, a trilha) mudava
+        #     entre polls do MESMO usuário.
+        #   · `%%` é `%` literal pro psycopg2 (o operador módulo), não um
+        #     placeholder.
         # `public.cameras`, não `cameras`: o pool é compartilhado entre
         # schemas (rvb/dev/admin.cameras também existe) e um search_path de
         # outra query na mesma conexão bastaria pra casar com a tabela
@@ -220,6 +327,8 @@ class VerificationService:
             params.append(camera_id)
         params.append(presence_names)
         params.append(self._DEDUP_WINDOW_SECONDS)
+        params.append(self._trilha(user_id))
+        params.append(self._TRILHAS)
         params.append(limit)
 
         # ⚠️ NÃO engolir: `[]` significa "fila vazia", e a tela escreve
@@ -262,8 +371,19 @@ class VerificationService:
         (`AND verification_status = 'needs_human'`) fazia esta rota devolver
         404 para 100% dos alertas reais — por isso `verification_verdict` está
         NULL nos 334 alertas do shadow. Revisão é a tela de detalhe, não só a
-        fila. Re-revisão é permitida de propósito (operador muda de ideia);
-        `verified_at` carimba a ÚLTIMA decisão.
+        fila. Re-revisão PELO PRÓPRIO AUTOR é permitida de propósito (operador
+        muda de ideia); `verified_at` carimba a ÚLTIMA decisão.
+
+        Retorno / erros:
+          · `True`  — gravou.
+          · `False` — alerta não existe neste tenant (a rota traduz em 404).
+          · `ConflictError` (409) — OUTRA PESSOA já julgou; a mensagem diz
+            quem e quando. Nada é sobrescrito: o veredito que fica é o do
+            primeiro. Ver o bloco de comentário no WHERE do UPDATE.
+
+        Veredito da IA (`verified_by='claude-haiku'`) NÃO é conflito: o humano
+        sobrescreve, que é o produto. Só veredito com o prefixo `user:` de
+        OUTRA pessoa bloqueia.
 
         tenant_id é obrigatório e faz parte do WHERE — um alerta de outro
         tenant não bate a condição, rowcount fica 0 e a rota trata isso como
@@ -282,6 +402,7 @@ class VerificationService:
         if pool is None:
             raise RuntimeError("Database não disponível")
 
+        autor = f"{_PREFIXO_HUMANO}{user_id}"
         with pool.get_connection() as conn:
             cur = conn.cursor()
             cur.execute(
@@ -300,14 +421,71 @@ class VerificationService:
                 # atalho — dado de calibração perdido em silêncio (achado do
                 # cético). `reason` só troca o valor quando de fato vem um.
                 "verification_reason = COALESCE(%s, verification_reason) "
-                "WHERE id = %s AND tenant_id = %s",
-                (status, verdict, f"user:{user_id}", reason or None,
-                 alert_id, tenant_id),
+                # ── A GUARDA DA CORRIDA (bloco 4) ────────────────────────
+                # Sem `verification_verdict IS NULL` no WHERE, dois operadores
+                # na MESMA fila (segunda, 3 usuários reais) julgavam o mesmo
+                # alerta e o SEGUNDO sobrescrevia o veredito do primeiro —
+                # `verified_by` incluído, 200 nos dois, aviso nenhum. Agora o
+                # UPDATE só pega linha ainda não julgada.
+                #
+                # `OR verified_by = %s` (o PRÓPRIO autor) preserva o que a
+                # docstring já prometia: "re-revisão é permitida de propósito
+                # (operador muda de ideia)". Mudar de ideia sobre o SEU
+                # veredito continua valendo; sobrescrever o de OUTRA pessoa
+                # em silêncio é que não.
+                #
+                # `OR verified_by NOT LIKE 'user:%'` (segundo cético): só o
+                # veredito de OUTRA PESSOA bloqueia. `tasks/verification.py`
+                # grava o MESMO 'approve'/'reject' com
+                # `verified_by='claude-haiku'`, e corrigir a IA é o produto
+                # inteiro — as telas de evento mostram "Não revisado" para
+                # esses alertas (VereditoHumano.tsx: só o prefixo 'user:'
+                # prova humanidade) e oferecem os botões. Sem esta cláusula, o
+                # primeiro clique nesses botões viraria 409 "A verificação
+                # automática já avaliou este alerta", e a revisão humana da
+                # decisão da máquina ficaria impossível pela rota. O prefixo
+                # vai como PARÂMETRO, não literal: `%` literal no texto da
+                # query é armadilha do psycopg2.
+                "WHERE id = %s AND tenant_id = %s "
+                "  AND (verification_verdict IS NULL OR verified_by = %s "
+                "       OR verified_by NOT LIKE %s)",
+                (status, verdict, autor, reason or None,
+                 alert_id, tenant_id, autor, f"{_PREFIXO_HUMANO}%"),
             )
-            affected = cur.rowcount
+            if cur.rowcount:
+                logger.info(
+                    "human_review: alert=%s verdict=%s user=%s", alert_id, verdict, user_id
+                )
+                return True
 
-        logger.info("human_review: alert=%s verdict=%s user=%s", alert_id, verdict, user_id)
-        return affected > 0
+            # 0 linhas tem DUAS causas e elas não podem virar a mesma resposta:
+            #   · alerta inexistente / de outro tenant  → 404 (C-01: não vaze
+            #     existência — a rota já traduz `False` em 404)
+            #   · alerta ALHEIO JÁ JULGADO              → 409 com quem e quando
+            # A leitura roda na MESMA conexão do UPDATE que falhou.
+            cur.execute(
+                "SELECT a.verification_verdict, a.verified_at, a.verified_by, "
+                "       u.name AS autor_nome "
+                "FROM alerts a "
+                "LEFT JOIN public.users u ON a.verified_by = 'user:' || u.id::text "
+                "WHERE a.id = %s AND a.tenant_id = %s",
+                (alert_id, tenant_id),
+            )
+            row = cur.fetchone()
+
+        if row is None or not row["verification_verdict"]:
+            # Não existe no tenant (404). O `not verdict` cobre o impossível
+            # teórico (linha existe, verdict nulo, UPDATE não pegou) sem
+            # inventar um 409 que não dá pra explicar ao operador.
+            return False
+
+        quem = _quem_julgou(row["verified_by"], row["autor_nome"])
+        quando = _ha_quanto_tempo(row["verified_at"])
+        logger.info(
+            "human_review_conflito: alert=%s user=%s ja_julgado_por=%s",
+            alert_id, user_id, row["verified_by"],
+        )
+        raise ConflictError(f"{quem} já avaliou este alerta {quando}.")
 
     def get_queue_count(self, tenant_id: str, camera_id: str | None = None) -> int:
         """Conta o TRABALHO REAL do tenant — todo alerta candidato, sem

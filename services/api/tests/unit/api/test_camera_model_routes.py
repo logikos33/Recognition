@@ -60,7 +60,19 @@ def mocked_repos(monkeypatch):
     monkeypatch.setattr(model_handlers, "_get_training_repo", lambda: training_repo)
     monkeypatch.setattr(model_handlers, "_get_model_rollout_repo", lambda: rollout_repo)
     monkeypatch.setattr(model_handlers, "_notify_model_assignment", MagicMock())
+    # Escopo de módulo (migration 134). True = escopo NÃO declarado, que é o
+    # estado de todo tenant no dia do deploy — a atribuição segue como hoje.
+    # O caso "câmera fora do módulo" está em TestCameraModuleScope, no fim.
+    monkeypatch.setattr(
+        model_handlers, "_get_camera_module_repo", lambda: _module_repo(True)
+    )
     return camera_repo, training_repo, rollout_repo
+
+
+def _module_repo(serves: bool) -> MagicMock:
+    repo = MagicMock()
+    repo.camera_serves_module.return_value = serves
+    return repo
 
 
 # ---------------------------------------------------------------------------
@@ -344,3 +356,57 @@ class TestGetEffectiveModel:
         assert body["source"] == "inherited"
         rollout_repo.get_active_model.assert_called_once_with("tenant_test", "quality")
         assert body["module"] == "quality"
+
+
+# ---------------------------------------------------------------------------
+# Escopo de módulo na ATRIBUIÇÃO de modelo (public.camera_modules, migration 134)
+# ---------------------------------------------------------------------------
+
+class TestCameraModuleScope:
+    """Irmã de `_check_model_module`: aquela confere o lado do modelo, esta o
+    lado da câmera. Recusa ALTA (400) — escrita deliberada de humano ignorada
+    em silêncio é o pior modo de falha desta tela."""
+
+    def test_camera_fora_do_modulo_recusa_e_nao_grava(
+        self, app, client, mocked_repos, monkeypatch
+    ):
+        camera_repo, training_repo, _ = mocked_repos
+        camera_repo.get_module_and_models.return_value = _cam_row(active_module="epi")
+        training_repo.get_model_for_tenant.return_value = {
+            "id": MODEL_ID, "name": "v1", "module_code": "epi",
+        }
+        monkeypatch.setattr(
+            model_handlers, "_get_camera_module_repo", lambda: _module_repo(False)
+        )
+
+        resp = client.put(
+            f"/api/cameras/{CAMERA_ID}/model",
+            headers=_token(app, role="admin"),
+            json={"model_id": MODEL_ID},
+        )
+
+        assert resp.status_code == 400
+        assert "vinculada ao módulo" in resp.get_json()["error"]
+        camera_repo.set_model_assignment.assert_not_called()
+
+    def test_remover_atribuicao_nao_e_bloqueada_pelo_escopo(
+        self, app, client, mocked_repos, monkeypatch
+    ):
+        """model_id=null LIMPA a atribuição. Bloquear isso trancaria o dono
+        fora da própria correção: ele não conseguiria tirar o modelo de uma
+        câmera que acabou de desvincular do módulo."""
+        camera_repo, _, _ = mocked_repos
+        camera_repo.get_module_and_models.return_value = _cam_row(active_module="epi")
+        camera_repo.set_model_assignment.return_value = _cam_row()
+        monkeypatch.setattr(
+            model_handlers, "_get_camera_module_repo", lambda: _module_repo(False)
+        )
+
+        resp = client.put(
+            f"/api/cameras/{CAMERA_ID}/model",
+            headers=_token(app, role="admin"),
+            json={"model_id": None},
+        )
+
+        assert resp.status_code == 200
+        camera_repo.set_model_assignment.assert_called_once()

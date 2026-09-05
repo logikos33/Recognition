@@ -66,7 +66,22 @@ function timeAgo(dateStr: string): string {
   return `há ${Math.floor(hrs / 24)}d`
 }
 
-export function NotificationBell() {
+export interface NotificationBellProps {
+  /**
+   * Base do deep-link dos alertas.
+   *
+   * O front NOVO monta ESTE mesmo sino (Shell.tsx) — inclusive o dedup de
+   * rajada abaixo, que é o motivo de não haver um segundo sino. Só que a tela
+   * de eventos dele é `/novo/epi/eventos`: mandar `/epi/alerts` levaria o
+   * usuário, calado, para a tela ANTIGA de mesmo assunto — `/epi/alerts` é rota
+   * VÁLIDA no app (mesmo pisão descrito em `RotasNovas.tsx`).
+   *
+   * Default = o endereço do front antigo, para a `TopBar` legada seguir igual.
+   */
+  rotaAlertas?: string
+}
+
+export function NotificationBell({ rotaAlertas = '/epi/alerts' }: NotificationBellProps = {}) {
   const navigate = useNavigate()
   const [isOpen, setIsOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -168,7 +183,7 @@ export function NotificationBell() {
                   .join(', ')
                 const abrir = (id: string, cameraId: string) => {
                   navigate(
-                    `/epi/alerts?camera_id=${encodeURIComponent(cameraId)}&acknowledged=false&kind=violation&highlight=${encodeURIComponent(id)}`
+                    `${rotaAlertas}?camera_id=${encodeURIComponent(cameraId)}&acknowledged=false&kind=violation&highlight=${encodeURIComponent(id)}`
                   )
                   setIsOpen(false)
                 }
@@ -227,7 +242,7 @@ export function NotificationBell() {
           <button
             className={viewAllBtn}
             onClick={() => {
-              navigate('/epi/alerts?acknowledged=false&kind=violation')
+              navigate(`${rotaAlertas}?acknowledged=false&kind=violation`)
               setIsOpen(false)
             }}
           >

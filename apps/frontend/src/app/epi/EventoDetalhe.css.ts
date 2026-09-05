@@ -423,8 +423,15 @@ export const botaoCorrigir = style({
   ':hover': { borderColor: lk.cor.cianoVisao, color: lk.cor.cianoVisao },
 })
 
-/** Badge de procedência — afirmação NEGATIVA ("coleta retroativa"), só ela. */
-export const procedencia = style({
+/**
+ * Badge de procedência — QUEM desenhou a caixa deste evento.
+ *
+ * Três leituras, três cores, e a cor nunca vai sozinha (a palavra está no
+ * componente): `humana` e `retroativa` são ressalva sobre a cena, e por isso
+ * usam ATENÇÃO; `modelo` é o caso esperado e fica em cinza, porque pintar de
+ * âmbar a operação normal treina o olho a ignorar o âmbar.
+ */
+const procedenciaBase = style({
   display: 'inline-flex',
   alignItems: 'center',
   gap: '5px',
@@ -432,11 +439,20 @@ export const procedencia = style({
   fontSize: '10px',
   letterSpacing: '0.08em',
   textTransform: 'uppercase',
-  color: lk.estado.atencao,
-  border: `1px solid color-mix(in srgb, ${lk.estado.atencao} 40%, transparent)`,
   borderRadius: '5px',
   padding: '2px 7px',
   whiteSpace: 'nowrap',
+})
+
+const tomProcedencia = (cor: string) => ({
+  color: cor,
+  border: `1px solid color-mix(in srgb, ${cor} 40%, transparent)`,
+})
+
+export const procedencia = styleVariants({
+  humana: [procedenciaBase, tomProcedencia(lk.estado.atencao)],
+  modelo: [procedenciaBase, tomProcedencia(lk.cor.cinzaNevoa)],
+  retroativa: [procedenciaBase, tomProcedencia(lk.estado.atencao)],
 })
 
 export const procedenciaIcone = style({ width: '11px', height: '11px', flex: 'none' })

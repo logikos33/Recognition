@@ -269,6 +269,37 @@ class TestReviewAlert:
             )
         assert resp.status_code == 400
 
+    def test_veredito_ja_dado_por_outro_retorna_409_com_a_frase(self, client, auth_headers):
+        """Bloco 4: o segundo operador recebe CONFLITO, não 200.
+
+        A tela lê `status` e `error` do envelope pra escrever "Fulana já
+        avaliou este alerta" — se isto virar 200, ela carimba o veredito dela
+        por cima do de outra pessoa sem avisar ninguém.
+        """
+        from app.core.exceptions import ConflictError
+        mock_svc = MagicMock()
+        mock_svc.human_review.side_effect = ConflictError(
+            "Maria Silva já avaliou este alerta há 2 minutos."
+        )
+        with patch(_SVC_PATH, mock_svc):
+            resp = client.post(
+                f"/api/verification/{ALERT_ID}/review",
+                json={"verdict": "approve"},
+                headers=auth_headers,
+            )
+        assert resp.status_code == 409
+        assert "Maria Silva" in resp.get_json()["error"]
+
+    def test_queue_repassa_user_id_para_o_rodizio(self, client, auth_headers):
+        """Sem `user_id`, todo mundo cai na trilha 0 e a fila volta a ser
+        idêntica pros três operadores de segunda."""
+        mock_svc = MagicMock()
+        mock_svc.get_human_queue.return_value = []
+        mock_svc.get_queue_count.return_value = 0
+        with patch(_SVC_PATH, mock_svc):
+            assert client.get("/api/verification/queue", headers=auth_headers).status_code == 200
+        assert mock_svc.get_human_queue.call_args.kwargs["user_id"] == USER_ID
+
     def test_approve_returns_200(self, client, auth_headers):
         mock_svc = MagicMock()
         mock_svc.human_review.return_value = 1

@@ -109,6 +109,89 @@ class CurationStatus(StrEnum):
     EXCLUIDA = "excluida"
 
 
+class DatasetRole(StrEnum):
+    """Emprego permanente de um frame (migration 133 — CHECK
+    chk_training_frames_dataset_role).
+
+    "Um quadro só tem UM emprego para sempre — gabarito mede, proposta
+    alimenta." Um gabarito que entra no treino faz o modelo decorar a prova,
+    e toda medição posterior passa a mentir para cima sem acusar nada.
+
+    pool    — alimenta treino (padrão de todo frame que já existe)
+    holdout — gabarito: mede modelo e NUNCA entra em export de treino
+              (trava em versioning_v2._snapshot_labeled_frames/
+              _fetch_annotations, por ALLOWLIST `= 'pool'`)
+
+    Ortogonal a CurationStatus: um gabarito é 'active' na curadoria — o que
+    muda é o emprego, não a qualidade.
+    """
+
+    POOL = "pool"
+    HOLDOUT = "holdout"
+
+
+class HoldoutVerdict(StrEnum):
+    """Resposta do gabarito para "nesta imagem, a ausência da classe X era
+    real?" (migration 135 — CHECK chk_holdout_verdicts_verdict).
+
+    sim     — a ausência era real (a pessoa estava mesmo sem o EPI)
+    nao     — não era: ou o EPI estava lá, ou não havia pessoa nenhuma
+    nao_sei — o avaliador olhou e não deu para decidir
+
+    O `nao_sei` NÃO é estado de conveniência: forçar binário faz quem julga
+    chutar quando a imagem não permite decidir, e gabarito com chute mede o
+    chute, não o modelo. É ele que separa "o modelo errou" de "a imagem não
+    dava para saber" na hora de ler o A/B.
+    """
+
+    SIM = "sim"
+    NAO = "nao"
+    NAO_SEI = "nao_sei"
+
+
+class HoldoutVerdictReason(StrEnum):
+    """Por que a resposta saiu assim (migration 135 — coluna `reason`).
+
+    sem_pessoa — veio do atalho de um toque "não há pessoa", que responde
+                 'nao' para TODAS as classes de uma vez. Semanticamente
+                 correto (sem pessoa, nenhuma ausência é real) e é o negativo
+                 que o A/B mais precisa: modelo que acusa "sem luvas" em
+                 corredor vazio está produzindo falso positivo. Registrado à
+                 parte porque "não, ele usava luva" e "não, não havia
+                 ninguém" são fatos diferentes ao auditar a prova — um
+                 gabarito de 138 corredores vazios não mede nada.
+
+    Ausência de valor (NULL) = julgada classe a classe.
+    """
+
+    SEM_PESSOA = "sem_pessoa"
+
+
+# Classes de ausência que o gabarito do A/B julga, por NOME.
+#
+# Por nome e não por id: as duas primeiras vêm do catálogo global
+# (`module_classes`, class_id pequeno 0-based) e as três últimas são classes
+# do tenant (`yolo_classes`, class_id namespaced +100000 — ver
+# domain/services/class_namespace.py). Fixar o inteiro aqui prenderia a régua
+# aos ids que o DEV tem hoje; o nome é o que o dono do produto reconhece e o
+# que sobrevive a outro ambiente. `ModuleService.get_classes` já devolve as
+# duas origens na MESMA lista — a resolução acontece lá, não aqui.
+#
+# ⚠️ ORDEM É CONTEÚDO. As duas primeiras são o FOCO: são as que têm gabarito
+# ZERO no holdout do RVB e por isso deixaram o A/B das três variantes NÃO
+# CONCLUSIVO. As outras três valem se sobrar atenção — e a tela diz isso na
+# cara, em vez de apresentar cinco perguntas de peso igual.
+GABARITO_CLASSES = (
+    "Sem Luvas",
+    "Sem mascara",
+    "Sem Óculos",
+    "Sem protetor de ouvido",
+    "Uso incorreto de mascara",
+)
+
+GABARITO_CLASSES_FOCO = GABARITO_CLASSES[:2]
+
+
 class DatasetVersionStatus(StrEnum):
     """Status de build de uma dataset_version (migration 096)."""
 

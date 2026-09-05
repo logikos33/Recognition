@@ -1,0 +1,53 @@
+<p style="margin-top:0"><b>Veredito curto: a ideia se sustenta no miolo e quebra nas
+duas pontas.</b> Das 20 fotos, 14 mostram a caixa exatamente em cima da parte do
+corpo que o rótulo novo promete. As 6 que não mostram têm padrão, não são ruído
+aleatório — e a amostra foi montada de propósito para achá-las.</p>
+
+<p><b>O que dá certo, e é a maioria do dataset.</b> "Sem protetor de ouvido" cai na
+cabeça/orelha nos 4 exemplos. "Uso incorreto de mascara" cai no rosto em 3 de 4 —
+e o #19 é o exemplo perfeito da classe: máscara puxada para baixo do queixo,
+caixa em cima da boca e do nariz. "Sem Luvas" cai nas mãos em 3 de 4. "Sem
+mascara" cai no rosto em 3 de 4. Nada disso marca "a pessoa inteira", que era o
+medo principal: a caixa de ausência realmente tem a geometria do EPI que falta.</p>
+
+<p><b>Falha 1 — a ponta pequena são cliques perdidos.</b> No <b>#1</b> (0,02% do
+frame, a menor "Sem Luvas" do RVB) a caixa está perto da <i>cabeça</i>, não da mão;
+no <b>#17</b> (0,09%, a menor "Uso incorreto") ela está na estrutura amarela do
+teto, longe de qualquer pessoa. São anotações degeneradas — clique acidental no
+anotador —, não erro do remapeamento. Elas já são lixo hoje; convertidas, viram
+lixo com nome de parte do corpo, que é pior, porque "mao" e "regiao_boca_nariz"
+são classes que a rede vai levar a sério.</p>
+
+<p><b>Falha 2 — a ponta grande engole o tronco.</b> No <b>#8</b> (9,3%, a maior "Sem
+mascara") a caixa vai do queixo até o meio do peito: isso não é
+<code>regiao_boca_nariz</code>, é meio busto. No <b>#20</b> (8,8%) e no <b>#16</b>
+(27,2%) o mesmo, em grau menor: rosto + ombros, cabeça inteira + fundo. O <b>#12</b>
+(26,8%, a maior "Sem protetor") pega a cabeça inteira em vez da orelha — errada
+por excesso, mas ainda na parte certa do corpo. Aqui o remapeamento não está
+errado, a <i>anotação</i> está frouxa; só que a variante C depende de sobreposição
+geométrica, e uma caixa frouxa faz a luva/óculos parecer "dentro" de uma região
+que ela não cobre de fato.</p>
+
+<p><b>Falha 3 — a única que assusta, porque veio do miolo.</b> No <b>#15</b>
+("típico", 2,3% de área) as duas caixas "Sem Óculos" do frame estão em cima das
+<i>mãos</i> das duas pessoas na bancada, não dos olhos. Não é caixa grande demais
+nem clique perdido: é anotação no lugar errado, no meio da distribuição, onde eu
+não tinha como pescá-la de propósito. Foi 1 em 5 dos exemplos "típicos" desta
+amostra — n=5 é pouco para virar taxa, mas é o suficiente para não afirmar que o
+miolo está limpo.</p>
+
+<p><b>A classe mais fraca é "Sem Óculos" → <code>regiao_olhos</code>.</b> É a única em
+que nenhum dos 4 exemplos é limpo: #13 certo, #14 na altura dos olhos mas
+esticado para fora da pessoa, #16 cabeça inteira, #15 nas mãos. Se você quiser
+cortar alguma coisa desta conversão, corte esta — são 115 caixas, a menor das
+cinco.</p>
+
+<p style="margin-bottom:0"><b>O que eu faria com o que as fotos mostram.</b> Converter,
+mas com dois cortes de faixa, que custam quase nada:
+<b>fora as caixas com área &lt; 0,1%</b> (são 3 no RVB inteiro — 0,3% — e as 2 que
+apareceram aqui são as duas piores da amostra) e
+<b>fora as caixas com área &gt; 5%</b> (são 39 — 3,4% — e delas saem 3 das 4 caixas
+"gordas" que erraram aqui). Sobram <b>1.120 das 1.162</b> caixas localizadas: 96,4%
+da conversão, perdendo justamente a faixa onde a amostra achou o problema.
+Não é o corte que salva o #15 — para esse não existe filtro geométrico, só
+revisão humana da classe "Sem Óculos".</p>
