@@ -198,25 +198,30 @@ def test_uma_quarta_migration_desta_familia_reprova_no_ci(tmp_path):
     check = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(check)
 
-    inocente = tmp_path / "200_coluna_nova.sql"
+    # A raiz forjada tem que ter a MESMA forma do repositório: o gate deriva o
+    # diretório de raiz/infra/migrations. Injetar variável de módulo não vale —
+    # `raiz` é parâmetro com default congelado na definição da função, então
+    # reatribuir check.REPO_ROOT depois do import não muda nada (foi assim que
+    # este teste passou a medir o repo real e ficou verde sozinho).
+    dir_migrations = tmp_path / "infra" / "migrations"
+    dir_migrations.mkdir(parents=True)
+
+    inocente = dir_migrations / "200_coluna_nova.sql"
     inocente.write_text(
         "ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS apelido VARCHAR(50);\n",
         encoding="utf-8",
     )
-    check.REPO_ROOT = tmp_path  # só para a mensagem de erro (relative_to)
-    check.MIGRATIONS_DIR = tmp_path
-    check.DESTRUCTIVE_BASELINE_FILE = tmp_path / ".destructive-baseline"
-    assert check.check_no_new_destructive_migration() == [], (
+    assert check.check_no_new_destructive_migration(tmp_path) == [], (
         "migration inocente não pode reprovar — falso positivo aqui trava PR legítimo"
     )
 
-    quarta = tmp_path / "201_religa_qualidade_de_novo.sql"
+    quarta = dir_migrations / "201_religa_qualidade_de_novo.sql"
     quarta.write_text(
         "UPDATE public.tenants\n"
         "   SET modules_enabled = modules_enabled || '[\"quality\"]'::jsonb\n"
         " WHERE NOT (modules_enabled @> '[\"quality\"]'::jsonb);\n",
         encoding="utf-8",
     )
-    erros = check.check_no_new_destructive_migration()
+    erros = check.check_no_new_destructive_migration(tmp_path)
     assert len(erros) == 1 and "201_religa_qualidade_de_novo.sql" in erros[0], erros
     assert "modules_enabled" in erros[0]
