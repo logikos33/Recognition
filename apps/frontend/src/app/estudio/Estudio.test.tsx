@@ -160,6 +160,20 @@ describe('lateral do Estúdio × o que o backend permite (issue #688)', () => {
     expect(screen.getByRole('navigation', { name: 'Seções do Estúdio' })).toBeTruthy()
   })
 
+  // O matcher do React Router é case-insensitive e compara o caminho com os
+  // %-escapes decodificados: estas três URLs renderizam a MESMA `classes`.
+  // Comparar o segmento cru no gate deixava as duas últimas passarem — o
+  // "esconder não é autorizar" caía com um caps lock (achado do cético).
+  it.each(['CLASSES', 'Classes', 'classe%73'])(
+    'URL "%s" cai no mesmo gate que /classes',
+    (variante) => {
+      auth.can.mockImplementation(podeDo('operator'))
+      monta(variante)
+      expect(screen.queryByText('conteudo-classes'), 'conteúdo vazou por URL').toBeNull()
+      expect(screen.getByText('Sem permissão')).toBeTruthy()
+    },
+  )
+
   it('seção liberada continua renderizando o Outlet', () => {
     auth.can.mockImplementation(podeDo('trainer'))
     monta('classes')

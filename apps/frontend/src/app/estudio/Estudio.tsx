@@ -91,6 +91,27 @@ export const ITENS: {
   },
 ]
 
+/**
+ * Seção que a URL está pedindo, NORMALIZADA como o React Router normaliza.
+ *
+ * O matcher do router é case-insensitive e enxerga o caminho com os
+ * %-escapes já decodificados: `/novo/estudio/CLASSES` e
+ * `/novo/estudio/classe%73` renderizam a MESMA tela que `/classes`.
+ * Comparar o segmento cru deixava as duas passarem pelo gate abaixo —
+ * bypass real, achado do cético desta PR e coberto por teste.
+ *
+ * `decodeURIComponent` estoura em %-escape malformado (`%ZZ`): cai no cru,
+ * que também não casa rota nenhuma, então nada renderiza de qualquer jeito.
+ */
+function secaoDaUrl(pathname: string): string {
+  const bruto = pathname.replace(/\/+$/, '').split('/').pop() ?? ''
+  try {
+    return decodeURIComponent(bruto).toLowerCase()
+  } catch {
+    return bruto.toLowerCase()
+  }
+}
+
 export function Estudio() {
   const { can } = useAuth()
   const { pathname } = useLocation()
@@ -100,8 +121,7 @@ export function Estudio() {
   const visiveis = ITENS.filter((i) => i.permissao === null || can(i.permissao))
   // Esconder do menu não é autorizar: quem digita a URL da seção cai no MESMO
   // gate. A lateral continua desenhada — sem ela a pessoa fica sem saída.
-  const secao = pathname.replace(/\/+$/, '').split('/').pop()
-  const atual = ITENS.find((i) => i.rota === secao)
+  const atual = ITENS.find((i) => i.rota === secaoDaUrl(pathname))
   const bloqueada = atual && atual.permissao !== null && !can(atual.permissao)
     ? atual.permissao
     : null
