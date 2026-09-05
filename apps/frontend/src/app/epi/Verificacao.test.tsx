@@ -23,6 +23,8 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ApiError } from '../../services/api'
+
 import { Verificacao, incertezaDe, ordenarPorIncerteza, type ItemVerificacao } from './Verificacao'
 
 // ── Dublês ──────────────────────────────────────────────────────────────────
@@ -30,11 +32,22 @@ import { Verificacao, incertezaDe, ordenarPorIncerteza, type ItemVerificacao } f
 const get = vi.fn()
 const post = vi.fn()
 const patch = vi.fn()
+// `ApiError` também é dublê: a tela distingue o 409 ("outra pessoa já julgou")
+// pelo STATUS, não pela mensagem — um `Error` cru cairia no toast de erro
+// genérico e o operador clicaria de novo no que já está resolvido.
 vi.mock('../../services/api', () => ({
   api: {
     get: (...a: unknown[]) => get(...a),
     post: (...a: unknown[]) => post(...a),
     patch: (...a: unknown[]) => patch(...a),
+  },
+  ApiError: class ApiErrorDuble extends Error {
+    status: number
+    constructor(message: string, status: number) {
+      super(message)
+      this.name = 'ApiError'
+      this.status = status
+    }
   },
 }))
 
@@ -306,6 +319,90 @@ describe('avanço da fila (PRs 496, 500, 487)', () => {
     await waitFor(() => expect(toastErro).toHaveBeenCalled())
     expect(screen.getByText('Sem colete')).toBeTruthy()
     expect(screen.queryByText('Confirmado')).toBeNull()
+  })
+})
+
+// ── 2.2 · Colisão multiusuário: 409 do backend ──────────────────────────────
+
+describe('dois operadores no mesmo alerta (bloco 4)', () => {
+  /** O backend recusa o segundo veredito (`verification_verdict IS NULL OR
+   *  verified_by = <eu>` no UPDATE) e responde 409 com quem julgou e quando.
+   *  Antes da guarda ele respondia 200 e o segundo veredito SOBRESCREVIA o
+   *  primeiro — a tela não tinha como saber, e não sabia. */
+  const conflito = () =>
+    new ApiError('Maria Silva já avaliou este alerta há 2 minutos.', 409)
+
+  it('mostra QUEM julgou e QUANDO — não "Erro ao registrar o veredito"', async () => {
+    get.mockResolvedValue(fila([B, A]))
+    post.mockRejectedValue(conflito())
+    montar()
+    await screen.findByText('Sem colete')
+
+    clicar(screen.getByRole('button', { name: /Confirmar/ }))
+
+    await waitFor(() => expect(toastInfo).toHaveBeenCalled())
+    expect(toastInfo.mock.calls[0][1]).toContain('Maria Silva')
+    expect(toastInfo.mock.calls[0][1]).toContain('há 2 minutos')
+    // 409 não é falha do operador: nada de toast vermelho.
+    expect(toastErro).not.toHaveBeenCalled()
+  })
+
+  it('AVANÇA para o próximo — o trabalho dele não para no item alheio', async () => {
+    get.mockResolvedValue(fila([B, A]))
+    post.mockRejectedValue(conflito())
+    montar()
+    await screen.findByText('Sem colete')
+
+    clicar(screen.getByRole('button', { name: /Confirmar/ }))
+
+    expect(await screen.findByText('Sem capacete')).toBeTruthy()
+  })
+
+  it('carimba "Revisado por outro" — NUNCA "Confirmado" (a decisão não foi dele)', async () => {
+    get.mockResolvedValue(fila([B, A]))
+    post.mockRejectedValue(conflito())
+    montar()
+    await screen.findByText('Sem colete')
+
+    clicar(screen.getByRole('button', { name: /Confirmar/ }))
+    await screen.findByText('Sem capacete')
+
+    tecla('ArrowLeft')
+    expect(await screen.findByText('Sem colete')).toBeTruthy()
+    expect(screen.getByText('Revisado por outro')).toBeTruthy()
+    expect(screen.queryByText('Confirmado')).toBeNull()
+  })
+
+  it('não reenvia o veredito recusado: o item alheio sai do trabalho pendente', async () => {
+    // "N RESTANTES" desconta a decisão feita depois do último sync. Um item
+    // resolvido por outra pessoa TAMBÉM saiu da fila do servidor — deixá-lo
+    // contando como pendente é a família do "Fila zerada" mentindo, ao
+    // contrário.
+    get.mockResolvedValue(fila([B, A], 2))
+    post.mockRejectedValue(conflito())
+    montar()
+    await screen.findByText('Sem colete')
+
+    clicar(screen.getByRole('button', { name: /Confirmar/ }))
+    await screen.findByText('Sem capacete')
+
+    expect(await screen.findByText('1 RESTANTES')).toBeTruthy()
+  })
+
+  it('erro que NÃO é 409 continua vermelho e sem carimbo', async () => {
+    // Teste de mutação: se o `catch` tratar QUALQUER falha como conflito, o
+    // 500 passa a carimbar o item e a fila avança por cima de trabalho não
+    // gravado.
+    get.mockResolvedValue(fila([B, A]))
+    post.mockRejectedValue(new ApiError('Erro ao revisar alerta', 500))
+    montar()
+    await screen.findByText('Sem colete')
+
+    clicar(screen.getByRole('button', { name: /Confirmar/ }))
+
+    await waitFor(() => expect(toastErro).toHaveBeenCalled())
+    expect(screen.getByText('Sem colete')).toBeTruthy()
+    expect(screen.queryByText('Revisado por outro')).toBeNull()
   })
 })
 

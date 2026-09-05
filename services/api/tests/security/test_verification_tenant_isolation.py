@@ -132,6 +132,11 @@ class TestHumanReviewTenantIsolation:
         tenant_b_id = str(uuid4())
         mock_cursor = MagicMock()
         mock_cursor.rowcount = 0  # id existe (é do tenant_a) mas tenant_id não bate
+        # A leitura que desambigua 404 × 409 (guarda de veredito, bloco 4) é
+        # ESCOPADA pelo MESMO tenant: para o tenant_b a linha não existe, e é
+        # obrigatório que continue assim — o 409 ("fulano já avaliou") não
+        # pode virar oráculo de existência cross-tenant (C-01).
+        mock_cursor.fetchone.return_value = None
         with patch(_POOL_PATH) as pool_cls:
             pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
             result = svc.human_review(
@@ -139,3 +144,5 @@ class TestHumanReviewTenantIsolation:
             )
 
         assert result is False
+        for chamada in mock_cursor.execute.call_args_list:
+            assert tenant_b_id in chamada[0][1], "toda query do fluxo é escopada por tenant"

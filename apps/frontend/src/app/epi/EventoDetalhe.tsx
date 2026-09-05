@@ -10,15 +10,18 @@
  * O QUE NÃO PODE SE PERDER (docs/migration/DELTA-PRE-MIGRACAO.md §2)
  *
  * · **Badge de procedência** (item 2, ADR-0066 — "a caixa diz quem a
- *   desenhou"): reusa `classificarLatencia()` de
- *   `components/shared/ProcedenciaBadge.tsx` — a REGRA (limiar de 5 min,
- *   normalização de RFC 822 vs. ISO naive, relógio adiantado → "desconhecida")
- *   é a mesma função, importada, não recopiada. Só a PINTURA é nova, porque o
- *   `Badge` antigo usa `styles/theme.css` e nesta tela cor vem de `lk`. Se o
- *   limiar mudar lá, muda aqui junto — que é o ponto.
- *   Segue afirmando SÓ o negativo: sem badge = sem afirmação (`alerts.timestamp`
- *   ainda nasce com DEFAULT NOW(), carimbar "AO VIVO" trocaria uma mentira por
- *   outra).
+ *   desenhou"): DUAS fontes, nesta ordem.
+ *   1. `violations[].origem`, DECLARADA por quem gravou o evento
+ *      (`procedenciaDeclarada()` aqui embaixo). É afirmação de primeira mão.
+ *   2. só na ausência dela, `classificarLatencia()` de
+ *      `components/shared/ProcedenciaBadge.tsx` — o atraso entre captura e
+ *      gravação, importado e não recopiado (se o limiar mudar lá, muda aqui).
+ *   Por que a ordem importa (medido em 05/09): 4.609 dos 5.174 eventos do DEV
+ *   têm caixa desenhada por PESSOA e `created_at == timestamp`, então o
+ *   critério TEMPORAL nunca acendia — a tela ficava muda justamente onde tinha
+ *   mais o que dizer. Indício não vence declaração.
+ *   Sem nenhuma das duas: sem badge = sem afirmação (`alerts.timestamp` ainda
+ *   nasce com DEFAULT NOW(), carimbar "AO VIVO" trocaria uma mentira por outra).
  *
  * · **Motivo do veredito** (item 5): campo `reason` no
  *   `POST /verification/:id/review`. É ele que desambigua o `reject` — "a
@@ -50,7 +53,9 @@
  * neste endpoint. Os dois gaps estão no bloco PARA O BACKEND, no fim.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertTriangle, ArrowLeft, Check, Clock, Maximize2, Minus, Plus, SearchX, X } from 'lucide-react'
+import {
+  AlertTriangle, ArrowLeft, Check, Clock, Cpu, ImageOff, Maximize2, Minus, Pencil, Plus, SearchX, X,
+} from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 
 import { HANDLES, boxFromDrag, clamp, moveBox, resizeBox, type HandleId } from '../../components/annotation/boxGeometry'
@@ -64,22 +69,88 @@ import {
 } from '../../pages/epi/lupaEvidencia'
 import { ApiError, api } from '../../services/api'
 import { labelForClass } from '../../utils/labels'
+import { rotaNova } from '../RotasNovas'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import * as s from './EventoDetalhe.css'
 
-/** Rota da lista no front novo (de-para do DELTA: `/epi/alerts` → `/epi/eventos`). */
-const ROTA_EVENTOS = '/epi/eventos'
+/**
+ * Rota da lista NO FRONT NOVO (de-para do DELTA: `/epi/alerts` → `/epi/eventos`).
+ *
+ * `rotaNova()` não é preciosismo: `'/epi/eventos'` cru NÃO é rota do front
+ * antigo — cai no catch-all do `App.tsx`, o `RootRedirect` manda para
+ * `/modules`, e a pessoa que clicou em "Eventos" no cabeçalho desta tela sai
+ * do produto novo inteiro. Ficou assim porque a varredura de coexistência só
+ * enxergava LITERAL, e o caminho estava guardado nesta constante (corrigido
+ * junto, em `coexistencia.test.tsx`).
+ */
+const ROTA_EVENTOS = rotaNova('/epi/eventos')
 
 type Bbox = [number, number, number, number]
 
 /** Única unidade de bbox que esta tela sabe projetar (contrato de `domain/detectors/base.py`). */
 export const BBOX_PIXELS = 'pixels_xywh_frame_original'
 
-interface Violacao {
+export interface Violacao {
   class: string
   confidence: number
   bbox?: Bbox
   bbox_unidade?: string
+  /** Quem desenhou ESTA caixa, declarado por quem gravou o evento. Chega
+   *  intacto: `GET /api/alerts/:id` devolve `violations` cru
+   *  (`alerts/routes.py`, projeção do detalhe). Evento vindo do edge não
+   *  declara nada — e aí a tela não afirma nada. */
+  origem?: string
+  /** Ferramenta da anotação humana ('manual', proposta aceita…). */
+  anotacao_source?: string
+  /** Marca da carga em lote do acervo de demonstração
+   *  (`scripts/ops/eventos_acervo_rvb.py`). */
+  lote?: string
+}
+
+/** Caixa desenhada/aceita por PESSOA no estúdio de anotação. */
+export const ORIGEM_HUMANA = 'anotacao_humana'
+/** Caixa desenhada pelo detector servido (ONNX). */
+export const ORIGEM_MODELO = 'modelo_onnx'
+
+export interface ProcedenciaDeclarada {
+  origem: 'humana' | 'modelo'
+  rotulo: string
+  titulo: string
+}
+
+/**
+ * Procedência DECLARADA no dado — `violations[].origem` — e não a distância
+ * entre captura e gravação.
+ *
+ * Por que não basta o badge temporal (`classificarLatencia`): ele mede
+ * ATRASO, e o acervo semeado no DEV grava `created_at == timestamp`. Resultado
+ * medido em 05/09: 4.609 dos 5.174 eventos do DEV têm caixa desenhada por
+ * PESSOA e o badge nunca acendia — a tela ficava muda exatamente onde tinha
+ * mais o que dizer. Origem é afirmação de primeira mão; tempo é indício.
+ *
+ * Origem ausente ou desconhecida → `null`: sem declaração, sem afirmação
+ * (mesma regra do `ProcedenciaBadge`, só que sobre outro campo).
+ */
+export function procedenciaDeclarada(
+  violations: Violacao[] | null | undefined,
+): ProcedenciaDeclarada | null {
+  const vs = violations ?? []
+  const humana = vs.some((v) => v.origem === ORIGEM_HUMANA)
+  const modelo = vs.some((v) => v.origem === ORIGEM_MODELO)
+  if (!humana && !modelo) return null
+  const lote = vs.find((v) => v.lote)?.lote
+  const origem = humana ? 'humana' : 'modelo'
+  return {
+    origem,
+    rotulo: [
+      humana ? 'anotação humana' : 'detecção do modelo',
+      lote ? 'demonstração' : null,
+    ].filter(Boolean).join(' · '),
+    titulo: (humana
+      ? 'A caixa deste evento foi desenhada por uma pessoa na anotação, não pelo modelo.'
+      : 'A caixa deste evento foi desenhada pelo modelo de visão.')
+      + (lote ? ` Carregado em lote para demonstração (${lote}).` : ''),
+  }
 }
 
 /** Última correção de caixa registrada no ledger append-only do alerta
@@ -189,6 +260,11 @@ export function EventoDetalhe() {
   /** Dimensões do frame ORIGINAL: só existem depois que a <img> carrega. */
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null)
 
+  /** A URL assinada do R2 vale 1h (`ttl=3600`) e depois responde 403
+   *  ExpiredRequest. Sem isto a <img> falhava calada e o palco ficava preto —
+   *  o operador lia "evento sem evidência", que é mentira. */
+  const [evidenciaFalhou, setEvidenciaFalhou] = useState(false)
+
   /** Motivo do veredito — opcional, mas é ele que desambigua o `reject`. */
   const [motivo, setMotivo] = useState('')
   const [salvando, setSalvando] = useState(false)
@@ -213,6 +289,7 @@ export function EventoDetalhe() {
     // Frame novo = dimensões novas. Sem isto a caixa do próximo evento cairia
     // projetada nas dimensões do frame anterior até a <img> carregar.
     setNatural(null)
+    setEvidenciaFalhou(false)
     api.get<{ data?: { alert: Evento } }>(`/alerts/${id}`)
       .then((res) => {
         if (!vivo) return
@@ -530,7 +607,11 @@ export function EventoDetalhe() {
   // desconhecida: melhor nenhuma caixa que caixa mentirosa.
   const desenhaveis = classes.filter((v) => v.bbox && v.bbox_unidade === BBOX_PIXELS)
   const unidadeDesconhecida = classes.filter((v) => v.bbox && v.bbox_unidade !== BBOX_PIXELS)
-  const retroativa = classificarLatencia(evento.captured_at, evento.created_at) === 'retroativa'
+  // Origem DECLARADA manda; o atraso entre captura e gravação (ADR-0066) só
+  // fala quando não há declaração nenhuma — indício não vence afirmação.
+  const procedencia = procedenciaDeclarada(evento.violations)
+  const retroativa = !procedencia
+    && classificarLatencia(evento.captured_at, evento.created_at) === 'retroativa'
   const podeJulgar = can('verification:write')
   const podeCorrigir = can('alerts:feedback')
 
@@ -572,7 +653,7 @@ export function EventoDetalhe() {
             </span>
             <span className={s.selo.direita}>{dataHora(evento.captured_at)}</span>
 
-            {evidencia ? (
+            {evidencia && !evidenciaFalhou ? (
               <div
                 className={s.camada}
                 style={{ transform: `translate(${lupa.x}px, ${lupa.y}px) scale(${lupa.escala})` }}
@@ -584,6 +665,7 @@ export function EventoDetalhe() {
                     src={evidencia}
                     alt="Frame da evidência"
                     draggable={false}   // o drag nativo da imagem atropela o pan
+                    onError={() => setEvidenciaFalhou(true)}
                     onLoad={(e) => {
                       const img = e.currentTarget
                       if (img.naturalWidth > 0 && img.naturalHeight > 0) {
@@ -622,6 +704,13 @@ export function EventoDetalhe() {
                     // = origem desconhecida, sem caixa tracejada — nunca uma
                     // "onde a IA marcou" mentirosa.
                     const iaBbox = original?.bbox && original.bbox_unidade === BBOX_PIXELS ? original.bbox : null
+                    // Quem desenhou a caixa ORIGINAL. Em 4.609 dos 5.174
+                    // eventos do DEV foi uma PESSOA — carimbar "a IA marcou"
+                    // por cima é atribuir ao modelo o trabalho de alguém, e
+                    // ensina o operador a corrigir o que ninguém errou.
+                    const rotuloOriginal = original?.origem === ORIGEM_HUMANA
+                      ? 'ONDE A PESSOA MARCOU'
+                      : 'ONDE A IA MARCOU'
                     return (
                       <>
                         {iaBbox && (
@@ -633,7 +722,7 @@ export function EventoDetalhe() {
                             }}
                           >
                             <span className={s.rotuloCaixaIA} style={{ transform: `scale(${1 / lupa.escala})` }}>
-                              ONDE A IA MARCOU
+                              {rotuloOriginal}
                             </span>
                           </div>
                         )}
@@ -668,6 +757,23 @@ export function EventoDetalhe() {
                     )
                   })()}
                 </div>
+              </div>
+            ) : evidencia ? (
+              // A evidência EXISTE no servidor; foi o link que não abriu.
+              // Dizer "sem imagem" aqui apagaria a prova do acontecido.
+              <div className={s.semImagem} role="alert">
+                <ImageOff className={s.estadoIcone.falha} strokeWidth={1.5} aria-hidden />
+                Não foi possível carregar a imagem desta evidência.
+                <span className={s.estadoMono}>
+                  O link assinado vale 1 hora — o deste evento pode ter expirado.
+                </span>
+                <button
+                  type="button"
+                  className={s.linkTentarNovamente}
+                  onClick={() => setTentativa((t) => t + 1)}
+                >
+                  Gerar novo link e tentar de novo
+                </button>
               </div>
             ) : (
               <div className={s.semImagem}>
@@ -728,9 +834,21 @@ export function EventoDetalhe() {
               {/* Badge de procedência (ADR-0066). Só a afirmação NEGATIVA: sem
                   badge = sem afirmação. A tela do ACONTECIDO é justamente onde
                   a distância entre captura e gravação precisa aparecer. */}
+              {procedencia && (
+                <span
+                  className={s.procedencia[procedencia.origem]}
+                  title={procedencia.titulo}
+                  data-testid="procedencia"
+                >
+                  {procedencia.origem === 'humana'
+                    ? <Pencil className={s.procedenciaIcone} aria-hidden />
+                    : <Cpu className={s.procedenciaIcone} aria-hidden />}
+                  {' '}{procedencia.rotulo}
+                </span>
+              )}
               {retroativa && (
                 <span
-                  className={s.procedencia}
+                  className={s.procedencia.retroativa}
                   title={`Capturado: ${evento.captured_at} · gravado: ${evento.created_at}`}
                 >
                   <Clock className={s.procedenciaIcone} aria-hidden /> coleta retroativa

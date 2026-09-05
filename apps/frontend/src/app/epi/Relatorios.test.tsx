@@ -69,7 +69,14 @@ const chamadasDeRelatorio = () =>
 
 const VAZIO = {
   data: {
-    summary: { compliance_rate: 100, total_violations: 0, top_cameras: [], trend_by_hour: [] },
+    // Vazio de verdade: o backend agora anula o score em vez de mandar 100.
+    summary: {
+      compliance_rate: null,
+      compliance_reason: 'sem_sinal_no_periodo',
+      total_violations: 0,
+      top_cameras: [],
+      trend_by_hour: [],
+    },
     pdf_url: 'https://r2.exemplo/vazio.pdf',
     period: { period: 'semana', from: '', to: '' },
   },
@@ -221,6 +228,47 @@ describe('estados da rota', () => {
     render(<Relatorios />)
     expect(await screen.findByText(/sem dados no período selecionado/i)).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Últimos 30 dias' })).toBeTruthy()
+  })
+
+  /**
+   * IRMÃ do score do Dashboard. O mesmo número de conformidade chega aqui por
+   * `GET /api/reports/compliance`, e este caminho tinha o defeito na forma mais
+   * cara: `except Exception: compliance_rate = 100.0` no `_aggregate`. Banco
+   * fora do ar = relatório perfeito, impresso num PDF que sobe para o R2.
+   */
+  it('score não apurado é travessão, nunca 0 e nunca 100', async () => {
+    responde({
+      data: {
+        ...RESPOSTA.data,
+        summary: {
+          ...RESPOSTA.data.summary,
+          compliance_rate: null,
+          compliance_reason: 'nao_foi_possivel_apurar',
+        },
+      },
+    })
+    render(<Relatorios />)
+    await carregado()
+    expect(screen.getByText('—')).toBeTruthy()
+    expect(screen.getByText(/score não apurado/i)).toBeTruthy()
+    // `Math.round(null)` é 0 — e 0 nesta tela lê-se "conformidade zero".
+    expect(screen.queryByText('0')).toBeNull()
+  })
+
+  it('agregação que falhou não vira "não tem eventos registrados"', async () => {
+    responde({
+      data: {
+        ...VAZIO.data,
+        summary: {
+          ...VAZIO.data.summary,
+          compliance_rate: null,
+          compliance_reason: 'nao_foi_possivel_apurar',
+        },
+      },
+    })
+    render(<Relatorios />)
+    expect(await screen.findByText(/não foi possível apurar o período/i)).toBeTruthy()
+    expect(screen.queryByText(/não tem eventos registrados/i)).toBeNull()
   })
 
   it('erro mostra rota + status e o retry refaz a chamada', async () => {
