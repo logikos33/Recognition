@@ -70,7 +70,10 @@ describe('tema: o produto não fica roxo com um clique (rodada V1)', () => {
   it('2) Header.tsx (ainda importa o switch) segue ÓRFÃO — nenhum arquivo o importa', () => {
     const importadores = arquivos(SRC)
       .filter((f) => !f.endsWith(path.join('layout', 'Header', 'Header.tsx')))
-      .filter((f) => /from\s+['"][^'"]*layout\/Header\/Header['"]/.test(fs.readFileSync(f, 'utf-8')))
+      // Cobre as duas formas: `.../layout/Header/Header` e o import de
+      // diretório `.../layout/Header` (hoje não resolve — a pasta não tem
+      // index —, mas resolveria no dia em que alguém criar um).
+      .filter((f) => /from\s+['"][^'"]*layout\/Header(?:\/Header)?['"]/.test(fs.readFileSync(f, 'utf-8')))
       .map((f) => path.relative(SRC, f))
 
     expect(
