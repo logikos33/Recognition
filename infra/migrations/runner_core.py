@@ -141,6 +141,27 @@ def sha256_of_file(path: str) -> str:
 #
 # (a 013 também tem DROP TABLE, mas está isenta — ver GUARDA_ISENTAS abaixo.)
 #
+# TERCEIRA CARA — reescreve CONFIGURAÇÃO (issue #743). Mesmo formato, com a
+# escolha do admin no lugar da credencial:
+#
+#   034_add_quality_module_to_tenants.sql   UPDATE tenants SET modules_enabled
+#                                           = modules_enabled || '["quality"]'
+#       -> o admin tira o módulo Qualidade de um tenant pela tela
+#          (app/api/v1/admin/routes.py: UPDATE tenants SET modules_enabled = ...);
+#          o deploy seguinte devolve, sem log e sem aviso.
+#   023_tenant_schema_fields.sql            ON CONFLICT (slug) DO UPDATE SET
+#                                           modules_enabled = EXCLUDED....
+#       -> pior que a 034: não acrescenta, SOBRESCREVE a lista inteira dos
+#          tenants 'admin' e 'rvb' pela versionada no git, a cada boot. O RVB é
+#          o cliente âncora.
+#   027_superadmin_vitor.sql                idem para o tenant 'admin'
+#       -> já era pulada desde a #694 (tem password_hash); a config vinha junto.
+#
+# A 023 carrega DDL além do UPDATE (as colunas schema_name/plan/modules_enabled).
+# Pular o arquivo inteiro num banco que nunca a rodou deixaria essas colunas de
+# fora — por isso a 137 recria a parte de SCHEMA da 023 com ADD COLUMN IF NOT
+# EXISTS, forward-only. Ver o cabeçalho de 137_config_de_modulos_decidida_sobrevive.sql.
+#
 # A guarda é a mesma ideia já aceita neste repo para o bootstrap de admin
 # (railway_start._instalacao_virgem, D-166): a limpeza foi escrita para a
 # instalação virgem, então SÓ na instalação virgem ela roda. Num banco que já
@@ -154,9 +175,10 @@ def sha256_of_file(path: str) -> str:
 # arquivo faria a 049 ser pulada logo na primeira instalação — deixando
 # counting_sessions com o schema errado da 015.
 #
-# Escopo deliberadamente estreito (só o que é IRREVERSÍVEL): apagar linha e
-# reescrever senha. Backfill do tipo `UPDATE ... WHERE col IS NULL` não é
-# pego aqui — essa classe é a da #682 e se resolve com migration corretiva.
+# Escopo deliberadamente estreito (só o que desfaz decisão de gente): apagar
+# linha, reescrever senha, reescrever a lista de módulos do tenant. Backfill do
+# tipo `UPDATE ... WHERE col IS NULL` não é pego aqui — essa classe é a da #682
+# e se resolve com migration corretiva.
 
 _COMENTARIO_DE_LINHA = re.compile(r"--[^\n]*")
 _COMENTARIO_DE_BLOCO = re.compile(r"/\*.*?\*/", re.S)
@@ -178,6 +200,20 @@ _APAGA_DADO = re.compile(
 # Definição de coluna ("password_hash VARCHAR(255)") não casa: exige o "=" da
 # atribuição, que só aparece em UPDATE ... SET / ON CONFLICT DO UPDATE SET.
 _REESCREVE_CREDENCIAL = re.compile(r"\bpassword_hash\s*=", re.I)
+
+# Terceira cara (#743): configuração que a TELA do admin escreve e a migration
+# reescreve por cima. Mesma forma da regra de credencial — exige o "=" da
+# atribuição, então `ADD COLUMN IF NOT EXISTS modules_enabled JSONB DEFAULT ...`
+# e a lista de colunas de um INSERT não casam.
+#
+# Por que só ESTA coluna, e não "toda coluna que o admin edita": medido nos 137
+# arquivos, `modules_enabled =` aparece exclusivamente em atribuição (023, 027,
+# 034), nunca em WHERE. Já `is_active =` e `plan =` — que a mesma tela também
+# escreve — aparecem em WHERE (`WHERE is_active = true`, 046). Casá-las pularia
+# arquivo por engano, e falso positivo aqui é pior que o problema: a migration
+# simplesmente não roda. Quando aparecer a próxima coluna com esse mesmo
+# formato, ela entra aqui pelo mesmo critério — atribuição sem ambiguidade.
+_REESCREVE_CONFIGURACAO = re.compile(r"\bmodules_enabled\s*=", re.I)
 
 
 # Isenções — arquivo por arquivo, com o motivo escrito. NÃO é lista de "confio
@@ -206,6 +242,8 @@ def destructive_reason(sql_text: str) -> str | None:
         return f"apaga dado ({' '.join(achado.group(0).split()).upper()})"
     if _REESCREVE_CREDENCIAL.search(corpo):
         return "reescreve credencial (atribuição a password_hash)"
+    if _REESCREVE_CONFIGURACAO.search(corpo):
+        return "reescreve configuração (atribuição a modules_enabled)"
     return None
 
 
@@ -233,11 +271,13 @@ def _guarda_pula(basename: str, sql_text: str, established: bool, log: logging.L
         return False
     log.warning(
         "  %s ⛔ PULADA pela guarda de redeploy: %s, e este banco já tem tenant. "
-        "Migration que apaga dado ou reescreve senha só roda em instalação virgem "
-        "(issues #683/#694) — em banco estabelecido ela transforma uma limpeza "
-        "única em perda de dado a cada deploy. Se esta migration é NOVA e precisa "
-        "rodar, ela viola a regra forward-only do CLAUDE.md (sem DROP/DELETE/"
-        "TRUNCATE): reescreva-a sem o comando destrutivo.",
+        "Migration que apaga dado, reescreve senha ou reescreve a configuração de "
+        "módulos do tenant só roda em instalação virgem (issues #683/#694/#743) — "
+        "em banco estabelecido ela transforma uma limpeza única em perda de dado (ou "
+        "a escolha do admin em algo que volta atrás sozinho) a cada deploy. Se esta "
+        "migration é NOVA e precisa rodar, ela viola a regra forward-only do "
+        "CLAUDE.md: reescreva-a sem o comando destrutivo e sem sobrescrever "
+        "configuração que a tela do admin edita.",
         basename, motivo,
     )
     return True

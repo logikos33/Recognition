@@ -1,4 +1,5 @@
-# Migrations HISTÓRICAS que apagam dado ou reescrevem credencial (issues #683/#694).
+# Migrations HISTÓRICAS que apagam dado, reescrevem credencial ou reescrevem a
+# configuração de módulos do tenant (issues #683/#694/#743).
 #
 # Elas já estão aplicadas em produção e são forward-only: não podem ser editadas
 # (o ledger aborta o boot por checksum divergente). O que mudou é que o runner
@@ -11,9 +12,19 @@
 # (forward-only) e, se escrita mesmo assim, seria PULADA em produção — reescreva-a
 # sem o comando destrutivo em vez de adicionar uma linha aqui.
 #
+# A lista cresceu uma vez, e o motivo está registrado: em 2026-09-05 (#743) o
+# DETECTOR ganhou uma terceira cara — "reescreve configuração", atribuição a
+# `modules_enabled`, a coluna que a tela do admin edita. As migrations 023 e 034
+# sempre fizeram isso; o que mudou foi passarem a ser vistas. Elas são dívida
+# HISTÓRICA já aplicada, entram aqui pela mesma razão que as outras cinco, e a
+# regra continua valendo para o futuro: migration NOVA desta família não entra
+# nesta lista — é reescrita sem a reescrita.
+#
 # Um nome de arquivo por linha. "#" comenta; linhas vazias ignoradas.
 013_consolidate_cameras.sql
+023_tenant_schema_fields.sql
 027_superadmin_vitor.sql
+034_add_quality_module_to_tenants.sql
 040_reset_superadmin_password.sql
 046_deactivate_default_tenant.sql
 049_counting_deepsort_rebuild.sql

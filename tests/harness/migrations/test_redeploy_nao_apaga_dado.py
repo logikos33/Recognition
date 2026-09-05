@@ -1,8 +1,10 @@
-"""Nenhum deploy pode apagar dado nem reescrever credencial — issues #683 / #694.
+"""Nenhum deploy pode apagar dado, reescrever credencial nem desfazer configuração
+— issues #683 / #694 / #743.
 
 Prova ponta a ponta, contra Postgres de verdade: aplica `infra/migrations/*.sql`
 DUAS vezes (como o boot da API faz a cada deploy), com dado de cliente semeado
-ENTRE as duas passadas, e exige que o dado e a senha sobrevivam à segunda.
+ENTRE as duas passadas, e exige que o dado, a senha e a escolha de módulos do
+admin sobrevivam à segunda.
 
 Três pernas, porque o estrago tem três caminhos:
 
@@ -15,14 +17,20 @@ Três pernas, porque o estrago tem três caminhos:
                         docstring do runner_core avisa para não fazer. O ledger
                         nasce vazio num banco cheio e reaplica a 049 do zero.
 
-Sem a guarda, A e C perdem o histórico de contagem E a senha. Rodar com
-`git stash` da mudança em runner_core.py reproduz as duas falhas.
+Sem a guarda, A e C perdem o histórico de contagem, a senha E a configuração de
+módulos. Rodar com `git stash` da mudança em runner_core.py reproduz as falhas.
+
+A terceira cara (#743) é a 023/034: a 034 devolve o módulo 'quality' a todo
+tenant que não o tenha, e a 023 SOBRESCREVE a lista inteira dos tenants 'admin'
+e 'rvb' pela versionada no git — desfazendo, a cada deploy, o que o admin
+decidiu pela tela.
 
 Cada perna usa um banco descartável próprio no MESMO servidor do harness
 (HARNESS_DATABASE_URL) — nunca o banco do harness, que os outros testes leem.
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -40,6 +48,12 @@ _RUNNER = _RAIZ / "tests" / "harness" / "migrations" / "runner.py"
 # dele — senão "sobreviveu" e "foi reescrito" ficariam indistinguíveis.
 _HASH_DO_REPO = "$2b$12$2X2POe45QcgGVjZjBN39RuUpolTjPnYi/KATQG8O4UxD8v.fIES5."
 _SENHA_TROCADA_PELO_VITOR = "$2b$12$ooooooooooooooooooooooTROCADAPELATELAoooooooooooooooo"
+
+# A escolha que o admin faz pela tela para o tenant RVB: tira 'quality' (que a
+# 034 devolve) e acrescenta 'analytics' (que a 023 não tem na lista do git).
+# Precisa diferir das DUAS listas versionadas, senão "sobreviveu" e "foi
+# reescrito" ficariam indistinguíveis.
+_MODULOS_ESCOLHIDOS_PELO_ADMIN = ["epi", "counting", "basic", "analytics"]
 
 
 def _dsn_base() -> str:
@@ -123,6 +137,15 @@ def _semeia(dsn: str) -> dict:
         (_SENHA_TROCADA_PELO_VITOR,),
     )
     assert cur.rowcount == 1, "a 027 deveria ter semeado vitor@logikos.com na passada 1"
+
+    # O admin desliga o módulo Qualidade do RVB pela tela — exatamente o SQL de
+    # app/api/v1/admin/routes.py ("UPDATE tenants SET modules_enabled = %s::jsonb").
+    cur.execute(
+        "UPDATE public.tenants SET modules_enabled = %s::jsonb WHERE slug = 'rvb'",
+        (json.dumps(_MODULOS_ESCOLHIDOS_PELO_ADMIN),),
+    )
+    assert cur.rowcount == 1, "a 023 deveria ter semeado o tenant 'rvb' na passada 1"
+
     conn.close()
     return {"sessao_id": sessao_id, "camera_id": camera_id}
 
@@ -164,6 +187,16 @@ def _confere(dsn: str, semente: dict) -> None:
         )
     elif hash_atual != _SENHA_TROCADA_PELO_VITOR:
         violacoes.append(f"#694 password_hash virou algo inesperado: {hash_atual!r}")
+
+    cur.execute("SELECT modules_enabled FROM public.tenants WHERE slug = 'rvb'")
+    linha = cur.fetchone()
+    modulos = linha["modules_enabled"] if linha else None
+    if modulos != _MODULOS_ESCOLHIDOS_PELO_ADMIN:
+        violacoes.append(
+            "#743 CONFIGURAÇÃO REESCRITA: o admin deixou modules_enabled do RVB em "
+            f"{_MODULOS_ESCOLHIDOS_PELO_ADMIN} e o deploy devolveu {modulos} "
+            "(023 sobrescreve a lista inteira; 034 recoloca 'quality')."
+        )
 
     conn.close()
     assert not violacoes, "O redeploy destruiu estado do cliente:\n  - " + "\n  - ".join(violacoes)
