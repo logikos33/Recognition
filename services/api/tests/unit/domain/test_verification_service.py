@@ -974,13 +974,35 @@ class TestColisaoDeVeredito:
         # NUNCA o id interno na mensagem que vai pra tela.
         assert "maria-id" not in exc.value.message
 
-    def test_veredito_da_ia_e_nomeado_sem_uuid(self):
-        cur = self._cursor_ja_julgado(verified_by="claude-haiku", autor_nome=None)
+    def test_a_guarda_isenta_o_veredito_da_maquina(self):
+        """Só veredito de OUTRA PESSOA bloqueia — nunca o da IA.
+
+        `tasks/verification.py` grava o MESMO 'approve'/'reject' com
+        `verified_by='claude-haiku'`, e as telas de evento mostram esses
+        alertas como "Não revisado" (VereditoHumano.tsx) com os botões de
+        veredito ativos. Uma guarda em `verification_verdict IS NULL` pura
+        transformava o PRIMEIRO clique humano num 409 e tornava impossível
+        corrigir a máquina pela rota — o oposto do produto.
+
+        FALHA se o `OR verified_by NOT LIKE %s` sair do WHERE (prova
+        end-to-end com Postgres real:
+        tests/integration/test_verification_veredito_concorrente.py).
+        """
+        mock_cursor = MagicMock()
+        mock_cursor.rowcount = 1
         with patch(_POOL_PATH) as pool_cls:
-            pool_cls.get_instance.return_value = _pool_with_cursor(cur)
-            with pytest.raises(ConflictError) as exc:
-                _make_service().human_review("a-1", "reject", "u-1", "t-1")
-        assert "verificação automática" in exc.value.message
+            pool_cls.get_instance.return_value = _pool_with_cursor(mock_cursor)
+            _make_service().human_review("a-1", "reject", "u-1", "t-1")
+        query, params = mock_cursor.execute.call_args[0]
+        assert "verified_by NOT LIKE %s" in query
+        assert "user:%" in params, "o prefixo vai como PARÂMETRO, não literal"
+
+    def test_veredito_de_maquina_nao_e_nomeado_com_uuid(self):
+        """Rede da mensagem: se um veredito sem prefixo `user:` chegar ao
+        conflito, a tela lê "A verificação automática" — nunca o id cru."""
+        from app.domain.services.verification_service import _quem_julgou
+        assert _quem_julgou("claude-haiku", None) == "A verificação automática"
+        assert "abc" not in _quem_julgou("user:abc", None)
 
     def test_alerta_inexistente_e_404_nao_409(self):
         """O conflito não pode virar oráculo de existência (C-01)."""

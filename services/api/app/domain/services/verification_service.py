@@ -46,6 +46,12 @@ from app.infrastructure.database.repositories.alert_repository import AlertRepos
 logger = logging.getLogger(__name__)
 
 
+#: Prefixo que `human_review` grava em `verified_by` — a ÚNICA prova de que
+#: quem julgou foi GENTE (`tasks/verification.py` grava 'claude-haiku' na mesma
+#: coluna). O front lê a mesma regra em `VereditoHumano.tsx`.
+_PREFIXO_HUMANO = "user:"
+
+
 def _ha_quanto_tempo(quando: datetime | None) -> str:
     """Texto relativo ("há 2 minutos") pro aviso de conflito.
 
@@ -71,11 +77,16 @@ def _ha_quanto_tempo(quando: datetime | None) -> str:
 
 def _quem_julgou(verified_by: str | None, autor_nome: str | None) -> str:
     """Nome de quem já julgou. NUNCA o UUID cru (`user:<uuid>` é id interno —
-    mesma regra de `EventoDetalhe`/`correcao_ultima`: mostra-se NOME)."""
+    mesma regra de `EventoDetalhe`/`correcao_ultima`: mostra-se NOME).
+
+    Só pessoa chega aqui: veredito sem o prefixo `user:` (a IA) NÃO bloqueia o
+    UPDATE, logo nunca vira conflito. Os dois ramos abaixo são a rede: nome
+    apagado do banco → "Outro operador", nunca o UUID na tela.
+    """
     if autor_nome:
         return autor_nome
-    if verified_by and not verified_by.startswith("user:"):
-        # veredito da IA (`claude-haiku`, ver tasks/verification.py)
+    if verified_by and not verified_by.startswith(_PREFIXO_HUMANO):
+        # Inalcançável pela guarda atual (veredito de máquina é sobrescrevível)
         return "A verificação automática"
     return "Outro operador"
 
@@ -114,9 +125,12 @@ class VerificationService:
     #: trabalho. Aqui a lista continua a MESMA (ninguém some, `get_queue_count`
     #: não muda) — só o ponto de partida gira por usuário: as posições são
     #: distribuídas em `_TRILHAS` faixas e cada operador começa pela sua.
-    #: Com 3 operadores (RVB, segunda) eles abrem 1º, 2º e 3º item da fila em
-    #: vez dos três o mesmo. O 409 do `human_review` continua sendo a garantia
-    #: dura; isto só reduz a colisão na origem.
+    #: Com 3 operadores (RVB, segunda) em trilhas DIFERENTES eles abrem 1º, 3º
+    #: e 2º item da fila em vez dos três o mesmo. Medido (segundo cético): a
+    #: trilha é hash do id, então 3 operadores caem em 3 trilhas distintas em
+    #: ~22% dos sorteios e dois deles dividem trilha em ~1/3 das duplas — isto
+    #: REDUZ a colisão, não a elimina. A garantia dura é o 409 do
+    #: `human_review`; o rodízio é só o que evita chegar nele o tempo todo.
     #: ponytail: constante, não contagem de sessões ativas — 3 é o time real
     #: da RVB. Se um dia importar de verdade quantos estão logados, é aqui que
     #: o número deixa de ser fixo (nada mais muda).
@@ -363,9 +377,13 @@ class VerificationService:
         Retorno / erros:
           · `True`  — gravou.
           · `False` — alerta não existe neste tenant (a rota traduz em 404).
-          · `ConflictError` (409) — OUTRA pessoa já julgou; a mensagem diz
+          · `ConflictError` (409) — OUTRA PESSOA já julgou; a mensagem diz
             quem e quando. Nada é sobrescrito: o veredito que fica é o do
             primeiro. Ver o bloco de comentário no WHERE do UPDATE.
+
+        Veredito da IA (`verified_by='claude-haiku'`) NÃO é conflito: o humano
+        sobrescreve, que é o produto. Só veredito com o prefixo `user:` de
+        OUTRA pessoa bloqueia.
 
         tenant_id é obrigatório e faz parte do WHERE — um alerta de outro
         tenant não bate a condição, rowcount fica 0 e a rota trata isso como
@@ -384,7 +402,7 @@ class VerificationService:
         if pool is None:
             raise RuntimeError("Database não disponível")
 
-        autor = f"user:{user_id}"
+        autor = f"{_PREFIXO_HUMANO}{user_id}"
         with pool.get_connection() as conn:
             cur = conn.cursor()
             cur.execute(
@@ -415,10 +433,24 @@ class VerificationService:
                 # (operador muda de ideia)". Mudar de ideia sobre o SEU
                 # veredito continua valendo; sobrescrever o de OUTRA pessoa
                 # em silêncio é que não.
+                #
+                # `OR verified_by NOT LIKE 'user:%'` (segundo cético): só o
+                # veredito de OUTRA PESSOA bloqueia. `tasks/verification.py`
+                # grava o MESMO 'approve'/'reject' com
+                # `verified_by='claude-haiku'`, e corrigir a IA é o produto
+                # inteiro — as telas de evento mostram "Não revisado" para
+                # esses alertas (VereditoHumano.tsx: só o prefixo 'user:'
+                # prova humanidade) e oferecem os botões. Sem esta cláusula, o
+                # primeiro clique nesses botões viraria 409 "A verificação
+                # automática já avaliou este alerta", e a revisão humana da
+                # decisão da máquina ficaria impossível pela rota. O prefixo
+                # vai como PARÂMETRO, não literal: `%` literal no texto da
+                # query é armadilha do psycopg2.
                 "WHERE id = %s AND tenant_id = %s "
-                "  AND (verification_verdict IS NULL OR verified_by = %s)",
+                "  AND (verification_verdict IS NULL OR verified_by = %s "
+                "       OR verified_by NOT LIKE %s)",
                 (status, verdict, autor, reason or None,
-                 alert_id, tenant_id, autor),
+                 alert_id, tenant_id, autor, f"{_PREFIXO_HUMANO}%"),
             )
             if cur.rowcount:
                 logger.info(

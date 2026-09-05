@@ -294,3 +294,68 @@ def test_rodizio_da_fila_muda_o_primeiro_item_por_operador(pg_raw, pg_pool, tena
             cur.execute("DELETE FROM public.alerts WHERE tenant_id = %s", (tenant_id,))
             cur.execute("DELETE FROM public.cameras WHERE tenant_id = %s", (tenant_id,))
             cur.execute("DELETE FROM public.users WHERE tenant_id = %s", (tenant_id,))
+
+
+# ---------------------------------------------------------------------------
+# 6. Veredito da IA NÃO bloqueia o humano (achado do segundo cético)
+# ---------------------------------------------------------------------------
+
+def test_veredito_da_ia_nao_bloqueia_o_humano(pg_raw, cenario):
+    """Corrigir a máquina é o produto — a guarda não pode proibir isso.
+
+    `tasks/verification.py` grava o MESMO 'approve'/'reject' com
+    `verified_by='claude-haiku'`. As telas de evento (Acoes/Eventos/
+    EventoDetalhe/AlertsHistory) mostram "Não revisado" para esses alertas —
+    `VereditoHumano.tsx` só aceita o prefixo 'user:' como prova de humanidade
+    — e oferecem os botões de veredito. Com a guarda em
+    `verification_verdict IS NULL` pura, o PRIMEIRO clique humano nesses
+    botões virava 409 "A verificação automática já avaliou este alerta" e a
+    revisão humana da decisão da IA ficava impossível pela rota.
+
+    FALHA (ConflictError) sem `OR verified_by NOT LIKE 'user:%'` no WHERE.
+    """
+    with pg_raw.cursor() as cur:
+        cur.execute(
+            "UPDATE public.alerts SET verification_status = 'auto_approved', "
+            "verification_verdict = 'approve', verified_at = NOW(), "
+            "verified_by = 'claude-haiku' WHERE id = %s",
+            (cenario["alerta"],),
+        )
+
+    assert VerificationService().human_review(
+        alert_id=cenario["alerta"], verdict="reject",
+        user_id=cenario["joao"], tenant_id=cenario["tenant"],
+    ) is True
+
+    final = _veredito_final(pg_raw, cenario["alerta"])
+    assert final["verification_verdict"] == "reject"
+    assert final["verification_status"] == "human_rejected"
+    assert final["verified_by"] == f"user:{cenario['joao']}"
+
+
+def test_veredito_humano_sobre_o_da_ia_volta_a_bloquear_terceiros(pg_raw, cenario):
+    """A porta aberta pra IA não abre pra pessoa: depois que o humano corrige
+    a máquina, o veredito dele é do MESMO tipo dos outros — o próximo operador
+    leva 409. Sem este par, `NOT LIKE` viraria "qualquer um sobrescreve"."""
+    svc = VerificationService()
+    with pg_raw.cursor() as cur:
+        cur.execute(
+            "UPDATE public.alerts SET verification_verdict = 'approve', "
+            "verified_at = NOW(), verified_by = 'claude-haiku' WHERE id = %s",
+            (cenario["alerta"],),
+        )
+
+    assert svc.human_review(
+        alert_id=cenario["alerta"], verdict="reject",
+        user_id=cenario["joao"], tenant_id=cenario["tenant"],
+    ) is True
+
+    with pytest.raises(ConflictError) as excinfo:
+        svc.human_review(
+            alert_id=cenario["alerta"], verdict="approve",
+            user_id=cenario["maria"], tenant_id=cenario["tenant"],
+        )
+    assert "João Souza" in excinfo.value.message
+    assert _veredito_final(pg_raw, cenario["alerta"])["verified_by"] == (
+        f"user:{cenario['joao']}"
+    )
