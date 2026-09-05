@@ -22,17 +22,19 @@
  * · **Expiração da sessão.** `getSessionTokenExpMs()` lê o claim `exp` do JWT
  *   corrente. Decodificar token aqui de novo divergiria no primeiro refresh.
  */
-import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
-import { Menu, Search } from 'lucide-react'
+import { Suspense, useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { LogOut, Menu, Search } from 'lucide-react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
+import { ErrorBoundary } from '../../components/shared/ErrorBoundary'
+import { NotificationBell } from '../../components/ui/NotificationBell/NotificationBell'
 import { useAuth } from '../../hooks/useAuth'
 import { getSessionTokenExpMs } from '../../services/tenantContext'
 import { LogikosLoader } from './LogikosLoader'
 import { PaletaComandos, type GrupoPaleta } from './PaletaComandos'
 import { SeletorTenant } from './SeletorTenant'
 import { SessaoExpirando } from './SessaoExpirando'
-import { PREFIXO_NOVO, rotaHomeDoUsuario } from '../RotasNovas'
+import { PREFIXO_NOVO, rotaHomeDoUsuario, rotaNova } from '../RotasNovas'
 import { useMarcaDoTenant } from '../tokens/MarcaDoTenant'
 import { NAV_ADMIN, NAV_EPI, NAV_ESTUDIO, navVisivel } from './navPorPerfil'
 import * as s from './Shell.css'
@@ -73,8 +75,8 @@ export const SEM_BARRA_LATERAL = [
 ]
 
 export function Shell({ carregando }: ShellProps) {
-  const { can, isSuperAdmin } = useAuth()
-  const { pathname } = useLocation()
+  const { can, isSuperAdmin, logout } = useAuth()
+  const { pathname, search } = useLocation()
   const comBarraLateral = !SEM_BARRA_LATERAL.some((r) => pathname.startsWith(r))
   // Publica --lk-marca clampada; os tokens leem dela. Ver DECISÃO v2 item 3.
   useMarcaDoTenant()
@@ -138,9 +140,6 @@ export function Shell({ carregando }: ShellProps) {
     return () => clearInterval(id)
   }, [])
 
-  const aoRenovar = useCallback(() => window.location.reload(), [])
-  const aoSair = useCallback(() => navegar('/login'), [navegar])
-
   return (
     <div className={s.raiz}>
       <header className={s.topbar}>
@@ -157,6 +156,22 @@ export function Shell({ carregando }: ShellProps) {
         <Marca para={rotaHomeDoUsuario(isSuperAdmin)} />
         <span className={s.espacador} />
         <SeletorTenant />
+        {/**
+          * O sino é o MESMO componente do front antigo — inclusive o dedup de
+          * rajada (câmera+classe em <60s) que a ux2 pôs nele. Reescrevê-lo aqui
+          * criaria uma quarta contagem de "quantas situações existem", que
+          * divergiria da do front antigo no primeiro ajuste.
+          *
+          * `rotaAlertas`: o deep-link tem de cair na tela de eventos do front
+          * NOVO. O default do componente (`/epi/alerts`) é rota VÁLIDA no app —
+          * mandaria o usuário, calado, para a tela ANTIGA (mesmo pisão descrito
+          * em `RotasNovas.tsx`).
+          *
+          * Gate `alerts:read`: é a MESMA permissão do item "Eventos" da nav
+          * (`navPorPerfil.ts`). Sino sem ela seria um badge que só sabe pedir
+          * 403 e um clique que leva a uma tela que o perfil não abre.
+          */}
+        {can('alerts:read') && <NotificationBell rotaAlertas={rotaNova('/epi/eventos')} />}
         <button
           className={s.botaoIcone}
           onClick={() => setPaletaAberta(true)}
@@ -165,6 +180,19 @@ export function Shell({ carregando }: ShellProps) {
           <Search size={18} strokeWidth={1.7} />
         </button>
         <span className={s.dicaAtalho}>⌘K</span>
+        {/**
+          * Saída. Medido nesta rodada: o front novo NÃO tinha nenhuma — o único
+          * `logout()` da árvore `app/` era o do aviso de sessão, que só aparece
+          * nos 5 minutos finais. Em máquina compartilhada de chão de fábrica
+          * isso é um beco: entrou com a conta errada, não sai mais (a não ser
+          * indo ao front antigo ou limpando o localStorage).
+          *
+          * Botão só de ícone, como os outros da topbar; o menu de usuário com
+          * nome/papel é do desenho e vem quando ele for implementado.
+          */}
+        <button className={s.botaoIcone} onClick={logout} aria-label="Sair">
+          <LogOut size={18} strokeWidth={1.7} />
+        </button>
       </header>
 
       <div className={s.corpo}>
@@ -204,16 +232,63 @@ export function Shell({ carregando }: ShellProps) {
             {carregando ? (
               <LogikosLoader estado="waiting" variante="fullscreen" rotulo="CARREGANDO" />
             ) : (
-              // As telas vêm por lazy(): entre o clique e o pedaço chegar há um
-              // vão. Sem Suspense o React estoura; com um spinner qualquer, o
-              // vão fica com a cara de outro produto.
-              <Suspense
-                fallback={
-                  <LogikosLoader estado="entering" variante="fullscreen" rotulo="ABRINDO" />
-                }
-              >
-                <Outlet />
-              </Suspense>
+              /**
+               * `Suspense` cobre o VÃO do `lazy()`; não cobre ERRO. Um `throw`
+               * no render de qualquer tela, ou um pedaço que não baixa (deploy
+               * no meio da sessão), sobe até a raiz e o React desmonta a árvore
+               * INTEIRA: página em branco, sem topbar, sem menu, sem nada em
+               * que clicar. O `ErrorBoundary` já existia — mas envolvendo só o
+               * `AppRoutes` do front ANTIGO (`AppRoutes.tsx`).
+               *
+               * Ele fica POR FORA do `Suspense` de propósito: erro de carga do
+               * `lazy()` atravessa o `Suspense` (que não captura erro), então
+               * um boundary por dentro nunca o veria.
+               *
+               * `key`: o boundary guarda `hasError` no estado e não o solta
+               * sozinho. Sem chave, quem clicasse no menu depois do erro
+               * trocava a URL e continuava olhando a tela de erro — beco sem
+               * saída até dar F5. Trocar a chave remonta o boundary limpo, e a
+               * nav volta a ser saída de verdade (regra C2).
+               *
+               * A chave é a localização INTEIRA (caminho + querystring), e não
+               * só o caminho. Com `pathname` sozinho, um deep-link para a tela
+               * em que o usuário JÁ ESTÁ não chegava: o React Router mantém o
+               * elemento montado quando só a querystring muda, e as quatro
+               * telas do /novo que leem querystring (`epi/Eventos`,
+               * `estudio/Dados`, `estudio/Classificar`,
+               * `acesso/RedefinirSenha`) a leem UMA vez, em inicializador de
+               * `useState`. Medido com a tela real montada: estando em
+               * `/novo/epi/eventos` e clicando na notificação do sino, as
+               * chamadas depois do clique eram `[]` — nem refetch, nem filtro,
+               * nem realce; a URL mudava e a tela não. É o caminho mais
+               * provável do sino, porque é onde o operador de EPI fica.
+               *
+               * O preço, dito por extenso: a subárvore remonta em toda troca
+               * de caminho E de querystring — entre sub-abas de uma mesma área
+               * (`/novo/estudio/dados` → `/novo/estudio/cobertura`) e num
+               * deep-link que só troca parâmetros (a tela de eventos perde
+               * seleção e página, que é o que se quer ao pular para outra
+               * câmera). Medido antes de aceitar: os layouts de Estúdio e
+               * Admin não guardam estado nenhum (nenhum `useState`/`useQuery`),
+               * o cache do react-query sobrevive ao remonte, e NENHUMA tela do
+               * /novo escreve na URL (`setSearchParams` = zero ocorrências em
+               * `src/app`) — então remonte por querystring só acontece quando
+               * alguém navega de propósito. Essa premissa tem alarme: o teste
+               * "nenhuma tela do /novo escreve na URL" em `Shell.test.tsx`
+               * fica vermelho no dia em que uma passar a escrever. Nesse dia o
+               * conserto é o `ErrorBoundary` ganhar `resetKeys` (como o do
+               * `react-error-boundary`) em vez de `key`, e a tela que escreve
+               * derivar o estado dos parâmetros em vez de copiá-los no mount.
+               */
+              <ErrorBoundary key={pathname + search}>
+                <Suspense
+                  fallback={
+                    <LogikosLoader estado="entering" variante="fullscreen" rotulo="ABRINDO" />
+                  }
+                >
+                  <Outlet />
+                </Suspense>
+              </ErrorBoundary>
             )}
           </div>
         </main>
@@ -224,8 +299,21 @@ export function Shell({ carregando }: ShellProps) {
         aberta={paletaAberta}
         onAbertaChange={setPaletaAberta}
       />
+      {/**
+        * O aviso derruba o token e leva ao login — `logout()` limpa e manda
+        * para `/`, que sem token cai na Entrar.
+        *
+        * O que ele NÃO faz mais é `window.location.reload()` sob o rótulo
+        * "Renovar sessão": recarregar traz o MESMO token de volta, com o MESMO
+        * `exp`, e o aviso reaparecia em segundos. Nem havia como renovar de
+        * verdade — `services/api/app/api/v1/auth/routes.py` tem register,
+        * login, me, forgot-password e reset-password, e nenhuma rota de
+        * refresh (issue aberta para o refresh real). Botão que promete o que o
+        * backend não faz é pior que botão ausente: ensina o operador a confiar
+        * num controle morto e a perder o que estava fazendo.
+        */}
       {expiraEm !== null && (
-        <SessaoExpirando expiraEm={expiraEm} onRenovar={aoRenovar} onSair={aoSair} />
+        <SessaoExpirando expiraEm={expiraEm} onEntrarDeNovo={logout} />
       )}
     </div>
   )
