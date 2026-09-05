@@ -50,10 +50,21 @@ import * as s from './Estudio.css'
  *   Modelos       training:read — o registry define a chave como "acompanhar
  *                 jobs de treinamento, datasets e modelos do tenant"
  *                 (`core/permissions.py`); a rota GET é frouxa, a intenção não.
- *   Mod. p/ câm.  POST /api/cameras/<id>/model-config         cameras:configure
- *   Uso das câm.  PUT  /api/cameras/modules                   cameras:configure
+ *   Mod. p/ câm.  GET  /api/cameras/model-config              só JWT  (o POST é cameras:configure)
+ *   Uso das câm.  GET  /api/cameras                          só JWT  (o PUT  é cameras:configure)
  *
  * `null` = quem passou pela porta do Estúdio (`frames:annotate`) já pode usar.
+ *
+ * ⚠️ A REGRA é o que o backend recusa no CARREGAMENTO — não o que ele recusa
+ * num botão. As duas telas de câmera caíram nesta armadilha na 1ª versão
+ * desta PR: foram gateadas em `cameras:configure`, mas elas CARREGAM com JWT
+ * e já têm modo somente-leitura PRÓPRIO e explícito
+ * (`CamerasPorModulo.tsx:111` e `CameraModelScope.tsx:385`, que escreve
+ * "(somente leitura — requer permissão de aprovação)" na tela). Escondê-las
+ * não consertava 403 nenhum: apagava um modo de leitura que existe, funciona
+ * e se anuncia — e matava o link "O que a câmera reconhece" de
+ * `epi/Cenario.tsx:936`, que hoje funciona para trainer e operator.
+ * Botão que 403 dentro de tela que abre é a camada da issue #698.
  *
  * ⚠️ A resposta ao 403 é ESCONDER o que o papel não pode, nunca ampliar a
  * permissão de ninguém — `operator` anota, e é só isso que ele vê aqui.
@@ -75,20 +86,10 @@ export const ITENS: {
   { rota: 'classes', rotulo: 'Classes', Icone: Tags, permissao: 'training:write' },
   { rota: 'treino', rotulo: 'Treinos', Icone: Activity, permissao: 'training:write' },
   { rota: 'modelo', rotulo: 'Modelos', Icone: Box, permissao: 'training:read' },
-  {
-    rota: 'modelos-por-camera',
-    rotulo: 'Modelos por câmera',
-    Icone: Cctv,
-    permissao: 'cameras:configure',
-  },
+  { rota: 'modelos-por-camera', rotulo: 'Modelos por câmera', Icone: Cctv, permissao: null },
   // Fica ao lado de "Modelos por câmera" porque as duas respondem sobre a
   // MESMA câmera — lá "qual modelo responde", aqui "para que ela serve".
-  {
-    rota: 'cameras-por-modulo',
-    rotulo: 'Uso das câmeras',
-    Icone: SlidersHorizontal,
-    permissao: 'cameras:configure',
-  },
+  { rota: 'cameras-por-modulo', rotulo: 'Uso das câmeras', Icone: SlidersHorizontal, permissao: null },
 ]
 
 /**

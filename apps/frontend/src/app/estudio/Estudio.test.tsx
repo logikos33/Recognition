@@ -102,14 +102,13 @@ describe('lateral do Estúdio × o que o backend permite (issue #688)', () => {
   const ESPERADO: Record<string, string[]> = {
     superadmin: TODAS,
     admin: TODAS,
-    // `operator` anota, e é só: sem training:write nem cameras:configure.
-    operator: ['Dados', 'Cobertura', 'Classificar'],
-    // `trainer` treina, mas não configura câmera (cameras:configure é
-    // superadmin/admin no registry).
-    trainer: [
-      'Dados', 'Cobertura', 'Classificar', 'Gabarito (celular)',
-      'Classes', 'Treinos', 'Modelos',
-    ],
+    // `operator` anota — e enxerga as duas telas de câmera em modo
+    // somente-leitura, que é o que elas já fazem hoje (ver teste abaixo).
+    operator: ['Dados', 'Cobertura', 'Classificar', 'Modelos por câmera', 'Uso das câmeras'],
+    // `trainer` treina; só não vê `Modelos` fora... ele vê tudo menos nada:
+    // a única chave que lhe falta na lateral é nenhuma — `training:read` e
+    // `training:write` ele tem, e as de câmera não gateiam mais.
+    trainer: TODAS,
     analyst: [],
     viewer: [],
   }
@@ -136,6 +135,32 @@ describe('lateral do Estúdio × o que o backend permite (issue #688)', () => {
       .filter((i) => !visiveis.has(i.rotulo) && (i.permissao === null || pode(i.permissao)))
       .map((i) => i.rotulo)
     if (pode('frames:annotate')) expect(sonegados, 'tela sonegada').toEqual([])
+  })
+
+  /**
+   * Regra desta lateral, e o pino que impede reapertá-la sem querer: o gate é
+   * o que o backend recusa no CARREGAMENTO, não o que ele recusa num botão.
+   *
+   * As duas telas de câmera foram gateadas em `cameras:configure` na 1ª versão
+   * desta PR. Elas carregam com JWT e têm modo somente-leitura PRÓPRIO — o
+   * componente até escreve isso na tela. Escondê-las não consertava 403
+   * nenhum: apagava leitura que funciona (e matava o link "O que a câmera
+   * reconhece" de `epi/Cenario.tsx`, que hoje serve trainer e operator).
+   */
+  it('tela com modo somente-leitura próprio não pode ser escondida por permissão de escrita', () => {
+    const raiz = join(__dirname, '..', '..')
+    const escopo = readFileSync(join(raiz, 'components', 'training', 'CameraModelScope.tsx'), 'utf8')
+    const porModulo = readFileSync(join(__dirname, 'CamerasPorModulo.tsx'), 'utf8')
+    // A prova de que o modo existe vem do código da tela, não da minha palavra.
+    expect(escopo, 'CameraModelScope perdeu o modo somente-leitura').toContain('somente leitura')
+    expect(escopo).toContain("can('cameras:configure')")
+    expect(porModulo, 'CamerasPorModulo perdeu o gate próprio').toContain("can('cameras:configure')")
+    // Logo: a lateral não pode exigir a permissão de ESCRITA para deixar entrar.
+    const gateadas = ITENS
+      .filter((i) => ['modelos-por-camera', 'cameras-por-modulo'].includes(i.rota))
+      .filter((i) => i.permissao !== null)
+      .map((i) => `${i.rotulo} (${i.permissao})`)
+    expect(gateadas, 'tela somente-leitura escondida atrás de permissão de escrita').toEqual([])
   })
 
   it('toda permissão citada na lateral EXISTE no registry do backend', () => {
