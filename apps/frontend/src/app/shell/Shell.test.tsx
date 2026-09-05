@@ -20,7 +20,13 @@ const auth = vi.hoisted(() => ({
   isSuperAdmin: false,
   logout: vi.fn(),
 }))
-vi.mock('../../hooks/useAuth', () => ({ useAuth: () => auth }))
+// `renovarSessao` (issue #667) é consumido pelo SessaoExpirando, que o Shell
+// monta: sem ele no dublê o Shell inteiro derruba — o mesmo motivo já anotado
+// no mock de tenantContext logo abaixo.
+vi.mock('../../hooks/useAuth', () => ({
+  useAuth: () => auth,
+  renovarSessao: vi.fn(async () => Date.now() + 86_400_000),
+}))
 
 // O sino (NotificationBell) monta na topbar do shell novo e busca alertas ao
 // montar. Sem o dublê, todo teste deste arquivo faria rede de verdade.
@@ -38,6 +44,7 @@ vi.mock('../../services/tenantContext', () => ({
   assumeTenantContext: vi.fn(),
 }))
 
+import { renovarSessao } from '../../hooks/useAuth'
 import { Shell } from './Shell'
 
 /**
@@ -161,7 +168,7 @@ describe('Shell', () => {
   it('avisa quando a sessão está perto de acabar', () => {
     sessao.exp.mockReturnValue(Date.now() + 60_000)
     montar()
-    expect(screen.getByRole('button', { name: /entrar de novo/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /renovar sessão/i })).toBeTruthy()
   })
 
   it('abre a paleta pelo botão da topbar', async () => {
@@ -208,23 +215,34 @@ describe('tela que estoura não vira página em branco', () => {
 })
 
 /**
- * (2) O aviso de sessão prometia "Renovar sessão" e chamava `location.reload()`
- * — recarregar com o MESMO token. Não existe rota de refresh no backend
- * (`services/api/app/api/v1/auth/routes.py`: register, login, me,
- * forgot-password, reset-password). Enquanto ela não existir (issue aberta), o
- * aviso diz a verdade.
+ * (2) O aviso de sessão já prometeu "Renovar sessão" chamando
+ * `location.reload()` — recarregar com o MESMO token e o MESMO `exp`. A onda 1
+ * removeu o botão porque não havia rota de refresh; a issue #667 criou a rota
+ * (`POST /api/auth/refresh`) e o botão voltou fazendo o que diz.
+ *
+ * O que este bloco protege é a LIGAÇÃO: o aviso que o Shell monta tem de ser o
+ * que renova, e a saída de emergência tem de continuar caindo no `logout` do
+ * shell. O comportamento do cartão em si (sucesso, falha, clique duplo) está em
+ * `SessaoExpirando.test.tsx`.
  */
-describe('aviso de sessão não promete renovação que não existe', () => {
-  it('não oferece "Renovar sessão"', () => {
+describe('aviso de sessão oferece a renovação que agora existe', () => {
+  it('oferece "Renovar sessão"', () => {
     sessao.exp.mockReturnValue(Date.now() + 60_000)
     montar()
-    expect(screen.queryByRole('button', { name: /renovar/i })).toBeNull()
+    expect(screen.getByRole('button', { name: /renovar sessão/i })).toBeTruthy()
   })
 
-  it('"Entrar de novo" derruba o token e leva ao login (não recarrega com o mesmo)', () => {
+  it('"Entrar de novo" aparece quando a renovação falha, e derruba o token', async () => {
     sessao.exp.mockReturnValue(Date.now() + 60_000)
     montar()
-    fireEvent.click(screen.getByRole('button', { name: /entrar de novo/i }))
+    // Sem falha não há botão destrutivo ao lado do que resolve.
+    expect(screen.queryByRole('button', { name: /entrar de novo/i })).toBeNull()
+
+    vi.mocked(renovarSessao).mockRejectedValueOnce(new Error('sessão morta'))
+    fireEvent.click(screen.getByRole('button', { name: /renovar sessão/i }))
+
+    const sair = await screen.findByRole('button', { name: /entrar de novo/i })
+    fireEvent.click(sair)
     expect(auth.logout).toHaveBeenCalledTimes(1)
   })
 })

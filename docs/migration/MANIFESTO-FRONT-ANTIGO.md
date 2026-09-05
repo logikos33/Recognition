@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 392 arquivos, 66.132 linhas
+## Situação — 392 arquivos, 66.166 linhas
 
 | status | arquivos |
 |---|---:|
@@ -205,7 +205,7 @@ apagado não são a mesma coisa.
 | `src/components/ui/Tooltip/Tooltip.tsx` | `INFRA` | — | 29 |
 | `src/constants/epiClasses.ts` | `INFRA` | — | 29 |
 | `src/hooks/useAnimations.ts` | `INFRA` | — | 54 |
-| `src/hooks/useAuth.ts` | `INFRA` | — | 81 |
+| `src/hooks/useAuth.ts` | `INFRA` | — | 115 |
 | `src/hooks/useAutoAssumeTenantContext.ts` | `INFRA` | — | 93 |
 | `src/hooks/useCameraSnapshot.ts` | `INFRA` | — | 103 |
 | `src/hooks/useEdgeTelemetrySocket.ts` | `INFRA` | — | 74 |

@@ -20,7 +20,9 @@
  *   — restilizá-lo agora mudaria o front antigo junto, que tem de seguir de pé.
  *
  * · **Expiração da sessão.** `getSessionTokenExpMs()` lê o claim `exp` do JWT
- *   corrente. Decodificar token aqui de novo divergiria no primeiro refresh.
+ *   corrente, de minuto em minuto — o token TROCA sem desmontar o shell
+ *   (renovação de contexto assumido, e agora o refresh da issue #667).
+ *   Decodificar token em mais um lugar divergiria no primeiro refresh.
  */
 import { Suspense, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { LogOut, Menu, Search } from 'lucide-react'
@@ -300,17 +302,18 @@ export function Shell({ carregando }: ShellProps) {
         onAbertaChange={setPaletaAberta}
       />
       {/**
-        * O aviso derruba o token e leva ao login — `logout()` limpa e manda
-        * para `/`, que sem token cai na Entrar.
+        * O aviso RENOVA de verdade desde a issue #667: o botão chama
+        * `POST /api/auth/refresh`, que troca o token vivo por outro com prazo
+        * cheio. Ele não precisa de prop nenhuma daqui para isso — a renovação
+        * mora na camada de auth (`hooks/useAuth`), não no shell.
         *
-        * O que ele NÃO faz mais é `window.location.reload()` sob o rótulo
-        * "Renovar sessão": recarregar traz o MESMO token de volta, com o MESMO
-        * `exp`, e o aviso reaparecia em segundos. Nem havia como renovar de
-        * verdade — `services/api/app/api/v1/auth/routes.py` tem register,
-        * login, me, forgot-password e reset-password, e nenhuma rota de
-        * refresh (issue aberta para o refresh real). Botão que promete o que o
-        * backend não faz é pior que botão ausente: ensina o operador a confiar
-        * num controle morto e a perder o que estava fazendo.
+        * O que ele NÃO faz é `window.location.reload()` sob o rótulo "Renovar
+        * sessão", como já fez: recarregar traz o MESMO token de volta, com o
+        * MESMO `exp`, e o aviso reaparecia em segundos.
+        *
+        * `logout` continua ligado como saída: é o que o cartão oferece quando a
+        * sessão já expirou (aí o backend recusa renovar) ou quando a renovação
+        * falha.
         */}
       {expiraEm !== null && (
         <SessaoExpirando expiraEm={expiraEm} onEntrarDeNovo={logout} />

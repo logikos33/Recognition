@@ -20,6 +20,40 @@ export interface User {
   permissions?: string[]
 }
 
+/**
+ * Renova a sessão: troca o token AINDA VÁLIDO por outro com prazo cheio.
+ *
+ * Antes disto (issue #667) não havia como renovar: o JWT vale JWT_EXPIRY_HOURS
+ * (24h) e quem estivesse no meio de uma anotação era derrubado sem apelação.
+ *
+ * Por que fora do hook: quem precisa disso é o aviso de sessão expirando, que
+ * não tem (nem quer) uma instância do `useAuth` — cada `useAuth()` é um estado
+ * separado, e a sessão mora no localStorage, não em nenhum deles.
+ *
+ * Por que NÃO é automático: renovar sozinho a cada aviso mantém viva para
+ * sempre a sessão de uma máquina compartilhada que ninguém está usando. O
+ * clique é a prova barata de que tem gente ali; quem foi embora expira.
+ *
+ * Devolve o novo instante de expiração (epoch, ms). Vem PRONTO do backend —
+ * o front não decodifica JWT em dois lugares diferentes (é assim que as duas
+ * contagens de "quando a sessão acaba" divergem no primeiro refresh).
+ *
+ * Lança em qualquer falha (401 de token já morto, 403 de contexto assumido,
+ * rede): o chamador mostra o motivo e oferece o login. `/auth/*` é isento do
+ * redirect automático de 401 do `api.ts`, então o erro chega aqui inteiro em
+ * vez de arrastar a página para /login no meio do trabalho.
+ */
+export async function renovarSessao(): Promise<number> {
+  const res = await api.post<{ data: { token: string; user: User; expires_at: number } }>(
+    '/auth/refresh',
+  )
+  const { token, user, expires_at: expiraEm } = res.data ?? {}
+  if (!token || !expiraEm) throw new Error('Resposta de renovação incompleta')
+  setToken(token)
+  if (user) localStorage.setItem('user', JSON.stringify(user))
+  return expiraEm * 1000
+}
+
 export function useAuth() {
   const [user, setUser] = useState<User | null>(() => {
     try { return JSON.parse(localStorage.getItem('user') || 'null') }

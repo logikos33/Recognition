@@ -5,7 +5,10 @@
  *  · o aviso é de 5 MINUTOS, não "perto do fim" — antes disso não aparece;
  *  · o contador anda de segundo em segundo, em mm:ss com zero à esquerda;
  *  · `onExpirou` sai UMA vez. Em loop, viraria cascata de logout;
- *  · desmontar mata o intervalo. Timer órfão em SPA de turno de 8h vaza.
+ *  · desmontar mata o intervalo. Timer órfão em SPA de turno de 8h vaza;
+ *  · **"Renovar" renova de verdade** (issue #667): chama a troca de token e o
+ *    cartão some com o prazo NOVO. Enquanto isso era `location.reload()`, o
+ *    botão voltava com o mesmo `exp` e o aviso reaparecia em segundos.
  */
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -23,14 +26,21 @@ afterEach(() => vi.useRealTimers())
 /** Avança o relógio deixando o React reagir a cada batida. */
 const avancar = (ms: number) => act(() => void vi.advanceTimersByTime(ms))
 
+/**
+ * `renovar` SEMPRE injetado: o default do componente é o `renovarSessao` real,
+ * que faria fetch. Teste que sai na rede não é teste.
+ */
 const montar = (restanteMs: number, props: Partial<Parameters<typeof SessaoExpirando>[0]> = {}) =>
   render(
     <SessaoExpirando
       expiraEm={Date.now() + restanteMs}
       onEntrarDeNovo={props.onEntrarDeNovo ?? vi.fn()}
       onExpirou={props.onExpirou}
+      renovar={props.renovar ?? vi.fn().mockResolvedValue(Date.now() + 24 * 60 * MIN)}
     />,
   )
+
+const botao = (nome: RegExp) => screen.getByRole('button', { name: nome })
 
 describe('quando aparece', () => {
   it('fica calado com mais de 5 min restantes', () => {
@@ -100,25 +110,85 @@ describe('expiração', () => {
   })
 })
 
-describe('ações — o aviso não promete o que o backend não faz', () => {
-  it('NÃO oferece "Renovar sessão"', () => {
-    // O botão existia e chamava `location.reload()`: mesmo token, mesmo `exp`,
-    // aviso de volta em segundos. Não há rota de refresh no backend
-    // (`auth/routes.py`: register, login, me, forgot-password, reset-password).
+describe('renovar — o botão faz o que promete (issue #667)', () => {
+  it('oferece "Renovar sessão" enquanto ainda dá tempo', () => {
     montar(2 * MIN)
-    expect(screen.queryByRole('button', { name: /renovar/i })).toBeNull()
+    expect(botao(/renovar sessão/i)).toBeTruthy()
   })
 
-  it('"Entrar de novo" chama o callback que derruba o token', () => {
+  it('clicar chama a renovação de verdade — não recarrega a página', async () => {
+    const renovar = vi.fn().mockResolvedValue(Date.now() + 24 * 60 * MIN)
+    montar(2 * MIN, { renovar })
+    await act(async () => void fireEvent.click(botao(/renovar sessão/i)))
+    expect(renovar).toHaveBeenCalledTimes(1)
+  })
+
+  it('renovou → o cartão some NA HORA, com o prazo novo', async () => {
+    // Sem adotar o prazo devolvido, o cartão ficaria até 1 min contando o `exp`
+    // VELHO (o Shell só relê o token de minuto em minuto) e a pessoa clicaria
+    // de novo achando que não funcionou.
+    montar(2 * MIN, { renovar: vi.fn().mockResolvedValue(Date.now() + 24 * 60 * MIN) })
+    expect(screen.getByRole('alertdialog')).toBeTruthy()
+    await act(async () => void fireEvent.click(botao(/renovar sessão/i)))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+  })
+
+  it('clique duplo não dispara duas renovações', async () => {
+    // Dois refresh em voo emitem dois tokens; com `single_session` ligado o
+    // segundo REVOGA o primeiro e a sessão morre por excesso de zelo.
+    let resolver: (v: number) => void = () => {}
+    const renovar = vi.fn(() => new Promise<number>((r) => { resolver = r }))
+    montar(2 * MIN, { renovar })
+    // O MESMO nó, clicado duas vezes: buscar pelo nome de novo não serviria,
+    // porque o rótulo já virou "Renovando…" — o que também é parte da defesa.
+    const alvo = botao(/renovar sessão/i)
+    fireEvent.click(alvo)
+    fireEvent.click(alvo)
+    expect(renovar).toHaveBeenCalledTimes(1)
+    expect(alvo).toHaveProperty('disabled', true)
+    await act(async () => void resolver(Date.now() + 24 * 60 * MIN))
+  })
+
+  it('falhou → diz o motivo e revela a saída, sem tela branca', async () => {
+    const renovar = vi.fn().mockRejectedValue(new Error('Sessão não pode ser renovada.'))
+    montar(2 * MIN, { renovar })
+    await act(async () => void fireEvent.click(botao(/renovar sessão/i)))
+
+    expect(screen.getByRole('alertdialog')).toBeTruthy()
+    expect(screen.getByText(/não pode ser renovada/i)).toBeTruthy()
+    expect(botao(/entrar de novo/i)).toBeTruthy()
+    // E dá para tentar de novo: pode ter sido a rede, não a sessão.
+    expect(botao(/renovar sessão/i)).toBeTruthy()
+  })
+
+  it('falhou → "Entrar de novo" leva ao login', async () => {
     const entrarDeNovo = vi.fn()
-    montar(2 * MIN, { onEntrarDeNovo: entrarDeNovo })
-    fireEvent.click(screen.getByRole('button', { name: /entrar de novo/i }))
+    montar(2 * MIN, {
+      onEntrarDeNovo: entrarDeNovo,
+      renovar: vi.fn().mockRejectedValue(new Error('falhou')),
+    })
+    await act(async () => void fireEvent.click(botao(/renovar sessão/i)))
+    fireEvent.click(botao(/entrar de novo/i))
     expect(entrarDeNovo).toHaveBeenCalledTimes(1)
   })
 
+  it('enquanto NÃO falhou, não há botão destrutivo ao lado do que resolve', () => {
+    montar(2 * MIN)
+    expect(screen.queryByRole('button', { name: /entrar de novo/i })).toBeNull()
+  })
+
+  it('depois de expirar não oferece renovar — o backend recusa token morto', () => {
+    montar(1000)
+    avancar(1000)
+    expect(screen.queryByRole('button', { name: /renovar/i })).toBeNull()
+    expect(botao(/entrar de novo/i)).toBeTruthy()
+  })
+})
+
+describe('ações', () => {
   it('"Agora não" some com o cartão — dá para terminar e salvar', () => {
     montar(2 * MIN)
-    fireEvent.click(screen.getByRole('button', { name: /agora não/i }))
+    fireEvent.click(botao(/agora não/i))
     expect(screen.queryByRole('alertdialog')).toBeNull()
   })
 
@@ -126,7 +196,7 @@ describe('ações — o aviso não promete o que o backend não faz', () => {
     // Dispensado + sessão morta é o pior estado possível: a tela parece viva e
     // toda chamada já vai levar 401. O aviso volta e sobra uma ação só.
     montar(2000)
-    fireEvent.click(screen.getByRole('button', { name: /agora não/i }))
+    fireEvent.click(botao(/agora não/i))
     expect(screen.queryByRole('alertdialog')).toBeNull()
     avancar(2000)
     expect(screen.getByRole('alertdialog')).toBeTruthy()
@@ -134,12 +204,12 @@ describe('ações — o aviso não promete o que o backend não faz', () => {
     expect(screen.queryByRole('button', { name: /agora não/i })).toBeNull()
   })
 
-  it('o foco NÃO cai no botão destrutivo — vai no "Agora não"', () => {
-    // "Entrar de novo" mata a sessão. Cartão que aparece sozinho e rouba o foco
-    // para uma ação destrutiva transforma um Enter distraído em trabalho
-    // perdido — era assim quando o primário era o inofensivo "Renovar".
+  it('o foco cai em "Renovar sessão" — o primário deixou de ser destrutivo', () => {
+    // Enquanto o primário era "Entrar de novo", focá-lo transformava um Enter
+    // distraído em trabalho perdido. "Renovar" não custa nada se clicado sem
+    // querer, então volta a ser o alvo natural do teclado.
     montar(2 * MIN)
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: /agora não/i }))
+    expect(document.activeElement).toBe(botao(/renovar sessão/i))
   })
 })
 
