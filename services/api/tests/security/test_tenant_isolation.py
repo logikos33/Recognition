@@ -145,7 +145,9 @@ class TestLoginTenantValidation:
 class TestRegisterNoToken:
     """Register não deve emitir access_token — ADR-0017 Camada 2."""
 
-    def test_register_response_has_no_token(self, security_client):
+    def test_register_response_has_no_token(self, security_client, monkeypatch):
+        # Auto-registro é fechado por padrão (bloco 4) — reabre só p/ este teste
+        monkeypatch.setenv("ALLOW_PUBLIC_REGISTRATION", "true")
         user_data = {
             "id": "cccccccc-0000-0000-0000-000000000001",
             "email": "new@example.com",
@@ -164,7 +166,8 @@ class TestRegisterNoToken:
             body = resp.get_json()
             assert "token" not in body.get("data", {})
 
-    def test_register_response_contains_message(self, security_client):
+    def test_register_response_contains_message(self, security_client, monkeypatch):
+        monkeypatch.setenv("ALLOW_PUBLIC_REGISTRATION", "true")
         user_data = {"id": "cccccccc-0000-0000-0000-000000000001", "email": "new@example.com"}
         with patch("app.api.v1.auth.routes._get_auth_service") as mock_factory:
             mock_svc = MagicMock()
