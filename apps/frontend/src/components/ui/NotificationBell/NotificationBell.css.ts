@@ -46,6 +46,13 @@ export const panel = style({
   top: '60px',
   right: '16px',
   width: '360px',
+  // Ancorado por `right` com largura FIXA, o painel vaza pela ESQUERDA em tela
+  // estreita — medido com ele aberto: left = -1px em 375, -16px em 360 (Android
+  // comum de chão de fábrica) e -56px em 320, o piso do handoff. O que some é o
+  // começo de cada linha: ícone e nome da câmera. Nenhuma régua de `<main>` ou
+  // de `scrollWidth` pega isto — ele é `fixed` (fora do fluxo) e vazamento para
+  // a esquerda não gera rolagem. Mesmo teto que o aviso de sessão já usa.
+  maxWidth: 'calc(100vw - 32px)',
   maxHeight: '480px',
   background: vars.color.bgSurface,
   border: `1px solid ${vars.color.borderDefault}`,

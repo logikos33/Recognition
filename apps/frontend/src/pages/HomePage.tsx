@@ -120,7 +120,7 @@ export function HomePage() {
             desc="Reconhecimento de EPIs em tempo real via câmeras CCTV."
             onClick={hasModule('epi') ? () => navigate('/epi/dashboard') : undefined} />
           <ModuleCard mod={getModule('quality')} title="Qualidade Industrial" icon="🔬"
-            desc="Controle de qualidade com inspeção visual YOLO, CEP e relatórios de turno."
+            desc="Controle de qualidade com inspeção visual automática, CEP e relatórios de turno."
             onClick={hasModule('quality') ? () => navigate('/quality/dashboard') : undefined} />
           <ModuleCard title="Fueling Control" icon="⛽" comingSoon
             desc="Acompanhamento de abastecimento com OCR de placas e contagem automática." />
