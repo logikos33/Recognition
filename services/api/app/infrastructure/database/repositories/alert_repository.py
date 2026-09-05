@@ -413,6 +413,8 @@ class AlertRepository(BaseRepository):
         violation_type: str = None,
         acknowledged: bool = None,
         kind: str = None,
+        module_code: str | None = None,
+        time_column: str = "created_at",
     ) -> dict:
         """Lista alertas com filtros e paginação, isolado por tenant (P0-03 fix).
 
@@ -424,18 +426,41 @@ class AlertRepository(BaseRepository):
         NULL`, ou fora do catálogo): nem presença, nem violação. Ela CONTINUA
         aparecendo em `kind=None` (não some), só não mente mais como
         'violation'.
+
+        `time_column` (whitelist `_TIME_COLUMNS`, jamais input cru) é o EIXO
+        da janela `start_date`/`end_date` E da ordenação: 'created_at' = hora
+        da GRAVAÇÃO da linha, 'timestamp' = hora da CAPTURA do frame. Os dois
+        divergem por dias em carga em lote (issue #676: 334 de 5.174 alertas
+        do DEV). Default 'created_at' aqui preserva os chamadores antigos
+        (`compliance_report_service`); a ROTA `/api/alerts` passa 'timestamp',
+        porque é a coluna que a tela e o CSV EXIBEM — filtrar por uma e
+        mostrar a outra é o que fazia "hoje" listar linha da semana passada.
+        A ordenação segue o mesmo eixo (senão a lista sai fora de ordem pela
+        data que ela própria imprime), com `a.id` de desempate: `ORDER BY`
+        não-determinístico + OFFSET pula linha entre páginas.
+
+        `module_code` aplica o MESMO par de predicados de `/v1/events/*`
+        (`_event_filters`): a coluna `alerts.module_code` E o ESCOPO DE CÂMERA
+        (`escopo_sql`). Sem os dois, cartão e lista contam conjuntos
+        diferentes — 82 linhas de diferença medidas no DEV (issue #676).
         """
+        col = time_column if time_column in self._TIME_COLUMNS else "created_at"
         conditions = ["1=1", "a.tenant_id = %s"]
         params: list = [tenant_id]
 
         if camera_id:
             conditions.append("a.camera_id = %s")
             params.append(camera_id)
+        if module_code:
+            conditions.append("a.module_code = %s")
+            params.append(module_code)
+            conditions.append(escopo_sql("a.camera_id"))
+            params.extend(escopo_params(str(tenant_id), module_code))
         if start_date:
-            conditions.append("a.created_at >= %s")
+            conditions.append(f"a.{col} >= %s")
             params.append(start_date)
         if end_date:
-            conditions.append("a.created_at <= %s")
+            conditions.append(f"a.{col} <= %s")
             params.append(end_date)
         if violation_type:
             conditions.append("a.violations::text LIKE %s")
@@ -485,23 +510,32 @@ class AlertRepository(BaseRepository):
         # (`violations->0->>'class'`) do dedup original — alertas com >1
         # violação por linha continuam contados pela primeira classe, igual
         # ao resto do sistema.
+        #
+        # EIXO = `timestamp` (CAPTURA), SEMPRE — independente de `time_column`
+        # (issue #674). "Situação" é fato de chão de fábrica, e o instante do
+        # chão de fábrica é o da CAPTURA; `created_at` é o instante em que a
+        # carga rodou. Medido no DEV (RVB, 30 d, 5.122 linhas): 175 linhas
+        # foram GRAVADAS a <60s uma da outra mas CAPTURADAS longe — agrupá-las
+        # pela gravação FUNDIA 77 situações reais (3.308 no lugar de 3.385), e
+        # a tela que as escondesse atrás de "+N repetições" apagaria da vista
+        # 77 acontecimentos distintos do chão de fábrica.
         situacoes_params = list(params) + [DEDUP_WINDOW_SECONDS]
         situacoes_row = self._execute_one(
             f"""
             WITH candidatos AS (
                 SELECT a.camera_id, COALESCE(a.violations->0->>'class', '') AS classe,
-                       a.created_at
+                       a.timestamp AS capturado_em
                 FROM alerts a WHERE {where}
             ), com_gap AS (
                 SELECT *,
-                       LAG(created_at) OVER (
-                           PARTITION BY camera_id, classe ORDER BY created_at
+                       LAG(capturado_em) OVER (
+                           PARTITION BY camera_id, classe ORDER BY capturado_em
                        ) AS anterior
                 FROM candidatos
             )
             SELECT COUNT(*) FILTER (
                 WHERE anterior IS NULL
-                   OR EXTRACT(EPOCH FROM (created_at - anterior)) > %s
+                   OR EXTRACT(EPOCH FROM (capturado_em - anterior)) > %s
             ) AS total_situacoes
             FROM com_gap
             """,
@@ -527,7 +561,7 @@ class AlertRepository(BaseRepository):
             FROM alerts a
             LEFT JOIN cameras i ON a.camera_id = i.id
             WHERE {where}
-            ORDER BY a.created_at DESC
+            ORDER BY a.{col} DESC, a.id DESC
             LIMIT %s OFFSET %s""",
             tuple(page_params),
         )
@@ -868,10 +902,11 @@ class AlertRepository(BaseRepository):
         to_ts: datetime,
         module_code: str | None = None,
         camera_ids: list[str] | None = None,
+        time_column: str = "created_at",
     ) -> int:
         """Conta alertas do tenant em uma janela temporal (com filtros opcionais)."""
         conditions, params = self._window_conditions(
-            tenant_id, from_ts, to_ts, module_code, camera_ids
+            tenant_id, from_ts, to_ts, module_code, camera_ids, time_column=time_column
         )
         where = " AND ".join(conditions)
         row = self._execute_one(
@@ -920,6 +955,7 @@ class AlertRepository(BaseRepository):
         module_code: str | None = None,
         camera_ids: list[str] | None = None,
         class_names: list[str] | None = None,
+        time_column: str = "created_at",
     ) -> list[dict[str, Any]]:
         """Distribuição de VIOLAÇÕES por classe no período (server-side).
 
@@ -938,7 +974,7 @@ class AlertRepository(BaseRepository):
         duas telas se desmentindo sobre o mesmo dado.
         """
         conditions, params = self._window_conditions(
-            tenant_id, from_ts, to_ts, module_code, camera_ids
+            tenant_id, from_ts, to_ts, module_code, camera_ids, time_column=time_column
         )
         conditions.append("v->>'class' IS NOT NULL")
         conditions.append("lower(v->>'class') = ANY(%s::text[])")
@@ -963,9 +999,12 @@ class AlertRepository(BaseRepository):
         to_ts: datetime,
         module_code: str | None = None,
         limit: int = 10,
+        time_column: str = "created_at",
     ) -> list[dict[str, Any]]:
         """Top câmeras por volume de alertas no período (tenant-scoped)."""
-        conditions, params = self._window_conditions(tenant_id, from_ts, to_ts, module_code)
+        conditions, params = self._window_conditions(
+            tenant_id, from_ts, to_ts, module_code, time_column=time_column
+        )
         where = " AND ".join(conditions)
         params.append(limit)
         return self._execute(

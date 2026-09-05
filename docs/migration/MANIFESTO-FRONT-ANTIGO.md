@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 393 arquivos, 66.305 linhas
+## Situação — 393 arquivos, 66.334 linhas
 
 | status | arquivos |
 |---|---:|
@@ -230,7 +230,7 @@ apagado não são a mesma coisa.
 | `src/services/crossTenantCameras.ts` | `INFRA` | — | 107 |
 | `src/services/dashboardEdgeService.ts` | `INFRA` | — | 103 |
 | `src/services/edgeService.ts` | `INFRA` | — | 197 |
-| `src/services/eventsService.ts` | `INFRA` | — | 138 |
+| `src/services/eventsService.ts` | `INFRA` | — | 167 |
 | `src/services/impersonation.ts` | `INFRA` | — | 93 |
 | `src/services/modelDisplay.ts` | `INFRA` | — | 33 |
 | `src/services/moduleService.ts` | `INFRA` | — | 54 |

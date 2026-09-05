@@ -351,7 +351,7 @@ class TestListWithFiltersTotalSituacoes:
         from app.core.rajada import DEDUP_WINDOW_SECONDS
 
         _, cur = self._call({"count": 66}, {"total_situacoes": 2})
-        sql, params = self._busca_query(cur, "LAG(created_at)")
+        sql, params = self._busca_query(cur, "LAG(capturado_em)")
         assert "PARTITION BY camera_id, classe" in sql
         assert DEDUP_WINDOW_SECONDS in params
 
@@ -362,9 +362,24 @@ class TestListWithFiltersTotalSituacoes:
         projeto: contagem e lista com WHERE divergente)."""
         _, cur = self._call({"count": 1}, {"total_situacoes": 1}, camera_id="cam-42")
         sql_count, params_count = self._busca_query(cur, "SELECT COUNT(*) as count")
-        sql_situacoes, params_situacoes = self._busca_query(cur, "LAG(created_at)")
+        sql_situacoes, params_situacoes = self._busca_query(cur, "LAG(capturado_em)")
         assert "camera_id" in sql_count and "cam-42" in params_count
         assert "camera_id" in sql_situacoes and "cam-42" in params_situacoes
+
+    def test_rajada_agrupa_pela_CAPTURA_nunca_pela_gravacao(self):
+        """Issue #674 — o eixo da rajada é `alerts.timestamp` (captura).
+
+        FALHA na versão anterior, que particionava e ordenava por
+        `created_at`: no acervo do DEV (RVB, 30 d) isso FUNDIA 77 situações
+        reais — 175 linhas gravadas no mesmo segundo pela carga em lote, mas
+        capturadas em momentos distintos do turno, viravam uma rajada só.
+        `SELECT ... AS capturado_em` é o apelido obrigatório: `timestamp` cru
+        e desqualificado é palavra reservada de tipo no `ORDER BY`.
+        """
+        _, cur = self._call({"count": 66}, {"total_situacoes": 2})
+        sql, _ = self._busca_query(cur, "LAG(capturado_em)")
+        assert "a.timestamp AS capturado_em" in sql
+        assert "created_at" not in sql
 
     def test_fallback_para_total_sem_a_chave_nova(self):
         """Mock/repo antigo sem `total_situacoes` na linha: cai para `total`

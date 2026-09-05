@@ -239,12 +239,21 @@ def events_summary():
         module_code = (request.args.get("module_code") or "").strip() or None
 
         repo = _get_repo()
+        # EIXO DO TEMPO — `?time_field=`, o MESMO parâmetro de `/events/timeline`
+        # (achado do cético do PR #732). Este resumo ignorava o parâmetro e
+        # contava SEMPRE por `created_at`: os três painéis que saem daqui
+        # ("Violações por classe", "Câmeras com mais eventos", o total) diziam
+        # um número pela GRAVAÇÃO e o deep-link deles abre `GET /api/alerts`,
+        # que desde a issue #676 recorta pela CAPTURA. Cartão e lista voltavam
+        # a discordar — o defeito que a #676 existe para matar, na tela irmã.
+        eixo = _time_column()
         total = repo.count_in_window(
             tenant_id=tenant_id,
             from_ts=from_ts,
             to_ts=to_ts,
             module_code=module_code,
             camera_ids=camera_ids,
+            time_column=eixo,
         )
         by_class = repo.violations_by_class(
             tenant_id=tenant_id,
@@ -253,6 +262,7 @@ def events_summary():
             module_code=module_code,
             camera_ids=camera_ids,
             class_names=class_names,
+            time_column=eixo,
         )
         by_camera = repo.top_cameras_by_alerts(
             tenant_id=tenant_id,
@@ -260,6 +270,7 @@ def events_summary():
             to_ts=to_ts,
             module_code=module_code,
             limit=10,
+            time_column=eixo,
         )
 
         return success(
