@@ -48,6 +48,19 @@ class TestGateDeAudit:
         assert cod == 1
         assert "lodash" in saida and "NAO PREVISTA" in saida
 
+    def test_advisory_NOVO_high_reprova(self):
+        """⚠️ O limiar que de fato dispara aqui é `high`, ⛔ não `critical`.
+
+        Toda entrada da allowlist real é high (browserslist, astro, sharp,
+        vite) — zero critical. Um gate que só reprovasse critical passaria
+        despercebido por todos os outros testes desta classe, que usam
+        critical no caminho do advisory novo. Mutação que mata: reprovar só
+        quando `v["severity"] == "critical"` no ramo `nome not in permitido`.
+        """
+        cod, saida = avaliar("frontend", _rel(browserslist="high", lodash="high"), HOJE)
+        assert cod == 1, saida
+        assert "lodash" in saida and "NAO PREVISTA" in saida
+
     def test_prazo_VENCIDO_reprova_sozinho(self):
         """⚠️ É o prazo que impede a exceção de virar permanente por esquecimento."""
         cod, saida = avaliar("landing", _rel(astro="high"), "2027-01-01")
