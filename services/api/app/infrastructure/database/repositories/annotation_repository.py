@@ -659,10 +659,14 @@ class AnnotationRepository(BaseRepository):
             # propagação, script). Nenhum trabalho humano alheio em jogo.
             return None
 
-        recente = max(
-            dos_outros,
-            key=lambda linha: linha.get("created_at") or datetime.min,
-            default=None,
+        # `max` só sobre linhas COM data: `created_at` é NOT NULL (migration
+        # 003), mas um default naive misturado com datas do banco levantaria
+        # TypeError dentro do ramo de erro — trocar um 409 explicativo por um
+        # 500 é o pior desfecho possível aqui.
+        com_data = [linha for linha in dos_outros if linha.get("created_at")]
+        recente = (
+            max(com_data, key=lambda linha: linha["created_at"])
+            if com_data else (dos_outros[0] if dos_outros else None)
         )
         quem, quando = "Outro anotador", "antes de você"
         if recente is not None:

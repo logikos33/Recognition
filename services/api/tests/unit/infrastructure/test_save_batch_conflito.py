@@ -178,6 +178,15 @@ class TestMensagem:
         assert "Bruno" in str(excecao.value)
         assert "há 5 minutos" in str(excecao.value)
 
+    def test_linha_sem_data_nao_quebra_a_mensagem(self):
+        """`created_at` é NOT NULL, mas o ramo de erro não pode virar 500 se um
+        dia vier NULL: 409 explicativo > exceção dentro do tratamento de
+        exceção."""
+        with pytest.raises(ConflictError) as excecao:
+            _roda([_caixa_no_banco(str(ANA), created_at=None)], user_id=BRUNO,
+                  versao_esperada=VERSAO_VAZIA)
+        assert "antes de você" in str(excecao.value)
+
     def test_diz_o_que_fazer_sem_jargao_de_http(self):
         with pytest.raises(ConflictError) as excecao:
             _roda([_caixa_no_banco(str(ANA))], user_id=BRUNO,
