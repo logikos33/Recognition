@@ -38,6 +38,7 @@ import glob
 import hashlib
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 
 import psycopg2
@@ -120,6 +121,126 @@ def sha256_of_file(path: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Guarda de redeploy — issues #683 (P0) e #694 (risk:security)
+# ---------------------------------------------------------------------------
+#
+# O loop LEGADO reexecuta TODO .sql a cada boot. Em produção (API-V3/production
+# não tem MIGRATIONS_LEDGER_CUTOVER) isso transformava "uma vez" em "sempre":
+#
+#   049_counting_deepsort_rebuild.sql  DROP TABLE ... counting_sessions CASCADE
+#       -> o histórico de contagem do cliente era apagado A CADA DEPLOY (o
+#          CASCADE leva counting_events junto).
+#   040_reset_superadmin_password.sql  UPDATE users SET password_hash = '<hash>'
+#   027_superadmin_vitor.sql           ON CONFLICT ... DO UPDATE SET password_hash
+#       -> a senha do superadmin voltava ao hash versionado no git a cada deploy,
+#          desfazendo, sem log, qualquer troca feita pela tela.
+#   046_deactivate_default_tenant.sql  DELETE FROM alerts / cameras
+#
+# (a 013 também tem DROP TABLE, mas está isenta — ver GUARDA_ISENTAS abaixo.)
+#
+# A guarda é a mesma ideia já aceita neste repo para o bootstrap de admin
+# (railway_start._instalacao_virgem, D-166): a limpeza foi escrita para a
+# instalação virgem, então SÓ na instalação virgem ela roda. Num banco que já
+# tem tenant, migration que apaga dado ou reescreve credencial é PULADA — em
+# ambos os loops (legado e ledger), porque o mesmo estrago acontece no ledger
+# quando ele encontra um banco estabelecido sem backfill (o cenário exato do
+# cutover que a docstring deste módulo avisa para não fazer).
+#
+# `established` é medido UMA VEZ, antes de aplicar qualquer migration: num banco
+# virgem a 005/027 criam tenants no meio da passada, e reavaliar arquivo a
+# arquivo faria a 049 ser pulada logo na primeira instalação — deixando
+# counting_sessions com o schema errado da 015.
+#
+# Escopo deliberadamente estreito (só o que é IRREVERSÍVEL): apagar linha e
+# reescrever senha. Backfill do tipo `UPDATE ... WHERE col IS NULL` não é
+# pego aqui — essa classe é a da #682 e se resolve com migration corretiva.
+
+_COMENTARIO_DE_LINHA = re.compile(r"--[^\n]*")
+_COMENTARIO_DE_BLOCO = re.compile(r"/\*.*?\*/", re.S)
+
+# 104 e 108 citam "DELETE/TRUNCATE" no CABEÇALHO, prometendo não fazer isso.
+# Sem tirar comentário, a guarda pularia justo as duas migrations que seguem a
+# regra — por isso o strip vem antes de qualquer casamento.
+
+
+def strip_sql_comments(sql: str) -> str:
+    return _COMENTARIO_DE_LINHA.sub(" ", _COMENTARIO_DE_BLOCO.sub(" ", sql))
+
+
+_APAGA_DADO = re.compile(
+    r"\b(?:DROP\s+TABLE|DROP\s+SCHEMA|DROP\s+DATABASE|DROP\s+MATERIALIZED\s+VIEW"
+    r"|DROP\s+COLUMN|TRUNCATE|DELETE\s+FROM)\b",
+    re.I,
+)
+# Definição de coluna ("password_hash VARCHAR(255)") não casa: exige o "=" da
+# atribuição, que só aparece em UPDATE ... SET / ON CONFLICT DO UPDATE SET.
+_REESCREVE_CREDENCIAL = re.compile(r"\bpassword_hash\s*=", re.I)
+
+
+# Isenções — arquivo por arquivo, com o motivo escrito. NÃO é lista de "confio
+# nesse": é lista de "medi e o comando não alcança linha de cliente".
+#
+# 013: o DROP TABLE só dispara quando `cameras` E `ip_cameras` existem, e num banco
+#      estabelecido quem cria `ip_cameras` é a PRÓPRIA passada, 11 arquivos antes
+#      (002 tem `CREATE TABLE IF NOT EXISTS ip_cameras`). A tabela que a 013 derruba
+#      nasceu vazia segundos antes: o DROP não alcança dado nenhum, e o par 002+013
+#      é um ciclo que se anula a cada boot desde sempre. Barrar a 013 NÃO salvaria
+#      dado — só deixaria um `ip_cameras` fantasma vazio para trás, o que o diff de
+#      schema do harness pegou (40 linhas novas na passada 2). Manter o ciclo como
+#      está é a opção que não muda nada.
+GUARDA_ISENTAS: dict[str, str] = {
+    "013_consolidate_cameras.sql": (
+        "derruba apenas o ip_cameras vazio que a 002 recria na mesma passada"
+    ),
+}
+
+
+def destructive_reason(sql_text: str) -> str | None:
+    """Motivo pelo qual reexecutar este SQL é perda de dado — ou None."""
+    corpo = strip_sql_comments(sql_text)
+    achado = _APAGA_DADO.search(corpo)
+    if achado:
+        return f"apaga dado ({' '.join(achado.group(0).split()).upper()})"
+    if _REESCREVE_CREDENCIAL.search(corpo):
+        return "reescreve credencial (atribuição a password_hash)"
+    return None
+
+
+def database_is_established(cur) -> bool:
+    """True quando o banco já tem tenant — ou seja, já tem dado de gente.
+
+    Banco sem a tabela `tenants` (schema anterior a ela) conta como virgem: não
+    há dado de cliente que uma limpeza possa levar junto.
+    """
+    cur.execute(
+        "SELECT EXISTS(SELECT FROM information_schema.tables "
+        "WHERE table_schema='public' AND table_name='tenants')"
+    )
+    if not cur.fetchone()[0]:
+        return False
+    cur.execute("SELECT EXISTS(SELECT 1 FROM public.tenants)")
+    return bool(cur.fetchone()[0])
+
+
+def _guarda_pula(basename: str, sql_text: str, established: bool, log: logging.Logger) -> bool:
+    if not established or basename in GUARDA_ISENTAS:
+        return False
+    motivo = destructive_reason(sql_text)
+    if motivo is None:
+        return False
+    log.warning(
+        "  %s ⛔ PULADA pela guarda de redeploy: %s, e este banco já tem tenant. "
+        "Migration que apaga dado ou reescreve senha só roda em instalação virgem "
+        "(issues #683/#694) — em banco estabelecido ela transforma uma limpeza "
+        "única em perda de dado a cada deploy. Se esta migration é NOVA e precisa "
+        "rodar, ela viola a regra forward-only do CLAUDE.md (sem DROP/DELETE/"
+        "TRUNCATE): reescreva-a sem o comando destrutivo.",
+        basename, motivo,
+    )
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Loop LEGADO — item 3.2 (o que já existia, sem mudar comportamento observável)
 # ---------------------------------------------------------------------------
 
@@ -170,12 +291,20 @@ def run_legacy(
 
     cur = conn.cursor()
     fatal_errors: list[tuple[str, str]] = []
+    # Medido UMA vez, antes de aplicar qualquer arquivo (ver bloco da guarda).
+    established = database_is_established(cur)
+    conn.rollback()
+    if established:
+        log.info("  banco já estabelecido (tem tenant) — guarda de redeploy ATIVA")
 
     for f in files:
         basename = os.path.basename(f)
+        sql_text = open(f).read()
+        if _guarda_pula(basename, sql_text, established, log):
+            continue
         log.info("  %s...", basename)
         try:
-            cur.execute(open(f).read())
+            cur.execute(sql_text)
             conn.commit()
             log.info("  %s ✅", basename)
         except Exception as exc:
@@ -211,6 +340,7 @@ class LedgerRunSummary:
     applied: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
     tolerated: list[str] = field(default_factory=list)
+    guarded: list[str] = field(default_factory=list)
 
 
 _CREATE_LEDGER_SQL = """
@@ -424,16 +554,31 @@ def run_ledger(dsn: str, migrations_dir: str = DEFAULT_MIGRATIONS_DIR, log: logg
         _ensure_ledger_table(conn, log)
         _preflight_duplicate_prefix_check(conn, files, migrations_dir, log)
 
+        cur = conn.cursor()
+        established = database_is_established(cur)
+        conn.rollback()
+        if established:
+            log.info("  banco já estabelecido (tem tenant) — guarda de redeploy ATIVA")
+
         summary = LedgerRunSummary()
         for path in files:
+            basename = os.path.basename(path)
+            # A guarda vale aqui também: um banco estabelecido cujo ledger ainda
+            # está vazio (o cutover feito sem o backfill) faria o runner novo
+            # reaplicar a 049 do zero — mesmo estrago, outro loop.
+            if _guarda_pula(basename, open(path).read(), established, log):
+                summary.guarded.append(basename)
+                continue
             outcome = _apply_one(
                 conn, path, log, ledger_established=bool(summary.skipped)
             )
-            getattr(summary, outcome).append(os.path.basename(path))
+            getattr(summary, outcome).append(basename)
 
         log.info(
-            "✅ Migrations (ledger) OK — %d aplicada(s), %d pulada(s), %d tolerada(s)",
+            "✅ Migrations (ledger) OK — %d aplicada(s), %d pulada(s), %d tolerada(s), "
+            "%d barrada(s) pela guarda",
             len(summary.applied), len(summary.skipped), len(summary.tolerated),
+            len(summary.guarded),
         )
         return True
     finally:

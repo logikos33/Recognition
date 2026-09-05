@@ -53,9 +53,12 @@ hipotéticas — reproduzidas com o harness de verdade, banco limpo):
   cada redeploy. Na passada 2 do harness ele derruba a FK
   `counting_events_session_id_fkey` (dependente da tabela recriada) — em produção,
   o mesmo padrão apaga o histórico real de `counting_sessions` a cada redeploy do
-  serviço `api`. **Achado crítico, fora do escopo deste guard-rail — não corrigido
-  aqui; precisa de triagem e uma migration nova dedicada** (forward-only: não editar
-  a `049`).
+  serviço `api`. **RESOLVIDO** (issues #683/#694): não com uma migration nova — não
+  dá para desfazer um `DROP` com SQL posterior, e a `049` é forward-only — mas com
+  a **guarda de redeploy** em `infra/migrations/runner_core.py`: num banco que já
+  tem tenant, migration que apaga dado ou reescreve `password_hash` não roda. Prova
+  em `test_redeploy_nao_apaga_dado.py` (dado semeado ENTRE as duas passadas, três
+  modos) e no próprio diff de schema, que caiu de 3 para 1 linha material.
 
 Nenhuma dessas 3 é causada pelo mecanismo de diff em si — são bugs reais, só
 nunca detectados porque nada antes comparava o schema resultante das duas
