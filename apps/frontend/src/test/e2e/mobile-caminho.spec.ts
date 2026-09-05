@@ -180,4 +180,43 @@ test.describe('caminho do TST em 375px', () => {
     await acoes.scrollIntoViewIfNeeded()
     await expect(acoes).toBeInViewport()
   })
+  /**
+   * O SINO — o overlay que a régua acima estruturalmente não enxerga.
+   *
+   * As medidas de `<main>` não alcançam o painel de notificações: ele é
+   * `position: fixed`, portanto sai do fluxo e não entra na largura útil. E o
+   * `scrollWidth` também não o pega, porque ele vaza para a ESQUERDA (`right`
+   * ancorado, largura fixa) e overflow negativo não gera rolagem. É o MESMO
+   * modo de falha que este arquivo denuncia no `front-novo-mobile.spec.ts`:
+   * verde com a tela quebrada.
+   *
+   * Medido antes de consertar, com o painel aberto de verdade:
+   *
+   *     375px → left = −1px      360px → left = −16px     320px → left = −56px
+   *
+   * O sino está no caminho: é `can('alerts:read')` — a mesma permissão do item
+   * "Eventos" — e o clique nele é o atalho do TST para o evento. Cortado à
+   * esquerda, o que some é o começo de cada linha (ícone e nome da câmera).
+   */
+  for (const largura of [375, 360, 320]) {
+    test(`o painel do sino cabe inteiro em ${largura}px`, async ({ page }) => {
+      await page.setViewportSize({ width: largura, height: ALTURA })
+      await entrarComoSuperadmin(page)
+      await page.goto('/novo/epi/dashboard')
+      await page.getByRole('button', { name: 'Notificações' }).click()
+
+      const titulo = page.getByText('Notificações', { exact: true })
+      await expect(titulo).toBeVisible()
+      const caixa = await titulo.evaluate((el) => {
+        // O painel é o ancestral posicionado do título.
+        let no = el.parentElement
+        while (no && getComputedStyle(no).position !== 'fixed') no = no.parentElement
+        const r = no!.getBoundingClientRect()
+        return { esquerda: r.left, direita: r.right, janela: window.innerWidth }
+      })
+
+      expect(caixa.esquerda, 'borda esquerda do painel do sino').toBeGreaterThanOrEqual(0)
+      expect(caixa.direita, 'borda direita do painel do sino').toBeLessThanOrEqual(caixa.janela)
+    })
+  }
 })
