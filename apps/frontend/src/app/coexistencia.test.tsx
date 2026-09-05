@@ -133,6 +133,14 @@ describe('front novo e front antigo convivem', () => {
         )) {
           constantes.set(m[1], m[2] ?? m[3] ?? m[4])
         }
+        // Este arquivo navega para um campo de objeto SEM prefixar na hora
+        // (`navegar(c.destino)`, `to={c.destino}`)? Então o prefixo tem de já
+        // estar guardado na tabela, e os literais dela passam a ser cobrados
+        // logo abaixo. `navegar(rotaNova(item.destino))` e
+        // `PREFIXO_NOVO + i.rota` não casam aqui — o argumento não começa com
+        // identificador-ponto —, que é justamente a diferença entre guardar um
+        // caminho relativo de propósito e vazar um absoluto por descuido.
+        const consomeBruto = /(?:to|href)=\{\s*[A-Za-z_$][\w$]*\.[\w$.]+\s*\}|\b(?:navigate|navegar|nav)\(\s*[A-Za-z_$][\w$]*\.[\w$.]+\s*[,)]/.test(texto)
         texto.split('\n').forEach((linha, i) => {
           // `to="/..."` / `to={`/...`}` (Link/NavLink) OU `href="/..."` /
           // `href={`/...`}` (âncora HTML pura) com caminho absoluto que não é
@@ -148,8 +156,23 @@ describe('front novo e front antigo convivem', () => {
             /(?:to|href)=\{\s*([A-Za-z_$][\w$]*)\s*\}|\b(?:navigate|navegar|nav)\(\s*([A-Za-z_$][\w$]*)\s*[,)]/,
           )
           const viaConstante = constantes.get(mConst?.[1] ?? mConst?.[2] ?? '')
+          // `destino: '/quality'` numa TABELA, lido por `navegar(c.destino)`
+          // quatro telas abaixo. Sexto furo (v1, 05/09): tirar o
+          // `window.location` de `Modulos.tsx` matou o SALTO, mas não o
+          // DESTINO — devolver `destino: '/quality'` ao `CATALOGO`, deixando o
+          // `navegar(c.destino)` no lugar, reabre o vazamento com as três
+          // varreduras acima VERDES, porque nenhuma liga a linha da tabela à
+          // linha que navega. Só vale para arquivo que consome o campo CRU
+          // (`consomeBruto`): quem prefixa na hora de navegar — o Shell
+          // (`PREFIXO_NOVO + i.rota`) e `Qualidade.tsx`
+          // (`navegar(rotaNova(item.destino))`) — guarda o caminho sem
+          // prefixo de propósito, e está certo.
+          const mProp = linha.match(
+            /\b(?:destino|rota|caminho|to|href)\s*:\s*(?:"(\/[^"]*)"|'(\/[^']*)'|`(\/[^`]*)`)/,
+          )
+          const viaTabela = consomeBruto ? mProp?.[1] ?? mProp?.[2] ?? mProp?.[3] : undefined
           const alvo = mLink?.[1] ?? mLink?.[2] ?? mNav?.[1] ?? mNav?.[2] ?? mNav?.[3]
-          for (const destino of [alvo, viaConstante]) {
+          for (const destino of [alvo, viaConstante, viaTabela]) {
             if (destino && !destino.startsWith('/novo') && !EXCECOES.includes(destino)) {
               infratores.push(`${path.relative(SRC, p)}:${i + 1}  ${destino}`)
             }
