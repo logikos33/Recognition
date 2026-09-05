@@ -508,11 +508,18 @@ export function Dashboard() {
     refetchInterval: 120_000,
   })
 
+  // ⚠️ Aritmética IDÊNTICA à de `Acoes.tsx` (`desde()`: `Date.now() − dias ×
+  // 86_400_000`), e não `setDate(getDate() − 30)` como as outras janelas desta
+  // tela. As duas só coincidem quando não há mudança de fuso no meio: a
+  // segunda preserva a HORA LOCAL e escorrega uma hora atravessando um
+  // horário de verão. Uma hora de diferença entre o cartão e a fila é
+  // pequena, e é exatamente do tamanho de "por que este número não fecha".
   const janelaTratativa = useMemo(() => {
-    const agora = new Date()
-    const inicio = new Date(agora)
-    inicio.setDate(inicio.getDate() - JANELA_TRATATIVA_DIAS)
-    return { de: inicio.toISOString(), ate: agora.toISOString() }
+    const agora = Date.now()
+    return {
+      de: new Date(agora - JANELA_TRATATIVA_DIAS * 86_400_000).toISOString(),
+      ate: new Date(agora).toISOString(),
+    }
   }, [])
 
   /**
@@ -533,11 +540,18 @@ export function Dashboard() {
    * mesmos 30 dias, `per_page=1` porque só o envelope importa. Não é uma
    * segunda leitura do mesmo fato: é a leitura do destino, trazida para cá.
    *
-   * ⚠️ `module_code=epi` vai junto (o cartão vive no dashboard do EPI e todo
-   * outro número desta tela é escopado assim). `Acoes.tsx` ainda NÃO manda —
-   * num tenant com mais de um módulo a fila contaria alerta de fora do EPI.
-   * Registrado como issue própria; num tenant só-EPI (a RVB) os dois números
-   * são idênticos hoje.
+   * ⚠️ Duas diferenças declaradas em relação a `Acoes.tsx`, ambas do lado do
+   * cartão ser MAIS estrito, e nenhuma delas move o número num tenant só-EPI
+   * como a RVB:
+   *
+   *  · `module_code=epi` — o cartão vive no dashboard do EPI e todo outro
+   *    número desta tela é escopado assim. `Acoes.tsx` ainda não manda: num
+   *    tenant com mais de um módulo a FILA é que contaria a mais. Issue #825.
+   *  · `end_date=agora` — `Acoes.tsx` deixa a janela aberta no topo. Só
+   *    diverge se existir captura datada no futuro; o link precisa dos dois
+   *    limites (`Eventos.tsx` só adota o intervalo da URL quando recebe
+   *    `start_date` E `end_date`), e o pedido usa o mesmo par para o cartão
+   *    não contar numa janela e mandar para outra.
    */
   const tratativa = useQuery({
     queryKey: ['epi', 'tratativa', janelaTratativa.de],
