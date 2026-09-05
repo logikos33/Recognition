@@ -38,6 +38,25 @@
  *  3. **Listener sem closure velha.** O `keydown` é re-registrado quando o item
  *     corrente muda. Um handler preso ao render antigo é o "ref atrasado" do
  *     PR 496: a tecla C carimba veredito no item que já não está na tela.
+ *  4. **409 = alguém julgou primeiro; nunca um erro do operador.** O poll de
+ *     15s reduz a janela, não a fecha: entre o último `carregar` e o clique,
+ *     outra pessoa pode ter decidido o MESMO alerta. O backend recusa o
+ *     segundo veredito (`verification_verdict IS NULL OR verified_by = <eu>`
+ *     no UPDATE, `verification_service.py`) e responde 409 dizendo QUEM
+ *     julgou e QUANDO. Aqui isso vira: carimbo `'outro'` (resolvido, mas não
+ *     é meu veredito — `Marca`), toast com a frase do servidor, e AVANÇA.
+ *     Nada do que o operador já fez se perde, e a tela nunca escreve
+ *     "Confirmado" por uma decisão que não foi dele. ⛔ Não transforme o 409
+ *     em `toast.error` genérico: "Erro ao registrar o veredito" faz o
+ *     operador clicar de novo no que já foi resolvido.
+ *
+ *     A colisão também é reduzida na ORIGEM: `GET /queue` manda o `user_id` e
+ *     o servidor gira a fila por trilha (`_trilha`), então três operadores
+ *     abrem alertas DIFERENTES em vez do mesmo. A fila continua sendo a
+ *     mesma para todos (nada é filtrado, `total` não muda) — só o ponto de
+ *     partida difere. Por isso a ordem entregue a UM operador não é mais a
+ *     ordem canônica pura, e continua valendo a regra: **o cliente não
+ *     reordena** (ver bloco "FILA POR INCERTEZA").
  *
  * ⚠️ Este endpoint NÃO pagina (sem cursor, sem offset — `limit` ≤100 e pronto).
  * Por isso o reabastecimento é o MESMO polling de 15s do front antigo, e não
@@ -143,7 +162,7 @@ import {
   ESCALA_MAX, ESCALA_MIN, LUPA_INICIAL, distanciaEntre, proximoEstado,
   type EventoLupa, type Palco,
 } from '../../pages/epi/lupaEvidencia'
-import { api } from '../../services/api'
+import { api, ApiError } from '../../services/api'
 import { confiancaInternaOuCliente } from '../../services/confidenceDisplay'
 import { useToast } from '../../components/ui/Toast/useToast'
 import { labelForClass, MOTIVOS_VERIFICACAO, type MotivoVerificacao } from '../../utils/labels'
@@ -156,6 +175,11 @@ import { rotaNova } from '../RotasNovas'
 const BBOX_PIXELS = 'pixels_xywh_frame_original'
 
 type Veredito = 'approve' | 'reject'
+
+/** O que ficou carimbado no item nesta sessão. `'outro'` = OUTRA pessoa
+ *  julgou antes de mim (409 do backend) — resolvido, mas não é MEU veredito,
+ *  e a tela não pode escrever "Confirmado" por uma decisão que não foi minha. */
+type Marca = Veredito | 'outro' 
 type Bbox = [number, number, number, number]
 
 interface Violacao {
@@ -316,7 +340,7 @@ export function Verificacao() {
   // servidor sai (sob a certeza da regra 2).
   const [fila, setFila] = useState<ItemVerificacao[]>([])
   const [indice, setIndice] = useState(0)
-  const [decididos, setDecididos] = useState<Record<string, Veredito>>({})
+  const [decididos, setDecididos] = useState<Record<string, Marca>>({})
   // Verdade do servidor para "N RESTANTES" — ver `restantes` abaixo e o
   // comentário do endpoint em `carregar`. `null` até o primeiro sync OK.
   const [totalServidor, setTotalServidor] = useState<number | null>(null)
@@ -373,7 +397,7 @@ export function Verificacao() {
   // o próprio gatilho e derruba o processo em OOM.
   const filaRef = useRef<ItemVerificacao[]>([])
   const indiceRef = useRef(0)
-  const decididosRef = useRef<Record<string, Veredito>>({})
+  const decididosRef = useRef<Record<string, Marca>>({})
   const toastRef = useRef(toast)
   useEffect(() => {
     filaRef.current = fila
@@ -534,9 +558,10 @@ export function Verificacao() {
   const decidir = useCallback(
     async (verdict: Veredito) => {
       // Item revisado por outro já saiu de `fila` em `carregar` — não há mais
-      // botão para clicar nele. O que resta aqui é honrar o erro do backend se
-      // mesmo assim ele recusar (corrida rara: revisão chegou entre o último
-      // poll e este clique) — nunca engolir em silêncio.
+      // botão para clicar nele. O que resta aqui é honrar o 409 do backend
+      // quando a revisão alheia chegou ENTRE o último poll e este clique
+      // (regra 4 do cabeçalho) — nunca engolir em silêncio, nunca
+      // sobrescrever.
       if (!atual || !podeEscrever || enviandoRef.current) return
       // Motivo é obrigatório pra REJEITAR — é o que ensina a calibração (o
       // "EPI está presente" mais que qualquer outro). Pra confirmar é
@@ -563,6 +588,22 @@ export function Verificacao() {
         setMotivoFaltando(false)
         avancar()
       } catch (e) {
+        // 409 = outra pessoa julgou este alerta antes de mim (guarda
+        // `verification_verdict IS NULL` do backend, bloco 4). NÃO é erro do
+        // operador e o trabalho dele não pode evaporar: o item é carimbado
+        // como resolvido POR OUTRO (nunca como veredito meu — seria mentir
+        // sobre a autoria), o motivo escolhido é limpo e a fila AVANÇA. A
+        // mensagem vem pronta do servidor ("Maria Silva já avaliou este
+        // alerta há 2 minutos") — quem julgou e quando, que é o que o
+        // operador precisa pra não achar que perdeu o clique.
+        if (e instanceof ApiError && e.status === 409) {
+          setDecididos((d) => ({ ...d, [atual.id]: 'outro' }))
+          toast.info('Alerta já revisado', e.message)
+          setMotivo('')
+          setMotivoFaltando(false)
+          avancar()
+          return
+        }
         toast.error(e instanceof Error ? e.message : 'Erro ao registrar o veredito')
       } finally {
         enviandoRef.current = false
@@ -1252,7 +1293,11 @@ export function Verificacao() {
               {vereditoAtual ? (
                 <span
                   className={`${s.decidido} ${
-                    vereditoAtual === 'approve' ? s.decididoOk : s.decididoNc
+                    vereditoAtual === 'outro'
+                      ? ''
+                      : vereditoAtual === 'approve'
+                        ? s.decididoOk
+                        : s.decididoNc
                   }`}
                 >
                   {vereditoAtual === 'approve' ? (
@@ -1260,7 +1305,11 @@ export function Verificacao() {
                   ) : (
                     <X size={14} strokeWidth={2.4} aria-hidden />
                   )}
-                  {vereditoAtual === 'approve' ? 'Confirmado' : 'Rejeitado'}
+                  {vereditoAtual === 'outro'
+                    ? 'Revisado por outro'
+                    : vereditoAtual === 'approve'
+                      ? 'Confirmado'
+                      : 'Rejeitado'}
                 </span>
               ) : null}
 
