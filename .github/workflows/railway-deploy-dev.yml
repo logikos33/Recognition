@@ -91,11 +91,19 @@ jobs:
         run: |
           URL=https://api-v3-desenvolvimento.up.railway.app/livez
 
-          # O deploy é assíncrono (`--detach`): espera o processo NOVO atender.
-          # `--retry-all-errors` cobre o 502 do intervalo entre matar o antigo
-          # e promover o novo.
-          curl -fsS --retry 12 --retry-delay 15 --retry-all-errors "$URL" > /dev/null
+          # O deploy é assíncrono (`--detach`) e o `/livez` responde o processo
+          # ANTIGO até a promoção — esperar só "alguém respondeu" (o que o
+          # smoke test antigo fazia) reprovaria todo deploy normal. Então a
+          # espera é pela PRÓPRIA condição: repete a checagem até ela passar.
+          # Sem isto o gate ficaria intermitente, e gate intermitente é gate
+          # que alguém desliga — que é como o alarme de 29/08 morreu.
+          for _ in $(seq 1 32); do   # 32 × 15s = 8 min
+            python3 scripts/checa_proveniencia.py --url "$URL" \
+              --branch HEAD --carencia-min 0 && exit 0
+            sleep 15
+          done
 
+          echo "::error::O DEV não passou a servir o código deste deploy em 8 min."
           python3 scripts/checa_proveniencia.py --url "$URL" \
             --branch HEAD --carencia-min 0
 
