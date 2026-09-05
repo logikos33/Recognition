@@ -31,6 +31,7 @@
 | Secret scanning non-provider patterns | ❌ não liga por API (PATCH aceito, valor não muda — provável limite de plano). **Ação do Vitor pela UI.** |
 
 **Nota:** `Frontend tests (tsc + vitest + playwright)` **não é required check** na `develop` — por isso um frontend vermelho não bloqueia merge. Decisão consciente? Registrar.
+→ ✅ **Resolvido em 05/09** (#681, D-191): é required nas três branches. Ver *Reconciliação* no fim.
 
 ---
 
@@ -107,7 +108,8 @@ Já existiam e foram mantidas: `risk:security`, `faixa:modelo`, `faixa:migracao`
 
 ## Único gate humano desta pista
 
-**Ligar branch protection em `staging` e `main`.** Hoje as duas estão **sem proteção nenhuma**.
+~~**Ligar branch protection em `staging` e `main`.** Hoje as duas estão **sem proteção nenhuma**.~~
+→ ✅ **Feito.** As três branches têm 5 required checks (medido 05/09). Ver *Reconciliação* no fim.
 Proposta: exigir aprovação do Vitor + checks verdes, **merge commit** permitido e **squash bloqueado** (runbook `docs/runbooks/GITHUB_CONTRIBUTIONS_MERGE_MAIN.md` exige merge commit).
 ⛔ Na `develop` **nada de aprovação obrigatória** — só required checks, como já é.
 
@@ -116,4 +118,34 @@ Proposta: exigir aprovação do Vitor + checks verdes, **merge commit** permitid
 1. `gh pr list` — #652 mergeado? Os PRs de flaky nasceram?
 2. `gh run list --workflow CI --limit 30 --json conclusion,headBranch` — quantos vermelhos?
 3. `gh issue list --state open | wc -l` — contagem e idade (métrica do jardineiro).
-4. Branch protection: `gh api repos/logikos33/Recognition/branches/staging/protection` ainda dá 404?
+4. ~~Branch protection: `staging/protection` ainda dá 404?~~ → **não**: protegida, 5 required checks (05/09).
+
+---
+
+## Reconciliação — 2026-09-05 (onda 2, pista de governança)
+
+⚠️ Este documento estava **contradizendo a si mesmo**: a linha 2.1 do Bloco 2 dizia branch
+protection de `staging`/`main` "✅ aplicada", enquanto o *Único gate humano* e a *Retomada*
+diziam "sem proteção nenhuma" e "ainda dá 404?". Medido hoje, quem estava certo era o 2.1 — e
+já nem ele descrevia o estado atual.
+
+**Estado real, medido em 05/09** (`gh api repos/logikos33/Recognition/branches/<b>/protection`):
+
+| branch | protegida? | required checks |
+|---|---|---|
+| `develop` | ✅ | 5 |
+| `staging` | ✅ | 5 |
+| `main` | ✅ | 5 |
+
+Os 5, idênticos nas três: `License gate (no AGPL/GPL in serving path)` · `Migrations harness (D1)` ·
+`Tests (pytest)` · `Frontend tests (tsc + vitest + playwright)` · `TypeScript check`.
+Os dois últimos entraram em 05/09 pela #681, depois de #654 matar as famílias de teste instável.
+`gh api .../rulesets` devolve `[]` — não há ruleset competindo com a branch protection.
+
+⚠️ **O que continua aberto e ⛔ não está escrito em lugar nenhum:** `enforce_admins: false` nas
+três. Os required checks valem para agentes; quem tem admin passa por cima — de propósito, para
+o dono não ficar trancado fora na véspera do go-live. Registrado em #741.
+
+**Achado colateral:** o `default_branch` é `main`, que está **1308 commits atrás da `develop`**.
+É por isso que todo push devolve "86 vulnerabilities on the default branch" enquanto o gate de
+`npm audit` do CI fica verde: eles ⛔ não olham a mesma árvore. Registrado em #740.
