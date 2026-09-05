@@ -88,6 +88,12 @@ export interface EventsRangeParams {
   moduleCode?: string
   cameraIds?: string[]
   classNames?: string[]
+  /**
+   * Somar `public.demo_events` (evento SEMEADO) ao evento real. Default
+   * `false` — ver `buildQuery`. Só passe `true` numa tela que DIGA, na
+   * legenda, que está mostrando demonstração.
+   */
+  includeDemo?: boolean
 }
 
 export interface TimelineParams extends EventsRangeParams {
@@ -101,10 +107,25 @@ export interface TimelineParams extends EventsRangeParams {
   timeField?: 'created' | 'captured'
 }
 
+/**
+ * ⚠️ `include_demo` é emitido SEMPRE, e o default é `false` — invertido em
+ * relação à rota (issue #677).
+ *
+ * `GET /v1/events/timeline` e `/search` fazem
+ * `include_demo = request.args.get("include_demo","true") != "false"`: quem
+ * NÃO manda o parâmetro recebe `public.demo_events` unido por `UNION ALL` ao
+ * evento real. O funil PADRÃO do usuário mostra só origem real — o semeado
+ * aparece por filtro DECLARADO na tela. Como a rota tem outros consumidores,
+ * o default se inverte AQUI, no cliente, e não lá.
+ *
+ * Hoje `SELECT count(*) FROM public.demo_events` = 0 no DEV: o defeito é
+ * inerte e passa a mentir no minuto em que alguém semear a primeira demo.
+ */
 function buildQuery(params: EventsRangeParams, bucket?: string): string {
   const qs = new URLSearchParams()
   qs.set('from', params.from)
   qs.set('to', params.to)
+  qs.set('include_demo', params.includeDemo === true ? 'true' : 'false')
   if (bucket) qs.set('bucket', bucket)
   if (params.moduleCode) qs.set('module_code', params.moduleCode)
   for (const id of params.cameraIds ?? []) qs.append('camera_id[]', id)

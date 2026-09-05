@@ -47,6 +47,35 @@ def _parse_bool(s: str | None) -> bool | None:
     return s.lower() in ("true", "1", "yes")
 
 
+def _time_column() -> str:
+    """Eixo do tempo da janela `start_date`/`end_date` — `?time_field=`.
+
+    Mesmo vocabulário de `/v1/events/*` ('captured' | 'created'), DEFAULT
+    OPOSTO e de propósito (issue #676):
+
+      · `/v1/events/*` nasceu com 'created' e tem consumidor antigo;
+      · aqui o default é a CAPTURA, porque é a coluna que esta rota EXIBE —
+        a lista imprime `timestamp` e o CSV também (ver `export_alerts`).
+        Filtrar por `created_at` enquanto se mostra `timestamp` fazia o
+        filtro "hoje" devolver linha capturada na semana passada, e fazia
+        a barra "Eventos por hora" do Dashboard (que é hora de captura)
+        abrir uma janela de hora de GRAVAÇÃO — outro conjunto. Medido no
+        DEV: 334 de 5.174 alertas com `timestamp` ≠ `created_at`,
+        defasagem máxima de 3,5 dias.
+
+    `?time_field=created` continua acessível para quem quer o eixo da
+    ingestão (auditoria de carga), e é o que o nome diz.
+    """
+    return "created_at" if request.args.get("time_field") == "created" else "timestamp"
+
+
+def _module_code() -> str | None:
+    """`?module_code=` — escopo de módulo, MESMO par de predicados de
+    `/v1/events/summary` (coluna `alerts.module_code` + escopo de câmera).
+    Vazio/ausente = sem escopo (comportamento anterior, byte a byte)."""
+    return (request.args.get("module_code") or "").strip() or None
+
+
 def _parse_kind(s: str | None) -> str | None:
     """?kind= (ADR-0065, contrato A1: TRÊS valores). Valor inválido → None (=
     todos). Nunca 500 por querystring."""
@@ -113,6 +142,11 @@ def list_alerts():  # type: ignore[no-untyped-def]
             violation_type=request.args.get("violation_type"),
             acknowledged=_parse_bool(request.args.get("acknowledged")),
             kind=_parse_kind(request.args.get("kind")),
+            # Eixo e escopo do MESMO recorte que produziu o número no cartão
+            # que trouxe o usuário até aqui (issue #676). Sem os dois, o card
+            # dizia 647 e a lista mostrava 47.
+            module_code=_module_code(),
+            time_column=_time_column(),
         )
 
         total = result["total"]
@@ -151,8 +185,11 @@ def export_alerts():  # type: ignore[no-untyped-def]
             end_date=_parse_date(request.args.get("end_date")),
             violation_type=request.args.get("violation_type"),
             acknowledged=_parse_bool(request.args.get("acknowledged")),
-            # O CSV exporta o MESMO recorte que a tela mostra (ADR-0065).
+            # O CSV exporta o MESMO recorte que a tela mostra (ADR-0065) —
+            # inclusive o EIXO do tempo e o ESCOPO de módulo (issue #676).
             kind=_parse_kind(request.args.get("kind")),
+            module_code=_module_code(),
+            time_column=_time_column(),
         )
 
         output = io.StringIO()

@@ -52,6 +52,27 @@ vi.mock('../../services/eventsService', () => ({
  * backend sem `kind` devolve tudo). Um mock de total fixo passaria com o
  * link quebrado.
  */
+/**
+ * RELÓGIO CONGELADO em `beforeEach` (`vi.setSystemTime`). Desde que o mock
+ * de `/alerts` passou a aplicar a JANELA (issue #676), o resultado depende
+ * de "hoje": com o relógio real, o acervo de agosto sairia do recorte de 30
+ * dias sozinho, e a suíte ficaria vermelha por causa da data em que rodou.
+ */
+const AGORA = new Date('2026-08-25T14:30:00.000Z')
+/** O bucket de uma hora que a barra do Dashboard representa (hora de CAPTURA). */
+const HORA_BARRA = '2026-08-25T13:00:00.000Z'
+/**
+ * A carga em lote GRAVOU tudo num instante só, depois do turno — a forma
+ * real do acervo do RVB. É o que separa os dois eixos: nenhuma linha tem
+ * `created_at` dentro da hora capturada.
+ */
+const GRAVACAO_LOTE = '2026-08-25T14:05:00.000Z'
+
+const capturaDe = (i: number) =>
+  i < 3
+    ? new Date(Date.parse(HORA_BARRA) + (i + 1) * 10 * 60_000).toISOString()
+    : new Date(AGORA.getTime() - i * 3 * 3_600_000).toISOString()
+
 const ACERVO = Array.from({ length: 24 }, (_, i) => ({
   id: `e${i}`,
   camera_id: 'c1',
@@ -61,8 +82,10 @@ const ACERVO = Array.from({ length: 24 }, (_, i) => ({
   violations: [{ class: i % 4 === 0 ? 'no_helmet' : 'helmet', confidence: 0.9 }],
   event_kind: (i % 4 === 0 ? 'violation' : 'compliance') as 'violation' | 'compliance',
   acknowledged: i % 2 === 0,
-  created_at: `2026-08-2${(i % 9) + 1}T13:0${i % 6}:00`,
-  timestamp: `2026-08-2${(i % 9) + 1}T13:0${i % 6}:00`,
+  // Os DOIS eixos, e eles DIVERGEM (é o defeito das issues #674/#676):
+  // gravação num instante só, captura espalhada pelo turno.
+  created_at: GRAVACAO_LOTE,
+  timestamp: capturaDe(i),
   verification_verdict: null,
   verified_by: null,
 }))
@@ -71,10 +94,23 @@ function servirAlerts(rota: string) {
   const q = new URLSearchParams(rota.split('?')[1] ?? '')
   const kind = q.get('kind')
   const ack = q.get('acknowledged')
+  // EIXO DO TEMPO — espelha o contrato de `GET /api/alerts` depois da issue
+  // #676: a janela `start_date`/`end_date` é lida na hora de CAPTURA
+  // (`timestamp`), que é a coluna que a lista EXIBE; `?time_field=created`
+  // volta ao eixo da gravação. Um mock cego a datas passaria com o link
+  // apontando para a janela errada.
+  const eixo = q.get('time_field') === 'created' ? 'created_at' : 'timestamp'
+  const de = q.get('start_date')
+  const ate = q.get('end_date')
+  // ⚠️ `module_code` NÃO é aplicado aqui de propósito: `Eventos.tsx` ainda
+  // não relê o parâmetro da URL (issue #701), então o mock não pode fingir
+  // um escopo que a tela não manda.
   const alerts = ACERVO.filter(
     (e) =>
       (kind === null || kind === '' || e.event_kind === kind) &&
-      (ack === null || e.acknowledged === (ack === 'true')),
+      (ack === null || e.acknowledged === (ack === 'true')) &&
+      (!de || Date.parse(e[eixo]) >= Date.parse(de)) &&
+      (!ate || Date.parse(e[eixo]) <= Date.parse(ate)),
   )
   return { success: true, data: { alerts, total: alerts.length, page: 1, per_page: 20, pages: 1 } }
 }
@@ -186,6 +222,10 @@ const PERFIL_RVB = {
 }
 
 beforeEach(() => {
+  // Só `Date` é falsificado: `setTimeout`/`setInterval` reais mantêm o
+  // react-query e o `waitFor` do Testing Library funcionando.
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(AGORA)
   vi.stubGlobal('localStorage', new MemoriaStorage())
   getStats.mockResolvedValue({ ...STATS_RVB })
   getTimeline.mockResolvedValue({ bucket: 'hour', timeline: [] })
@@ -193,7 +233,10 @@ beforeEach(() => {
   getProfile.mockResolvedValue(PERFIL_VAZIO)
 })
 
-afterEach(() => vi.clearAllMocks())
+afterEach(() => {
+  vi.clearAllMocks()
+  vi.useRealTimers()
+})
 
 describe('EPI Dashboard — números', () => {
   it('mostra o score da API e não um número de exemplo', async () => {
@@ -705,6 +748,55 @@ describe('EPI Dashboard — o link carrega o filtro que produziu o número', () 
     const daLista = Number((rodape.textContent ?? '').replace(/\D/g, ''))
 
     expect(daLista).toBe(doCartao)
+  })
+
+  it('o link declara o ESCOPO DE MÓDULO que produziu o número (module_code=epi)', async () => {
+    getSummary.mockResolvedValue({
+      total: 24,
+      by_class: [],
+      by_camera: [{ camera_id: 'c1', camera_name: 'Entrada Expedição', count: 24 }],
+    })
+    montar()
+    const painel = await screen.findByLabelText('Câmeras com mais eventos')
+    const href =
+      within(painel).getByRole('link', { name: /Entrada Expedição/ }).getAttribute('href') ?? ''
+    // Todo painel desta tela conta com `/v1/events/*?module_code=epi`, que
+    // aplica a coluna `module_code` E o escopo de câmera do módulo. Sem
+    // declarar o mesmo no link, a lista conta alerta de câmera fora do EPI —
+    // 82 linhas a mais que o cartão, medidas no DEV.
+    expect(new URLSearchParams(href.split('?')[1]).get('module_code')).toBe('epi')
+  })
+
+  it('PROVA FIM-A-FIM: a barra de uma HORA DE CAPTURA abre a lista daquela hora, não a da gravação', async () => {
+    // 3 das 24 linhas foram CAPTURADAS dentro da hora que a barra representa;
+    // as 24 foram GRAVADAS no mesmo instante, FORA dela (carga em lote).
+    getTimeline.mockResolvedValue({
+      bucket: 'hour',
+      timeline: [{ bucket: HORA_BARRA, count: 3 }],
+    })
+    const dashboard = montar()
+    const painel = await screen.findByLabelText('Eventos por hora')
+    const barra = within(painel).getByRole('link', {
+      name: /3 evento\(s\) · ver eventos/,
+    })
+    const href = barra.getAttribute('href') ?? ''
+    dashboard.unmount()
+
+    render(
+      <MemoryRouter initialEntries={[href.replace('/novo', '')]}>
+        <Routes>
+          <Route path="/epi/eventos" element={<Eventos />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await screen.findAllByText('Entrada Expedição')
+    const rodape = await screen.findByText(/EVENTOS$/)
+    const daLista = Number((rodape.textContent ?? '').replace(/\D/g, ''))
+
+    // Pelo eixo da GRAVAÇÃO esta janela de uma hora não alcança linha nenhuma
+    // (tudo foi gravado às 14:05Z) — a lista viria vazia embaixo de uma barra
+    // que afirma 3. Pelo eixo da CAPTURA, que é o que a barra desenha, são 3.
+    expect(daLista).toBe(3)
   })
 })
 
