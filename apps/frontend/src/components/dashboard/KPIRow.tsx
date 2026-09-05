@@ -135,8 +135,8 @@ export function KPIRow() {
           info="Alertas registrados na última hora, comparados com a hora anterior."
         />
         <KPICard
-          icon={<Brain size={20} color={"#a78bfa" /* allow: decorative accent */} />}
-          iconBg="rgba(139, 92, 246, 0.15)"
+          icon={<Brain size={20} color={vars.color.primaryLight} />}
+          iconBg={vars.color.primaryAlpha}
           title="Modelo Ativo"
           mainValue={modelName}
           sub={

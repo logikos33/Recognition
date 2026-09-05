@@ -466,7 +466,7 @@ export function QualityConfigPage() {
                   htmlFor="gate-threshold-v1"
                   style={{ fontSize: 13, fontWeight: 600, color: vars.color.textPrimary, display: 'block', marginBottom: 6 }}
                 >
-                  Threshold V1 (votação)
+                  Aprovação mínima V1 (votação)
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <input
@@ -492,7 +492,7 @@ export function QualityConfigPage() {
                   htmlFor="gate-threshold-v2"
                   style={{ fontSize: 13, fontWeight: 600, color: vars.color.textPrimary, display: 'block', marginBottom: 6 }}
                 >
-                  Threshold V2 (votação)
+                  Aprovação mínima V2 (votação)
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <input
@@ -518,7 +518,7 @@ export function QualityConfigPage() {
                   htmlFor="gate-threshold-v3"
                   style={{ fontSize: 13, fontWeight: 600, color: vars.color.textPrimary, display: 'block', marginBottom: 6 }}
                 >
-                  Threshold V3 (votação)
+                  Aprovação mínima V3 (votação)
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <input
@@ -569,7 +569,7 @@ export function QualityConfigPage() {
                   htmlFor="gate-confidence-min"
                   style={{ fontSize: 13, fontWeight: 600, color: vars.color.textPrimary, display: 'block', marginBottom: 6 }}
                 >
-                  Confiança Mínima YOLO
+                  Confiança mínima do reconhecimento
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <input
@@ -585,7 +585,7 @@ export function QualityConfigPage() {
                   </span>
                 </div>
                 <div style={{ fontSize: 12, color: vars.color.textMuted, marginTop: 4 }}>
-                  Detecções abaixo deste threshold são ignoradas.
+                  Reconhecimentos abaixo desta confiança são ignorados.
                 </div>
               </div>
             </div>

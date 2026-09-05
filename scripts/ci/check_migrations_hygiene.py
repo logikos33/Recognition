@@ -19,7 +19,19 @@ Dois checks, independentes de banco de dados:
      fora da baseline — a baseline é dívida técnica registrada, não licença
      para criar mais colisões.
 
-  2. Diretório migrations/ na raiz do repositório, além de infra/migrations/.
+  2. Migration NOVA que apaga dado ou reescreve credencial (issues #683/#694).
+     A guarda de redeploy (infra/migrations/runner_core.py) impede que uma
+     migration com DROP TABLE / DROP COLUMN / DELETE FROM / TRUNCATE ou com
+     atribuição a `password_hash` rode num banco que já tem tenant — foi assim
+     que a 049 apagava o histórico de contagem e a 027/040 devolviam a senha do
+     superadmin ao hash do git a cada deploy. Consequência: uma migration NOVA
+     escrita com esses comandos simplesmente NÃO RODA em produção. Este check
+     usa o MESMO detector do runner (runner_core.destructive_reason — fonte
+     única, não regex duplicada) e falha em CI, antes do merge, para qualquer
+     arquivo fora de infra/migrations/.destructive-baseline (a dívida histórica
+     já aplicada, que deve encolher e nunca crescer).
+
+  3. Diretório migrations/ na raiz do repositório, além de infra/migrations/.
      O projeto usa infra/migrations/ como fonte única (ADR-0010); um segundo
      diretório de migrations já existiu no histórico do repo e foi removido
      (PRs #214/#215) — este check é a garantia de não-regressão.
@@ -35,6 +47,7 @@ import sys
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 MIGRATIONS_DIR = REPO_ROOT / "infra" / "migrations"
 BASELINE_FILE = MIGRATIONS_DIR / ".duplicate-prefix-baseline"
+DESTRUCTIVE_BASELINE_FILE = MIGRATIONS_DIR / ".destructive-baseline"
 LEGACY_ROOT_MIGRATIONS_DIR = REPO_ROOT / "migrations"
 
 PREFIX_RE = re.compile(r"^(\d+)_.+\.sql$")
@@ -83,6 +96,54 @@ def check_duplicate_prefixes() -> list[str]:
     return errors
 
 
+def _entradas_de_baseline(arquivo: pathlib.Path) -> set[str]:
+    """Uma entrada por linha; '#' comenta, linhas vazias ignoradas."""
+    if not arquivo.exists():
+        return set()
+    return {
+        linha.strip()
+        for linha in arquivo.read_text().splitlines()
+        if linha.strip() and not linha.strip().startswith("#")
+    }
+
+
+def check_no_new_destructive_migration() -> list[str]:
+    """Migration nova que apaga dado ou reescreve credencial => vermelho."""
+    sys.path.insert(0, str(MIGRATIONS_DIR))
+    import runner_core  # infra/migrations/runner_core.py — mesmo detector do runner
+
+    conhecidas = _entradas_de_baseline(DESTRUCTIVE_BASELINE_FILE)
+    erros: list[str] = []
+    for f in sorted(MIGRATIONS_DIR.glob("*.sql")):
+        if f.name in conhecidas:
+            continue
+        motivo = runner_core.destructive_reason(f.read_text(encoding="utf-8"))
+        if motivo is None:
+            continue
+        erros.append(
+            f"{f.name} {motivo}. Migrations são forward-only (CLAUDE.md: nunca "
+            f"DROP / DELETE FROM / TRUNCATE) e, pior, a guarda de redeploy do "
+            f"runner PULA esse arquivo em qualquer banco que já tenha tenant — "
+            f"ou seja, ele não rodaria em produção (issues #683/#694). Reescreva "
+            f"a migration sem o comando destrutivo. NÃO adicione o arquivo a "
+            f"{DESTRUCTIVE_BASELINE_FILE.relative_to(REPO_ROOT)}: aquela lista é "
+            f"dívida histórica já aplicada e só encolhe."
+        )
+    return erros
+
+
+def check_baseline_destrutiva_nao_tem_fantasma() -> list[str]:
+    """Entrada de baseline sem arquivo correspondente => a lista não encolheu sozinha."""
+    existentes = {f.name for f in MIGRATIONS_DIR.glob("*.sql")}
+    fantasmas = sorted(_entradas_de_baseline(DESTRUCTIVE_BASELINE_FILE) - existentes)
+    if fantasmas:
+        return [
+            f"{DESTRUCTIVE_BASELINE_FILE.relative_to(REPO_ROOT)} lista arquivo(s) "
+            f"que não existem mais: {', '.join(fantasmas)}. Remova a(s) linha(s)."
+        ]
+    return []
+
+
 def check_no_duplicate_migrations_dir() -> list[str]:
     """Retorna erro se existir um segundo diretório migrations/ na raiz do repo."""
     if LEGACY_ROOT_MIGRATIONS_DIR.exists():
@@ -97,7 +158,12 @@ def check_no_duplicate_migrations_dir() -> list[str]:
 
 
 def main() -> int:
-    errors = check_duplicate_prefixes() + check_no_duplicate_migrations_dir()
+    errors = (
+        check_duplicate_prefixes()
+        + check_no_new_destructive_migration()
+        + check_baseline_destrutiva_nao_tem_fantasma()
+        + check_no_duplicate_migrations_dir()
+    )
 
     if errors:
         print("Guard-rail de higiene de migrations FALHOU:\n")
@@ -106,8 +172,8 @@ def main() -> int:
         return 1
 
     print(
-        "Guard-rail de higiene de migrations OK "
-        "(sem duplicata de prefixo nova, sem diretório de migrations duplicado)."
+        "Guard-rail de higiene de migrations OK (sem duplicata de prefixo nova, "
+        "sem migration destrutiva nova, sem diretório de migrations duplicado)."
     )
     return 0
 

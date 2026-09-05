@@ -18,7 +18,7 @@ from flask import Blueprint, request
 from app.core.auth import get_role, get_tenant_id
 from app.core.responses import error, success
 from app.core.exceptions import EpiMonitorError
-from app.core.tenant import require_admin
+from app.core.tenant import require_admin, require_permission
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.custom_role_repository import (
     CustomRoleRepository,
@@ -87,7 +87,7 @@ def list_roles():  # type: ignore[no-untyped-def]
 # ── Create role ───────────────────────────────────────────────────────────────
 
 @roles_bp.route("/roles", methods=["POST"])
-@require_admin
+@require_permission("admin:roles")
 def create_role():  # type: ignore[no-untyped-def]
     """
     ---
@@ -139,7 +139,7 @@ def create_role():  # type: ignore[no-untyped-def]
 # ── Update role ───────────────────────────────────────────────────────────────
 
 @roles_bp.route("/roles/<role_id>", methods=["PUT"])
-@require_admin
+@require_permission("admin:roles")
 def update_role(role_id: str):  # type: ignore[no-untyped-def]
     """
     ---
@@ -196,7 +196,7 @@ def update_role(role_id: str):  # type: ignore[no-untyped-def]
 # ── Delete role ───────────────────────────────────────────────────────────────
 
 @roles_bp.route("/roles/<role_id>", methods=["DELETE"])
-@require_admin
+@require_permission("admin:roles")
 def delete_role(role_id: str):  # type: ignore[no-untyped-def]
     """
     ---
@@ -284,7 +284,7 @@ def get_user_role(user_id: str):  # type: ignore[no-untyped-def]
 # ── Set user custom role ──────────────────────────────────────────────────────
 
 @roles_bp.route("/users/<user_id>/role", methods=["PUT"])
-@require_admin
+@require_permission("admin:users")
 def set_user_role(user_id: str):  # type: ignore[no-untyped-def]
     """
     ---

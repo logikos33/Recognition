@@ -68,11 +68,23 @@ def run_migrations():
     humano confirmar (gate humano, passo 3.5 do mutirão). NÃO ligar sem backfill antes:
     um banco já migrado pelo loop antigo, exposto ao runner novo sem backfill, tentaria
     reaplicar 50+ SQLs do zero.
+
+    Desde as issues #683/#694, os DOIS loops têm a guarda de redeploy: num banco que já
+    tem tenant, migration que apaga dado (DROP TABLE/DELETE/TRUNCATE) ou reescreve
+    `password_hash` é PULADA. Era isso que fazia o modo legado apagar o histórico de
+    contagem (049) e devolver a senha do superadmin ao hash do git (027/040) a cada
+    deploy. Ver runner_core.destructive_reason.
     """
+    migrations_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'infra', 'migrations')
+    return _runner_core().run_migrations(DB_URL, migrations_dir=migrations_dir, log=log)
+
+
+def _runner_core():
+    """Importa infra/migrations/runner_core.py (fonte única do loop de migrations)."""
     migrations_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'infra', 'migrations')
     sys.path.insert(0, migrations_dir)
     import runner_core  # infra/migrations/runner_core.py
-    return runner_core.run_migrations(DB_URL, migrations_dir=migrations_dir, log=log)
+    return runner_core
 
 
 def _instalacao_virgem(cur) -> bool:
@@ -88,15 +100,11 @@ def _instalacao_virgem(cur) -> bool:
 
     Banco sem a tabela `tenants` (schema ainda anterior a ela) conta como virgem:
     não há tenant que possa ser desfeito.
+
+    Mesma pergunta que a guarda de redeploy das migrations faz (issues #683/#694),
+    então mesma implementação: runner_core.database_is_established.
     """
-    cur.execute(
-        "SELECT EXISTS(SELECT FROM information_schema.tables "
-        "WHERE table_schema='public' AND table_name='tenants')"
-    )
-    if not cur.fetchone()[0]:
-        return True
-    cur.execute("SELECT EXISTS(SELECT 1 FROM public.tenants)")
-    return not cur.fetchone()[0]
+    return not _runner_core().database_is_established(cur)
 
 
 def create_admin():

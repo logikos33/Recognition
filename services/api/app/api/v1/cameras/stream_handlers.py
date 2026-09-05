@@ -22,6 +22,7 @@ from app.core.playback_token import (
 from app.core.rate_limiting import get_ip_identifier
 from app.core.responses import success, error
 from app.core.segments_redis import get_segments_redis
+from app.core.tenant import require_permission
 from app.extensions import limiter
 
 from .helpers import _get_binary_redis, _get_camera_service, _is_admin, _get_redis, _is_gateway_online
@@ -306,7 +307,18 @@ def start_stream(camera_id: str):  # type: ignore[no-untyped-def]
         return error("Erro interno", 500)
 
 
+# `cameras:control` fica SÓ no stop, não no start (onda 1 da issue #678).
+# A chave é "iniciar e parar o monitoramento" (superadmin, admin, operator)
+# mas `POST /stream/start` NÃO é só o botão de monitoramento: é o caminho do
+# LIVE VIEW — `hooks/useLiveView.ts` chama /stream/start para obter a URL
+# tokenizada, e `cameras:read` promete a TODO papel "assistir ao vídeo ao
+# vivo". Gatear o start com cameras:control apagaria a imagem para viewer,
+# analyst e trainer. O stop é a metade destrutiva e não tem esse conflito: o
+# CameraPlayer nunca o chama (comentário em CameraPlayer.tsx:286 — "chamar
+# /stream/stop aqui derrubaria quem mais estiver vendo"), então hoje qualquer
+# viewer derruba, por curl, o live view de todo mundo naquela câmera.
 @jwt_required()
+@require_permission("cameras:control")
 def stop_stream(camera_id: str):  # type: ignore[no-untyped-def]
     """Para stream de uma câmera."""
     try:
