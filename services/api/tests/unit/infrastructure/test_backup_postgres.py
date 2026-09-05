@@ -172,7 +172,11 @@ class TestOAgendamentoExiste:
         entrada = SAFE_BEAT_SCHEDULE.get("backup-postgres")
         assert entrada, "sem entrada no beat o backup nunca roda sozinho"
         assert entrada["task"] == "tasks.backup.backup_database"
-        assert entrada["schedule"] == 43200, "12h = 2x/dia"
+        # Era `== 43200` (12h de intervalo). Trocado por hora de parede em
+        # 05/09: o estado do beat vive em /tmp e zera a cada deploy, e o DEV
+        # deploya a cada merge — a contagem de 12h reiniciava antes de vencer.
+        # Ver TestBackupNaoDependeDoUptime em test_beat_agendador_existe.py.
+        assert entrada["schedule"].hour == {3, 15}, "2x/dia, 00:00 e 12:00 BRT"
 
     def test_o_modulo_esta_nos_includes_do_celery(self):
         from pathlib import Path

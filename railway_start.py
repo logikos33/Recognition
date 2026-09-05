@@ -478,6 +478,59 @@ def start_pre_annotation():
     sys.exit(proc.wait())
 
 
+# ---------------------------------------------------------------------------
+# Agendamento — POR QUE O BEAT VIVE DENTRO DO WORKER
+#
+# MEDIDO em 05/09/2026 (`railway status --json`): os ambientes Desenvolvimento
+# e production têm exatamente seis serviços cada — Redis, Postgres, API-V3,
+# celery-worker, Frontend e landing-page. NÃO EXISTE, e nunca existiu, um
+# serviço `SERVICE_TYPE=beat` em lugar nenhum.
+#
+# Consequência medida: TODO o SAFE_BEAT_SCHEDULE (backup do banco, relatório
+# de compliance, baseline CEP, shift-reports, drift, reconciliação de pods
+# RunPod, timeout de propagação no edge) estava agendado e nunca disparava.
+# A prova pública foi `GET /health/backup` no DEV: HTTP 503, um único backup,
+# 267 horas de idade. Agendamento sem scheduler é um comentário, não um
+# agendamento.
+#
+# `-B` (beat embutido) e não um serviço novo porque criar serviço é gate
+# humano — e enquanto o gate não passa, ninguém tem backup. O worker já existe
+# nos dois ambientes e roda em RÉPLICA ÚNICA (numReplicas=1, medido nos dois),
+# que é a única condição que o beat exige.
+#
+# `CELERY_BEAT_EMBEDDED=0` desliga. É o que se faz NO DIA em que um serviço
+# `SERVICE_TYPE=beat` dedicado subir: dois schedulers dobrariam os disparos.
+# Dobrar não corrompe nada — a curadoria do SAFE_BEAT_SCHEDULE só aceita task
+# idempotente e não-destrutiva (ver celery_app.py) — mas gasta à toa.
+# ---------------------------------------------------------------------------
+FILAS_DO_WORKER = 'extraction,quality,versioning,inference,training,reports,quality_cep'
+
+#: /tmp e não o diretório da app: estado do scheduler é efêmero de propósito
+#: (o container é). Por isso as entradas de baixa frequência usam `crontab`
+#: (hora de parede) e não intervalo — ver celery_app.py.
+ARQUIVO_SCHEDULE_BEAT = '/tmp/celerybeat-schedule'
+
+
+def beat_embutido() -> bool:
+    """O worker também agenda? Sim, salvo `CELERY_BEAT_EMBEDDED=0` explícito."""
+    return os.environ.get('CELERY_BEAT_EMBEDDED', '1').strip().lower() not in (
+        '0', 'false', 'no', 'off'
+    )
+
+
+def argv_do_worker() -> list:
+    """argv do `celery worker`. Função à parte para ser testável sem subir worker."""
+    argv = [
+        'worker',
+        f'--queues={FILAS_DO_WORKER}',
+        '--concurrency=2',
+        '--loglevel=info',
+    ]
+    if beat_embutido():
+        argv += ['-B', f'--schedule={ARQUIVO_SCHEDULE_BEAT}']
+    return argv
+
+
 def start_celery_worker():
     """Inicia Celery worker para todas as filas do sistema.
 
@@ -564,10 +617,8 @@ def start_celery_worker():
     log.info(f"Health server on port {PORT}")
 
     # Observability collector (WS11) — daemon thread com lock Redis, mantido
-    # como thread (não task de beat). O agendamento das tasks seguras roda num
-    # serviço beat SEPARADO (SERVICE_TYPE=beat, schedule curado). O worker NÃO
-    # usa -B: beat é singleton próprio, e os cleanups destrutivos de quality
-    # seguem FORA do schedule (DEFERRED_BEAT_SCHEDULE em celery_app.py).
+    # como thread (não task de beat). Os cleanups destrutivos de quality seguem
+    # FORA do schedule (DEFERRED_BEAT_SCHEDULE em celery_app.py).
     # O loop dorme 60s antes do 1º ciclo (pool psycopg2 só nasce pós-fork).
     def _obs_collector():
         try:
@@ -585,15 +636,20 @@ def start_celery_worker():
     # e shift-reports (quality_cep). Seguro: os cleanups destrutivos de quality_cep
     # NÃO são agendados (DEFERRED_BEAT_SCHEDULE) nem despachados em nenhum outro
     # ponto do código — logo nunca chegam a esta fila.
-    queues = 'extraction,quality,versioning,inference,training,reports,quality_cep'
-    log.info(f"Consumindo filas: {queues}")
+    argv = argv_do_worker()
+    log.info(f"celery worker argv: {argv}")
     from app.infrastructure.queue.celery_app import celery
-    celery.worker_main([
-        'worker',
-        f'--queues={queues}',
-        '--concurrency=2',
-        '--loglevel=info',
-    ])
+    if beat_embutido():
+        log.info(
+            "Beat EMBUTIDO neste worker (-B). Schedule: %s",
+            sorted(celery.conf.beat_schedule.keys()),
+        )
+    else:
+        log.warning(
+            "CELERY_BEAT_EMBEDDED=0 — este worker NÃO agenda nada. "
+            "Só existe agendamento se houver um serviço SERVICE_TYPE=beat de pé."
+        )
+    celery.worker_main(argv)
 
 
 def start_celery_beat():
