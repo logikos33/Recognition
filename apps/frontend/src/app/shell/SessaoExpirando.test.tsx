@@ -161,6 +161,22 @@ describe('renovar — o botão faz o que promete (issue #667)', () => {
     expect(botao(/renovar sessão/i)).toBeTruthy()
   })
 
+  it('falhou com código HTTP cru → mostra frase de gente, não "HTTP 401"', async () => {
+    // Caminho REAL e não hipotético: os erros de JWT (token expirado por
+    // relógio adiantado, revogado por single_session, conta desativada)
+    // respondem noutro envelope, o `api.ts` não acha mensagem e devolve
+    // "HTTP 401". Jogar isso na cara do operador é o jargão que a onda 1
+    // passou a semana tirando das telas.
+    const renovar = vi.fn().mockRejectedValue(new Error('HTTP 401'))
+    montar(2 * MIN, { renovar })
+    await act(async () => void fireEvent.click(botao(/renovar sessão/i)))
+
+    expect(screen.queryByText(/HTTP 401/)).toBeNull()
+    expect(screen.getByText(/não foi possível renovar a sessão/i)).toBeTruthy()
+    // E a saída continua aparecendo — a falha não pode virar beco sem saída.
+    expect(botao(/entrar de novo/i)).toBeTruthy()
+  })
+
   it('falhou → "Entrar de novo" leva ao login', async () => {
     const entrarDeNovo = vi.fn()
     montar(2 * MIN, {

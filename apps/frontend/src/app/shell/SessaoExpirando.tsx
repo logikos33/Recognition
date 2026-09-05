@@ -133,7 +133,14 @@ export function SessaoExpirando({
       // Mensagem do servidor quando existe (ex.: contexto assumido não renova
       // por aqui); genérica quando é rede/timeout.
       const motivo = e instanceof Error && e.message ? e.message : ''
-      setErro(motivo || 'Não foi possível renovar a sessão.')
+      // "HTTP 401" é o que o `api.ts` devolve quando não acha mensagem no
+      // corpo — e é exatamente o que acontece nos erros de JWT (token
+      // expirado por relógio adiantado, revogado por single_session, conta
+      // desativada), que respondem noutro envelope. Código de status não é
+      // recado para operador de fábrica: cai na frase genérica, que já vem
+      // acompanhada do "Entrar de novo".
+      const jargao = !motivo || /^HTTP \d+$/.test(motivo)
+      setErro(jargao ? 'Não foi possível renovar a sessão.' : motivo)
     } finally {
       setRenovando(false)
     }
