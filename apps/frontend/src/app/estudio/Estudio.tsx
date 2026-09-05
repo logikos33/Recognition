@@ -26,35 +26,85 @@ import {
   Activity, ArrowLeft, Box, Cctv, Grid3x3, Images, SlidersHorizontal,
   Smartphone, SquareMousePointer, Tags,
 } from 'lucide-react'
-import { Link, NavLink, Outlet } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 
 import { useAuth } from '../../hooks/useAuth'
 import { rotaNova } from '../RotasNovas'
 import { SemPermissao } from '../shell/SemPermissao'
 import * as s from './Estudio.css'
 
-const ITENS = [
-  { rota: 'dados', rotulo: 'Dados', Icone: Images },
-  { rota: 'cobertura', rotulo: 'Cobertura', Icone: Grid3x3 },
-  { rota: 'classificar', rotulo: 'Classificar', Icone: SquareMousePointer },
+/**
+ * A lateral é filtrada por PERMISSÃO. Item que o papel não pode usar não
+ * aparece — e não é alcançável por URL direta: o guard antes do `<Outlet />`
+ * repete a checagem, porque menu escondido não é autorização.
+ *
+ * `permissao` foi MEDIDA endpoint a endpoint (issue #688) contra
+ * `services/api/app/api/v1/training/routes.py` e `app/api/v1/cameras/*`:
+ *
+ *   Dados         GET  /api/training/images                   só JWT  (anotar = frames:annotate)
+ *   Cobertura     GET  /api/training/coverage-matrix          só JWT
+ *   Classificar   POST /api/training/frames/<id>/annotations  frames:annotate
+ *   Gabarito      GET  /api/training/gabarito/fila            training:write ← morria na ABERTURA
+ *   Classes       POST/PUT/PATCH/DELETE /api/classes          training:write
+ *   Treinos       POST /api/training/jobs · .../stop          training:write
+ *   Modelos       training:read — o registry define a chave como "acompanhar
+ *                 jobs de treinamento, datasets e modelos do tenant"
+ *                 (`core/permissions.py`); a rota GET é frouxa, a intenção não.
+ *   Mod. p/ câm.  POST /api/cameras/<id>/model-config         cameras:configure
+ *   Uso das câm.  PUT  /api/cameras/modules                   cameras:configure
+ *
+ * `null` = quem passou pela porta do Estúdio (`frames:annotate`) já pode usar.
+ *
+ * ⚠️ A resposta ao 403 é ESCONDER o que o papel não pode, nunca ampliar a
+ * permissão de ninguém — `operator` anota, e é só isso que ele vê aqui.
+ */
+export const ITENS: {
+  rota: string
+  rotulo: string
+  Icone: typeof Images
+  permissao: string | null
+}[] = [
+  { rota: 'dados', rotulo: 'Dados', Icone: Images, permissao: null },
+  { rota: 'cobertura', rotulo: 'Cobertura', Icone: Grid3x3, permissao: null },
+  { rota: 'classificar', rotulo: 'Classificar', Icone: SquareMousePointer, permissao: null },
   // Vive FORA deste layout (rota em ROTAS_NOVAS_SEM_SHELL — tela de celular,
   // onde lateral de 220px não cabe), mas o caminho é filho daqui, então o
   // NavLink relativo alcança. Entra na lateral porque é por aqui que o dono
   // acha a tela — rota sem porta de entrada é rota que ninguém usa.
-  { rota: 'gabarito', rotulo: 'Gabarito (celular)', Icone: Smartphone },
-  { rota: 'classes', rotulo: 'Classes', Icone: Tags },
-  { rota: 'treino', rotulo: 'Treinos', Icone: Activity },
-  { rota: 'modelo', rotulo: 'Modelos', Icone: Box },
-  { rota: 'modelos-por-camera', rotulo: 'Modelos por câmera', Icone: Cctv },
+  { rota: 'gabarito', rotulo: 'Gabarito (celular)', Icone: Smartphone, permissao: 'training:write' },
+  { rota: 'classes', rotulo: 'Classes', Icone: Tags, permissao: 'training:write' },
+  { rota: 'treino', rotulo: 'Treinos', Icone: Activity, permissao: 'training:write' },
+  { rota: 'modelo', rotulo: 'Modelos', Icone: Box, permissao: 'training:read' },
+  {
+    rota: 'modelos-por-camera',
+    rotulo: 'Modelos por câmera',
+    Icone: Cctv,
+    permissao: 'cameras:configure',
+  },
   // Fica ao lado de "Modelos por câmera" porque as duas respondem sobre a
   // MESMA câmera — lá "qual modelo responde", aqui "para que ela serve".
-  { rota: 'cameras-por-modulo', rotulo: 'Uso das câmeras', Icone: SlidersHorizontal },
+  {
+    rota: 'cameras-por-modulo',
+    rotulo: 'Uso das câmeras',
+    Icone: SlidersHorizontal,
+    permissao: 'cameras:configure',
+  },
 ]
 
 export function Estudio() {
   const { can } = useAuth()
+  const { pathname } = useLocation()
 
   if (!can('frames:annotate')) return <SemPermissao permissao="frames:annotate" />
+
+  const visiveis = ITENS.filter((i) => i.permissao === null || can(i.permissao))
+  // Esconder do menu não é autorizar: quem digita a URL da seção cai no MESMO
+  // gate. A lateral continua desenhada — sem ela a pessoa fica sem saída.
+  const secao = pathname.replace(/\/+$/, '').split('/').pop()
+  const atual = ITENS.find((i) => i.rota === secao)
+  const bloqueada = atual && atual.permissao !== null && !can(atual.permissao)
+    ? atual.permissao
+    : null
 
   return (
     <div className={s.raiz}>
@@ -64,7 +114,7 @@ export function Estudio() {
           Voltar
         </Link>
         <span className={s.lateralTitulo}>Estúdio</span>
-        {ITENS.map(({ rota, rotulo, Icone }) => (
+        {visiveis.map(({ rota, rotulo, Icone }) => (
           <NavLink
             key={rota}
             to={rota}
@@ -76,11 +126,15 @@ export function Estudio() {
         ))}
       </nav>
       <div className={s.conteudo}>
-        {/* Boundary local: sem ele, layout e sub-rota (ambos lazy) suspendem em
-            sequência no fallback do Shell e a tela pisca duas vezes. */}
-        <Suspense fallback={null}>
-          <Outlet />
-        </Suspense>
+        {bloqueada ? (
+          <SemPermissao permissao={bloqueada} />
+        ) : (
+          /* Boundary local: sem ele, layout e sub-rota (ambos lazy) suspendem em
+             sequência no fallback do Shell e a tela pisca duas vezes. */
+          <Suspense fallback={null}>
+            <Outlet />
+          </Suspense>
+        )}
       </div>
     </div>
   )
