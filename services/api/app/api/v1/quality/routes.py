@@ -644,6 +644,11 @@ def get_evidence_url(inspection_id: str):
 
 
 @quality_bp.route("/inspections/<inspection_id>/feedback", methods=["PATCH"])
+# verification:write — a MESMA chave com que o front já trava esta tela
+# (`app/qualidade/RevisaoQualidade.tsx:195`, botões Conforme/Não conforme).
+# O handler grava veredito humano na inspeção e pode abrir sugestão de
+# retreino; rodava só com JWT + módulo.
+@require_permission("verification:write")
 def submit_feedback(inspection_id: str):
     """PATCH /api/v1/quality/inspections/<id>/feedback — registra feedback do operador."""
     try:
@@ -1776,6 +1781,13 @@ def gate_start_rework():
 
 
 @quality_bp.route("/gate/reworks/<rework_id>/complete", methods=["PATCH"])
+# quality:write — a chave que o front já exige no botão "Concluir retrabalho"
+# (`app/qualidade/Qualidade.tsx:283`). NÃO gateamos aqui as rotas do kiosk de
+# bancada (`/gate/pieces/**`, POST `/gate/reworks`): o tablet da RVB
+# (`app/kiosk/Kiosk.tsx`) as chama sem nenhum `can()`, e o papel da conta que
+# fica logada no tablet não é verificável daqui — travar a bancada da fábrica
+# por chute é pior que o furo. Fica registrado em issue.
+@require_permission("quality:write")
 def gate_complete_rework(rework_id: str):
     """PATCH /api/v1/quality/gate/reworks/<rework_id>/complete — concluir retrabalho."""
     try:

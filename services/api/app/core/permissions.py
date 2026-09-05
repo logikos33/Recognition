@@ -70,8 +70,10 @@ PERMISSION_REGISTRY: dict[str, dict[str, Any]] = {
     ),
     "cameras:control": _entry(
         "Controlar câmeras",
-        "Permite iniciar e parar o monitoramento de uma câmera.",
-        "Câmeras", ["superadmin", "admin", "operator"],
+        "Permite iniciar e parar o monitoramento de uma câmera e ajustar a "
+        "taxa de captura e a qualidade do vídeo. Assistir ao vídeo ao vivo "
+        "continua liberado por 'Ver câmeras'.",
+        "Câmeras", ["superadmin", "admin", "operator"], enforced=True,
     ),
     "cameras:configure": _entry(
         "Configurar câmeras",
@@ -102,7 +104,7 @@ PERMISSION_REGISTRY: dict[str, dict[str, Any]] = {
     "alerts:feedback": _entry(
         "Dar feedback em alertas",
         "Permite marcar alertas como corretos ou falsos positivos (melhora o modelo).",
-        "Alertas", ["superadmin", "admin", "operator", "analyst"],
+        "Alertas", ["superadmin", "admin", "operator", "analyst"], enforced=True,
     ),
     "alerts:export": _entry(
         "Exportar alertas",
@@ -189,18 +191,18 @@ PERMISSION_REGISTRY: dict[str, dict[str, Any]] = {
     "branding:write": _entry(
         "Personalizar aparência",
         "Permite alterar logo, cores e nome do produto exibidos para o tenant.",
-        "Aparência", ["superadmin", "admin"],
+        "Aparência", ["superadmin", "admin"], enforced=True,
     ),
     # ── Administração ────────────────────────────────────────────────────────
     "admin:users": _entry(
         "Gerenciar usuários",
         "Permite criar, editar, ativar e desativar usuários do tenant.",
-        "Administração", ["superadmin", "admin"],
+        "Administração", ["superadmin", "admin"], enforced=True,
     ),
     "admin:roles": _entry(
         "Gerenciar roles",
         "Permite criar e editar roles customizadas com permissões granulares.",
-        "Administração", ["superadmin", "admin"],
+        "Administração", ["superadmin", "admin"], enforced=True,
     ),
     "admin:settings": _entry(
         "Configurar tenant",
@@ -248,6 +250,7 @@ PERMISSION_REGISTRY: dict[str, dict[str, Any]] = {
         "Operar contagens",
         "Permite iniciar, pausar e encerrar sessões de contagem.",
         "Contagem", ["superadmin", "admin", "operator"], module="counting",
+        enforced=True,
     ),
     # ── Qualidade ─────────────────────────────────────────────────────────────
     # Faltavam: o módulo `quality` existe e é servido, mas nenhuma chave o
@@ -265,6 +268,7 @@ PERMISSION_REGISTRY: dict[str, dict[str, Any]] = {
         "Operar qualidade",
         "Permite concluir retrabalho e registrar decisão de inspeção na bancada.",
         "Qualidade", ["superadmin", "admin", "operator"], module="quality",
+        enforced=True,
     ),
     # ── Verificação ───────────────────────────────────────────────────────────
     "verification:read": _entry(
@@ -275,7 +279,7 @@ PERMISSION_REGISTRY: dict[str, dict[str, Any]] = {
     "verification:write": _entry(
         "Verificar detecções",
         "Permite aprovar, rejeitar ou corrigir detecções na fila de verificação.",
-        "Verificação", ["superadmin", "admin", "operator"],
+        "Verificação", ["superadmin", "admin", "operator"], enforced=True,
     ),
 }
 

@@ -20,7 +20,7 @@ import logging
 from flask import Blueprint, request
 from app.core.auth import get_role, get_tenant_id
 from app.core.responses import error, success
-from app.core.tenant import require_admin, require_superadmin
+from app.core.tenant import require_permission, require_superadmin
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.storage.local_storage import get_storage
 
@@ -180,7 +180,7 @@ def get_branding_by_tenant(tenant_id: str):
 # novos campos entram apenas no formato flat.
 # ---------------------------------------------------------------------------
 @branding_bp.route("/admin/branding", methods=["PUT"])
-@require_admin
+@require_permission("branding:write")
 def update_branding():
     """
     Atualiza o branding de um tenant.
@@ -228,7 +228,7 @@ def update_branding():
 # POST /api/v1/admin/branding/logo
 # ---------------------------------------------------------------------------
 @branding_bp.route("/admin/branding/logo", methods=["POST"])
-@require_admin
+@require_permission("branding:write")
 def upload_logo():
     """
     Upload de logo/favicon para storage (R2 em prod, local em dev).
