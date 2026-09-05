@@ -49,7 +49,7 @@ export const PAPEIS_ATRIBUIVEIS: PapelAtribuivel[] = [
     rotulo: 'Operador',
     resumo: 'Opera câmeras, trata alertas, verifica detecções e anota frames.',
     concede: ['cameras:control', 'alerts:feedback', 'verification:write', 'frames:annotate'],
-    alerta: 'No Estúdio só anota: curar frames, classes, gabarito e treino recusam (403).',
+    alerta: 'No Estúdio, anota e consulta: curar, classes, gabarito e treino recusam (403).',
     nega: ['training:read', 'training:write'],
   },
   {
