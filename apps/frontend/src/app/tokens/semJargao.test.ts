@@ -196,9 +196,27 @@ const ESTRUTURAIS: Array<{ nome: string; re: RegExp; sugestao: string }> = [
   },
 ]
 
+/**
+ * Sufixo de versão colado no nome do motor: `YOLOv8`, `YOLOv5`, `YOLO11`,
+ * `YOLOv8n`, `RF-DETR-L2`.
+ *
+ * FURO REAL (rodada V1, set/2026): `\bYOLO\b` NÃO casa "YOLOv8" — o "v" é
+ * word char, então não existe fronteira `\b` entre o "O" e o "v". Resultado
+ * medido: o CI ficou VERDE com "visão computacional YOLOv8" na PRIMEIRA tela
+ * que o cliente lê depois do login (`pages/ModuleSelectionPage.tsx:65`), no
+ * bundle servido. A régua pegava "YOLO" sozinho e deixava passar exatamente
+ * a forma que a gente de verdade escreve o nome do motor — com a versão.
+ *
+ * O grupo é opcional, então "YOLO" cru continua batendo. Só admite sufixo
+ * que COMEÇA por dígito ou por "v"+dígito: pega toda versão real sem virar
+ * `\bYOLO\w*`, que engoliria identificador tipo `YoloClass` se um dia
+ * aparecer em texto visível.
+ */
+const SUFIXO_DE_VERSAO = '(?:-?v?\\d+[a-z]*)?'
+
 function regexDoTermo(termo: string): RegExp {
   const escapado = termo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+')
-  return new RegExp(`\\b${escapado}\\b`, 'iu')
+  return new RegExp(`\\b${escapado}${SUFIXO_DE_VERSAO}\\b`, 'iu')
 }
 
 type Fragmento = { texto: string; linha: number }
@@ -331,6 +349,25 @@ function arquivos(dir: string): string[] {
 
 const COMPONENTS = path.join(path.dirname(APP), 'components')
 
+/**
+ * Telas do front LEGADO que o tenant lê HOJE e que não são alcançáveis a
+ * partir de `src/app` — entram na régua nominalmente, uma a uma.
+ *
+ * SEGUNDO furo da mesma rodada V1: `ModuleSelectionPage` é a primeira tela
+ * depois do login (o seletor de módulo), mora em `src/pages/` e por isso
+ * NUNCA foi lida por esta régua — nem com a regex consertada o achado
+ * apareceria. Os dois furos juntos são o motivo de o CI estar verde com o
+ * nome do motor na cara do cliente.
+ *
+ * NÃO varremos `src/pages/**` inteiro de propósito: ver "ESCOPO DE ARQUIVOS"
+ * no topo — isso traz ~20 achados de telas de outra rodada, que este PR não
+ * tem mandato para reescrever. Toda tela legada que o cliente de fato abrir
+ * entra aqui, nominalmente, com o conserto do texto no mesmo commit.
+ */
+const RAIZES_LEGADO_EM_ESCOPO = [
+  path.join(path.dirname(APP), 'pages', 'ModuleSelectionPage.tsx'),
+]
+
 /** `import ... from '../coisa'` / `export ... from './coisa'` — só
  * specifiers RELATIVOS (começam com `.`): é tudo que o front usa (repo não
  * tem alias `@/` em uso — conferido). */
@@ -373,7 +410,12 @@ export function arquivosVisiveisAoTenant(): string[] {
       }
     }
   }
-  return [...visitados].filter((f) => f.startsWith(APP + path.sep) || f.startsWith(COMPONENTS + path.sep))
+  const alcancados = [...visitados].filter(
+    (f) => f.startsWith(APP + path.sep) || f.startsWith(COMPONENTS + path.sep),
+  )
+  // Somados DEPOIS do filtro (moram em `src/pages`) e sem semear a BFS: só
+  // a tela em si entra, não a árvore de imports legada pendurada nela.
+  return [...alcancados, ...RAIZES_LEGADO_EM_ESCOPO.filter((f) => !alcancados.includes(f))]
 }
 
 describe('front novo: sem jargão técnico em texto de cliente', () => {
@@ -399,6 +441,11 @@ describe('escopo: a régua alcança components/** renderizado pelo front novo (f
   it('inclui CameraModelScope.tsx (achado real — renderizado via app/estudio/ModelosPorCamera.tsx)', () => {
     const alvo = arquivosVisiveisAoTenant()
     expect(alvo.some((f) => f.endsWith(path.join('components', 'training', 'CameraModelScope.tsx')))).toBe(true)
+  })
+
+  it('inclui pages/ModuleSelectionPage.tsx (primeira tela pós-login — furo V1.a)', () => {
+    const alvo = arquivosVisiveisAoTenant()
+    expect(alvo.some((f) => f.endsWith(path.join('pages', 'ModuleSelectionPage.tsx')))).toBe(true)
   })
 
   it('NÃO inclui telas só do front legado (pages/modules) — evita trazer dívida de outra rodada', () => {
@@ -475,6 +522,43 @@ describe('a régua funciona (fixture em memória — nada gravado no repo)', () 
     const codigo = 'export const X = () => <img alt="bounding box detectado" title="overlap alto" />\n'
     const achados = acharJargao('fixture.tsx', codigo)
     expect(achados.map((a) => a.termo.toLowerCase()).sort()).toEqual(['bounding box', 'overlap'])
+  })
+})
+
+describe('nome do motor com versão colada (furo V1.b — `\\bYOLO\\b` não casa "YOLOv8")', () => {
+  it.each(['YOLOv8', 'YOLOv5', 'YOLO11', 'YOLOv8n', 'yolov8'])('pega %s', (nome) => {
+    const achados = acharJargao('fixture.tsx', `export const X = () => <p>visão computacional ${nome}.</p>\n`)
+    expect(achados.map((a) => a.termo)).toEqual([nome])
+    expect(achados[0].sugestao).toMatch(/alias Logikos/)
+  })
+
+  it('"YOLO" cru continua batendo (o sufixo é opcional)', () => {
+    const achados = acharJargao('fixture.tsx', 'export const X = () => <p>motor YOLO aqui</p>\n')
+    expect(achados.map((a) => a.termo)).toEqual(['YOLO'])
+  })
+
+  it('não vira `\\bYOLO\\w*`: sufixo só de LETRA não dispara (identificador em texto)', () => {
+    // `YoloClass` não é o nome do motor com versão — é um identificador.
+    // O guard só admite sufixo que começa por dígito (ou "v"+dígito).
+    expect(acharJargao('fixture.tsx', 'export const X = () => <p>o campo YoloClass</p>\n')).toEqual([])
+  })
+
+  it('prova por MUTAÇÃO no arquivo REAL: reinstalar o texto servido acusa a linha', () => {
+    // Texto que estava em produção em `pages/ModuleSelectionPage.tsx:65`
+    // (bundle servido) e que passou pelo CI verde: os DOIS furos juntos —
+    // arquivo fora do escopo E `\bYOLO\b` sem casar "YOLOv8".
+    const codigo = [
+      'export const X = () => (',
+      '  <p>',
+      '    Monitoramento inteligente de Equipamentos de Proteção Individual.',
+      '    Detecção em tempo real via câmeras CCTV com visão computacional YOLOv8.',
+      '  </p>',
+      ')',
+      '',
+    ].join('\n')
+    const achados = acharJargao('pages/ModuleSelectionPage.tsx', codigo)
+    expect(achados.map((a) => a.termo)).toEqual(['YOLOv8'])
+    expect(achados[0].linha).toBe(4)
   })
 })
 

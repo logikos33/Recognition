@@ -61,8 +61,9 @@ export function ModuleSelectionPage() {
           </span>
           <h2 className={cardTitle}>EPI</h2>
           <p className={cardDesc}>
-            Monitoramento inteligente de Equipamentos de Proteção Individual.
-            Detecção em tempo real via câmeras CCTV com visão computacional YOLOv8.
+            Monitoramento de Equipamentos de Proteção Individual.
+            As câmeras que você já tem reconhecem sozinhas quem está sem o
+            equipamento — na hora em que acontece.
           </p>
           <div className={cardCta}>
             Acessar módulo <ArrowRight size={14} />
@@ -88,7 +89,7 @@ export function ModuleSelectionPage() {
             </span>
             <h2 className={cardTitle}>Qualidade Industrial</h2>
             <p className={cardDesc}>
-              Inspeção visual automatizada com YOLO, controle estatístico de processo (CEP)
+              Inspeção visual automática na linha, controle estatístico de processo (CEP)
               e relatórios de turno em tempo real.
             </p>
             <div className={cardCta}>
@@ -108,7 +109,7 @@ export function ModuleSelectionPage() {
             <span className={badgeComingSoon}>Em breve</span>
             <h2 className={cardTitle}>Qualidade Industrial</h2>
             <p className={cardDesc}>
-              Inspeção visual automatizada com YOLO, controle estatístico de processo (CEP)
+              Inspeção visual automática na linha, controle estatístico de processo (CEP)
               e relatórios de turno em tempo real.
             </p>
           </div>
