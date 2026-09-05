@@ -70,6 +70,20 @@ import { confiancaBruta } from '../../services/confidenceDisplay'
 import { useAuth } from '../../hooks/useAuth'
 import { useLiveView } from '../../hooks/useLiveView'
 import { useMonitoringSocket, type Detection } from '../../hooks/useMonitoringSocket'
+/**
+ * REUSO DELIBERADO, não dívida de migração (triagem de 05/09).
+ *
+ * `CameraPlayer` mora em `components/monitoring/` e é `INFRA` no
+ * MANIFESTO-FRONT-ANTIGO ("não é tela"): a Fase 3 só apaga `MIGRADO`, então a
+ * demolição do front antigo NÃO o leva junto. Movê-lo para `app/` quebraria os
+ * seis consumidores do front antigo que ainda servem rota viva —
+ * `CameraCell`, `ScenarioEditor`, `LiveVideoWithOperations`, `CamerasPage`,
+ * `CameraTriagePage`, `FuelingPage` — e duplicá-lo criaria um segundo player
+ * sem o watchdog de stall, o backoff e a recuperação por URL nova (item 2 do
+ * cabeçalho: era exatamente o congelamento cíclico dos PRs 306-308).
+ *
+ * A regra está travada em `src/test/migracao/fronteira-front-novo.test.ts`.
+ */
 import { CameraPlayer } from '../../components/monitoring/CameraPlayer'
 import { labelForModule } from '../../utils/labels'
 import type { Camera } from '../../types'

@@ -88,6 +88,23 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 
+/**
+ * REUSO DELIBERADO, não dívida de migração (triagem de 05/09).
+ *
+ * Os três são `INFRA` no MANIFESTO-FRONT-ANTIGO ("não é tela"), e a Fase 3 só
+ * apaga `MIGRADO` — a demolição do front antigo não os leva junto.
+ *
+ * · `ConfirmDialog` é primitiva do design system (`components/ui/`, 9
+ *   importadores nos dois fronts). Duplicar em `app/` daria dois diálogos de
+ *   confirmação que divergem no primeiro ajuste.
+ * · Os dois wizards são o cadastro/edição de câmera REAL, e o front antigo
+ *   ainda os usa (`CamerasPage`, `GridPanel`). Mover quebra o antigo; copiar
+ *   fragmenta o único fluxo de cadastro que o cliente conhece. O handoff não
+ *   desenhou tela de cadastro (item 2 do cabeçalho), então não há nem desenho
+ *   para uma versão nova.
+ *
+ * A regra está travada em `src/test/migracao/fronteira-front-novo.test.ts`.
+ */
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog/ConfirmDialog'
 import { CameraOnboardingWizard } from '../../components/cameras/CameraOnboardingWizard'
 import { CameraWizard } from '../../components/cameras/CameraWizard'
