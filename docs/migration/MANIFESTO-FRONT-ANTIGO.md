@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 391 arquivos, 66.013 linhas
+## Situação — 391 arquivos, 66.028 linhas
 
 | status | arquivos |
 |---|---:|
@@ -185,7 +185,7 @@ apagado não são a mesma coisa.
 | `src/components/ui/Modal/Modal.css.ts` | `INFRA` | — | 95 |
 | `src/components/ui/Modal/Modal.tsx` | `INFRA` | — | 42 |
 | `src/components/ui/NotificationBell/NotificationBell.css.ts` | `INFRA` | — | 194 |
-| `src/components/ui/NotificationBell/NotificationBell.tsx` | `INFRA` | — | 241 |
+| `src/components/ui/NotificationBell/NotificationBell.tsx` | `INFRA` | — | 256 |
 | `src/components/ui/PageHeader/PageHeader.css.ts` | `INFRA` | — | 45 |
 | `src/components/ui/PageHeader/PageHeader.tsx` | `INFRA` | — | 24 |
 | `src/components/ui/Panel/Panel.css.ts` | `INFRA` | — | 68 |

@@ -93,7 +93,7 @@ const botao = style({
   },
 })
 
-export const botaoRenovar = style([
+export const botaoPrimario = style([
   botao,
   {
     flex: 1,
@@ -105,7 +105,7 @@ export const botaoRenovar = style([
   },
 ])
 
-export const botaoSair = style([
+export const botaoSecundario = style([
   botao,
   {
     padding: `0 ${lk.espaco.x2}`,

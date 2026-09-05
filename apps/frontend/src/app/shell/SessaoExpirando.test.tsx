@@ -27,8 +27,7 @@ const montar = (restanteMs: number, props: Partial<Parameters<typeof SessaoExpir
   render(
     <SessaoExpirando
       expiraEm={Date.now() + restanteMs}
-      onRenovar={props.onRenovar ?? vi.fn()}
-      onSair={props.onSair ?? vi.fn()}
+      onEntrarDeNovo={props.onEntrarDeNovo ?? vi.fn()}
       onExpirou={props.onExpirou}
     />,
   )
@@ -101,20 +100,46 @@ describe('expiração', () => {
   })
 })
 
-describe('ações', () => {
-  it('Renovar e Sair chamam os callbacks', () => {
-    const renovar = vi.fn()
-    const sair = vi.fn()
-    montar(2 * MIN, { onRenovar: renovar, onSair: sair })
-    fireEvent.click(screen.getByRole('button', { name: /renovar/i }))
-    fireEvent.click(screen.getByRole('button', { name: /sair/i }))
-    expect(renovar).toHaveBeenCalledTimes(1)
-    expect(sair).toHaveBeenCalledTimes(1)
+describe('ações — o aviso não promete o que o backend não faz', () => {
+  it('NÃO oferece "Renovar sessão"', () => {
+    // O botão existia e chamava `location.reload()`: mesmo token, mesmo `exp`,
+    // aviso de volta em segundos. Não há rota de refresh no backend
+    // (`auth/routes.py`: register, login, me, forgot-password, reset-password).
+    montar(2 * MIN)
+    expect(screen.queryByRole('button', { name: /renovar/i })).toBeNull()
   })
 
-  it('o foco cai no Renovar assim que o aviso abre', () => {
+  it('"Entrar de novo" chama o callback que derruba o token', () => {
+    const entrarDeNovo = vi.fn()
+    montar(2 * MIN, { onEntrarDeNovo: entrarDeNovo })
+    fireEvent.click(screen.getByRole('button', { name: /entrar de novo/i }))
+    expect(entrarDeNovo).toHaveBeenCalledTimes(1)
+  })
+
+  it('"Agora não" some com o cartão — dá para terminar e salvar', () => {
     montar(2 * MIN)
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: /renovar/i }))
+    fireEvent.click(screen.getByRole('button', { name: /agora não/i }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+  })
+
+  it('depois de expirar o cartão volta, mesmo dispensado, e sem "Agora não"', () => {
+    // Dispensado + sessão morta é o pior estado possível: a tela parece viva e
+    // toda chamada já vai levar 401. O aviso volta e sobra uma ação só.
+    montar(2000)
+    fireEvent.click(screen.getByRole('button', { name: /agora não/i }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    avancar(2000)
+    expect(screen.getByRole('alertdialog')).toBeTruthy()
+    expect(screen.getByText(/sua sessão expirou/i)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /agora não/i })).toBeNull()
+  })
+
+  it('o foco NÃO cai no botão destrutivo — vai no "Agora não"', () => {
+    // "Entrar de novo" mata a sessão. Cartão que aparece sozinho e rouba o foco
+    // para uma ação destrutiva transforma um Enter distraído em trabalho
+    // perdido — era assim quando o primário era o inofensivo "Renovar".
+    montar(2 * MIN)
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /agora não/i }))
   })
 })
 

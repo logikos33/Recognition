@@ -33,12 +33,12 @@ const alerta = (id: string, extra: Record<string, unknown> = {}) => ({
   ...extra,
 })
 
-function montar() {
+function montar(props: { rotaAlertas?: string } = {}) {
   const cliente = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={cliente}>
       <MemoryRouter>
-        <NotificationBell />
+        <NotificationBell {...props} />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -114,5 +114,35 @@ describe('rajada (ux2/dedup) — badge e painel contam SITUAÇÕES, não linhas'
     get.mockResolvedValue({ data: { alerts: [alerta('y1'), alerta('y2', { camera_id: 'outra-cam' })], total: 2 } })
     montar()
     await waitFor(() => expect(screen.getByLabelText('Notificações').textContent).toContain('2'))
+  })
+})
+
+
+/**
+ * O front NOVO monta ESTE sino (Shell.tsx). `/epi/alerts` é rota VÁLIDA no app:
+ * sem `rotaAlertas`, o sino do front novo jogaria o usuário, calado, na tela
+ * ANTIGA — o mesmo pisão que `RotasNovas.tsx` descreve (aconteceu em 10 lugares
+ * na primeira leva, e nenhum teste pegou).
+ */
+describe('deep-link segue o front que montou o sino', () => {
+  it('sem prop, continua no endereço do front antigo (TopBar legada)', async () => {
+    get.mockResolvedValue({ data: { alerts: [alerta('a1')], total: 1, total_situacoes: 1 } })
+    montar()
+    await abrirPainel()
+    ;(await screen.findByRole('button', { name: /Entrada Expedição/ })).click()
+    expect(navigate).toHaveBeenCalledWith(expect.stringContaining('/epi/alerts?'))
+  })
+
+  it('com rotaAlertas, cartão E "Ver todos" vão para a tela do front novo', async () => {
+    get.mockResolvedValue({ data: { alerts: [alerta('a1')], total: 1, total_situacoes: 1 } })
+    montar({ rotaAlertas: '/novo/epi/eventos' })
+    await abrirPainel()
+    ;(await screen.findByRole('button', { name: /Entrada Expedição/ })).click()
+    expect(navigate).toHaveBeenCalledWith(
+      '/novo/epi/eventos?camera_id=cam-expedicao&acknowledged=false&kind=violation&highlight=a1',
+    )
+    await abrirPainel()
+    ;(await screen.findByRole('button', { name: /Ver todos os alertas/ })).click()
+    expect(navigate).toHaveBeenCalledWith('/novo/epi/eventos?acknowledged=false&kind=violation')
   })
 })
