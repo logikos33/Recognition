@@ -9,6 +9,8 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+import { isValidElement, type ReactElement } from 'react'
+
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -148,6 +150,23 @@ describe('lateral do Estúdio × o que o backend permite (issue #688)', () => {
       .filter((p): p is string => p !== null)
       .filter((p) => !reais.has(p))
     expect(inventadas, 'chave inexistente some para todo mundo, em silêncio').toEqual([])
+  })
+
+  // O gate só alcança seção que está em ITENS: sub-rota nova sem entrada aqui
+  // nasce SEM gate nenhum e ninguém percebe. Guarda de drift — se a lista de
+  // rotas e a lista de itens divergirem, esta é a linha que reclama.
+  it('toda sub-rota do Estúdio tem entrada em ITENS (senão nasce sem gate)', async () => {
+    const { ROTAS_NOVAS } = await import('../RotasNovas')
+    const layout = ROTAS_NOVAS.find(
+      (r) => (r.props as { path?: string }).path === 'estudio',
+    ) as ReactElement
+    const filhas = ([] as unknown[])
+      .concat((layout.props as { children?: unknown }).children ?? [])
+      .filter(isValidElement)
+      .map((c) => (c.props as { path?: string }).path)
+      .filter((p): p is string => typeof p === 'string') // index route não tem path
+    const conhecidas = new Set(ITENS.map((i) => i.rota))
+    expect(filhas.filter((p) => !conhecidas.has(p)), 'sub-rota sem gate').toEqual([])
   })
 
   it('esconder não é autorizar: URL direta da seção cai no mesmo gate', () => {
