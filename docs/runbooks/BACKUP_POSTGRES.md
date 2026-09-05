@@ -81,6 +81,30 @@ não intervalo. Intervalo aqui era armadilha: o estado do scheduler vive em
 `/tmp` e zera a cada deploy, e o DEV redeploya sozinho a cada merge na develop.
 Uma entrada "a cada 12h" nunca vencia num dia de trabalho.
 
+### 1.3 Disparar um backup AGORA (sem esperar 03:00/15:00)
+
+⚠️ **A fila é obrigatória.** `backup_database.delay()` manda a mensagem para a
+fila *default* (`celery`), que **nenhum worker consome** — a tarefa some em
+silêncio e você fica esperando o 503 cair. Medido em 05/09: seis minutos de
+nada. O beat acerta porque a entrada carrega `options: {"queue": "reports"}`
+explicitamente; à mão, você tem de repetir isso.
+
+```bash
+railway ssh -s celery-worker -- sh -lc 'cd /app && python3 -c "
+from app.infrastructure.queue.tasks.backup import backup_database as b
+print(b.apply_async(queue=\"reports\").id)"'
+```
+
+Confira o desfecho no log (≈6s para ~170 MB) e depois em `/health/backup`:
+
+```
+backup_ok: chave=backups/postgres/auto/<ts>.sql.gz comprimido=17.4MB
+descomprimido=172.8MB pg_dump=pg_dump (PostgreSQL) 18.6 ...
+```
+
+Só conta como backup se o `drill` do resultado vier com `ok: True` — dump que
+subiu e não é restaurável é pior que dump nenhum, porque parece backup.
+
 ---
 
 ## 2. Restaurar
