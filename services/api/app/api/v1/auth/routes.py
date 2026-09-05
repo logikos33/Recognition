@@ -8,6 +8,7 @@ POST /api/auth/forgot-password
 POST /api/auth/reset-password
 """
 import logging
+import os
 
 from flask import Blueprint, request
 from flask_jwt_extended import create_access_token, jwt_required
@@ -44,6 +45,38 @@ def _get_password_reset_service() -> PasswordResetService:
     return PasswordResetService(UserRepository(pool), SessionRepository(pool))
 
 
+def _public_registration_enabled() -> bool:
+    """Auto-registro público — OFF por padrão.
+
+    Sem tenant no payload, o usuário nasce com role='operator' e SEM
+    tenant_id; o próprio /login depois recusa essa conta ("Usuário sem tenant
+    atribuído", ADR-0017). Ou seja: a rota aberta só sabia produzir conta
+    órfã. Contas são criadas pelo administrador em /admin/users — rota
+    POST /api/admin/users, que exige tenant_id e superadmin.
+
+    Lido a cada request de propósito: liga/desliga sem redeploy.
+    """
+    return os.environ.get("ALLOW_PUBLIC_REGISTRATION", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _email_delivery_configured() -> bool:
+    """True só quando o provedor de e-mail tem as envs mínimas p/ enviar.
+
+    Espelha exatamente as condições que fazem resend_client/smtp_client
+    levantarem RuntimeError. Sem isso, /forgot-password respondia "enviaremos
+    um link" e o e-mail nunca saía (o erro é engolido por desenho, para não
+    vazar existência de conta).
+    """
+    if not os.environ.get("EMAIL_FROM", "").strip():
+        return False
+    provider = os.environ.get("EMAIL_PROVIDER", "resend").strip().lower()
+    if provider == "smtp":
+        return bool(os.environ.get("SMTP_HOST", "").strip())
+    return bool(os.environ.get("RESEND_API_KEY", "").strip())
+
+
 @auth_bp.route("/register", methods=["POST"])
 @limiter.limit("5 per hour")
 def register():  # type: ignore[no-untyped-def]
@@ -67,7 +100,18 @@ def register():  # type: ignore[no-untyped-def]
         description: Usuário criado
       400:
         description: Dados inválidos
+      403:
+        description: >
+          Auto-registro desativado (padrão). Ligue ALLOW_PUBLIC_REGISTRATION
+          para reabrir — contas normalmente são criadas pelo administrador.
     """
+    if not _public_registration_enabled():
+        return error(
+            "Criação de conta pelo próprio usuário está desativada. "
+            "Peça ao administrador da sua empresa para criar seu acesso.",
+            403,
+            error_code="registration_disabled",
+        )
     try:
         data = request.get_json() or {}
         service = _get_auth_service()
@@ -327,9 +371,25 @@ def forgot_password():  # type: ignore[no-untyped-def]
     responses:
       200:
         description: >
-          Sempre retornado (mesmo se o e-mail não existir) — evita
+          Retornado para qualquer e-mail existente ou não — evita
           enumeração de contas.
+      503:
+        description: >
+          Envio de e-mail não configurado no ambiente. Mensagem idêntica para
+          qualquer e-mail (não vaza existência de conta).
     """
+    # Envio não configurado: dizer a verdade em vez de prometer um e-mail que
+    # nunca sai. Não vaza existência de conta — a resposta é idêntica para
+    # qualquer e-mail (nem chega a consultar o banco). Quando o envio existe,
+    # a resposta volta a ser a genérica de sempre.
+    if not _email_delivery_configured():
+        logger.warning("forgot_password_unavailable: envio de e-mail não configurado")
+        return error(
+            "A recuperação de senha por e-mail ainda não está disponível. "
+            "Peça ao administrador para redefinir sua senha.",
+            503,
+            error_code="email_delivery_unconfigured",
+        )
     try:
         data = request.get_json() or {}
         service = _get_password_reset_service()

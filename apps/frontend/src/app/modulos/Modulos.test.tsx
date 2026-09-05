@@ -2,7 +2,7 @@
  * O que esta tela não pode errar: mandar a pessoa para o módulo errado, pedir
  * escolha quando não há escolha, e inventar pendência que o backend não serve.
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -88,6 +88,12 @@ describe('escolha de módulo', () => {
     get.mockResolvedValue(resposta([mod('epi'), mod('quality')]))
     montar()
     await screen.findByText('EPI · Segurança')
+    // findByText só prova que o CARTÃO renderizou. O listener de teclado é
+    // re-registrado por um useEffect separado (deps `[cartoes, abrir]`) — sob
+    // contenção de CPU o keydown pode chegar antes desse efeito recomeçar
+    // ouvindo com a lista carregada, e cair no listener velho (cartoes=[]),
+    // que ignora a tecla. act() esvazia o efeito pendente antes do evento.
+    await act(async () => {})
     fireEvent.keyDown(window, { key: '1' })
     expect(navegar).toHaveBeenCalledWith('/novo/epi/dashboard')
   })
@@ -126,6 +132,10 @@ describe('escolha de módulo', () => {
     await screen.findByText('EPI · Segurança')
     expect(screen.queryByText(/ÚLTIMA VISITA/)).toBeNull()
 
+    // Mesma corrida da tecla do número acima: sem o flush, o keydown pode
+    // cair no listener velho e `registrarVisita` nunca roda — o selo do
+    // remount seguinte ficaria sempre ausente, não só "às vezes".
+    await act(async () => {})
     fireEvent.keyDown(window, { key: '1' })
     unmount()
     montar()
