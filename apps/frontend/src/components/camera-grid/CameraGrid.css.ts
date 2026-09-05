@@ -60,7 +60,7 @@ export const cellAlert = style({
 export const cellDragOver = style({
   borderColor: `${vars.color.borderStrong} !important`,
   borderWidth: '2px',
-  boxShadow: `inset 0 0 20px rgba(139, 92, 246, 0.15)`,
+  boxShadow: `inset 0 0 20px ${vars.color.primaryAlpha}`,
 })
 
 export const cellDragging = style({
@@ -170,9 +170,9 @@ export const placeholder = style({
   background: 'transparent',
   color: 'rgba(255,255,255,0.2)',
   ':hover': {
-    borderColor: 'rgba(139, 92, 246, 0.4)',
-    background: 'rgba(139, 92, 246, 0.05)',
-    color: 'rgba(139, 92, 246, 0.6)',
+    borderColor: vars.color.primary,
+    background: vars.color.primaryAlpha,
+    color: vars.color.primaryLight,
   },
 })
 
@@ -499,7 +499,7 @@ export const panelAddBtn = style({
   cursor: 'pointer',
   width: '100%',
   ':hover': {
-    background: 'rgba(139, 92, 246, 0.1)',
+    background: vars.color.primaryAlpha,
   },
 })
 
@@ -563,7 +563,7 @@ export const hamburgerBtn = style({
   backdropFilter: 'blur(4px)',
   transition: `background ${vars.animation.duration}, color ${vars.animation.duration}`,
   ':hover': {
-    background: 'rgba(139, 92, 246, 0.3)',
+    background: vars.color.primaryDark,
     color: '#fff',
   },
 })

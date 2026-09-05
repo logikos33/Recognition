@@ -16,7 +16,7 @@ export const card = style({
   transition: `border-color ${vars.animation.duration} ${vars.animation.easing}, box-shadow ${vars.animation.duration}`,
   ':hover': {
     borderColor: vars.color.borderStrong,
-    boxShadow: '0 0 12px rgba(139, 92, 246, 0.1)',
+    boxShadow: `0 0 12px ${vars.color.primaryAlpha}`,
   },
 })
 
