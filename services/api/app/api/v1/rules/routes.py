@@ -10,6 +10,7 @@ from flask_jwt_extended import jwt_required
 
 from app.core.exceptions import EpiMonitorError
 from app.core.responses import success, error
+from app.core.tenant import require_permission
 from app.infrastructure.database.connection import DatabasePool
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,7 @@ def list_rules():  # type: ignore[no-untyped-def]
 
 @rules_bp.route("", methods=["POST"])
 @jwt_required()
+@require_permission("rules:write")
 def create_rule():  # type: ignore[no-untyped-def]
     try:
         from app.core.auth import get_tenant_id
@@ -126,6 +128,7 @@ def get_rule(rule_id: str):  # type: ignore[no-untyped-def]
 
 @rules_bp.route("/<rule_id>", methods=["PUT"])
 @jwt_required()
+@require_permission("rules:write")
 def update_rule(rule_id: str):  # type: ignore[no-untyped-def]
     try:
         from app.core.auth import get_tenant_id
@@ -171,6 +174,7 @@ def update_rule(rule_id: str):  # type: ignore[no-untyped-def]
 
 @rules_bp.route("/<rule_id>", methods=["DELETE"])
 @jwt_required()
+@require_permission("rules:write")
 def delete_rule(rule_id: str):  # type: ignore[no-untyped-def]
     try:
         from app.core.auth import get_tenant_id
@@ -195,6 +199,7 @@ def delete_rule(rule_id: str):  # type: ignore[no-untyped-def]
 
 @rules_bp.route("/<rule_id>/toggle", methods=["POST"])
 @jwt_required()
+@require_permission("rules:write")
 def toggle_rule(rule_id: str):  # type: ignore[no-untyped-def]
     try:
         from app.core.auth import get_tenant_id

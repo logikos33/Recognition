@@ -18,6 +18,7 @@ from flask_jwt_extended import jwt_required
 from app.core.auth import get_current_user_id
 from app.core.exceptions import EpiMonitorError, NotFoundError, ValidationError
 from app.core.rate_limiting import get_rate_limit_identifier
+from app.core.tenant import require_permission
 from app.core.responses import error, success
 from app.core.validators import VideoUploadValidator
 from app.extensions import limiter
@@ -58,6 +59,7 @@ def _video_repo() -> VideoRepository:
 @videos_bp.route("/upload", methods=["POST"])
 @limiter.limit("10 per hour", key_func=get_rate_limit_identifier)
 @jwt_required()
+@require_permission("training:write")
 def upload_video():  # type: ignore[no-untyped-def]
     """Upload video file directly (multipart/form-data).
     ---
@@ -125,6 +127,7 @@ def upload_video():  # type: ignore[no-untyped-def]
 
 @videos_bp.route("/upload-url", methods=["POST"])
 @jwt_required()
+@require_permission("training:write")
 def get_upload_url():  # type: ignore[no-untyped-def]
     """Get presigned URL for direct upload to R2.
     ---
@@ -196,6 +199,7 @@ def get_upload_url():  # type: ignore[no-untyped-def]
 
 @videos_bp.route("/<video_id>/extract", methods=["POST"])
 @jwt_required()
+@require_permission("training:write")
 def trigger_extraction(video_id: str):  # type: ignore[no-untyped-def]
     """Trigger frame extraction for a video."""
     try:
@@ -275,6 +279,7 @@ def get_video_status(video_id: str):  # type: ignore[no-untyped-def]
 
 @videos_bp.route("/<video_id>", methods=["DELETE"])
 @jwt_required()
+@require_permission("training:write")
 def delete_video(video_id: str):  # type: ignore[no-untyped-def]
     """Delete a video and its frames."""
     try:
@@ -334,6 +339,7 @@ def delete_video(video_id: str):  # type: ignore[no-untyped-def]
 
 @videos_bp.route("/<video_id>/upload-complete", methods=["POST"])
 @jwt_required()
+@require_permission("training:write")
 def upload_complete(video_id: str):  # type: ignore[no-untyped-def]
     """Signal that R2 direct upload finished — queue server-side frame extraction.
 
@@ -368,6 +374,7 @@ def upload_complete(video_id: str):  # type: ignore[no-untyped-def]
 
 @videos_bp.route("/<video_id>/retry-extraction", methods=["POST"])
 @jwt_required()
+@require_permission("training:write")
 def retry_extraction(video_id: str):  # type: ignore[no-untyped-def]
     """Reset video to pending and re-dispatch frame extraction."""
     try:
@@ -421,6 +428,7 @@ def get_download_url(video_id: str):  # type: ignore[no-untyped-def]
 
 @videos_bp.route("/<video_id>/frames/upload", methods=["POST"])
 @jwt_required()
+@require_permission("training:write")
 def upload_frame(video_id: str):  # type: ignore[no-untyped-def]
     """Receive a single JPEG frame from browser extraction and persist it."""
     try:
@@ -458,6 +466,7 @@ def upload_frame(video_id: str):  # type: ignore[no-untyped-def]
 
 @videos_bp.route("/<video_id>/finalize-extraction", methods=["POST"])
 @jwt_required()
+@require_permission("training:write")
 def finalize_extraction(video_id: str):  # type: ignore[no-untyped-def]
     """Mark video as extracted after browser-side frame capture completes."""
     try:
@@ -635,6 +644,7 @@ def _run_extraction(video_id: str, user_id: str, filename: str) -> None:  # type
 
 @videos_bp.route("/<video_id>/server-extract", methods=["POST"])
 @jwt_required()
+@require_permission("training:write")
 def server_extract(video_id: str):  # type: ignore[no-untyped-def]
     """Start server-side frame extraction in a background thread.
 
@@ -691,6 +701,7 @@ _MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 @videos_bp.route("/images/upload", methods=["POST"])
 @jwt_required()
+@require_permission("training:write")
 def upload_images():  # type: ignore[no-untyped-def]
     """Upload direct images (JPG/PNG/WebP) as training frames.
 

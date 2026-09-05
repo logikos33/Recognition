@@ -111,6 +111,15 @@ PERMISSION_REGISTRY: dict[str, dict[str, Any]] = {
         "Permite exportar o histórico de alertas em CSV/Excel.",
         "Alertas", ["superadmin", "admin", "operator", "analyst"],
     ),
+    # Regra de alerta = o que decide se uma violação vira alerta. Apagar uma
+    # regra silencia o monitoramento; não havia chave para isso e o blueprint
+    # /api/rules rodava só com @jwt_required (issue #785).
+    "rules:write": _entry(
+        "Configurar regras de alerta",
+        "Permite criar, editar, ativar/desativar e remover as regras que "
+        "transformam uma detecção em alerta.",
+        "Alertas", ["superadmin", "admin"], enforced=True,
+    ),
     # ── Treinamento ───────────────────────────────────────────────────────────
     "frames:annotate": _entry(
         "Anotar frames",
