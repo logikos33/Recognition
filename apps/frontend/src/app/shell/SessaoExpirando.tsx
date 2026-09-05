@@ -75,6 +75,13 @@ export function SessaoExpirando({ expiraEm, onEntrarDeNovo, onExpirou }: SessaoE
     onExpirou?.()
   }, [expirou, onExpirou])
 
+  // "Agora não" vale por SESSÃO, não para sempre. O `Shell` relê o `exp` de
+  // minuto em minuto porque o token troca sem desmontar o shell (renovação do
+  // contexto assumido, login em outra aba) — e o cartão não desmonta junto.
+  // Sem este reset, quem dispensasse uma vez ficaria sem o aviso do token
+  // SEGUINTE e descobriria a expiração pela tela parando de responder.
+  useEffect(() => setDispensado(false), [alvo])
+
   // Foco no aviso assim que ele aparece — senão o teclado teria de varrer a
   // página inteira até cá. Vai no botão NÃO destrutivo (ver docstring).
   useEffect(() => {

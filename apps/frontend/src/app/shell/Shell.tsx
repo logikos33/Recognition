@@ -76,7 +76,7 @@ export const SEM_BARRA_LATERAL = [
 
 export function Shell({ carregando }: ShellProps) {
   const { can, isSuperAdmin, logout } = useAuth()
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
   const comBarraLateral = !SEM_BARRA_LATERAL.some((r) => pathname.startsWith(r))
   // Publica --lk-marca clampada; os tokens leem dela. Ver DECISÃO v2 item 3.
   useMarcaDoTenant()
@@ -244,24 +244,43 @@ export function Shell({ carregando }: ShellProps) {
                * `lazy()` atravessa o `Suspense` (que não captura erro), então
                * um boundary por dentro nunca o veria.
                *
-               * `key={pathname}`: o boundary guarda `hasError` no estado e não
-               * o solta sozinho. Sem a chave, quem clicasse no menu depois do
-               * erro trocava a URL e continuava olhando a tela de erro — beco
-               * sem saída até dar F5. Trocar a chave remonta o boundary limpo,
-               * e a nav volta a ser saída de verdade (regra C2).
+               * `key`: o boundary guarda `hasError` no estado e não o solta
+               * sozinho. Sem chave, quem clicasse no menu depois do erro
+               * trocava a URL e continuava olhando a tela de erro — beco sem
+               * saída até dar F5. Trocar a chave remonta o boundary limpo, e a
+               * nav volta a ser saída de verdade (regra C2).
                *
-               * O preço da chave, dito por extenso: ela remonta a subárvore em
-               * TODA troca de caminho, inclusive entre sub-abas de uma mesma
-               * área (`/novo/estudio/dados` → `/novo/estudio/cobertura`
-               * remonta o layout do Estúdio). Medido antes de aceitar: os
-               * layouts de Estúdio e Admin não guardam estado nenhum (nenhum
-               * `useState`/`useQuery`), e o cache do react-query sobrevive ao
-               * remonte. No dia em que um layout desses passar a guardar
-               * estado, o conserto é o `ErrorBoundary` ganhar `resetKeys`
-               * (como o do `react-error-boundary`) em vez de `key` — aí o
-               * reset deixa de custar remonte.
+               * A chave é a localização INTEIRA (caminho + querystring), e não
+               * só o caminho. Com `pathname` sozinho, um deep-link para a tela
+               * em que o usuário JÁ ESTÁ não chegava: o React Router mantém o
+               * elemento montado quando só a querystring muda, e as quatro
+               * telas do /novo que leem querystring (`epi/Eventos`,
+               * `estudio/Dados`, `estudio/Classificar`,
+               * `acesso/RedefinirSenha`) a leem UMA vez, em inicializador de
+               * `useState`. Medido com a tela real montada: estando em
+               * `/novo/epi/eventos` e clicando na notificação do sino, as
+               * chamadas depois do clique eram `[]` — nem refetch, nem filtro,
+               * nem realce; a URL mudava e a tela não. É o caminho mais
+               * provável do sino, porque é onde o operador de EPI fica.
+               *
+               * O preço, dito por extenso: a subárvore remonta em toda troca
+               * de caminho E de querystring — entre sub-abas de uma mesma área
+               * (`/novo/estudio/dados` → `/novo/estudio/cobertura`) e num
+               * deep-link que só troca parâmetros (a tela de eventos perde
+               * seleção e página, que é o que se quer ao pular para outra
+               * câmera). Medido antes de aceitar: os layouts de Estúdio e
+               * Admin não guardam estado nenhum (nenhum `useState`/`useQuery`),
+               * o cache do react-query sobrevive ao remonte, e NENHUMA tela do
+               * /novo escreve na URL (`setSearchParams` = zero ocorrências em
+               * `src/app`) — então remonte por querystring só acontece quando
+               * alguém navega de propósito. Essa premissa tem alarme: o teste
+               * "nenhuma tela do /novo escreve na URL" em `Shell.test.tsx`
+               * fica vermelho no dia em que uma passar a escrever. Nesse dia o
+               * conserto é o `ErrorBoundary` ganhar `resetKeys` (como o do
+               * `react-error-boundary`) em vez de `key`, e a tela que escreve
+               * derivar o estado dos parâmetros em vez de copiá-los no mount.
                */
-              <ErrorBoundary key={pathname}>
+              <ErrorBoundary key={pathname + search}>
                 <Suspense
                   fallback={
                     <LogikosLoader estado="entering" variante="fullscreen" rotulo="ABRINDO" />

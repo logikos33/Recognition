@@ -156,3 +156,43 @@ describe('desmonte', () => {
     expect(aoExpirar).not.toHaveBeenCalled()
   })
 })
+
+/**
+ * "Agora não" dispensa ESTA sessão, não o aviso para sempre.
+ *
+ * O `Shell` relê o `exp` do token de minuto em minuto, porque o token TROCA
+ * sem desmontar o shell (renovação do contexto assumido, login em outra aba).
+ * Como o cartão não desmonta entre um token e outro, um `dispensado` que nunca
+ * volta atrás silencia o aviso do token NOVO: o operador perderia o único
+ * heads-up de 5 minutos e descobriria a expiração ao ver a tela parar de
+ * responder. O estado é por prazo — muda o prazo, volta o aviso.
+ */
+describe('o "Agora não" vale por sessão, não para sempre', () => {
+  it('some com o cartão enquanto ainda dá tempo', () => {
+    montar(4 * MIN)
+    fireEvent.click(screen.getByRole('button', { name: /agora não/i }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+  })
+
+  it('o cartão volta quando o token é trocado por um com outro prazo', () => {
+    const tela = render(
+      <SessaoExpirando expiraEm={Date.now() + 4 * MIN} onEntrarDeNovo={vi.fn()} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /agora não/i }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+
+    // Token novo (outro `exp`), já perto do fim — o aviso é devido de novo.
+    tela.rerender(
+      <SessaoExpirando expiraEm={Date.now() + 3 * MIN} onEntrarDeNovo={vi.fn()} />,
+    )
+    expect(screen.getByRole('alertdialog')).toBeTruthy()
+  })
+
+  it('mesmo dispensado, o cartão volta ao expirar — não se esconde uma sessão morta', () => {
+    montar(4 * MIN)
+    fireEvent.click(screen.getByRole('button', { name: /agora não/i }))
+    avancar(4 * MIN)
+    expect(screen.getByRole('alertdialog')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /entrar de novo/i })).toBeTruthy()
+  })
+})

@@ -6,10 +6,13 @@
  * de tela ao recolher a sidebar, e aviso de sessão disparado com prazo que não
  * existe.
  */
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useSearchParams } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const auth = vi.hoisted(() => ({
@@ -37,12 +40,29 @@ vi.mock('../../services/tenantContext', () => ({
 
 import { Shell } from './Shell'
 
+/**
+ * Tela que lê a querystring do jeito que as telas reais do /novo leem: um
+ * inicializador preguiçoso de `useState`, que roda UMA vez, no mount.
+ *
+ * Não é invenção do teste — é o padrão dos QUATRO leitores de querystring do
+ * front novo, medido com `grep -rn useSearchParams apps/frontend/src/app`:
+ * `epi/Eventos.tsx` (camera_id/acknowledged/kind/highlight — o destino do
+ * sino), `estudio/Dados.tsx`, `estudio/Classificar.tsx` e
+ * `acesso/RedefinirSenha.tsx`. Nenhum deles reage a uma MUDANÇA de parâmetro
+ * depois de montado.
+ */
+function TelaQueLeQuerystring() {
+  const [p] = useSearchParams()
+  const [cameraNoMount] = useState(() => p.get('camera_id') ?? 'nenhuma')
+  return <p>filtrando por: {cameraNoMount}</p>
+}
+
 /** Uma tela que estoura no render — o caso do ErrorBoundary. */
 function TelaQueEstoura(): never {
   throw new Error('boom da tela')
 }
 
-function montar(rota = '/novo/epi/live', extras?: ReactNode) {
+function montar(rota = '/novo/epi/live', extras?: ReactNode, telaEventos?: ReactNode) {
   const cliente = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={cliente}>
@@ -51,7 +71,10 @@ function montar(rota = '/novo/epi/live', extras?: ReactNode) {
           <Route path="/novo" element={<Shell />}>
             <Route path="epi/live" element={<p>conteúdo da tela</p>} />
             <Route path="epi/dashboard" element={<p>painel de verdade</p>} />
-            <Route path="epi/eventos" element={<p>tela NOVA de eventos</p>} />
+            <Route
+              path="epi/eventos"
+              element={telaEventos ?? <p>tela NOVA de eventos</p>}
+            />
             {extras}
           </Route>
           {/* O endereço do front ANTIGO existe de verdade no app. Se o sino
@@ -247,6 +270,77 @@ describe('sino de notificações no shell novo', () => {
   })
 })
 
+
+/**
+ * O deep-link do sino tem de CHEGAR — inclusive na tela em que o usuário já
+ * está, que é justamente onde um operador de EPI passa o turno.
+ *
+ * Medido no cético, com a tela REAL (`app/epi/Eventos.tsx`) montada e o
+ * `api.get` espionado: estando em `/novo/epi/eventos` e clicando na
+ * notificação, as chamadas depois do clique eram `[]` — nem refetch, nem
+ * filtro, nem realce. A URL mudava e a tela não. React Router mantém o
+ * elemento MONTADO quando só a querystring muda, e as quatro telas do /novo
+ * que leem querystring a leem uma única vez, no mount.
+ *
+ * Por isso a chave do boundary é a localização INTEIRA, e não só o caminho.
+ * O preço, dito por extenso: uma navegação que muda só a querystring remonta
+ * a subárvore (a tela de eventos perde seleção e página). É o que se quer num
+ * deep-link — você está pulando para OUTRA câmera — e só acontece quando
+ * alguém navega de propósito: nenhuma tela do /novo escreve na URL. O teste
+ * seguinte é o alarme para o dia em que uma passar a escrever.
+ */
+describe('deep-link chega mesmo na tela em que o usuário já está', () => {
+  it('clicar na notificação aplica a câmera, estando já na tela de eventos', async () => {
+    get.mockResolvedValue({
+      data: {
+        alerts: [{
+          id: 'a1',
+          camera_id: 'cam-expedicao',
+          camera_name: 'Entrada Expedição',
+          violations: [{ class: 'no_helmet', confidence: 0.9 }],
+          acknowledged: false,
+          created_at: '2026-09-05T13:39:00Z',
+        }],
+        total: 1,
+        total_situacoes: 1,
+      },
+    })
+    montar('/novo/epi/eventos', undefined, <TelaQueLeQuerystring />)
+    expect(screen.getByText(/filtrando por: nenhuma/)).toBeTruthy()
+
+    fireEvent.click(await screen.findByLabelText('Notificações'))
+    fireEvent.click(await screen.findByRole('button', { name: /Entrada Expedição/ }))
+
+    await waitFor(() =>
+      expect(screen.getByText(/filtrando por: cam-expedicao/)).toBeTruthy(),
+    )
+  })
+
+  it('nenhuma tela do /novo escreve na URL — a premissa da chave por localização', () => {
+    // Se este teste ficar vermelho, alguém pôs `setSearchParams` numa tela do
+    // /novo: a partir daí a chave do boundary remontaria a tela a cada troca
+    // de filtro. O conserto NÃO é afrouxar este teste — é o ErrorBoundary
+    // ganhar `resetKeys` (react-error-boundary) e a tela que escreve na URL
+    // passar a DERIVAR o estado dos parâmetros em vez de copiá-los no mount.
+    const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
+    const escritores: string[] = []
+    const varrer = (d: string) => {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const alvo = path.join(d, e.name)
+        if (e.isDirectory()) varrer(alvo)
+        else if (/\.tsx?$/.test(e.name) && !/\.test\./.test(e.name)) {
+          // A CHAMADA, não a menção: este arquivo e o `Shell.tsx` citam o
+          // nome em comentário.
+          if (fs.readFileSync(alvo, 'utf8').includes('setSearchParams(')) {
+            escritores.push(path.relative(dir, alvo))
+          }
+        }
+      }
+    }
+    varrer(dir)
+    expect(escritores).toEqual([])
+  })
+})
 
 /**
  * O front novo não tinha saída nenhuma: o único `logout()` da árvore `app/` era
