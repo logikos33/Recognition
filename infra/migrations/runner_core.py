@@ -41,7 +41,10 @@ import os
 import re
 from dataclasses import dataclass, field
 
-import psycopg2
+# psycopg2 é importado DENTRO de run_legacy/run_ledger, não aqui: o guard-rail de
+# CI (scripts/ci/check_migrations_hygiene.py) importa este módulo só para usar
+# `destructive_reason`, e roda num job de propósito sem banco e sem deps externas.
+# Mesmo padrão de backfill_schema_migrations.py.
 
 DEFAULT_MIGRATIONS_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -282,6 +285,8 @@ def run_legacy(
         log.error("Nenhum arquivo .sql encontrado em %s", migrations_dir)
         return False
     log.info("  %d arquivo(s) em %s", len(files), migrations_dir)
+
+    import psycopg2  # fora do try: falta de driver é erro de build, não de conexão
 
     try:
         conn = psycopg2.connect(dsn)
@@ -548,6 +553,8 @@ def run_ledger(dsn: str, migrations_dir: str = DEFAULT_MIGRATIONS_DIR, log: logg
         log.error("Nenhum arquivo .sql encontrado em %s", migrations_dir)
         return False
     log.info("  %d arquivo(s) em %s", len(files), migrations_dir)
+
+    import psycopg2
 
     conn = psycopg2.connect(dsn)
     try:
