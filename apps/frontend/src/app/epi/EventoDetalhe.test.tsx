@@ -501,3 +501,38 @@ describe('correção de caixa', () => {
     expect(badge.textContent).not.toContain('u-9')
   })
 })
+
+// ── 409: outra pessoa julgou primeiro (issue #675) ──────────────────────────
+
+describe('veredito que colidiu com o de outra pessoa', () => {
+  const FRASE = 'Maria Silva já avaliou este alerta há 2 minutos'
+
+  const julgar = async (erro: Error) => {
+    pode.mockReturnValue(true)
+    responde(EVENTO)
+    post.mockRejectedValue(erro)
+    montar()
+    fireEvent.click(await screen.findByRole('button', { name: /confirmar/i }))
+    await waitFor(() => expect(post).toHaveBeenCalled())
+  }
+
+  it('409 vira INFORMAÇÃO com quem julgou e quando — não "não foi possível"', async () => {
+    // FALHA ANTES: o `catch` era cego e escrevia sempre "Não foi possível
+    // registrar o veredito." em vermelho — mentira sobre um veredito que FOI
+    // registrado (só que por outra pessoa), e convite a clicar de novo.
+    await julgar(new ApiError(FRASE, 409))
+    expect((await screen.findByRole('status')).textContent).toBe(FRASE)
+    expect(screen.queryByText('Não foi possível registrar o veredito.')).toBeNull()
+  })
+
+  it('relê o alerta para o chip do cabeçalho mostrar o veredito que EXISTE', async () => {
+    await julgar(new ApiError(FRASE, 409))
+    // 1 do carregamento inicial + 1 do refetch pós-409
+    await waitFor(() => expect(get.mock.calls.length).toBeGreaterThanOrEqual(2))
+  })
+
+  it('erro de verdade (500) continua sendo erro', async () => {
+    await julgar(new ApiError('boom', 500))
+    expect(await screen.findByText('Não foi possível registrar o veredito.')).toBeTruthy()
+  })
+})

@@ -1,27 +1,19 @@
 ## O que muda
-<!-- Resumo objetivo. Link da task (tools/agent-driver/tasks/task-NNN-*.md) e ADRs referenciadas. -->
-- Task:
-- ADR(s):
-- Classificação de impacto: <!-- P0-CRÍTICO | P1-ALTO | P2-MÉDIO | P3-BAIXO -->
+<!-- 1 a 3 linhas. O porquê, não o diff. -->
 
-## Como testei (evidência obrigatória)
-<!-- Cole a saída. Sem evidência, o PR não avança. -->
-- [ ] Teste **falha-antes/passa-depois** (mostrar vermelho→verde)
-- [ ] `pytest` (área afetada) verde
-- [ ] `ruff check .` (se backend) / `npx tsc --noEmit` (se frontend)
-- [ ] Migration: forward-only, **commit separado**, harness rodado **2x** (idempotência) — colar saída
-- [ ] UI: **screenshots antes/depois**
+Closes #
 
-## Disciplinas
-- [ ] Nasceu em worktree de `origin/develop` (não `wip/*`)
-- [ ] Multi-tenant: query filtra tenant; cross-tenant → 404 (C-01)
-- [ ] Sem AGPL no caminho servido (detector ONNX Apache)
-- [ ] Sem segredo commitado; sem f-string com input em SQL; sem `print()` no backend
-- [ ] `risk:security` → security-review + **STOP-for-review** (não mergear sem gate humano)
+**Impacto:** `P0` `P1` `P2` `P3` <!-- apague os outros três -->
 
-## Registro
-- [ ] Atualizei status da task, `docs/CHANGELOG.md` e (se schema) `docs/DATABASE.md`
-- [ ] ADR/`DECISIONS.md` atualizados conforme a decisão
+## Zona quente tocada
+<!-- Marque o que o diff encosta. Marcou = as regras daquela zona valem (CLAUDE.md / constitution.md).
+     Nada marcado = mudança fria, segue com a prova abaixo e pronto. -->
+- [ ] auth / tenant — [ ] permissão / role — [ ] migration — [ ] SQL
+- [ ] evento / alerta — [ ] treino / modelo — [ ] caminho servido (inferência)
 
-## Pós-merge
-- [ ] Excluir branch (local+remota) e remover worktree · [ ] Equalizar ambientes se houve promoção
+## Prova
+- [ ] Mutação rodada (tirei a correção → ficou vermelho; recoloquei → verde) — **S / N**
+- Comando e saída:
+
+```
+```

@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams, useNavigate, NavLink } from 'react-router-dom'
 import { useToast } from '../components/ui/Toast/useToast'
-import { api } from '../services/api'
+import { ApiError, api } from '../services/api'
 import { Button } from '../components/ui/Button/Button'
 import { LoadingSpinner } from '../components/shared/LoadingSpinner'
 import {
@@ -17,10 +17,12 @@ import {
 } from './AlertsHistoryPage.css'
 import { vars } from '../styles/theme.css'
 import { labelForClass } from '../utils/labels'
-import { ProcedenciaBadge } from '../components/shared/ProcedenciaBadge'
+import { ProcedenciaEvento } from '../components/shared/ProcedenciaEvento'
 import { VereditoBadge, vereditoHumano } from '../components/shared/VereditoHumano'
 
-interface Violation { class: string; confidence: number }
+/** `origem`/`lote` chegam porque `list_with_filters` faz `SELECT a.*` — o
+ *  JSONB `violations` vem cru do banco. */
+interface Violation { class: string; confidence: number; origem?: string; lote?: string }
 interface Alert {
   id: string; camera_id: string; camera_name?: string
   violations: Violation[]; acknowledged: boolean; created_at: string
@@ -143,7 +145,20 @@ export function AlertsHistoryPage() {
     try {
       await api.post(`/verification/${alertId}/review`, { verdict })
       await loadAlerts()
-    } catch { toast.error('Não foi possível registrar o veredito') }
+    } catch (e) {
+      // 409 = OUTRA PESSOA julgou primeiro (guarda `verification_verdict IS
+      // NULL OR verified_by = <eu>` do UPDATE, verification_service.py). É
+      // INFORMAÇÃO: a mensagem do servidor diz quem julgou e quando, e a
+      // lista recarrega para a coluna de veredito mostrar a decisão que
+      // existe. ⛔ Nunca `toast.error` genérico — faria o operador clicar de
+      // novo no que já foi resolvido (mesma regra do bloco 4 de Verificacao).
+      if (e instanceof ApiError && e.status === 409) {
+        toast.info('Alerta já revisado', e.message)
+        await loadAlerts()
+      } else {
+        toast.error('Não foi possível registrar o veredito')
+      }
+    }
     finally { setJudgingId(null) }
   }
 
@@ -265,7 +280,15 @@ export function AlertsHistoryPage() {
                     >
                       <td className={tdDate}>
                         {new Date(alert.timestamp ?? alert.created_at).toLocaleString('pt-BR')}{' '}
-                        <ProcedenciaBadge capturadoEm={alert.timestamp} gravadoEm={alert.created_at} />
+                        {/* Procedência: origem DECLARADA (`violations[].origem`)
+                            primeiro, atraso captura→gravação só como fallback
+                            (issue #670). O critério temporal sozinho ficava mudo
+                            em 4.609 dos 5.174 eventos do DEV. */}
+                        <ProcedenciaEvento
+                          violations={alert.violations}
+                          capturadoEm={alert.timestamp}
+                          gravadoEm={alert.created_at}
+                        />
                       </td>
                       <td className={tdCamera}>
                         {/* Link real (não só onClick na <tr>): teclado e

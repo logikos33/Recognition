@@ -40,6 +40,13 @@ const SILENT_RULES: Array<{ statuses: number[]; pathContains: string }> = [
   // contexto" vs. este mesmo toast) para não duplicar — ver
   // services/crossTenantCameras.ts.
   { statuses: [404], pathContains: '/stream/info' },
+  // 409 em /verification = OUTRA PESSOA julgou o alerta primeiro (guarda do
+  // UPDATE em verification_service.py). NÃO é falha do operador, e as cinco
+  // telas que chamam `POST /verification/<id>/review` já mostram a frase do
+  // servidor ("Fulana já avaliou este alerta há 2 minutos") no seu próprio
+  // aviso. Sem esta regra saíam DOIS toasts para o mesmo fato — e o genérico
+  // saía VERMELHO, dizendo que deu erro o que na verdade é informação.
+  { statuses: [409], pathContains: '/verification' },
 ]
 
 export function showErrorToast(status: number, url: string, rawMessage: string) {

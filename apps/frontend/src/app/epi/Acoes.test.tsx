@@ -32,7 +32,12 @@ const { get, post, navegar } = vi.hoisted(() => ({
   navegar: vi.fn(),
 }))
 
-vi.mock('../../services/api', () => ({ api: { get: (p: string) => get(p), post: (p: string, b?: unknown) => post(p, b) } }))
+// `ApiError` fica REAL: `julgar` distingue 409 ("outra pessoa julgou") de
+// qualquer outro status por `instanceof`, e um dublê quebraria a distinção.
+vi.mock('../../services/api', async () => {
+  const real = await vi.importActual<Record<string, unknown>>('../../services/api')
+  return { ...real, api: { get: (p: string) => get(p), post: (p: string, b?: unknown) => post(p, b) } }
+})
 
 vi.mock('react-router-dom', async () => {
   const real = await vi.importActual<Record<string, unknown>>('react-router-dom')
@@ -44,6 +49,8 @@ vi.mock('../../hooks/useAuth', () => ({
   useAuth: () => ({ can: (p: string) => permissoes.includes(p) }),
 }))
 
+import { ApiError } from '../../services/api'
+import { useToastStore } from '../../components/ui/Toast/useToast'
 import { Acoes } from './Acoes'
 
 const evento = (
@@ -106,6 +113,7 @@ beforeEach(() => {
   get.mockReset()
   post.mockReset()
   navegar.mockReset()
+  useToastStore.setState({ toasts: [] })
   permissoes = ['alerts:read', 'alerts:feedback']
 })
 
@@ -410,5 +418,63 @@ describe('rajada (ux2/dedup) — cartão não repete a mesma cena', () => {
     render(<Acoes />, { wrapper: MemoryRouter })
     await screen.findByText('0/1 RECONHECIDAS')
     expect(screen.queryByText(/SITUAÇÕES/)).toBeNull()
+  })
+})
+
+// ── 409: alguém julgou primeiro (issue #675) ────────────────────────────────
+
+describe('veredito que colidiu com o de outra pessoa', () => {
+  const ID = '77777777-0000-0000-0000-000000000001'
+
+  /** O que o backend responde quando outra pessoa já julgou: 409 com QUEM e
+   *  QUANDO (guarda `verification_verdict IS NULL OR verified_by = <eu>` do
+   *  UPDATE, em verification_service.py). */
+  const CONFLITO = new ApiError('Maria Silva já avaliou este alerta há 2 minutos', 409)
+
+  const montarComConflito = async () => {
+    permissoes = ['alerts:read', 'alerts:feedback', 'verification:write']
+    servir([evento(ID, false)], [])
+    post.mockRejectedValue(CONFLITO)
+    render(<Acoes />, { wrapper: MemoryRouter })
+    const botao = await screen.findByRole('button', { name: /^confirmar$/i })
+    botao.click()
+    await waitFor(() => expect(post).toHaveBeenCalled())
+  }
+
+  it('o kanban CONTINUA VIVO — 409 num cartão não vira tela de erro', async () => {
+    // FALHA ANTES: `julgar` fazia setErro()+setFase('erro') em QUALQUER
+    // exceção, e a tela inteira (duas colunas, taxa, cartões) virava
+    // "Não foi possível carregar · GET /api/alerts" — uma rota que nem falhou.
+    await montarComConflito()
+    await waitFor(() => expect(screen.queryByText('Não foi possível carregar')).toBeNull())
+    // o trabalho continua na tela
+    expect(screen.getByRole('button', { name: /^confirmar$/i })).toBeTruthy()
+  })
+
+  it('informa QUEM julgou e QUANDO, e não como erro', async () => {
+    await montarComConflito()
+    await waitFor(() => {
+      const t = useToastStore.getState().toasts
+      expect(t.some((x) => x.variant === 'info'
+        && x.description === 'Maria Silva já avaliou este alerta há 2 minutos')).toBe(true)
+      expect(t.some((x) => x.variant === 'error')).toBe(false)
+    })
+  })
+
+  it('recarrega para o cartão passar a mostrar o veredito que EXISTE', async () => {
+    await montarComConflito()
+    // 3 do primeiro carregamento + 3 do recarregamento pós-409
+    await waitFor(() => expect(get.mock.calls.filter((c) => String(c[0]).startsWith('/alerts?')).length)
+      .toBeGreaterThanOrEqual(6))
+  })
+
+  it('falha COMUM (500) também não derruba o kanban — vira toast', async () => {
+    permissoes = ['alerts:read', 'alerts:feedback', 'verification:write']
+    servir([evento(ID, false)], [])
+    post.mockRejectedValue(new ApiError('Erro interno do servidor', 500))
+    render(<Acoes />, { wrapper: MemoryRouter })
+    ;(await screen.findByRole('button', { name: /^confirmar$/i })).click()
+    await waitFor(() => expect(useToastStore.getState().toasts.some((x) => x.variant === 'error')).toBe(true))
+    expect(screen.queryByText('Não foi possível carregar')).toBeNull()
   })
 })
