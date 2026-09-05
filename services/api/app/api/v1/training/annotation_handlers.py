@@ -56,10 +56,17 @@ def get_annotations_handler(frame_id: str):
     try:
         user_id = get_current_user_id()
         tenant_id = get_tenant_id()
-        annotations = get_annotation_service().get_frame_annotations(
-            UUID(frame_id), user_id, tenant_id
-        )
-        return jsonify({"success": True, "annotations": annotations}), 200
+        service = get_annotation_service()
+        annotations = service.get_frame_annotations(UUID(frame_id), user_id, tenant_id)
+        # `version` é o token de concorrência (#801): o cliente devolve este
+        # mesmo valor no POST e só assim tem direito de substituir o que leu.
+        # Depois de `get_frame_annotations` de propósito — é ela que faz o
+        # ownership check; invertido, respondia hash de frame de outro tenant.
+        return jsonify({
+            "success": True,
+            "annotations": annotations,
+            "version": service.annotations_version(UUID(frame_id)),
+        }), 200
     except EpiMonitorError:
         raise
     except Exception as exc:
@@ -106,10 +113,22 @@ def save_annotations_handler(frame_id: str):
         tenant_id = get_tenant_id()
         data = request.get_json() or {}
         annotations = data.get("annotations", [])
-        count = get_annotation_service().save_annotations(
-            UUID(frame_id), annotations, UUID(str(user_id)), tenant_id
+        versao = data.get("version")
+        if versao is not None and not isinstance(versao, str):
+            return error("version deve ser string", 400)
+        service = get_annotation_service()
+        count = service.save_annotations(
+            UUID(frame_id), annotations, UUID(str(user_id)), tenant_id,
+            versao_esperada=versao,
         )
-        return jsonify({"success": True, "saved": count}), 200
+        # Devolve a versão NOVA: sem isto o cliente ficaria com a versão que
+        # ele mesmo acabou de invalidar e o próximo autosave do mesmo frame
+        # bateria em 409 contra o próprio trabalho.
+        return jsonify({
+            "success": True,
+            "saved": count,
+            "version": service.annotations_version(UUID(frame_id)),
+        }), 200
     except EpiMonitorError:
         raise
     except Exception as exc:

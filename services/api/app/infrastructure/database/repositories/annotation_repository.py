@@ -1,7 +1,10 @@
 """Repository: Frame Annotations + YOLO Classes."""
+import hashlib
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
+from app.core.exceptions import ConflictError
 from app.infrastructure.database.repositories.base import BaseRepository
 
 #: Casas decimais para decidir "a mesma caixa". Coordenada normalizada com 6
@@ -27,6 +30,56 @@ def _chave_geometrica(
         round(float(width), _CASAS_GEOMETRIA),
         round(float(height), _CASAS_GEOMETRIA),
     )
+
+
+#: Versão de um frame SEM anotação nenhuma. Nome legível de propósito: aparece
+#: cru no JSON da rota e no log — "vazio" se explica sozinho, um hash de lista
+#: vazia não.
+VERSAO_VAZIA = "vazio"
+
+
+def versao_das_linhas(linhas: "list[dict[str, Any]]") -> str:
+    """Impressão digital do estado atual das anotações de um frame.
+
+    `save_batch` é delete-then-insert: TODA gravação apaga as linhas antigas e
+    cria linhas novas, com `id` novo (`gen_random_uuid()`, migration 003). O
+    conjunto de ids é, portanto, uma versão exata e de graça — muda a cada
+    save, não muda sozinho, e não precisa de coluna nova nem de migration.
+
+    Ordenado antes de concatenar: a versão não pode depender da ordem em que o
+    Postgres devolveu as linhas.
+    """
+    ids = sorted(str(linha["id"]) for linha in linhas)
+    if not ids:
+        return VERSAO_VAZIA
+    return hashlib.blake2b("|".join(ids).encode(), digest_size=8).hexdigest()
+
+
+def _ha_quanto_tempo(quando: "datetime | None") -> str:
+    """Texto relativo ("há 2 minutos") para o aviso de conflito.
+
+    Relativo, não data absoluta: o anotador precisa saber se foi AGORA (o
+    colega ao lado, na mesma fila) ou semana passada.
+
+    ⚠️ Cópia da mesma função em `verification_service.py` (o 409 da fila de
+    Verificação). Duplicada de propósito nesta rodada: consolidar exigia
+    editar aquele arquivo, fora do escopo desta frente. Issue de unificação
+    aberta no PR.
+    """
+    if quando is None:
+        return "antes de você"
+    if quando.tzinfo is None:
+        quando = quando.replace(tzinfo=timezone.utc)
+    segundos = int((datetime.now(timezone.utc) - quando).total_seconds())
+    if segundos < 60:
+        return "agora há pouco"
+    if segundos < 3600:
+        m = segundos // 60
+        return f"há {m} minuto{'s' if m > 1 else ''}"
+    if segundos < 86400:
+        h = segundos // 3600
+        return f"há {h} hora{'s' if h > 1 else ''}"
+    return f"em {quando.astimezone().strftime('%d/%m/%Y %H:%M')}"
 
 
 class AnnotationRepository(BaseRepository):
@@ -562,13 +615,95 @@ class AnnotationRepository(BaseRepository):
             (str(frame_id),),
         )
 
+    def versao_do_frame(self, frame_id: UUID) -> str:
+        """Versão corrente das anotações do frame (ver `versao_das_linhas`).
+
+        É o que a rota GET devolve junto das caixas e o que a rota POST exige
+        de volta para autorizar a substituição — o contrato de "só apaga quem
+        viu o que estava lá".
+        """
+        return versao_das_linhas(
+            self._execute(
+                "SELECT id FROM frame_annotations WHERE frame_id = %s",
+                (str(frame_id),),
+            )
+        )
+
+    def _conflito(
+        self,
+        cur: Any,
+        linhas: "list[dict[str, Any]]",
+        autor_atual: "str | None",
+    ) -> "ConflictError | None":
+        """Decide se a substituição é conflito e monta a frase nominal.
+
+        Mesmo critério do 409 da fila de Verificação (`verification_service.
+        human_review`): **só o trabalho de OUTRA PESSOA bloqueia**.
+
+          · Toda caixa atual é minha, ou de máquina (`created_by` NULL —
+            Celery, propagação, chamada interna) → não é conflito. Sem esta
+            cláusula, aceitar uma proposta (`accept_pre_annotations` grava
+            linhas novas, logo versão nova) faria o PRÓPRIO anotador levar
+            409 na edição seguinte do mesmo frame.
+          · Caixa de OUTRA PESSOA → 409 citando ela e o horário.
+          · Frame esvaziado entre a minha leitura e o meu save (versão mudou
+            e não sobrou linha para atribuir) → 409 sem nome: re-gravar por
+            cima desfaria a decisão de alguém em silêncio.
+        """
+        dos_outros = [
+            linha for linha in linhas
+            if linha.get("created_by") and str(linha["created_by"]) != autor_atual
+        ]
+        if not dos_outros and linhas:
+            # Só caixa minha e/ou de máquina (created_by NULL: Celery,
+            # propagação, script). Nenhum trabalho humano alheio em jogo.
+            return None
+
+        recente = max(
+            dos_outros,
+            key=lambda linha: linha.get("created_at") or datetime.min,
+            default=None,
+        )
+        quem, quando = "Outro anotador", "antes de você"
+        if recente is not None:
+            quando = _ha_quanto_tempo(recente.get("created_at"))
+            # Nome, NUNCA o UUID: `created_by` é id interno (mesma regra do
+            # `_quem_julgou` da Verificação). Consulta só no ramo de conflito
+            # — o caminho feliz não paga JOIN nenhum.
+            cur.execute(
+                "SELECT name FROM public.users WHERE id = %s",
+                (str(recente["created_by"]),),
+            )
+            achado = cur.fetchone()
+            if achado and achado["name"]:
+                quem = achado["name"]
+        return ConflictError(
+            f"{quem} salvou anotações neste frame {quando}. "
+            "Nada foi sobrescrito — recarregue o frame para ver as caixas "
+            "dele antes de salvar as suas."
+        )
+
     def save_batch(
         self,
         frame_id: UUID,
         annotations: list[dict[str, Any]],
         user_id: "UUID | str | None" = None,
+        versao_esperada: "str | None" = None,
     ) -> int:
         """Salva batch de anotações (delete + insert) em transação única.
+
+        `versao_esperada` é a versão que o cliente LEU (GET .../annotations
+        devolve `version`). Sem ela, este método é replace-all cego: dois
+        anotadores no mesmo frame, e o segundo save apagava as caixas do
+        primeiro com 200 na cara dele (#801 — medido no DEV em 05/09). Com
+        ela, o delete-then-insert só roda sobre o estado que o cliente viu;
+        senão levanta `ConflictError` (409) dizendo QUEM salvou e QUANDO, e a
+        transação inteira faz rollback — nenhuma anotação humana é apagada.
+
+        `None` (o default) mantém o comportamento antigo para chamadas
+        internas sem cliente (Celery, scripts). ponytail: guarda opt-in, não
+        obrigatória — o Estúdio sempre manda a versão; tornar obrigatório
+        quando não houver mais cliente antigo em campo.
 
         AI_NOTE: US-027 — operação atômica: DELETE + INSERTs na mesma conexão.
         Rollback automático preserva anotações anteriores em caso de falha parcial.
@@ -587,6 +722,20 @@ class AnnotationRepository(BaseRepository):
         created_by = str(user_id) if user_id is not None else None
 
         def _transaction(conn, cur) -> int:
+            # TRAVA DA CORRIDA. Ler-conferir-apagar só é atômico se ninguém
+            # puder gravar entre a leitura e o apagamento. `frame_annotations`
+            # não serve de âncora: o caso REAL do #801 é o frame com ZERO
+            # caixas (os dois anotadores começam pelo mesmo primeiro frame da
+            # fila) — não há linha para travar, e os dois passariam pela
+            # conferência. A linha de `training_frames` existe sempre.
+            # A MESMA trava, na MESMA ordem, abre `accept_pre_annotations`:
+            # ordem de lock divergente entre os dois caminhos que escrevem
+            # neste par de tabelas é deadlock na certa.
+            cur.execute(
+                "SELECT id FROM training_frames WHERE id = %s FOR UPDATE",
+                (str(frame_id),),
+            )
+
             # Proveniência das caixas que este save NÃO mexeu (#536). O
             # delete-then-insert reescrevia TODA linha como source='manual':
             # abrir o estúdio num frame de proposta aceita e salvar sem tocar
@@ -602,9 +751,10 @@ class AnnotationRepository(BaseRepository):
             # movida, redimensionada ou nova entra como manual, que é o certo:
             # aí a geometria passou pela mão de gente.
             cur.execute(
-                "SELECT class_name, x_center, y_center, width, height, "
+                "SELECT id, class_name, x_center, y_center, width, height, "
                 "       source, reviewed_by, proposal_batch_id, "
-                "       proposal_model_id, proposal_confidence "
+                "       proposal_model_id, proposal_confidence, "
+                "       created_by, created_at "
                 "  FROM frame_annotations WHERE frame_id = %s",
                 (str(frame_id),),
             )
@@ -612,13 +762,24 @@ class AnnotationRepository(BaseRepository):
             # então cada linha é um dict e `r[0]` levanta KeyError. O teste de
             # unidade com cursor falso devolvia tuplas e passou — quem pegou foi
             # a chamada real contra o DEV, que voltou 500.
+            linhas = list(cur.fetchall())
+
+            # A GUARDA (#801). Substituição só é autorizada sobre o estado que
+            # o cliente LEU. Versão diferente = alguém gravou nesse meio-tempo;
+            # `_conflito` decide se é trabalho de OUTRA pessoa (409, rollback,
+            # nada apagado) ou meu próprio (segue o jogo).
+            if versao_esperada is not None and versao_esperada != versao_das_linhas(linhas):
+                conflito = self._conflito(cur, linhas, created_by)
+                if conflito is not None:
+                    raise conflito
+
             anterior = {
                 _chave_geometrica(r["class_name"], r["x_center"], r["y_center"],
                                   r["width"], r["height"]): (
                     r["source"], r["reviewed_by"], r["proposal_batch_id"],
                     r["proposal_model_id"], r["proposal_confidence"],
                 )
-                for r in cur.fetchall()
+                for r in linhas
             }
 
             cur.execute(
@@ -689,6 +850,15 @@ class AnnotationRepository(BaseRepository):
         """
 
         def _transaction(conn, cur) -> int:
+            # Mesma trava de `save_batch`, na MESMA ordem (frame primeiro,
+            # anotações depois). Serializa aceite × save concorrentes no mesmo
+            # frame e, sobretudo, mantém a ordem de lock idêntica: este método
+            # também escreve em `training_frames` (migration 111, no fim da
+            # transação), e ordem invertida entre os dois seria deadlock.
+            cur.execute(
+                "SELECT id FROM training_frames WHERE id = %s FOR UPDATE",
+                (str(frame_id),),
+            )
             count = 0
             for ann in annotations:
                 cur.execute(

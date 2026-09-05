@@ -388,9 +388,13 @@ class TestAnnotationRepository:
         count = self.repo.accept_pre_annotations(fid, annotations, uid)
         assert count == 1
 
-        # 1ª chamada = INSERT da anotação; 2ª (migration 111) = UPDATE que
-        # estampa pre_annotation_review_status='accepted' na MESMA transação.
-        insert_query, insert_params = self.pool.mock_cursor.execute.call_args_list[0][0]
+        # Escolhido por CONTEÚDO, não por posição: a transação abre com um
+        # SELECT ... FOR UPDATE (trava de concorrência do #801) e um índice
+        # fixo passou a apontar para ele.
+        insert_query, insert_params = next(
+            chamada[0] for chamada in self.pool.mock_cursor.execute.call_args_list
+            if chamada[0][0].startswith("INSERT")
+        )
         assert "'pre_annotation'" in insert_query
         assert "DELETE" not in insert_query.upper()
         assert str(uid) in insert_params
@@ -425,7 +429,14 @@ class TestAnnotationRepository:
         uid = uuid4()
         count = self.repo.accept_pre_annotations(fid, [], uid)
         assert count == 0
-        self.pool.mock_cursor.execute.assert_not_called()
+        # A transação abre travando a linha do frame (SELECT ... FOR UPDATE,
+        # #801) — o que não pode acontecer é ESCRITA: nem INSERT de caixa,
+        # nem UPDATE de estampa.
+        escritas = [
+            chamada[0][0] for chamada in self.pool.mock_cursor.execute.call_args_list
+            if not chamada[0][0].startswith("SELECT")
+        ]
+        assert escritas == []
 
 
 class TestDatasetRepository:
