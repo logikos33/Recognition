@@ -93,9 +93,10 @@
  *   - `issue` sem "#"      → `(issue 519)`                (epi/Cameras.tsx:365)
  *   - `chave de permissão` → `(requer cameras:configure)` (epi/Cameras.tsx:366)
  * As três estão abaixo, cada uma com prova por mutação NO ARQUIVO REAL (bloco
- * "rodada V1" no fim deste arquivo). Elas acusaram 51 trechos em 22 telas; as
- * 3 do mandato deste PR foram traduzidas, os outros 41 pares estão congelados
- * um a um em `DEBITO_ESTRUTURAL_V1`.
+ * "rodada V1" no fim deste arquivo). Elas acusaram 56 trechos em 25 telas: os
+ * 5 das TRÊS telas do mandato deste PR foram traduzidos, e os 51 restantes —
+ * 41 pares `arquivo|termo` distintos, em 22 telas — estão congelados um a um
+ * em `DEBITO_ESTRUTURAL_V1`.
  *
  * ─── ESTRATÉGIA ANTI-FALSO-POSITIVO (texto/JSX) ─────────────────────────
  *
@@ -517,7 +518,8 @@ const DEBITO_DE_OUTRA_FRENTE = [
  * DÉBITO ESTRUTURAL V1 — congelado por PAR `arquivo|termo`, não por arquivo.
  *
  * As três formas novas desta rodada (rota de API, chave de permissão, issue
- * sem "#") acusaram 51 trechos em 22 telas. Este PR tem mandato sobre TRÊS
+ * sem "#") acusaram 56 trechos em 25 telas; sobram 51 trechos em 22 telas
+ * depois dos consertos deste PR, que deduplicam em 41 pares. Mandato: TRÊS
  * arquivos (`epi/Dashboard.tsx`, `epi/Cameras.tsx`, `epi/Eventos.tsx` — as
  * telas das strings medidas no bundle servido e das issues #771/#795); os
  * outros 41 pares ficam NOMEADOS aqui, um a um, com a issue aberta junto com
