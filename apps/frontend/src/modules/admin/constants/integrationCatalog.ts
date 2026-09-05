@@ -41,7 +41,7 @@ export const INTEGRATION_CATALOG: IntegrationCardSpec[] = [
   {
     type: 'vast_ai',
     title: 'Provedor GPU — Vast.ai',
-    description: 'Treinamento de modelos YOLO em GPUs sob demanda.',
+    description: 'Treinamento de modelos de visão em GPUs sob demanda.',
     helpText:
       'Crie a API Key em cloud.vast.ai → Account → API Keys. '
       + 'Usada apenas para alugar GPUs de treinamento — nunca para inferência.',

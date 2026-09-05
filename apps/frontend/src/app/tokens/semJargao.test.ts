@@ -33,6 +33,14 @@
  * neste PR trocaria "consertar o achado" por "reescrever telas que ninguém
  * pediu para mexer".
  *
+ * ATUALIZAÇÃO (rodada O2, issue #660): a estimativa de "~20 achados" acima
+ * foi MEDIDA e vale para `src/components/**`, não para o front legado —
+ * `src/pages/**` + `src/modules/**` inteiros dão DEZ achados, sete deles em
+ * arquivos de outras frentes. Por isso a lista nominal
+ * (`RAIZES_LEGADO_EM_ESCOPO`, um arquivo) caiu: hoje a régua varre esses dois
+ * diretórios POR INTEIRO, com os sete arquivos de outra frente congelados um
+ * a um em `DEBITO_DE_OUTRA_FRENTE`. Ver o bloco lá embaixo.
+ *
  * Critério adotado: `arquivosVisiveisAoTenant()` varre `src/app/**` (como
  * antes) MAIS todo arquivo de `src/components/**` ALCANÇÁVEL a partir de
  * `src/app` por import relativo, transitivo (BFS sobre `import ... from
@@ -126,8 +134,36 @@ import { describe, expect, it } from 'vitest'
 
 const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-/** Os 4 atributos que o navegador expõe como texto/rótulo ao usuário. */
-const ATRIBUTOS_DE_TEXTO = new Set(['title', 'aria-label', 'placeholder', 'alt'])
+/**
+ * Atributos que viram texto/rótulo na tela: os 4 que o NAVEGADOR expõe
+ * (`title`/`aria-label`/`placeholder`/`alt`) mais as 3 props de COPY que o
+ * front usa para passar frase pronta a um componente de apresentação
+ * (`desc`/`description`/`label`).
+ *
+ * As 3 últimas são o furo C da rodada O2 (issue #660): `HomePage.tsx:123`
+ * passava `desc="…inspeção visual YOLO…"` para `<ModuleCard>` — texto que o
+ * tenant lê, invisível para a régua porque `desc` não era nem `JsxText` nem
+ * um dos 4 atributos. Não são convenção inventada: são as props que os
+ * componentes de card deste repo já recebem.
+ */
+const ATRIBUTOS_DE_TEXTO = new Set([
+  'title', 'aria-label', 'placeholder', 'alt', 'desc', 'description', 'label',
+])
+
+/**
+ * Chaves de OBJETO que carregam copy: catálogo declarativo (`const CATALOGO =
+ * [{ title: '…', description: '…' }]`) espalhado pelo componente por `.map()`.
+ *
+ * Furo D da mesma rodada: `modules/admin/components/IntegrationsPanel.tsx:62`
+ * tinha `description: 'Treinamento de modelos YOLO em GPUs sob demanda.'` num
+ * array de catálogo — renderizado como `<div>{item.description}</div>`, mas
+ * a régua só via o `{item.description}` (uma property access, não literal).
+ *
+ * Falso positivo é limitado por CONSTRUÇÃO: a denylist é fechada (12 termos +
+ * família de motor), então só dispara se a copy contiver de fato um daqueles
+ * termos — `{ key: 'account_id', label: 'Access Key ID' }` não bate em nada.
+ */
+const CHAVES_DE_COPY = new Set(['title', 'description', 'desc', 'label', 'subtitle'])
 
 /** Marcador de exceção — mesmo espírito do `allow:` do guard-rail de cor. */
 const MARCADOR_EXCECAO = 'jargao-ok'
@@ -281,6 +317,12 @@ export function textosVisiveis(caminho: string, codigo: string): Fragmento[] {
       else if (init && ts.isJsxExpression(init) && init.expression) {
         literaisRenderaveis(init.expression).forEach(addLiteral)
       }
+    } else if (
+      ts.isPropertyAssignment(no) &&
+      (ts.isIdentifier(no.name) || ts.isStringLiteralLike(no.name)) &&
+      CHAVES_DE_COPY.has(ts.isIdentifier(no.name) ? no.name.text : no.name.text)
+    ) {
+      literaisRenderaveis(no.initializer).forEach(addLiteral)
     } else if (ts.isJsxExpression(no) && no.expression && !(no.parent && ts.isJsxAttribute(no.parent))) {
       // `{...}` como FILHO de JSX (não como valor de atributo — esse já
       // caiu no ramo acima): mesmo texto renderizado, outro formato de nó.
@@ -349,24 +391,55 @@ function arquivos(dir: string): string[] {
 
 const COMPONENTS = path.join(path.dirname(APP), 'components')
 
+const PAGES = path.join(path.dirname(APP), 'pages')
+const MODULES = path.join(path.dirname(APP), 'modules')
+
 /**
- * Telas do front LEGADO que o tenant lê HOJE e que não são alcançáveis a
- * partir de `src/app` — entram na régua nominalmente, uma a uma.
+ * FRONT LEGADO — `src/pages/**` e `src/modules/**`, varridos POR INTEIRO.
  *
- * SEGUNDO furo da mesma rodada V1: `ModuleSelectionPage` é a primeira tela
- * depois do login (o seletor de módulo), mora em `src/pages/` e por isso
- * NUNCA foi lida por esta régua — nem com a regex consertada o achado
- * apareceria. Os dois furos juntos são o motivo de o CI estar verde com o
- * nome do motor na cara do cliente.
+ * Terceiro furo da mesma família (issue #660, rodada O2). A rodada V1 tinha
+ * fechado o furo de `src/components/**` e adicionado UMA tela de `src/pages`
+ * nominalmente (`ModuleSelectionPage`), registrando na própria issue a
+ * ESTIMATIVA de que varrer `src/pages/**` + `src/modules/**` inteiros traria
+ * "~20 achados de outras rodadas" — cedo demais para este PR.
  *
- * NÃO varremos `src/pages/**` inteiro de propósito: ver "ESCOPO DE ARQUIVOS"
- * no topo — isso traz ~20 achados de telas de outra rodada, que este PR não
- * tem mandato para reescrever. Toda tela legada que o cliente de fato abrir
- * entra aqui, nominalmente, com o conserto do texto no mesmo commit.
+ * A estimativa foi MEDIDA, e é o motivo de a lista nominal ter caído: com a
+ * régua de hoje (sem os furos C e D abaixo) o total do front legado inteiro
+ * é DEZ, não vinte — e cinco deles são os desta issue. Lista nominal, um
+ * arquivo por vez, deixa a próxima tela entrar roxa/com jargão sem ninguém
+ * ver; escopo inteiro + débito NOMEADO abaixo não deixa.
+ *
+ * É esse o front que os usuários da RVB abrem: `/quality/*`, `/epi/*` e o
+ * seletor de módulo moram aqui, não em `src/app`.
  */
-const RAIZES_LEGADO_EM_ESCOPO = [
-  path.join(path.dirname(APP), 'pages', 'ModuleSelectionPage.tsx'),
+/**
+ * Débito de OUTRAS frentes — arquivos com jargão real que este PR não tem
+ * mandato para reescrever (outro agente está neles). Congelado por ARQUIVO,
+ * mesmo espírito da ALLOWLIST do guard-rail de cor. Achados medidos:
+ *
+ *   DashboardIntegradoPage.tsx   `payload`, `scripts/…​.py`         (2)
+ *   fueling/FuelingValidationPage.tsx  `threshold` ×2               (2)
+ *   monitoring/InferencePanel.tsx      `Inferência` ×2              (2)
+ *   monitoring/SiteMonitor.tsx         `Inferência`                 (1)
+ *   admin/pages/observability/{EdgeFleet,Streams,Workers}Panel.tsx  (3)
+ *
+ * Rastreados na issue aberta junto com este PR. Tirar um arquivo desta lista
+ * é o conserto — nada aqui expira sozinho.
+ */
+const DEBITO_DE_OUTRA_FRENTE = [
+  'pages/DashboardIntegradoPage.tsx',
+  'pages/fueling/FuelingValidationPage.tsx',
+  'pages/monitoring/InferencePanel.tsx',
+  'pages/monitoring/SiteMonitor.tsx',
+  'modules/admin/pages/observability/EdgeFleetPanel.tsx',
+  'modules/admin/pages/observability/StreamsPanel.tsx',
+  'modules/admin/pages/observability/WorkersPanel.tsx',
 ]
+
+function ehDebitoDeOutraFrente(arquivo: string): boolean {
+  const rel = path.relative(path.dirname(APP), arquivo).split(path.sep).join('/')
+  return DEBITO_DE_OUTRA_FRENTE.includes(rel)
+}
 
 /** `import ... from '../coisa'` / `export ... from './coisa'` — só
  * specifiers RELATIVOS (começam com `.`): é tudo que o front usa (repo não
@@ -413,9 +486,12 @@ export function arquivosVisiveisAoTenant(): string[] {
   const alcancados = [...visitados].filter(
     (f) => f.startsWith(APP + path.sep) || f.startsWith(COMPONENTS + path.sep),
   )
-  // Somados DEPOIS do filtro (moram em `src/pages`) e sem semear a BFS: só
-  // a tela em si entra, não a árvore de imports legada pendurada nela.
-  return [...alcancados, ...RAIZES_LEGADO_EM_ESCOPO.filter((f) => !alcancados.includes(f))]
+  // Somado DEPOIS do filtro e sem semear a BFS: o front legado entra pelo
+  // que ELE mesmo escreve na tela, não pela árvore de imports pendurada nele.
+  const legado = [...arquivos(PAGES), ...arquivos(MODULES)].filter(
+    (f) => !alcancados.includes(f) && !ehDebitoDeOutraFrente(f),
+  )
+  return [...alcancados, ...legado]
 }
 
 describe('front novo: sem jargão técnico em texto de cliente', () => {
@@ -448,7 +524,7 @@ describe('escopo: a régua alcança components/** renderizado pelo front novo (f
     expect(alvo.some((f) => f.endsWith(path.join('pages', 'ModuleSelectionPage.tsx')))).toBe(true)
   })
 
-  it('NÃO inclui telas só do front legado (pages/modules) — evita trazer dívida de outra rodada', () => {
+  it('NÃO inclui componentes órfãos de src/components (só alcançáveis do front legado)', () => {
     const alvo = arquivosVisiveisAoTenant()
     const legado = [
       path.join('components', 'training', 'modals', 'OperationCreateModal.tsx'),
@@ -458,6 +534,79 @@ describe('escopo: a régua alcança components/** renderizado pelo front novo (f
     for (const rel of legado) {
       expect(alvo.some((f) => f.endsWith(rel)), `${rel} não devia estar alcançável a partir de src/app`).toBe(false)
     }
+  })
+})
+
+/**
+ * Rodada O2 (issues #660/#661). Três furos MEDIDOS, cada um com a linha
+ * REAL que estava servida como fixture — sem isso "a régua cobre agora"
+ * seria afirmação, e afirmação foi o que deixou o CI verde sobre 5 telas.
+ */
+describe('escopo O2: o front legado inteiro (furo C) e copy passada como prop (furos D/E)', () => {
+  it('varre `src/pages/**` e `src/modules/**` inteiros — não uma lista nominal', () => {
+    const alvo = arquivosVisiveisAoTenant()
+    // As 5 telas da issue #660 — nenhuma delas alcançável a partir de src/app.
+    for (const rel of [
+      path.join('pages', 'HomePage.tsx'),
+      path.join('modules', 'quality', 'pages', 'QualityConfigPage.tsx'),
+      path.join('modules', 'admin', 'components', 'IntegrationsPanel.tsx'),
+      path.join('modules', 'admin', 'pages', 'AdminIntegrationsPage.tsx'),
+      path.join('modules', 'admin', 'pages', 'AdminTestConsolePage.tsx'),
+    ]) {
+      expect(alvo.some((f) => f.endsWith(rel)), `${rel} fora do escopo da régua`).toBe(true)
+    }
+  })
+
+  it('o débito congelado de outra frente fica FORA — e é nomeado, não silencioso', () => {
+    const alvo = arquivosVisiveisAoTenant()
+    expect(alvo.some((f) => f.endsWith(path.join('pages', 'monitoring', 'SiteMonitor.tsx')))).toBe(false)
+    expect(DEBITO_DE_OUTRA_FRENTE.length).toBe(7)
+  })
+
+  it('furo D — copy em prop (`desc=`) acusa: a linha REAL de HomePage.tsx:123', () => {
+    const antes = `<ModuleCard title="Qualidade Industrial"
+      desc="Controle de qualidade com inspeção visual YOLO, CEP e relatórios de turno." />`
+    expect(acharJargao('HomePage.tsx', antes).map((a) => a.termo)).toEqual(['YOLO'])
+  })
+
+  it('furo E — copy em chave de objeto acusa: a linha REAL de IntegrationsPanel.tsx:62', () => {
+    const antes = `const CATALOGO = [{ type: 'vast_ai', title: 'Provedor GPU — Vast.ai',
+      description: 'Treinamento de modelos YOLO em GPUs sob demanda.' }]`
+    expect(acharJargao('IntegrationsPanel.ts', antes).map((a) => a.termo)).toEqual(['YOLO'])
+  })
+
+  it('sem falso positivo: chave de dado e label de campo comuns do mesmo catálogo', () => {
+    const ok = `const F = [{ key: 'account_id', label: 'Access Key ID', placeholder: 'recognition-prod' },
+      { type: 'generic_gpu', description: 'Provedor GPU alternativo (SSH/API personalizado).' }]`
+    expect(acharJargao('integrationCatalog.ts', ok)).toEqual([])
+  })
+
+  it('prova por MUTAÇÃO no ARQUIVO REAL: reinstalar as 5 telas de antes acusa 5 termos', () => {
+    const raiz = path.dirname(APP)
+    const casos: Array<[string, string, string, string]> = [
+      ['pages/HomePage.tsx', 'inspeção visual automática', 'inspeção visual YOLO', 'YOLO'],
+      ['modules/quality/pages/QualityConfigPage.tsx', 'Confiança mínima do reconhecimento', 'Confiança Mínima YOLO', 'YOLO'],
+      ['modules/admin/components/IntegrationsPanel.tsx', 'modelos de visão em GPUs', 'modelos YOLO em GPUs', 'YOLO'],
+      ['modules/admin/pages/AdminIntegrationsPage.tsx', 'modelos de visão em GPUs', 'modelos YOLO em GPUs', 'YOLO'],
+      ['modules/admin/pages/AdminTestConsolePage.tsx', 'Pré-treinado (modelo base do sistema)', 'Pré-treinado (YOLOv8n base)', 'YOLOv8n'],
+    ]
+    for (const [rel, hoje, antes, termo] of casos) {
+      const arquivo = path.join(raiz, rel)
+      const atual = fs.readFileSync(arquivo, 'utf-8')
+      expect(atual.includes(hoje), `${rel}: texto de hoje não encontrado`).toBe(true)
+      expect(acharJargao(rel, atual), `${rel} ainda tem jargão`).toEqual([])
+      const mutado = atual.replace(hoje, antes)
+      expect(acharJargao(rel, mutado).map((a) => a.termo), `${rel}: régua não pegou o texto antigo`).toContain(termo)
+    }
+  })
+
+  it('prova por MUTAÇÃO: os 4 "threshold" de QualityConfigPage voltam a acusar', () => {
+    const arquivo = path.join(path.dirname(APP), 'modules/quality/pages/QualityConfigPage.tsx')
+    const atual = fs.readFileSync(arquivo, 'utf-8')
+    const mutado = atual
+      .replace(/Aprovação mínima V(\d) \(votação\)/g, 'Threshold V$1 (votação)')
+      .replace('Reconhecimentos abaixo desta confiança são ignorados.', 'Detecções abaixo deste threshold são ignoradas.')
+    expect(acharJargao('QualityConfigPage.tsx', mutado).filter((a) => /threshold/i.test(a.termo))).toHaveLength(4)
   })
 })
 
