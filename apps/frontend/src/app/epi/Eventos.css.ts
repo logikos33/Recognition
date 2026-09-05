@@ -275,6 +275,15 @@ export const corStatus = styleVariants({
 /** Procedência temporal — só a afirmação NEGATIVA ("coleta retroativa"). */
 export const seloRetroativo = style([selo, { color: lk.estado.atencao }])
 
+/** Procedência DECLARADA (`violations[].origem`, issue #670). Caixa desenhada
+ *  por PESSOA é ressalva (atenção); caixa do modelo é o caso esperado e não
+ *  grita (névoa). Nenhuma das duas usa a paleta de veredito nem a de
+ *  polaridade — são eixos diferentes. */
+export const seloProcedencia = styleVariants({
+  humana: [selo, { color: lk.estado.atencao }],
+  modelo: [selo, { color: lk.cor.cinzaNevoa }],
+})
+
 /** Motivo do veredito: some por elipse, inteiro no `title`. */
 export const motivo = style({
   display: 'block',

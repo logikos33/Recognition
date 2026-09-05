@@ -66,8 +66,9 @@ import {
 } from 'lucide-react'
 
 import { vereditoHumano } from '../../components/shared/VereditoHumano'
+import { useToast } from '../../components/ui/Toast/useToast'
 import { useAuth } from '../../hooks/useAuth'
-import { api } from '../../services/api'
+import { ApiError, api } from '../../services/api'
 import { labelForClass } from '../../utils/labels'
 import { agruparPorRajada, type Rajada } from '../../utils/rajadas'
 import { rotaNova } from '../RotasNovas'
@@ -197,6 +198,7 @@ function EvidenciaCartao({ id, temEvidencia }: { id: string; temEvidencia: boole
 
 export function Acoes() {
   const { can } = useAuth()
+  const toast = useToast()
   const navegar = useNavigate()
   const podeReconhecer = can('alerts:feedback')
   const podeJulgar = can('verification:write')
@@ -288,8 +290,11 @@ export function Acoes() {
       await api.post(`/alerts/${id}/acknowledge`)
       await carregar()
     } catch (e) {
-      setErro(e instanceof Error ? e.message : 'falha desconhecida')
-      setFase('erro')
+      // Falha de UM cartão não é falha da TELA. `setFase('erro')` aqui
+      // trocava o kanban inteiro — as duas colunas, a taxa, tudo — por
+      // "Não foi possível carregar GET /api/alerts", que nem é a rota que
+      // falhou. O resto do trabalho continua na tela; o aviso vai no toast.
+      toast.error('Não foi possível reconhecer', e instanceof Error ? e.message : undefined)
     } finally {
       setReconhecendo(null)
     }
@@ -304,8 +309,22 @@ export function Acoes() {
       await api.post(`/verification/${id}/review`, { verdict })
       await carregar()
     } catch (e) {
-      setErro(e instanceof Error ? e.message : 'falha desconhecida')
-      setFase('erro')
+      // 409 = OUTRA PESSOA julgou este alerta primeiro (guarda
+      // `verification_verdict IS NULL OR verified_by = <eu>` do UPDATE, em
+      // verification_service.py). É INFORMAÇÃO — a mensagem do servidor diz
+      // quem julgou e quando — e o kanban RECARREGA para o cartão passar a
+      // mostrar o veredito que existe. ⛔ Mesma regra do bloco 4 de
+      // `Verificacao.tsx`: nada de `toast.error` genérico, que faz o operador
+      // clicar de novo no que já foi resolvido.
+      if (e instanceof ApiError && e.status === 409) {
+        toast.info('Alerta já revisado', e.message)
+        await carregar()
+        return
+      }
+      // Qualquer outra falha também não derruba a tela: era `setFase('erro')`,
+      // e o kanban INTEIRO virava tela de erro por causa de um clique num
+      // cartão (issue #675).
+      toast.error('Não foi possível registrar o veredito', e instanceof Error ? e.message : undefined)
     } finally {
       setJulgando(null)
     }

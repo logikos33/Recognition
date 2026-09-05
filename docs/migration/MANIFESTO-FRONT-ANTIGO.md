@@ -14,11 +14,11 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 392 arquivos, 66.132 linhas
+## Situação — 393 arquivos, 66.290 linhas
 
 | status | arquivos |
 |---|---:|
-| `INFRA` | 231 |
+| `INFRA` | 232 |
 | `PENDENTE` | 144 |
 | `SEM-DESENHO` | 7 |
 | `SUBSTITUIDA` | 6 |
@@ -91,8 +91,8 @@ apagado não são a mesma coisa.
 | `src/components/dashboard/KPIRow.css.ts` | `INFRA` | — | 67 |
 | `src/components/dashboard/KPIRow.tsx` | `INFRA` | — | 207 |
 | `src/components/dashboard/widgets/AlertsTimelineWidget.tsx` | `INFRA` | — | 103 |
-| `src/components/dashboard/widgets/EventLogWidget.tsx` | `INFRA` | — | 77 |
-| `src/components/dashboard/widgets/RecentAlertsWidget.tsx` | `INFRA` | — | 55 |
+| `src/components/dashboard/widgets/EventLogWidget.tsx` | `INFRA` | — | 85 |
+| `src/components/dashboard/widgets/RecentAlertsWidget.tsx` | `INFRA` | — | 63 |
 | `src/components/dashboard/widgets/TopCamerasWidget.tsx` | `INFRA` | — | 88 |
 | `src/components/dashboard/widgets/useDashboardAlerts.ts` | `INFRA` | — | 65 |
 | `src/components/dashboard/widgets/violationLabels.ts` | `INFRA` | — | 18 |
@@ -132,6 +132,7 @@ apagado não são a mesma coisa.
 | `src/components/shared/LoadingSpinner.tsx` | `INFRA` | — | 14 |
 | `src/components/shared/PolaridadeClasse.tsx` | `INFRA` | — | 144 |
 | `src/components/shared/ProcedenciaBadge.tsx` | `INFRA` | — | 76 |
+| `src/components/shared/ProcedenciaEvento.tsx` | `INFRA` | — | 112 |
 | `src/components/shared/StatusBadge.tsx` | `INFRA` | — | 18 |
 | `src/components/shared/VereditoHumano.tsx` | `INFRA` | — | 72 |
 | `src/components/TenantContextBanner.tsx` | `INFRA` | — | 172 |
@@ -265,7 +266,7 @@ apagado não são a mesma coisa.
 | `src/utils/classCatalogDuplicate.ts` | `INFRA` | — | 37 |
 | `src/utils/classImbalance.ts` | `INFRA` | — | 65 |
 | `src/utils/concurrencyQueue.ts` | `INFRA` | — | 39 |
-| `src/utils/errorTranslator.ts` | `INFRA` | — | 76 |
+| `src/utils/errorTranslator.ts` | `INFRA` | — | 83 |
 | `src/utils/labels.ts` | `INFRA` | — | 253 |
 | `src/utils/perfilEventos.ts` | `INFRA` | — | 148 |
 | `src/utils/rajadas.ts` | `INFRA` | — | 120 |
@@ -382,7 +383,7 @@ apagado não são a mesma coisa.
 | `src/modules/quality/types/quality.ts` | `PENDENTE` | — | 212 |
 | `src/modules/quality/types/qualityDashboard.ts` | `PENDENTE` | — | 45 |
 | `src/pages/AlertsHistoryPage.css.ts` | `PENDENTE` | — | 71 |
-| `src/pages/AlertsHistoryPage.tsx` | `PENDENTE` | — | 347 |
+| `src/pages/AlertsHistoryPage.tsx` | `PENDENTE` | — | 370 |
 | `src/pages/CamerasPage.css.ts` | `PENDENTE` | — | 225 |
 | `src/pages/CamerasPage.tsx` | `PENDENTE` | — | 434 |
 | `src/pages/CameraTriagePage.css.ts` | `PENDENTE` | — | 299 |

@@ -44,11 +44,13 @@ const h = vi.hoisted(() => ({
   /** Espelha o `ApiError` real: a tela lê `.status` para dizer o que falhou. */
   ApiErroFalso: class ApiErroFalso extends Error {
     status: number
-    constructor(status: number) {
-      super(`HTTP ${status}`)
+    constructor(status: number, mensagem?: string) {
+      super(mensagem ?? `HTTP ${status}`)
       this.status = status
     }
   },
+  /** Erro do POST /verification/<id>/review — `null` = sucesso. */
+  erroDoVeredito: null as Error | null,
 }))
 
 vi.mock('../../services/api', () => ({
@@ -62,6 +64,7 @@ vi.mock('../../services/api', () => ({
     }),
     post: vi.fn((p: string) => {
       h.posts.push(p)
+      if (h.erroDoVeredito) return Promise.reject(h.erroDoVeredito)
       return Promise.resolve({ success: true })
     }),
     downloadBlob: vi.fn(() => Promise.resolve(new Blob(['a']))),
@@ -98,6 +101,7 @@ vi.mock('../../services/cameraService', () => ({
   },
 }))
 
+import { useToastStore } from '../../components/ui/Toast/useToast'
 import { Eventos } from './Eventos'
 import { rotaNova } from '../RotasNovas'
 
@@ -178,6 +182,8 @@ beforeEach(() => {
   h.gets.length = 0
   h.posts.length = 0
   h.falhar = false
+  h.erroDoVeredito = null
+  useToastStore.setState({ toasts: [] })
   h.pagina = { alerts: EVENTOS, total: 4, page: 1, per_page: 20, pages: 1 }
 })
 
@@ -433,6 +439,8 @@ describe('estados da rota', () => {
     expect(await screen.findByText('Não foi possível carregar')).toBeTruthy()
     expect(screen.getByText(/GET \/api\/alerts/)).toBeTruthy()
     h.falhar = false
+  h.erroDoVeredito = null
+  useToastStore.setState({ toasts: [] })
     fireEvent.click(screen.getByText('Tentar novamente'))
     expect(await screen.findByText('CAM-04 Expedição')).toBeTruthy()
   })
@@ -590,5 +598,98 @@ describe('rajada (ux2/dedup) — representante + N repetições, nunca esconde',
     h.pagina = { alerts: RAJADA, total: 3, page: 1, per_page: 20, pages: 1 } as never
     montar()
     await screen.findByText('3 NO PERÍODO')
+  })
+})
+
+// ── procedência DECLARADA na LISTA (issue #670) ─────────────────────────────
+
+describe('a lista diz QUEM desenhou a caixa, não só quando ela chegou', () => {
+  /** Como o acervo de demonstração do DEV realmente está no banco: caixa
+   *  desenhada por PESSOA e `created_at == timestamp` (o script grava os dois
+   *  iguais), que é justamente o que faz o critério TEMPORAL nunca acender. */
+  const SEMEADO = {
+    id: 'e9',
+    camera_id: 'cam-4',
+    camera_name: 'CAM-09 Acervo',
+    violations: [{
+      class: 'no_helmet', confidence: 0.87,
+      origem: 'anotacao_humana', lote: 'acervo_rvb_2026_08',
+    }],
+    acknowledged: false,
+    created_at: '2026-08-20T14:32:00',
+    timestamp: '2026-08-20T14:32:00',
+    event_kind: 'violation' as const,
+    verification_verdict: null,
+    verified_by: null,
+  }
+
+  it('caixa desenhada por PESSOA é anunciada como tal — 4.609 dos 5.174 eventos do DEV', async () => {
+    // FALHA ANTES: a linha só lia `classificarLatencia(timestamp, created_at)`.
+    // Com os dois iguais o badge nunca acendia e a anotação humana aparecia
+    // indistinguível de detecção do modelo em produção.
+    h.pagina = { alerts: [SEMEADO], total: 1, page: 1, per_page: 20, pages: 1 }
+    montar()
+    await screen.findByText('CAM-09 Acervo')
+    const linha = linhaDe('CAM-09 Acervo').textContent ?? ''
+    expect(linha).toContain('anotação humana')
+    expect(linha).toContain('demonstração')
+  })
+
+  it('sem origem declarada, o critério temporal segue valendo (nada se perdeu)', async () => {
+    montar()
+    await screen.findByText('CAM-07 Linha 2')
+    expect(linhaDe('CAM-07 Linha 2').textContent).toContain('coleta retroativa')
+  })
+
+  it('declaração vence indício — evento semeado não vira "coleta retroativa"', async () => {
+    h.pagina = {
+      alerts: [{ ...SEMEADO, timestamp: '2026-08-20T14:20:00' }],
+      total: 1, page: 1, per_page: 20, pages: 1,
+    }
+    montar()
+    await screen.findByText('CAM-09 Acervo')
+    const linha = linhaDe('CAM-09 Acervo').textContent ?? ''
+    expect(linha).toContain('anotação humana')
+    expect(linha).not.toContain('coleta retroativa')
+  })
+})
+
+// ── 409: alguém julgou primeiro (issue #675) ────────────────────────────────
+
+describe('veredito que colidiu com o de outra pessoa', () => {
+  const FRASE = 'Maria Silva já avaliou este alerta há 2 minutos'
+
+  const julgarComConflito = async (status: number, frase = FRASE) => {
+    h.permissoes = ['alerts:read', 'alerts:feedback', 'verification:write']
+    h.erroDoVeredito = new h.ApiErroFalso(status, frase)
+    montar()
+    await screen.findByText('CAM-04 Expedição')
+    fireEvent.click(screen.getAllByRole('button', { name: 'Procedente' })[0])
+    await waitFor(() => expect(h.posts.length).toBeGreaterThan(0))
+  }
+
+  it('409 informa QUEM julgou e QUANDO — não é erro do operador', async () => {
+    // FALHA ANTES: o `catch` era cego e mostrava sempre o vermelho genérico
+    // "Não foi possível registrar o veredito", que faz a pessoa clicar de novo
+    // no que já foi resolvido.
+    await julgarComConflito(409)
+    await waitFor(() => {
+      const toasts = useToastStore.getState().toasts
+      expect(toasts.some((x) => x.variant === 'info' && x.description === FRASE)).toBe(true)
+      expect(toasts.some((x) => x.variant === 'error')).toBe(false)
+    })
+  })
+
+  it('recarrega a lista para a coluna VEREDITO mostrar a decisão que existe', async () => {
+    const antes = h.gets.filter((p) => p.startsWith('/alerts?')).length
+    await julgarComConflito(409)
+    await waitFor(() =>
+      expect(h.gets.filter((p) => p.startsWith('/alerts?')).length).toBeGreaterThan(antes + 1))
+  })
+
+  it('erro de verdade (500) continua vermelho — 409 não anistia o resto', async () => {
+    await julgarComConflito(500, 'boom')
+    await waitFor(() =>
+      expect(useToastStore.getState().toasts.some((x) => x.variant === 'error')).toBe(true))
   })
 })

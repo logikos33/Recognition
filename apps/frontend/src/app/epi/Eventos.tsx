@@ -80,6 +80,7 @@ import { api, ApiError } from '../../services/api'
 import { cameraService } from '../../services/cameraService'
 import { confiancaInternaOuCliente } from '../../services/confidenceDisplay'
 import { classificarLatencia } from '../../components/shared/ProcedenciaBadge'
+import { procedenciaDeclarada } from '../../components/shared/ProcedenciaEvento'
 import { vereditoHumano, type Veredito } from '../../components/shared/VereditoHumano'
 import {
   EXPLICACAO_POLARIDADE, ROTULO_POLARIDADE, type Polaridade,
@@ -98,6 +99,12 @@ const POR_PAGINA = 20
 interface Violacao {
   class: string
   confidence?: number
+  /** Quem desenhou ESTA caixa, declarado por quem gravou o evento. Chega na
+   *  LISTA porque `AlertRepository.list_with_filters` faz `SELECT a.*` — o
+   *  JSONB `violations` vem cru, com `origem` e `lote` dentro. */
+  origem?: string
+  /** Marca da carga em lote do acervo de demonstração. */
+  lote?: string
 }
 
 interface Evento {
@@ -398,7 +405,19 @@ export function Eventos() {
     try {
       await api.post(`/verification/${id}/review`, { verdict })
       await carregar()
-    } catch {
+    } catch (e) {
+      // 409 = OUTRA PESSOA julgou este alerta primeiro (guarda
+      // `verification_verdict IS NULL OR verified_by = <eu>` do UPDATE, em
+      // verification_service.py). É INFORMAÇÃO, não falha do operador: a
+      // mensagem do servidor já diz QUEM julgou e QUANDO, e a lista recarrega
+      // para a coluna VEREDITO mostrar a decisão que existe.
+      // ⛔ Mesma regra do bloco 4 de `Verificacao.tsx`: um "Não foi possível
+      // registrar" genérico faz o operador clicar de novo no que já resolveu.
+      if (e instanceof ApiError && e.status === 409) {
+        toast.info('Alerta já revisado', e.message)
+        await carregar()
+        return
+      }
       toast.error('Não foi possível registrar o veredito')
     } finally {
       setOcupado(null)
@@ -466,7 +485,14 @@ export function Eventos() {
     const veredito = vereditoHumano(ev.verification_verdict, ev.verified_by)
     const IconeVer = ICONE_VEREDITO[veredito]
     const capturadoEm = ev.timestamp ?? ev.created_at
-    const retroativo = classificarLatencia(ev.timestamp, ev.created_at) === 'retroativa'
+    // PROCEDÊNCIA (issue #670): origem DECLARADA em `violations[].origem`
+    // manda; o atraso entre captura e gravação é fallback. Sem esta ordem a
+    // lista ficava muda em 4.609 dos 5.174 eventos do DEV — todos com caixa
+    // desenhada por PESSOA e `created_at == timestamp`, que o critério
+    // temporal nunca acende. Indício não vence declaração.
+    const procedencia = procedenciaDeclarada(ev.violations)
+    const retroativo = !procedencia
+      && classificarLatencia(ev.timestamp, ev.created_at) === 'retroativa'
     const marcado = selecionados.includes(ev.id)
     const realcada = ev.id === destaque
     return (
@@ -518,6 +544,18 @@ export function Eventos() {
           {/* PROCEDÊNCIA: só a afirmação negativa. Sem badge =
               sem afirmação — não existe carimbo de "ao vivo"
               enquanto o shadow roda sobre frames já coletados. */}
+          {procedencia && (
+            <>
+              {' '}
+              <span
+                className={s.seloProcedencia[procedencia.origem]}
+                title={procedencia.titulo}
+                data-testid="procedencia"
+              >
+                {procedencia.rotulo}
+              </span>
+            </>
+          )}
           {retroativo && (
             <>
               {' '}
