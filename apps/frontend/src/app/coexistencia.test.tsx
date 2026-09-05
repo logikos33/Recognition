@@ -119,7 +119,29 @@ describe('front novo e front antigo convivem', () => {
         if (e.isDirectory()) { varre(p); continue }
         if (!/\.tsx?$/.test(e.name) || /\.test\.tsx?$/.test(e.name)) continue
         if (path.relative(SRC, p) === 'app/RotasNovas.tsx') continue
-        fs.readFileSync(p, 'utf-8').split('\n').forEach((linha, i) => {
+        const texto = fs.readFileSync(p, 'utf-8')
+        // Um nível de indireção: `const ROTA = '/epi/eventos'` no topo do
+        // arquivo e `to={ROTA}` quatrocentas linhas abaixo. Era o quarto furo
+        // (v1, 05/09): a varredura só olhava LITERAL, então batizar o caminho
+        // de constante — que é o que se faz quando ele aparece em dois lugares
+        // — bastava para o vazamento passar batido. Passaram assim o botão
+        // "Eventos" do cabeçalho de `EventoDetalhe.tsx` e o "Ir para eventos"
+        // de `Acoes.tsx`, os dois caindo no front antigo com o teste VERDE.
+        const constantes = new Map<string, string>()
+        for (const m of texto.matchAll(
+          /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*(?:"(\/[^"]*)"|'(\/[^']*)'|`(\/[^`]*)`)/g,
+        )) {
+          constantes.set(m[1], m[2] ?? m[3] ?? m[4])
+        }
+        // Este arquivo navega para um campo de objeto SEM prefixar na hora
+        // (`navegar(c.destino)`, `to={c.destino}`)? Então o prefixo tem de já
+        // estar guardado na tabela, e os literais dela passam a ser cobrados
+        // logo abaixo. `navegar(rotaNova(item.destino))` e
+        // `PREFIXO_NOVO + i.rota` não casam aqui — o argumento não começa com
+        // identificador-ponto —, que é justamente a diferença entre guardar um
+        // caminho relativo de propósito e vazar um absoluto por descuido.
+        const consomeBruto = /(?:to|href)=\{\s*[A-Za-z_$][\w$]*\.[\w$.]+\s*\}|\b(?:navigate|navegar|nav)\(\s*[A-Za-z_$][\w$]*\.[\w$.]+\s*[,)]/.test(texto)
+        texto.split('\n').forEach((linha, i) => {
           // `to="/..."` / `to={`/...`}` (Link/NavLink) OU `href="/..."` /
           // `href={`/...`}` (âncora HTML pura) com caminho absoluto que não é
           // o prefixo — os dois jeitos de "linkar" existentes neste código.
@@ -128,9 +150,32 @@ describe('front novo e front antigo convivem', () => {
           const mNav = linha.match(
             /\b(?:navigate|navegar|nav)\(\s*(?:"(\/[^"]*)"|'(\/[^']*)'|`(\/[^`]*)`)/,
           )
+          // `to={ROTA}` / `href={ROTA}` / `navegar(ROTA)` — a mesma coisa, com
+          // o caminho guardado numa constante do próprio arquivo.
+          const mConst = linha.match(
+            /(?:to|href)=\{\s*([A-Za-z_$][\w$]*)\s*\}|\b(?:navigate|navegar|nav)\(\s*([A-Za-z_$][\w$]*)\s*[,)]/,
+          )
+          const viaConstante = constantes.get(mConst?.[1] ?? mConst?.[2] ?? '')
+          // `destino: '/quality'` numa TABELA, lido por `navegar(c.destino)`
+          // quatro telas abaixo. Sexto furo (v1, 05/09): tirar o
+          // `window.location` de `Modulos.tsx` matou o SALTO, mas não o
+          // DESTINO — devolver `destino: '/quality'` ao `CATALOGO`, deixando o
+          // `navegar(c.destino)` no lugar, reabre o vazamento com as três
+          // varreduras acima VERDES, porque nenhuma liga a linha da tabela à
+          // linha que navega. Só vale para arquivo que consome o campo CRU
+          // (`consomeBruto`): quem prefixa na hora de navegar — o Shell
+          // (`PREFIXO_NOVO + i.rota`) e `Qualidade.tsx`
+          // (`navegar(rotaNova(item.destino))`) — guarda o caminho sem
+          // prefixo de propósito, e está certo.
+          const mProp = linha.match(
+            /\b(?:destino|rota|caminho|to|href)\s*:\s*(?:"(\/[^"]*)"|'(\/[^']*)'|`(\/[^`]*)`)/,
+          )
+          const viaTabela = consomeBruto ? mProp?.[1] ?? mProp?.[2] ?? mProp?.[3] : undefined
           const alvo = mLink?.[1] ?? mLink?.[2] ?? mNav?.[1] ?? mNav?.[2] ?? mNav?.[3]
-          if (alvo && !alvo.startsWith('/novo') && !EXCECOES.includes(alvo)) {
-            infratores.push(`${path.relative(SRC, p)}:${i + 1}  ${alvo}`)
+          for (const destino of [alvo, viaConstante, viaTabela]) {
+            if (destino && !destino.startsWith('/novo') && !EXCECOES.includes(destino)) {
+              infratores.push(`${path.relative(SRC, p)}:${i + 1}  ${destino}`)
+            }
           }
         })
       }
@@ -141,6 +186,39 @@ describe('front novo e front antigo convivem', () => {
       'link/navigate/href absoluto sai do front novo e cai no antigo — use rotaNova() ' +
         '(ou, se for exceção legítima pro front antigo, liste em EXCECOES, nunca por silêncio):\n' +
         infratores.join('\n'),
+    ).toEqual([])
+  })
+
+  it('nenhuma tela nova troca de aplicação por window.location', () => {
+    // Quinto furo (v1, 05/09), e o mais invisível de todos: `Modulos.tsx`
+    // guardava o destino numa TABELA (`destino: '/quality', externo: true`) e
+    // saltava com `window.location.href = c.destino`. Nem `to=`, nem `href=`,
+    // nem `navigate()` — nenhuma das três varreduras acima chega perto, e o
+    // usuário que clicava em "Qualidade" no front NOVO era despejado no front
+    // ANTIGO de página inteira, perdendo o Shell, a sessão de rota e a
+    // identidade visual. `window.location.href = `/`.assign`/`.replace` são
+    // troca de APLICAÇÃO; dentro de `app/` a navegação é `navegar(rotaNova(…))`.
+    // (`reload()` e a LEITURA de `location.pathname` seguem livres — não
+    // escolhem destino.)
+    const saltos: string[] = []
+    const varre = (dir: string) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name)
+        if (e.isDirectory()) { varre(p); continue }
+        if (!/\.tsx?$/.test(e.name) || /\.test\.tsx?$/.test(e.name)) continue
+        fs.readFileSync(p, 'utf-8').split('\n').forEach((linha, i) => {
+          if (/window\.location\s*(?:\.href\s*=|\.assign\(|\.replace\()/.test(linha)) {
+            saltos.push(`${path.relative(SRC, p)}:${i + 1}  ${linha.trim()}`)
+          }
+        })
+      }
+    }
+    varre(path.join(SRC, 'app'))
+    expect(
+      saltos,
+      'window.location leva a pessoa para FORA do front novo, de página inteira ' +
+        '— use navegar(rotaNova(...)). Se o destino é mesmo outra aplicação, ' +
+        'diga isso aqui em voz alta, nunca por silêncio:\n' + saltos.join('\n'),
     ).toEqual([])
   })
 })
