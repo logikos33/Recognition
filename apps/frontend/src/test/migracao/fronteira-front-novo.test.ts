@@ -41,9 +41,12 @@
  *             hoje; a trava é para o dia em que alguém marcar `@migrado-para`
  *             num arquivo que a tela nova ainda usa.
  *
- * PROIBIDO 2  `app/**` importar uma TELA do front antigo (`*Page.tsx` ou
- *             `modules/**\/pages/*`), em qualquer status. Tela nova que
- *             renderiza tela velha é a migração andando para trás.
+ * PROIBIDO 2  `app/**` importar uma TELA do front antigo — componente
+ *             (`.tsx`) sob `pages/` ou `modules/` — em qualquer status. Tela
+ *             nova que renderiza tela velha é a migração andando para trás.
+ *             O recorte é a árvore, não o sufixo do nome: `Login.tsx`,
+ *             `AdminLayout.tsx` e `SiteMonitor.tsx` são rota viva e nenhuma
+ *             se chama `*Page.tsx`.
  *
  * Note o que a regra NÃO faz: não proíbe `app/**` de importar de fora de
  * `app/`. Proibir isso reprovaria as 19 ocorrências acima, das quais 19 são
@@ -102,9 +105,24 @@ function resolver(deOArquivo: string, spec: string): string | null {
   return null
 }
 
-/** Tela do front antigo: `*Page.tsx` na raiz de `pages/`, ou `modules/*\/pages/*`. */
+/**
+ * Tela do front antigo: componente (`.tsx`) morando na ÁRVORE DE TELAS
+ * (`pages/` ou `modules/`) — a mesma árvore que o gerador do manifesto usa
+ * para dizer que um arquivo não é infra.
+ *
+ * Convenção de nome NÃO serve como recorte, e isso foi medido: o primeiro
+ * corte era `*Page.tsx` + `modules/*\/pages/*`, e com ele `app/**` podia
+ * importar `src/pages/Login.tsx` (o login do front antigo),
+ * `src/modules/admin/AdminLayout.tsx` (que tem um `<Routes>` inteiro dentro)
+ * e `src/pages/monitoring/SiteMonitor.tsx` (o /monitoring) com o teste VERDE.
+ * Rota viva, nenhuma terminando em `Page.tsx`.
+ *
+ * A extensão é o que separa tela de lógica: os módulos de lógica pura mal
+ * alojados nessa árvore são `.ts` (`adminService.ts`, `lupaEvidencia.ts`,
+ * `gate.ts`, `useTabletWebSocket.ts`) e seguem permitidos.
+ */
 function ehTela(caminho: string): boolean {
-  return /Page\.tsx$/.test(caminho) || /^src\/modules\/[^/]+\/pages\//.test(caminho)
+  return /(^|\/)(pages|modules)\/.*\.tsx$/.test(caminho)
 }
 
 interface Cruzamento {
@@ -153,6 +171,34 @@ describe('fronteira de import do front novo', () => {
       proibidos.map((c) => `${c.tela} → ${c.alvo} [${c.status}]`),
       'tela nova importando tela velha é a migração andando para trás',
     ).toEqual([])
+  })
+
+  it('`ehTela` pega rota viva que não se chama `*Page.tsx`', () => {
+    // Regressão medida: com o recorte por sufixo, estes três passavam verde
+    // importados dentro de `app/**`. São o login, o layout do admin e o
+    // /monitoring — rota viva do front antigo, os três.
+    const telas = [
+      'src/pages/Login.tsx',
+      'src/modules/admin/AdminLayout.tsx',
+      'src/modules/quality/QualityLayout.tsx',
+      'src/pages/monitoring/SiteMonitor.tsx',
+    ]
+    const manifesto = lerManifesto()
+    // Se alguém renomear um destes, falha aqui em vez de testar um fantasma.
+    expect(telas.filter((f) => !manifesto.has(f))).toEqual([])
+    expect(telas.filter((f) => !ehTela(f))).toEqual([])
+
+    // E o outro lado do recorte: lógica pura mal alojada na mesma árvore
+    // continua permitida — senão o "conserto" seria mudar 16 imports que
+    // estão certos.
+    const logica = [
+      'src/modules/admin/services/adminService.ts',
+      'src/modules/admin/types/admin.ts',
+      'src/pages/epi/lupaEvidencia.ts',
+      'src/modules/quality/tablet/useTabletWebSocket.ts',
+      'src/modules/quality/types/gate.ts',
+    ]
+    expect(logica.filter(ehTela)).toEqual([])
   })
 
   it('o reuso decidido em Ao Vivo e Câmeras se apoia em `INFRA`, não em tela', () => {
