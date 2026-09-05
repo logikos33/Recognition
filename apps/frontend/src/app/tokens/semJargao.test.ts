@@ -427,6 +427,7 @@ const MODULES = path.join(path.dirname(APP), 'modules')
  * é o conserto — nada aqui expira sozinho.
  */
 const DEBITO_DE_OUTRA_FRENTE = [
+  // --- telas do front legado (medido na rodada O2) ---
   'pages/DashboardIntegradoPage.tsx',
   'pages/fueling/FuelingValidationPage.tsx',
   'pages/monitoring/InferencePanel.tsx',
@@ -434,6 +435,33 @@ const DEBITO_DE_OUTRA_FRENTE = [
   'modules/admin/pages/observability/EdgeFleetPanel.tsx',
   'modules/admin/pages/observability/StreamsPanel.tsx',
   'modules/admin/pages/observability/WorkersPanel.tsx',
+  // --- componentes RENDERIZADOS pelo front legado (furo F, cético O2) ---
+  //
+  // Estes NÃO são órfãos: são o texto que as rotas EPI da RVB pintam na
+  // tela, e ficavam invisíveis porque a BFS só era semeada a partir de
+  // `src/app`. Cadeia medida:
+  //   /epi/cameras/:id/operations → EpiOperationsPage → TrainingModeLayout
+  //        → OperationCreateModal/OperationEditModal → operationTypeForms/*
+  //   /epi/cameras/:id/scenario   → EpiScenarioEditorPage → ScenarioEditor
+  //   /epi/training               → TrainingPage → (mesmos modais)
+  // Nenhuma dessas rotas redireciona para o front novo (AppRoutes.tsx).
+  //
+  //   scenario/ScenarioEditor.tsx                  `Threshold` x2      (2)
+  //   cameras/CameraFpsConfig.tsx                  `inferência`        (1)
+  //   training/modals/OperationCreateModal.tsx     `JSON` x2           (2)
+  //   training/modals/OperationEditModal.tsx       `JSON`              (1)
+  //   training/operationTypeForms/CountStaticForm.tsx    `threshold` x3 (3)
+  //   training/operationTypeForms/OverlapDynamicForm.tsx `IoU`/`Threshold` (3)
+  //   training/operationTypeForms/OverlapFixedForm.tsx   `Threshold`/`condition_satisfied` (2)
+  //   training/operationTypeForms/ZoneTuningForm.tsx     `JSON` x3      (3)
+  'components/scenario/ScenarioEditor.tsx',
+  'components/cameras/CameraFpsConfig.tsx',
+  'components/training/modals/OperationCreateModal.tsx',
+  'components/training/modals/OperationEditModal.tsx',
+  'components/training/operationTypeForms/CountStaticForm.tsx',
+  'components/training/operationTypeForms/OverlapDynamicForm.tsx',
+  'components/training/operationTypeForms/OverlapFixedForm.tsx',
+  'components/training/operationTypeForms/ZoneTuningForm.tsx',
 ]
 
 function ehDebitoDeOutraFrente(arquivo: string): boolean {
@@ -470,7 +498,11 @@ function resolveImport(arquivoBase: string, specifier: string): string | null {
  * telas do front legado que só `pages/`/`modules/` ainda usam.
  */
 export function arquivosVisiveisAoTenant(): string[] {
-  const raizes = arquivos(APP)
+  // Semeada TAMBÉM a partir do front legado (furo F, cético da rodada O2):
+  // sem isto, 38 arquivos de `src/components/**` renderizados por `/epi/*`
+  // ficavam invisíveis — 17 achados de jargão, medidos, nas telas de
+  // operação e de cenário que o operador da RVB abre.
+  const raizes = [...arquivos(APP), ...arquivos(PAGES), ...arquivos(MODULES)]
   const visitados = new Set(raizes)
   const fila = [...raizes]
   while (fila.length) {
@@ -484,10 +516,12 @@ export function arquivosVisiveisAoTenant(): string[] {
     }
   }
   const alcancados = [...visitados].filter(
-    (f) => f.startsWith(APP + path.sep) || f.startsWith(COMPONENTS + path.sep),
+    (f) =>
+      (f.startsWith(APP + path.sep) || f.startsWith(COMPONENTS + path.sep)) &&
+      !ehDebitoDeOutraFrente(f),
   )
-  // Somado DEPOIS do filtro e sem semear a BFS: o front legado entra pelo
-  // que ELE mesmo escreve na tela, não pela árvore de imports pendurada nele.
+  // Somado DEPOIS do filtro: as próprias telas de `pages/`/`modules/` não
+  // passam no filtro acima (não moram em app/ nem components/).
   const legado = [...arquivos(PAGES), ...arquivos(MODULES)].filter(
     (f) => !alcancados.includes(f) && !ehDebitoDeOutraFrente(f),
   )
@@ -524,16 +558,66 @@ describe('escopo: a régua alcança components/** renderizado pelo front novo (f
     expect(alvo.some((f) => f.endsWith(path.join('pages', 'ModuleSelectionPage.tsx')))).toBe(true)
   })
 
-  it('NÃO inclui componentes órfãos de src/components (só alcançáveis do front legado)', () => {
+  it('os 3 componentes do front legado ficam fora — mas por DÉBITO NOMEADO, não por cegueira', () => {
     const alvo = arquivosVisiveisAoTenant()
-    const legado = [
+    const congelados = [
       path.join('components', 'training', 'modals', 'OperationCreateModal.tsx'),
       path.join('components', 'scenario', 'ScenarioEditor.tsx'),
       path.join('components', 'cameras', 'CameraFpsConfig.tsx'),
     ]
-    for (const rel of legado) {
-      expect(alvo.some((f) => f.endsWith(rel)), `${rel} não devia estar alcançável a partir de src/app`).toBe(false)
+    for (const rel of congelados) {
+      expect(alvo.some((f) => f.endsWith(rel)), `${rel} está congelado — deve sair do resultado`).toBe(false)
+      // A diferença que importa: hoje eles saem porque ALGUÉM os escreveu na
+      // lista, não porque a BFS não os enxerga. Tirar da lista é o conserto.
+      expect(
+        DEBITO_DE_OUTRA_FRENTE.includes(rel.split(path.sep).join('/')),
+        `${rel} sairia do escopo em SILÊNCIO — tem de estar em DEBITO_DE_OUTRA_FRENTE`,
+      ).toBe(true)
     }
+  })
+})
+
+/**
+ * Furo F (cético da rodada O2). O PR abriu o escopo para `src/pages/**` e
+ * `src/modules/**` inteiros, mas NÃO semeou a BFS a partir deles — e o texto
+ * que as rotas EPI pintam na tela mora, em boa parte, em `src/components/**`.
+ * Medido com a própria régua: 38 arquivos de `components/` renderizados pelo
+ * front legado ficavam fora, com 17 achados de jargão (`Threshold`, `IoU`,
+ * `condition_satisfied`, `JSON`) — nas telas de operação e de cenário do
+ * módulo EPI, que é o módulo da RVB. Nenhuma dessas rotas redireciona para o
+ * front novo.
+ */
+describe('escopo O2/cético: a BFS é semeada TAMBÉM pelo front legado (furo F)', () => {
+  it('inclui components/training/TrainingModeLayout.tsx — só alcançável via EpiOperationsPage', () => {
+    const alvo = arquivosVisiveisAoTenant()
+    expect(
+      alvo.some((f) => f.endsWith(path.join('components', 'training', 'TrainingModeLayout.tsx'))),
+      'TrainingModeLayout é o corpo de /epi/cameras/:id/operations — tem de estar no escopo',
+    ).toBe(true)
+  })
+
+  it('nenhum componente alcançado pelo front legado escapa em silêncio', () => {
+    // Todo arquivo de components/ que a BFS alcança ou está no resultado
+    // (varrido) ou está NOMEADO no débito. Terceira via — sumir sem registro
+    // — é o que este teste proíbe.
+    const alvo = new Set(arquivosVisiveisAoTenant())
+    const raiz = path.dirname(APP)
+    const fora = [...arquivos(COMPONENTS)].filter(
+      (f) => !alvo.has(f) && !ehDebitoDeOutraFrente(f),
+    )
+    // Sobram só os componentes que NINGUÉM renderiza (órfãos de verdade).
+    for (const f of fora) {
+      const rel = path.relative(raiz, f).split(path.sep).join('/')
+      expect(
+        acharJargao(rel, fs.readFileSync(f, 'utf-8')),
+        `${rel} tem jargão e não está nem varrido nem no débito`,
+      ).toEqual([])
+    }
+  })
+
+  it('o débito congelado é a lista MEDIDA — 7 telas + 8 componentes', () => {
+    expect(DEBITO_DE_OUTRA_FRENTE.length).toBe(15)
+    expect(DEBITO_DE_OUTRA_FRENTE.filter((f) => f.startsWith('components/')).length).toBe(8)
   })
 })
 
@@ -560,7 +644,7 @@ describe('escopo O2: o front legado inteiro (furo C) e copy passada como prop (f
   it('o débito congelado de outra frente fica FORA — e é nomeado, não silencioso', () => {
     const alvo = arquivosVisiveisAoTenant()
     expect(alvo.some((f) => f.endsWith(path.join('pages', 'monitoring', 'SiteMonitor.tsx')))).toBe(false)
-    expect(DEBITO_DE_OUTRA_FRENTE.length).toBe(7)
+    expect(DEBITO_DE_OUTRA_FRENTE.filter((f) => f.startsWith('pages/') || f.startsWith('modules/')).length).toBe(7)
   })
 
   it('furo D — copy em prop (`desc=`) acusa: a linha REAL de HomePage.tsx:123', () => {
