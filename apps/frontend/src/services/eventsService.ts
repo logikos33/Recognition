@@ -94,17 +94,19 @@ export interface EventsRangeParams {
    * legenda, que está mostrando demonstração.
    */
   includeDemo?: boolean
+  /**
+   * Eixo de tempo: 'captured' (DEFAULT aqui, quando o frame foi capturado) ou
+   * 'created' (quando a linha entrou no banco). Só o primeiro responde "em que
+   * horário a fábrica gera violação" — numa carga em lote o segundo responde
+   * "a que horas o servidor gravou". Vale para timeline E resumo: os dois
+   * alimentam painéis da MESMA tela, e painel da mesma tela não pode contar em
+   * eixos diferentes. Ver `buildQuery`.
+   */
+  timeField?: 'created' | 'captured'
 }
 
 export interface TimelineParams extends EventsRangeParams {
   bucket?: 'hour' | 'day' | 'week'
-  /**
-   * Eixo de tempo: 'created' (default, quando a linha entrou no banco) ou
-   * 'captured' (quando o frame foi capturado). Só o segundo responde "em que
-   * horário a fábrica gera violação" — numa carga em lote o primeiro responde
-   * "a que horas o servidor gravou".
-   */
-  timeField?: 'created' | 'captured'
 }
 
 /**
@@ -126,6 +128,13 @@ function buildQuery(params: EventsRangeParams, bucket?: string): string {
   qs.set('from', params.from)
   qs.set('to', params.to)
   qs.set('include_demo', params.includeDemo === true ? 'true' : 'false')
+  // EIXO DO TEMPO — mesmo motivo do `include_demo` acima: default invertido
+  // AQUI, no cliente, e não na rota (que tem outros consumidores). A rota
+  // trata ausência como 'created' (GRAVAÇÃO); esta tela conta CAPTURA em todo
+  // painel, e `GET /api/alerts` — o destino de todo deep-link do Dashboard —
+  // recorta por captura desde a issue #676. Resumo em `created_at` com lista
+  // em `timestamp` é o cartão dizendo um número e a lista mostrando outro.
+  qs.set('time_field', params.timeField === 'created' ? 'created' : 'captured')
   if (bucket) qs.set('bucket', bucket)
   if (params.moduleCode) qs.set('module_code', params.moduleCode)
   for (const id of params.cameraIds ?? []) qs.append('camera_id[]', id)
@@ -136,8 +145,7 @@ function buildQuery(params: EventsRangeParams, bucket?: string): string {
 export const eventsService = {
   async getTimeline(params: TimelineParams): Promise<TimelineData> {
     const qs = buildQuery(params, params.bucket)
-    const eixo = params.timeField === 'captured' ? '&time_field=captured' : ''
-    const res = await api.get<Envelope<TimelineData>>(`/v1/events/timeline?${qs}${eixo}`)
+    const res = await api.get<Envelope<TimelineData>>(`/v1/events/timeline?${qs}`)
     return res.data ?? { timeline: [], bucket: params.bucket ?? 'hour' }
   },
 

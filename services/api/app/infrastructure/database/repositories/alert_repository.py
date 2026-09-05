@@ -902,10 +902,11 @@ class AlertRepository(BaseRepository):
         to_ts: datetime,
         module_code: str | None = None,
         camera_ids: list[str] | None = None,
+        time_column: str = "created_at",
     ) -> int:
         """Conta alertas do tenant em uma janela temporal (com filtros opcionais)."""
         conditions, params = self._window_conditions(
-            tenant_id, from_ts, to_ts, module_code, camera_ids
+            tenant_id, from_ts, to_ts, module_code, camera_ids, time_column=time_column
         )
         where = " AND ".join(conditions)
         row = self._execute_one(
@@ -954,6 +955,7 @@ class AlertRepository(BaseRepository):
         module_code: str | None = None,
         camera_ids: list[str] | None = None,
         class_names: list[str] | None = None,
+        time_column: str = "created_at",
     ) -> list[dict[str, Any]]:
         """Distribuição de VIOLAÇÕES por classe no período (server-side).
 
@@ -972,7 +974,7 @@ class AlertRepository(BaseRepository):
         duas telas se desmentindo sobre o mesmo dado.
         """
         conditions, params = self._window_conditions(
-            tenant_id, from_ts, to_ts, module_code, camera_ids
+            tenant_id, from_ts, to_ts, module_code, camera_ids, time_column=time_column
         )
         conditions.append("v->>'class' IS NOT NULL")
         conditions.append("lower(v->>'class') = ANY(%s::text[])")
@@ -997,9 +999,12 @@ class AlertRepository(BaseRepository):
         to_ts: datetime,
         module_code: str | None = None,
         limit: int = 10,
+        time_column: str = "created_at",
     ) -> list[dict[str, Any]]:
         """Top câmeras por volume de alertas no período (tenant-scoped)."""
-        conditions, params = self._window_conditions(tenant_id, from_ts, to_ts, module_code)
+        conditions, params = self._window_conditions(
+            tenant_id, from_ts, to_ts, module_code, time_column=time_column
+        )
         where = " AND ".join(conditions)
         params.append(limit)
         return self._execute(

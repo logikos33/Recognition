@@ -56,3 +56,31 @@ describe('eventsService — política de dado de demonstração', () => {
     expect(q.get('include_demo')).toBe('false')
   })
 })
+
+/**
+ * Achado do cético: o eixo estava declarado SÓ no `getTimeline`. O resumo
+ * alimenta "Violações por classe" e "Câmeras com mais eventos" — dois painéis
+ * da MESMA tela, com deep-link para `GET /api/alerts`, que recorta pela
+ * CAPTURA desde a issue #676. Sem o parâmetro, a rota conta pela GRAVAÇÃO e o
+ * cartão volta a discordar da lista que ele abre.
+ */
+describe('eventsService — eixo do tempo em TODO pedido', () => {
+  it('getSummary declara CAPTURA sem ninguém pedir', async () => {
+    await eventsService.getSummary({ ...JANELA, moduleCode: 'epi' })
+    expect(ultimaQuery().get('time_field')).toBe('captured')
+  })
+
+  it('getProfile e getTimeline idem — um eixo só para a tela inteira', async () => {
+    await eventsService.getProfile({ ...JANELA, moduleCode: 'epi' })
+    expect(ultimaQuery().get('time_field')).toBe('captured')
+    await eventsService.getTimeline({ ...JANELA, bucket: 'hour' })
+    expect(ultimaQuery().get('time_field')).toBe('captured')
+  })
+
+  it('quem quer o eixo da INGESTÃO pede — e o parâmetro sai uma vez só', async () => {
+    await eventsService.getTimeline({ ...JANELA, bucket: 'hour', timeField: 'created' })
+    const rota = get.mock.calls.at(-1)?.[0] ?? ''
+    expect(ultimaQuery().get('time_field')).toBe('created')
+    expect(rota.match(/time_field=/g)).toHaveLength(1)
+  })
+})

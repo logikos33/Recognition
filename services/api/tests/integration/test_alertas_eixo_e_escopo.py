@@ -228,3 +228,67 @@ def test_rajada_conta_capturas_distintas_gravadas_no_mesmo_segundo(
 
     # E na janela de CAPTURA (o caminho do clique) o par bate igual.
     assert _lista(client, token, janela)["total_situacoes"] == 6
+
+
+def _cartao_resumo(client, token, janela, extra: str = "&time_field=captured") -> dict:
+    """O outro cartão: `/v1/events/summary` — a fonte de "Violações por classe"
+    e "Câmeras com mais eventos", os dois painéis com deep-link do Dashboard.
+
+    `time_field=captured` é o que o cliente manda em TODO pedido do
+    `eventsService` (`buildQuery`); a rota mantém o default histórico
+    'created' porque tem outros leitores (issue #702).
+    """
+    r = client.get(
+        f"/api/v1/events/summary?from={janela['de']}&to={janela['ate']}"
+        f"&module_code=epi{extra}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.get_json()
+    return r.get_json()["data"]
+
+
+def test_resumo_conta_no_mesmo_eixo_que_a_lista_que_ele_abre(
+    app, client, pg_pool, pg_raw, tenant_id, cenario, janela
+):
+    """ACHADO DO CÉTICO (#732): `/v1/events/summary` ignorava `time_field`.
+
+    O parâmetro existia na rota (`_time_column`) e só chegava ao
+    `/events/timeline`: o resumo contava SEMPRE por `created_at`, enquanto
+    `/api/alerts` passou a recortar pela captura. Os painéis "Violações por
+    classe" e "Câmeras com mais eventos" diriam um número e o clique abriria a
+    lista com outro — o defeito que a issue #676 existe para matar, na tela
+    irmã.
+
+    FALHA ANTES: com `time_field=captured` no pedido, esta janela (o turno de
+    25/08) devolvia `total=0` e `by_camera=[]` mesmo assim, porque as 6 linhas
+    foram GRAVADAS em 01/09 e o parâmetro era ignorado.
+    """
+    token = _jwt(app, tenant_id)
+
+    resumo = _cartao_resumo(client, token, janela)
+    lista = _lista(client, token, janela)
+
+    assert resumo["total"] == 6, "o resumo conta a janela pela CAPTURA, como a lista"
+    assert lista["total"] == resumo["total"], (
+        f"cartão do resumo diz {resumo['total']} e a lista devolve {lista['total']} "
+        "— o eixo mudou entre o painel e o destino do clique"
+    )
+    por_camera = {c["camera_id"]: c["count"] for c in resumo["by_camera"]}
+    assert por_camera.get(cenario["cam_epi"]) == 6
+    assert cenario["cam_fora"] not in por_camera, "escopo de módulo, igual à lista"
+
+
+def test_resumo_aceita_a_saida_de_emergencia_do_eixo_da_gravacao(
+    app, client, pg_pool, pg_raw, tenant_id, cenario, janela
+):
+    """`time_field=created` (e a AUSÊNCIA, que é o default histórico da rota)
+    continuam no eixo da ingestão — nenhum consumidor antigo muda por baixo."""
+    token = _jwt(app, tenant_id)
+    assert _cartao_resumo(client, token, janela, extra="&time_field=created")["total"] == 0
+    assert _cartao_resumo(client, token, janela, extra="")["total"] == 0
+
+    gravacao = {
+        "de": _iso(GRAVACAO_LOTE - timedelta(minutes=1)),
+        "ate": _iso(GRAVACAO_LOTE + timedelta(minutes=1)),
+    }
+    assert _cartao_resumo(client, token, gravacao, extra="&time_field=created")["total"] == 6
