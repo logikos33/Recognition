@@ -88,23 +88,53 @@ export interface EventsRangeParams {
   moduleCode?: string
   cameraIds?: string[]
   classNames?: string[]
-}
-
-export interface TimelineParams extends EventsRangeParams {
-  bucket?: 'hour' | 'day' | 'week'
   /**
-   * Eixo de tempo: 'created' (default, quando a linha entrou no banco) ou
-   * 'captured' (quando o frame foi capturado). Só o segundo responde "em que
-   * horário a fábrica gera violação" — numa carga em lote o primeiro responde
-   * "a que horas o servidor gravou".
+   * Somar `public.demo_events` (evento SEMEADO) ao evento real. Default
+   * `false` — ver `buildQuery`. Só passe `true` numa tela que DIGA, na
+   * legenda, que está mostrando demonstração.
+   */
+  includeDemo?: boolean
+  /**
+   * Eixo de tempo: 'captured' (DEFAULT aqui, quando o frame foi capturado) ou
+   * 'created' (quando a linha entrou no banco). Só o primeiro responde "em que
+   * horário a fábrica gera violação" — numa carga em lote o segundo responde
+   * "a que horas o servidor gravou". Vale para timeline E resumo: os dois
+   * alimentam painéis da MESMA tela, e painel da mesma tela não pode contar em
+   * eixos diferentes. Ver `buildQuery`.
    */
   timeField?: 'created' | 'captured'
 }
 
+export interface TimelineParams extends EventsRangeParams {
+  bucket?: 'hour' | 'day' | 'week'
+}
+
+/**
+ * ⚠️ `include_demo` é emitido SEMPRE, e o default é `false` — invertido em
+ * relação à rota (issue #677).
+ *
+ * `GET /v1/events/timeline` e `/search` fazem
+ * `include_demo = request.args.get("include_demo","true") != "false"`: quem
+ * NÃO manda o parâmetro recebe `public.demo_events` unido por `UNION ALL` ao
+ * evento real. O funil PADRÃO do usuário mostra só origem real — o semeado
+ * aparece por filtro DECLARADO na tela. Como a rota tem outros consumidores,
+ * o default se inverte AQUI, no cliente, e não lá.
+ *
+ * Hoje `SELECT count(*) FROM public.demo_events` = 0 no DEV: o defeito é
+ * inerte e passa a mentir no minuto em que alguém semear a primeira demo.
+ */
 function buildQuery(params: EventsRangeParams, bucket?: string): string {
   const qs = new URLSearchParams()
   qs.set('from', params.from)
   qs.set('to', params.to)
+  qs.set('include_demo', params.includeDemo === true ? 'true' : 'false')
+  // EIXO DO TEMPO — mesmo motivo do `include_demo` acima: default invertido
+  // AQUI, no cliente, e não na rota (que tem outros consumidores). A rota
+  // trata ausência como 'created' (GRAVAÇÃO); esta tela conta CAPTURA em todo
+  // painel, e `GET /api/alerts` — o destino de todo deep-link do Dashboard —
+  // recorta por captura desde a issue #676. Resumo em `created_at` com lista
+  // em `timestamp` é o cartão dizendo um número e a lista mostrando outro.
+  qs.set('time_field', params.timeField === 'created' ? 'created' : 'captured')
   if (bucket) qs.set('bucket', bucket)
   if (params.moduleCode) qs.set('module_code', params.moduleCode)
   for (const id of params.cameraIds ?? []) qs.append('camera_id[]', id)
@@ -115,8 +145,7 @@ function buildQuery(params: EventsRangeParams, bucket?: string): string {
 export const eventsService = {
   async getTimeline(params: TimelineParams): Promise<TimelineData> {
     const qs = buildQuery(params, params.bucket)
-    const eixo = params.timeField === 'captured' ? '&time_field=captured' : ''
-    const res = await api.get<Envelope<TimelineData>>(`/v1/events/timeline?${qs}${eixo}`)
+    const res = await api.get<Envelope<TimelineData>>(`/v1/events/timeline?${qs}`)
     return res.data ?? { timeline: [], bucket: params.bucket ?? 'hour' }
   },
 

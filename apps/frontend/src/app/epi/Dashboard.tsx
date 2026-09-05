@@ -272,6 +272,22 @@ type TipoContado = 'todos' | 'violation'
  *
  * Regra: o link carrega o MESMO recorte que produziu o número. Painel que
  * contou todo evento manda `'todos'`; painel de violação manda `'violation'`.
+ *
+ * O recorte tem TRÊS eixos, e o link declara os três:
+ *
+ *  · **tipo** (`kind`) — acima;
+ *  · **tempo** — `start_date`/`end_date` são hora de CAPTURA (todo painel
+ *    desta tela lê `alerts.timestamp`, item 2b do cabeçalho). `GET
+ *    /api/alerts` passou a ler a janela nesse mesmo eixo por DEFAULT
+ *    (issue #676), então não há parâmetro a mandar: mandar `time_field`
+ *    aqui seria repetir o default;
+ *  · **módulo** (`module_code=epi`) — os painéis saem de
+ *    `/v1/events/*?module_code=epi`, que aplica a coluna `module_code` E o
+ *    escopo de câmera do módulo. Sem ele a lista contava alerta de câmera
+ *    fora do EPI: 82 linhas a mais que o cartão, medidas no DEV.
+ *    ⚠️ `Eventos.tsx` ainda NÃO relê este parâmetro da URL (arquivo de outra
+ *    frente nesta rodada — issue #701). Até lá o link já sai correto e o
+ *    destino ignora; quando aquela linha entrar, o número fecha sozinho.
  */
 function linkParaEventos(params: {
   kind: TipoContado
@@ -286,6 +302,8 @@ function linkParaEventos(params: {
     if (chave === 'kind') continue
     if (valor) q.set(chave, valor)
   }
+  // Escopo de módulo: TODO painel desta tela conta com `module_code=epi`.
+  q.set('module_code', 'epi')
   // Sempre presente, inclusive vazio: `?kind=` é "todos os tipos" para o
   // destino, e a AUSÊNCIA é que reativaria o default 'violation'.
   q.set('kind', params.kind === 'todos' ? '' : params.kind)
