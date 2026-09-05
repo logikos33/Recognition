@@ -5,7 +5,7 @@
 Uma decisão por arquivo (`docs/decisions/D-NNN-slug.md`). Convenção e motivo:
 [`README.md`](./README.md). Histórico congelado: [`../REGISTRO_DE_DECISOES.md`](../REGISTRO_DE_DECISOES.md).
 
-**185 decisões** · última: D-192
+**187 decisões** · última: D-192
 
 | # | Decisão | Data | Status |
 |---|---|---|---|
@@ -193,4 +193,6 @@ Uma decisão por arquivo (`docs/decisions/D-NNN-slug.md`). Convenção e motivo:
 | [D-187](./D-187-pr-384-nao-mergeado-em-17-08-conflitava-e-tocava-o.md) | #384 (aba Classificar + minerador) não mergeado em 17/08 — conflitava e tocava o supercategory | 2026-08-17 | ↩ substituída |
 | [D-188](./D-188-pr-375-293-259-valor-extraido-em-17-08-recomendacao-de.md) | #375/#293/#259 não mergeados — valor extraído em 17/08, recomendação de fechar | 2026-08-17 | 📌 dívida |
 | [D-189](./D-189-a-colheita-passa-a-obedecer-a-lista-do-dono-nao-a-tabela-de-politica.md) | A colheita passa a obedecer a lista do dono, não a tabela de política | 02/09 | — |
+| [D-190](./D-190-sem-action-de-segunda-opiniao-risk-security-ja-para-na-fila.md) | Sem Action de segunda opinião: `risk:security` já para na fila do humano | 2026-09-02 | ✅ vigente |
+| [D-191](./D-191-frontend-tests-so-vira-required-check-depois-de-os-flaky.md) | Frontend tests só vira required check depois de os flaky morrerem | 2026-09-02 | ✅ vigente |
 | [D-192](./D-192-gate-de-ci-mora-em-script-testavel-nao-em-heredoc-de-yaml.md) | Gate de CI mora em script testável, ⛔ não em heredoc de YAML | 2026-09-05 | ✅ vigente |

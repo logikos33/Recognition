@@ -457,7 +457,7 @@ export function AdminTestConsolePage() {
               {availableModels.map((m) => (
                 <option key={m.id} value={m.id}>{m.name}</option>
               ))}
-              <option value="pretrained">Pré-treinado (YOLOv8n base)</option>
+              <option value="pretrained">Pré-treinado (modelo base do sistema)</option>
             </select>
           </div>
 

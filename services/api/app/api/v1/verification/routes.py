@@ -14,6 +14,7 @@ from flask_jwt_extended import jwt_required
 from app.core.auth import get_current_user_id, get_tenant_id
 from app.core.exceptions import EpiMonitorError
 from app.core.responses import success, error
+from app.core.tenant import require_permission
 from app.domain.services.verification_service import VerificationService
 
 logger = logging.getLogger(__name__)
@@ -82,6 +83,7 @@ def queue_count():  # type: ignore[no-untyped-def]
 
 @verification_bp.route("/api/verification/<alert_id>/review", methods=["POST"])
 @jwt_required()
+@require_permission("verification:write")
 def review_alert(alert_id: str):  # type: ignore[no-untyped-def]
     """Operador aprova ou rejeita alerta do próprio tenant (C-01).
 

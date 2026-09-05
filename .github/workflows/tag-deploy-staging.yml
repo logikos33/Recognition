@@ -1,0 +1,48 @@
+name: Tag de deploy (staging)
+
+# staging = PRODUÇÃO (auto-deploy Railway). Cada merge aqui vira uma tag datada
+# com nota curta, para que "o que está em produção" tenha nome — e não dependa
+# de garimpar o histórico. Complementa a proveniência exposta em /livez.
+on:
+  push:
+    branches: [staging]
+
+permissions:
+  contents: write # criar e empurrar a tag
+
+jobs:
+  tag:
+    name: Criar tag datada do deploy
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0 # precisa do histórico para a nota (tag anterior..HEAD)
+
+      - name: Criar e empurrar a tag
+        run: |
+          set -euo pipefail
+          # Sufixo de SHA porque dois deploys no mesmo dia são normais aqui —
+          # sem ele o segundo colidiria com o primeiro e o passo falharia.
+          TAG="deploy/$(date -u +%Y-%m-%d)-${GITHUB_SHA::7}"
+
+          ANTERIOR=$(git describe --tags --match 'deploy/*' --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$ANTERIOR" ]; then
+            NOTA=$(git log --oneline --no-merges "$ANTERIOR..HEAD" | head -20)
+            ESCOPO="desde $ANTERIOR"
+          else
+            NOTA=$(git log --oneline --no-merges -10 HEAD)
+            ESCOPO="primeira tag de deploy"
+          fi
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Deploy staging $(date -u +'%Y-%m-%d %H:%M UTC') ($ESCOPO)
+
+          $NOTA"
+          git push origin "$TAG"
+          echo "### Tag \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "$NOTA" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
