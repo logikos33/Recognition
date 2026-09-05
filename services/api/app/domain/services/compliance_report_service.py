@@ -33,6 +33,13 @@ logger = logging.getLogger(__name__)
 
 VALID_PERIODS = {"dia", "semana"}
 
+#: Por que o `compliance_rate` não pôde ser calculado. MESMAS chaves que
+#: `app/api/v1/modules/routes.py` publica no Dashboard — a tela de Relatórios
+#: e o cartão do painel falam do mesmo score e têm de falar a mesma língua.
+#: (String literal de propósito: `domain` não importa de `api`.)
+RAZAO_SEM_SINAL = "sem_sinal_no_periodo"
+RAZAO_NAO_APURADA = "nao_foi_possivel_apurar"
+
 
 def _get_alert_repo():  # type: ignore[no-untyped-def]
     from app.infrastructure.database.connection import DatabasePool
@@ -65,6 +72,31 @@ def _period_range(period: str, from_dt: datetime | None, to_dt: datetime | None)
     return start, now
 
 
+def valor_conformidade(summary: dict[str, Any]) -> str:
+    """A Taxa de Conformidade como TEXTO, para o PDF.
+
+    O PDF vai para o cliente e fica ARQUIVADO no R2 (o job diário gera um por
+    dia). Score ausente tem de sair "—" com a razão: um relatório de auditoria
+    que imprime "100,0%" porque a consulta caiu é a mentira mais cara deste
+    serviço — e era o que acontecia, porque o `except` de `_aggregate` devolvia
+    `compliance_rate = 100.0`.
+
+    Função de módulo (e não inline no `_generate_pdf`) porque é a asserção que
+    o teste precisa alcançar sem reportlab — que outros testes da suíte
+    substituem em `sys.modules`.
+    """
+    pct = summary.get("compliance_rate")
+    if pct is not None:
+        return f"{pct:.1f}%"
+    razao = summary.get("compliance_reason")
+    motivo = (
+        "sem evento no período — nada a apurar"
+        if razao == RAZAO_SEM_SINAL
+        else "não foi possível apurar"
+    )
+    return f"— ({motivo})"
+
+
 def _generate_pdf(tenant_id: str, period: str, summary: dict[str, Any], from_dt: datetime, to_dt: datetime) -> bytes:
     """Gera PDF de compliance em memória. Requer reportlab."""
     from reportlab.lib import colors
@@ -94,16 +126,16 @@ def _generate_pdf(tenant_id: str, period: str, summary: dict[str, Any], from_dt:
     story.append(Spacer(1, 18))
 
     # Sumário
-    compliance_pct = summary.get("compliance_rate", 0.0)
     total_violations = summary.get("total_violations", 0)
     top_cameras = summary.get("top_cameras", [])
+    valor_pct = valor_conformidade(summary)
 
     story.append(Paragraph("Sumário de Conformidade", styles["Heading2"]))
     story.append(Spacer(1, 6))
 
     data = [
         ["Métrica", "Valor"],
-        ["Taxa de Conformidade", f"{compliance_pct:.1f}%"],
+        ["Taxa de Conformidade", valor_pct],
         ["Total de Violações", str(total_violations)],
         ["Câmeras com Violações", str(len(top_cameras))],
     ]
@@ -221,10 +253,20 @@ class ComplianceReportService:
         Como não temos contagem de detecções totais no banco, usamos uma
         estimativa conservadora baseada em câmeras × frames/hora × horas.
         Para o MVP, compliance_rate = max(0, 100 - violations_pct_proxy).
+
+        `compliance_rate` é `None` (com `compliance_reason`) sempre que o número
+        afirmaria mais do que se sabe: nenhum alerta na janela (nada foi
+        observado) ou agregação que falhou. Nunca 100 sobre o vazio.
         """
+        razao: str | None = None
         try:
             alert_repo = _get_alert_repo()
-            total_violations = alert_repo.count_since(tenant_id, "epi", start)
+            # `count_since` ignorava `end`: para um período FECHADO (o "mês
+            # anterior" da tela de Relatórios manda from/to) ele contava do
+            # início do período até AGORA, somando eventos de fora da janela ao
+            # número que a tela chama de "eventos no período". Mesmos filtros e
+            # mesmo escopo de câmera; o que muda é o limite superior existir.
+            total_violations = alert_repo.count_in_window(tenant_id, start, end, "epi")
 
             # Tendência por hora
             trend_rows = alert_repo.count_by_hour(tenant_id, start, end)
@@ -265,15 +307,31 @@ class ComplianceReportService:
             violations_proxy = total_violations / hours
             compliance_rate = max(0.0, min(100.0, 100.0 - (violations_proxy * 50)))
 
+            if total_violations == 0:
+                # ZERO alerta na janela não é 100 % de conformidade: `count_in_window`
+                # conta TODO alerta EPI do período (violação E conformidade), então
+                # zero significa que nada chegou — o módulo não estava OLHANDO.
+                # Mesma doutrina do score do Dashboard (`_com_score_honesto` em
+                # `app/api/v1/modules/routes.py`): ausência de medição não vira
+                # nota máxima. O PDF arquivado no R2 é prova para auditoria.
+                compliance_rate = None
+                razao = RAZAO_SEM_SINAL
+
         except Exception as exc:
             logger.warning("compliance_aggregate_failed: %s", exc, exc_info=True)
             total_violations = 0
             trend = []
             top_cameras = []
-            compliance_rate = 100.0
+            # ⛔ Era `100.0`. A consulta cair devolvia o relatório PERFEITO —
+            # e o `except` cobre tudo, inclusive o TypeError do PR #75. O
+            # endpoint mentia exatamente quando menos sabia. `None` + razão:
+            # a tela mostra "não foi possível apurar", nunca um número.
+            compliance_rate = None
+            razao = RAZAO_NAO_APURADA
 
         return {
-            "compliance_rate": round(compliance_rate, 2),
+            "compliance_rate": None if compliance_rate is None else round(compliance_rate, 2),
+            "compliance_reason": razao,
             "total_violations": total_violations,
             "top_cameras": top_cameras,
             "trend_by_hour": trend,
