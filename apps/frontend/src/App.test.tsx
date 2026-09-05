@@ -1,10 +1,16 @@
 /**
- * Regressão de COEXISTÊNCIA do ramo DESLOGADO (F5 SR2).
+ * Regressão da PORTA (ramo DESLOGADO).
  *
- * As 3 rotas novas de acesso (`/novo/entrar`, `/novo/esqueci-senha`,
- * `/novo/redefinir-senha`) são ADITIVAS: precisam montar a tela nova, e
- * nenhuma rota desconhecida pode deixar de cair no Login antigo — ele
- * continua sendo o catch-all deslogado, intocado.
+ * V1: o catch-all deslogado passou a servir a tela NOVA de login (`Entrar`).
+ * Quem chega em `https://<app>/` — que é como TODO usuário chega — via a tela
+ * ANTIGA, cujo `login()` sem 3º argumento cai no default `'/'` de
+ * `useAuth.ts` e entrega o front ANTIGO. `Entrar` chama
+ * `login(email, senha, rotaNova('/'))` e entrega o front NOVO.
+ *
+ * As 3 rotas nomeadas de acesso (`/novo/entrar`, `/novo/esqueci-senha`,
+ * `/novo/redefinir-senha`) seguem montando suas telas, e `/forgot-password` e
+ * `/reset-password` (endereços antigos, que circulam em e-mail de redefinição)
+ * seguem de pé.
  *
  * As telas em si (Entrar/EsqueciSenha/RedefinirSenha) já têm teste próprio;
  * aqui o alvo é só a FIAÇÃO de rota em App.tsx.
@@ -45,7 +51,7 @@ const App = (await import('./App')).default
 /** `BrowserRouter` de dentro do App lê a URL do `window.history` no mount. */
 const irPara = (caminho: string) => window.history.pushState({}, '', caminho)
 
-describe('App — ramo deslogado (coexistência F5 SR2)', () => {
+describe('App — ramo deslogado (a porta)', () => {
   it('/novo/entrar monta a tela NOVA de login', async () => {
     irPara('/novo/entrar')
     render(<App />)
@@ -64,10 +70,18 @@ describe('App — ramo deslogado (coexistência F5 SR2)', () => {
     expect(await screen.findByText('REDEFINIR-NOVO')).toBeTruthy()
   })
 
-  it('rota deslogada desconhecida AINDA cai no Login antigo — catch-all intocado', () => {
+  it('a raiz `/` deslogada monta a tela NOVA — é por onde o usuário entra', async () => {
+    irPara('/')
+    render(<App />)
+    expect(await screen.findByText('ENTRAR-NOVO')).toBeTruthy()
+    expect(screen.queryByText('LOGIN-ANTIGO')).toBeNull()
+  })
+
+  it('rota deslogada desconhecida cai na tela NOVA — o catch-all é a porta', async () => {
     irPara('/qualquer-coisa-que-nao-existe')
     render(<App />)
-    expect(screen.getByText('LOGIN-ANTIGO')).toBeTruthy()
+    expect(await screen.findByText('ENTRAR-NOVO')).toBeTruthy()
+    expect(screen.queryByText('LOGIN-ANTIGO')).toBeNull()
   })
 
   it('/forgot-password e /reset-password antigos continuam de pé', () => {

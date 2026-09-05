@@ -9,7 +9,7 @@
  *
  * Rede mockada no módulo `api` (mesmo padrão de TrainingPageStudioOpen.test).
  */
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { CropClassifier } from '../../../components/annotation/CropClassifier'
 
@@ -108,6 +108,16 @@ async function aprovarComEnter() {
   // Catálogo + fila + anotações do frame carregados: a sugestão do tipo
   // VISÍVEL aparece (título do botão). Luvas não está na tela.
   await screen.findByTitle('Sugerido por proposta de IA pendente')
+  // O título vem de `suggested` (useMemo, computado NO MESMO render). A
+  // pré-seleção do veredito que o Enter grava vem de um useEffect SEPARADO,
+  // que também depende de `suggested` mas só comita no PRÓXIMO passe de
+  // efeitos. findByTitle só prova que o primeiro aconteceu — sob contenção de
+  // CPU (fila de workers do vitest) o Enter pode disparar entre um commit e
+  // outro, com `verdict` ainda vazio, e approve() sai sem payload (postMock
+  // nunca chamado — issue #618, medido: 2/10 execuções da suíte completa sob
+  // contenção real). act() força o React a esvaziar o efeito pendente antes
+  // de seguir.
+  await act(async () => {})
   expect(tiposNoPainel()).toEqual(['mascara'])
 
   fireEvent.keyDown(window, { key: 'Enter' })
