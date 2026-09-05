@@ -29,17 +29,26 @@ from app.infrastructure.database.repositories.annotation_repository import (
 )
 
 ANA, BRUNO = uuid4(), uuid4()
-AGORA = datetime.now(timezone.utc)
 
 
-def _caixa_no_banco(autor, quando=AGORA, **extra):
+def agora() -> datetime:
+    """Sempre no momento da CHAMADA, nunca no import.
+
+    Uma constante de módulo aqui envelhece durante a suíte inteira: medido, na
+    suíte completa (~5 min) `agora há pouco` virava `há 3 minutos` e estes
+    testes falhavam só em conjunto — verde isolado, vermelho no CI.
+    """
+    return datetime.now(timezone.utc)
+
+
+def _caixa_no_banco(autor, quando=None, **extra):
     """Linha de `frame_annotations` como o RealDictCursor devolve."""
     linha = {
         "id": uuid4(), "class_name": "Luvas",
         "x_center": 0.3, "y_center": 0.4, "width": 0.1, "height": 0.12,
         "source": "manual", "reviewed_by": None, "proposal_batch_id": None,
         "proposal_model_id": None, "proposal_confidence": None,
-        "created_by": autor, "created_at": quando,
+        "created_by": autor, "created_at": quando or agora(),
     }
     linha.update(extra)
     return linha
@@ -161,8 +170,8 @@ class TestVersao:
 
 class TestMensagem:
     def test_cita_o_autor_mais_recente_quando_ha_varios(self):
-        antigo = _caixa_no_banco(str(ANA), quando=AGORA - timedelta(hours=3))
-        recente = _caixa_no_banco(str(BRUNO), quando=AGORA - timedelta(minutes=5))
+        antigo = _caixa_no_banco(str(ANA), quando=agora() - timedelta(hours=3))
+        recente = _caixa_no_banco(str(BRUNO), quando=agora() - timedelta(minutes=5))
         with pytest.raises(ConflictError) as excecao:
             _roda([antigo, recente], user_id=uuid4(),
                   versao_esperada=VERSAO_VAZIA, nome_do_autor="Bruno")
