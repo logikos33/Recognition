@@ -5,6 +5,19 @@
  * LIÇÃO V1: Timeout em todas as requests (15s).
  * LIÇÃO V1: Sem dependência de objeto api.logout() externo.
  */
+/**
+ * Serviço importando de `app/` — de propósito, e é o único jeito honesto.
+ *
+ * #760: os `redirect` default daqui eram `'/admin/tenants'` LITERAL, o
+ * endereço do painel de tenants do front ANTIGO. Quem clicava em "Sair do
+ * contexto" no banner do front NOVO era despejado no produto velho. Repetir
+ * `'/novo/admin/tenants'` como literal consertaria o sintoma e criaria o
+ * próximo: no tombamento (`PREFIXO_NOVO` some), um literal escondido num
+ * serviço não aparece em nenhuma busca por `PREFIXO_NOVO`. `rotaNova()` é a
+ * ÚNICA fonte do prefixo — `AppRoutes.tsx` já a importa pelo mesmo motivo.
+ */
+import { rotaNova } from '../app/RotasNovas'
+
 export const TOKEN_KEY = 'token'
 
 /**
@@ -48,7 +61,7 @@ export const IMPERSONATION_EXPIRED_FLAG = 'impersonation_expired'
  * Restaura a sessão original do superadmin a partir do backup salvo ao
  * iniciar uma visualização "ver como". Retorna true se havia backup.
  */
-export function restoreImpersonationBackup(redirect = '/admin/tenants'): boolean {
+export function restoreImpersonationBackup(redirect = rotaNova('/admin/tenants')): boolean {
   const raw = localStorage.getItem(IMPERSONATION_BACKUP_KEY)
   localStorage.removeItem(IMPERSONATION_BACKUP_KEY)
   localStorage.removeItem(IMPERSONATION_META_KEY)
@@ -84,7 +97,7 @@ export const TENANT_CONTEXT_EXPIRED_META_KEY = 'tenant_context_expired_meta'
  * Restaura a sessão original do superadmin a partir do backup salvo ao
  * assumir o contexto de um tenant. Retorna true se havia backup.
  */
-export function restoreTenantContextBackup(redirect = '/admin/tenants'): boolean {
+export function restoreTenantContextBackup(redirect = rotaNova('/admin/tenants')): boolean {
   const raw = localStorage.getItem(TENANT_CONTEXT_BACKUP_KEY)
   localStorage.removeItem(TENANT_CONTEXT_BACKUP_KEY)
   localStorage.removeItem(TENANT_CONTEXT_META_KEY)
@@ -157,7 +170,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
           // superadmin em vez de deslogar (flag p/ toast pós-reload)
           if (localStorage.getItem(IMPERSONATION_BACKUP_KEY)) {
             sessionStorage.setItem(IMPERSONATION_EXPIRED_FLAG, '1')
-            if (restoreImpersonationBackup('/admin/tenants')) {
+            if (restoreImpersonationBackup()) {
               throw new Error('Visualização encerrada (token expirou)')
             }
           }
@@ -170,7 +183,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
             const expiredMeta = localStorage.getItem(TENANT_CONTEXT_META_KEY)
             if (expiredMeta) sessionStorage.setItem(TENANT_CONTEXT_EXPIRED_META_KEY, expiredMeta)
             sessionStorage.setItem(TENANT_CONTEXT_EXPIRED_FLAG, '1')
-            if (restoreTenantContextBackup('/admin/tenants')) {
+            if (restoreTenantContextBackup()) {
               throw new Error('Contexto assumido encerrado (token expirou)')
             }
           }

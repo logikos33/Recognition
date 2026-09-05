@@ -23,6 +23,129 @@ const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const leia = (rel: string) => fs.readFileSync(path.join(SRC, rel), 'utf-8')
 
 /**
+ * O FRONT NOVO NÃO É `src/app/` — É O FECHO TRANSITIVO DOS IMPORTS DELE.
+ *
+ * As duas varreduras abaixo passaram semanas VERDES com dois vazamentos vivos
+ * (#760), medidos por clique no DEV: "Ver como tenant" no painel admin novo
+ * caía em `/admin` e "Sair do contexto" caía em `/admin/tenants`, os dois no
+ * front ANTIGO. O motivo é que elas olhavam SÓ o diretório `src/app/`, e o
+ * salto não mora lá: `Tenants.tsx` só escreve `assumeTenantContext(t.id)` —
+ * uma chamada de função, que não casa com `to=`, `href=`, `navigate()` nem
+ * `window.location` — e quem de fato troca de aplicação é
+ * `services/tenantContext.ts`, fora do escopo varrido.
+ *
+ * Guard que varre por DIRETÓRIO mede a arrumação das pastas. O que importa é
+ * o que o front novo EXECUTA: todo módulo alcançável a partir das telas
+ * novas, esteja ele em `app/`, `services/`, `hooks/` ou `components/`.
+ * São ~208 módulos, ~113 fora de `app/` — e era nos 113 que os saltos de
+ * #760 moravam, todos os oito.
+ */
+function fechoDeImports(entradas: string[]): string[] {
+  const ESPECIFICADOR = /(?:from\s*|import\s*\(\s*)['"](\.[^'"]*)['"]/g
+  const resolve = (deQual: string, spec: string): string | null => {
+    const base = path.resolve(path.dirname(deQual), spec)
+    for (const c of [base, `${base}.ts`, `${base}.tsx`,
+                     path.join(base, 'index.ts'), path.join(base, 'index.tsx')]) {
+      if (fs.existsSync(c) && fs.statSync(c).isFile()) return c
+    }
+    // Import que não resolve para arquivo (pacote, asset, `?raw`) — não é
+    // módulo deste código, não entra no fecho. Silêncio aqui é correto.
+    return null
+  }
+  const vistos = new Set<string>()
+  const pilha = [...entradas]
+  while (pilha.length) {
+    const f = pilha.pop() as string
+    if (vistos.has(f) || /\.test\.tsx?$/.test(f)) continue
+    vistos.add(f)
+    for (const m of fs.readFileSync(f, 'utf-8').matchAll(ESPECIFICADOR)) {
+      const alvo = resolve(f, m[1])
+      if (alvo && !vistos.has(alvo)) pilha.push(alvo)
+    }
+  }
+  return [...vistos].sort()
+}
+
+const arquivosDe = (dir: string): string[] =>
+  fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const p = path.join(dir, e.name)
+    if (e.isDirectory()) return arquivosDe(p)
+    return /\.tsx?$/.test(e.name) && !/\.test\.tsx?$/.test(e.name) ? [p] : []
+  })
+
+/**
+ * Entradas do fecho: as telas novas — e `GlobalBanners`.
+ *
+ * `GlobalBanners` é montado por `App.tsx` FORA das rotas, então nenhum
+ * arquivo de `app/` o importa; mas ele renderiza `TenantContextBanner` e
+ * `ImpersonationBanner` em TODA tela nova, e os dois botões desses banners
+ * ("Sair do contexto", "Sair da visualização") eram justamente dois dos
+ * saltos de #760. Entrada explícita, e nunca por silêncio: sem ela o fecho
+ * não alcança os banners e o guard volta a ficar verde com o furo aberto.
+ */
+const MODULOS_DO_FRONT_NOVO = fechoDeImports([
+  ...arquivosDe(path.join(SRC, 'app')),
+  path.join(SRC, 'components/layout/GlobalBanners.tsx'),
+])
+
+/**
+ * Endereços absolutos fora do prefixo que NÃO são vazamento — por lista
+ * explícita, nunca por silêncio.
+ */
+const EXCECOES = [
+  // `/login` é o portão deslogado, comum aos dois fronts — `App.tsx` troca a
+  // árvore INTEIRA pro Router sem Shell ao desautenticar (ver `aoSair` em
+  // `Shell.tsx`), e o catch-all deslogado pinta `Entrar`, a tela NOVA.
+  '/login',
+  // A raiz. Deslogada pinta `Entrar` (novo; teste em `App.porta.test.tsx`);
+  // LOGADA passou a resolver por `rotaHomeDoUsuario` (novo; teste em
+  // `app/raizLogada.test.tsx`) — antes deste PR caía em `/admin`|`/modules`,
+  // os dois no front antigo (#762). A exceção vale enquanto AQUELES DOIS
+  // testes valerem: se alguém devolver o `RootRedirect` ao front antigo,
+  // `raizLogada.test.tsx` fica vermelho e esta linha volta a ser mentira.
+  '/',
+  // Sem equivalente no front novo (C1, 31/08) — mantidos APONTANDO pro front
+  // antigo de propósito (não existe tela nova de observabilidade nem de
+  // integrações), mas honestos: texto e `title` avisam que é a área técnica
+  // antiga, e ambos são visíveis só para `isSuperAdmin` (`Modulos.tsx`,
+  // `Treino.tsx`). Um link "escapando calado" é o que estes testes reprovam —
+  // um link honesto, gated por papel, apontando de propósito pro antigo, é o
+  // comportamento certo até a tela nova existir.
+  '/admin/observability',
+  '/admin/integrations?type=vast_ai',
+]
+
+/** Um destino que fica DENTRO do front novo, ou uma exceção declarada. */
+const ehDoFrontNovo = (destino: string): boolean =>
+  destino.startsWith(PREFIXO_NOVO) || EXCECOES.includes(destino)
+
+/**
+ * Todo nome deste arquivo que está amarrado a um caminho absoluto literal.
+ *
+ * Cobre os DOIS jeitos de esconder um endereço atrás de um identificador:
+ *   const ROTA = '/epi/eventos'              ← constante de módulo (4º furo)
+ *   function f(redirect = '/admin/tenants')  ← DEFAULT DE PARÂMETRO (7º furo)
+ *   destino: string = '/'                    ← idem, com tipo anotado
+ * Os dois terminam iguais na linha que navega: um identificador, nunca um
+ * literal — invisível para qualquer varredura que só leia a linha do salto.
+ *
+ * O mapa é por ARQUIVO, não por escopo: dois `redirect = '/x'` em funções
+ * diferentes do mesmo arquivo se confundem. Conservador de propósito — o erro
+ * possível é um vermelho a mais (basta parar de escrever o endereço antigo),
+ * nunca um verde a menos. Guard que erra para o lado do silêncio é o que já
+ * deixou #760 passar.
+ */
+function literaisNomeados(texto: string): Map<string, string> {
+  const mapa = new Map<string, string>()
+  for (const m of texto.matchAll(
+    /\b([A-Za-z_$][\w$]*)\s*(?::\s*[\w$<>[\]|.\s]+?)?\s*=\s*(?:"(\/[^"]*)"|'(\/[^']*)'|`(\/[^`]*)`)/g,
+  )) {
+    mapa.set(m[1], m[2] ?? m[3] ?? m[4])
+  }
+  return mapa
+}
+
+/**
  * Desce em `props.children` — rota aninhada (Estúdio, PR-B: `cobertura`,
  * `classificar` dentro de `estudio`) tem de passar pela MESMA checagem que a
  * de primeiro nível. Um `.map` raso deixaria caminho absoluto filho passar
@@ -73,114 +196,55 @@ describe('front novo e front antigo convivem', () => {
     expect(leia('App.tsx')).toContain('path={PREFIXO_NOVO} element={<Shell />}')
   })
 
-  it('nenhuma tela nova linka para fora do prefixo', () => {
+  it('nenhum módulo do front novo linka para fora do prefixo', () => {
     // O pior bug desta rodada, e o mais silencioso: `<Link to="/epi/cameras">`
     // dentro do front NOVO leva para a tela ANTIGA de mesmo endereço. Não dá
     // erro, não quebra teste, não avisa nada — o usuário só vê, de repente, o
     // produto velho. Aconteceu em 10 lugares na primeira leva.
     //
-    // F5-LEVE (identidade): achado de sonda pegou o MESMO bug em `navegar(...)`
-    // imperativo (`app/epi/Cameras.tsx`, botão "Operações") — `to="..."` só
-    // cobria `<Link>`/`<NavLink>` declarativos, não `useNavigate()` chamado na
-    // mão. A varredura abaixo cobre os dois: `to="/..."` / `to={`/...`}` E
-    // `navigate('/...')` / `navegar(`/...`)` (qualquer nome de variável do
-    // `useNavigate()` termina em "nav"/"navegar"/"navigate" neste código).
+    // Furos já fechados, cada um com um jeito diferente de escapar:
+    //  1. `to="/..."` declarativo (`<Link>`/`<NavLink>`) — a leva original;
+    //  2. `navegar('/...')` imperativo (`useNavigate()`, `Cameras.tsx`);
+    //  3. `<a href="/admin/...">` — âncora HTML pura, dentro do PRÓPRIO admin;
+    //  4. `const ROTA = '/epi/eventos'` + `to={ROTA}` 400 linhas abaixo;
+    //  5. `destino: '/quality'` numa TABELA lida por `navegar(c.destino)`.
     //
-    // C1 (31/08): terceiro furo achado — `<a href="/admin/...">` (âncora HTML
-    // pura, não componente de rota) driblava os dois anteriores por completo:
-    // `to=` só olha `<Link>`/`<NavLink>`, e não existe `navigate()` num `<a>`.
-    // Três lugares vazavam assim pro front antigo (`Usuarios.tsx`, painel de
-    // permissões do usuário; `Modulos.tsx` e `Treino.tsx`, atalhos de
-    // superadmin) — o pior era dentro do PRÓPRIO admin novo. `href="/..."`
-    // entra na mesma varredura abaixo, com as mesmas regras.
-    //
-    // Todo link/navegação interna passa por `rotaNova()`. Este teste é quem cobra.
+    // Todo link/navegação interna passa por `rotaNova()`. Este teste é quem
+    // cobra — agora sobre o fecho de imports, não sobre o diretório `app/`.
     const infratores: string[] = []
-    // Exceções conhecidas, por lista explícita — nunca por silêncio:
-    const EXCECOES = [
-      // `/login` é o portão deslogado, comum aos dois fronts — `App.tsx` troca
-      // a árvore INTEIRA pro Router sem Shell ao desautenticar (ver `aoSair`
-      // em `Shell.tsx`), então não é "cair no front antigo", é onde QUALQUER
-      // usuário deslogado cai, migrado ou não.
-      '/login',
-      // Sem equivalente no front novo (C1, 31/08) — mantidos APONTANDO pro
-      // front antigo de propósito (não existe tela nova de observabilidade
-      // nem de integrações), mas honestos: texto e `title` avisam que é a
-      // área técnica antiga, e ambos são visíveis só para `isSuperAdmin`
-      // (`Modulos.tsx`, `Treino.tsx`). Um link "escapando calado" é o que
-      // este teste reprova — um link honesto, gated por papel, apontando de
-      // propósito pro antigo, é o comportamento certo até a tela nova existir.
-      '/admin/observability',
-      '/admin/integrations?type=vast_ai',
-    ]
-    const varre = (dir: string) => {
-      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-        const p = path.join(dir, e.name)
-        if (e.isDirectory()) { varre(p); continue }
-        if (!/\.tsx?$/.test(e.name) || /\.test\.tsx?$/.test(e.name)) continue
-        if (path.relative(SRC, p) === 'app/RotasNovas.tsx') continue
-        const texto = fs.readFileSync(p, 'utf-8')
-        // Um nível de indireção: `const ROTA = '/epi/eventos'` no topo do
-        // arquivo e `to={ROTA}` quatrocentas linhas abaixo. Era o quarto furo
-        // (v1, 05/09): a varredura só olhava LITERAL, então batizar o caminho
-        // de constante — que é o que se faz quando ele aparece em dois lugares
-        // — bastava para o vazamento passar batido. Passaram assim o botão
-        // "Eventos" do cabeçalho de `EventoDetalhe.tsx` e o "Ir para eventos"
-        // de `Acoes.tsx`, os dois caindo no front antigo com o teste VERDE.
-        const constantes = new Map<string, string>()
-        for (const m of texto.matchAll(
-          /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*(?:"(\/[^"]*)"|'(\/[^']*)'|`(\/[^`]*)`)/g,
-        )) {
-          constantes.set(m[1], m[2] ?? m[3] ?? m[4])
-        }
-        // Este arquivo navega para um campo de objeto SEM prefixar na hora
-        // (`navegar(c.destino)`, `to={c.destino}`)? Então o prefixo tem de já
-        // estar guardado na tabela, e os literais dela passam a ser cobrados
-        // logo abaixo. `navegar(rotaNova(item.destino))` e
-        // `PREFIXO_NOVO + i.rota` não casam aqui — o argumento não começa com
-        // identificador-ponto —, que é justamente a diferença entre guardar um
-        // caminho relativo de propósito e vazar um absoluto por descuido.
-        const consomeBruto = /(?:to|href)=\{\s*[A-Za-z_$][\w$]*\.[\w$.]+\s*\}|\b(?:navigate|navegar|nav)\(\s*[A-Za-z_$][\w$]*\.[\w$.]+\s*[,)]/.test(texto)
-        texto.split('\n').forEach((linha, i) => {
-          // `to="/..."` / `to={`/...`}` (Link/NavLink) OU `href="/..."` /
-          // `href={`/...`}` (âncora HTML pura) com caminho absoluto que não é
-          // o prefixo — os dois jeitos de "linkar" existentes neste código.
-          const mLink = linha.match(/(?:to|href)=(?:"(\/[^"]*)"|\{`(\/[^`]*)`\})/)
-          // `navigate('/...')` / `navegar('/...')` / `nav(`/...`)` imperativo
-          const mNav = linha.match(
-            /\b(?:navigate|navegar|nav)\(\s*(?:"(\/[^"]*)"|'(\/[^']*)'|`(\/[^`]*)`)/,
-          )
-          // `to={ROTA}` / `href={ROTA}` / `navegar(ROTA)` — a mesma coisa, com
-          // o caminho guardado numa constante do próprio arquivo.
-          const mConst = linha.match(
-            /(?:to|href)=\{\s*([A-Za-z_$][\w$]*)\s*\}|\b(?:navigate|navegar|nav)\(\s*([A-Za-z_$][\w$]*)\s*[,)]/,
-          )
-          const viaConstante = constantes.get(mConst?.[1] ?? mConst?.[2] ?? '')
-          // `destino: '/quality'` numa TABELA, lido por `navegar(c.destino)`
-          // quatro telas abaixo. Sexto furo (v1, 05/09): tirar o
-          // `window.location` de `Modulos.tsx` matou o SALTO, mas não o
-          // DESTINO — devolver `destino: '/quality'` ao `CATALOGO`, deixando o
-          // `navegar(c.destino)` no lugar, reabre o vazamento com as três
-          // varreduras acima VERDES, porque nenhuma liga a linha da tabela à
-          // linha que navega. Só vale para arquivo que consome o campo CRU
-          // (`consomeBruto`): quem prefixa na hora de navegar — o Shell
-          // (`PREFIXO_NOVO + i.rota`) e `Qualidade.tsx`
-          // (`navegar(rotaNova(item.destino))`) — guarda o caminho sem
-          // prefixo de propósito, e está certo.
-          const mProp = linha.match(
-            /\b(?:destino|rota|caminho|to|href)\s*:\s*(?:"(\/[^"]*)"|'(\/[^']*)'|`(\/[^`]*)`)/,
-          )
-          const viaTabela = consomeBruto ? mProp?.[1] ?? mProp?.[2] ?? mProp?.[3] : undefined
-          const alvo = mLink?.[1] ?? mLink?.[2] ?? mNav?.[1] ?? mNav?.[2] ?? mNav?.[3]
-          for (const destino of [alvo, viaConstante, viaTabela]) {
-            if (destino && !destino.startsWith('/novo') && !EXCECOES.includes(destino)) {
-              infratores.push(`${path.relative(SRC, p)}:${i + 1}  ${destino}`)
-            }
+    for (const p of MODULOS_DO_FRONT_NOVO) {
+      if (path.relative(SRC, p) === 'app/RotasNovas.tsx') continue
+      const texto = fs.readFileSync(p, 'utf-8')
+      const constantes = literaisNomeados(texto)
+      // Este arquivo navega para um campo de objeto SEM prefixar na hora
+      // (`navegar(c.destino)`, `to={c.destino}`)? Então o prefixo tem de já
+      // estar guardado na tabela, e os literais dela passam a ser cobrados
+      // logo abaixo. `navegar(rotaNova(item.destino))` e `PREFIXO_NOVO + i.rota`
+      // não casam aqui — o argumento não começa com identificador-ponto —, que
+      // é justamente a diferença entre guardar um caminho relativo de propósito
+      // e vazar um absoluto por descuido.
+      const consomeBruto = /(?:to|href)=\{\s*[A-Za-z_$][\w$]*\.[\w$.]+\s*\}|\b(?:navigate|navegar|nav)\(\s*[A-Za-z_$][\w$]*\.[\w$.]+\s*[,)]/.test(texto)
+      texto.split('\n').forEach((linha, i) => {
+        const mLink = linha.match(/(?:to|href)=(?:"(\/[^"]*)"|\{`(\/[^`]*)`\})/)
+        const mNav = linha.match(
+          /\b(?:navigate|navegar|nav)\(\s*(?:"(\/[^"]*)"|'(\/[^']*)'|`(\/[^`]*)`)/,
+        )
+        const mConst = linha.match(
+          /(?:to|href)=\{\s*([A-Za-z_$][\w$]*)\s*\}|\b(?:navigate|navegar|nav)\(\s*([A-Za-z_$][\w$]*)\s*[,)]/,
+        )
+        const viaConstante = constantes.get(mConst?.[1] ?? mConst?.[2] ?? '')
+        const mProp = linha.match(
+          /\b(?:destino|rota|caminho|to|href)\s*:\s*(?:"(\/[^"]*)"|'(\/[^']*)'|`(\/[^`]*)`)/,
+        )
+        const viaTabela = consomeBruto ? mProp?.[1] ?? mProp?.[2] ?? mProp?.[3] : undefined
+        const alvo = mLink?.[1] ?? mLink?.[2] ?? mNav?.[1] ?? mNav?.[2] ?? mNav?.[3]
+        for (const destino of [alvo, viaConstante, viaTabela]) {
+          if (destino && !ehDoFrontNovo(destino)) {
+            infratores.push(`${path.relative(SRC, p)}:${i + 1}  ${destino}`)
           }
-        })
-      }
+        }
+      })
     }
-    varre(path.join(SRC, 'app'))
     expect(
       infratores,
       'link/navigate/href absoluto sai do front novo e cai no antigo — use rotaNova() ' +
@@ -189,36 +253,46 @@ describe('front novo e front antigo convivem', () => {
     ).toEqual([])
   })
 
-  it('nenhuma tela nova troca de aplicação por window.location', () => {
-    // Quinto furo (v1, 05/09), e o mais invisível de todos: `Modulos.tsx`
-    // guardava o destino numa TABELA (`destino: '/quality', externo: true`) e
+  it('nenhum módulo do front novo troca de aplicação por window.location', () => {
+    // Quinto furo (v1, 05/09): `Modulos.tsx` guardava o destino numa TABELA e
     // saltava com `window.location.href = c.destino`. Nem `to=`, nem `href=`,
-    // nem `navigate()` — nenhuma das três varreduras acima chega perto, e o
-    // usuário que clicava em "Qualidade" no front NOVO era despejado no front
-    // ANTIGO de página inteira, perdendo o Shell, a sessão de rota e a
-    // identidade visual. `window.location.href = `/`.assign`/`.replace` são
-    // troca de APLICAÇÃO; dentro de `app/` a navegação é `navegar(rotaNova(…))`.
+    // nem `navigate()` — nenhuma varredura chegava perto, e quem clicava em
+    // "Qualidade" no front NOVO era despejado no ANTIGO de página inteira.
+    //
+    // SÉTIMO furo (#760, o desta rodada, e o pior): o salto nem estava numa
+    // tela — estava num SERVIÇO, atrás de um DEFAULT DE PARÂMETRO. Ninguém
+    // escreve `'/admin/tenants'` em `TenantContextBanner.tsx`; ela chama
+    // `exitTenantContext()`, que chama `restoreTenantContextBackup()`, cuja
+    // assinatura dizia `(redirect = '/admin/tenants')` e terminava em
+    // `window.location.href = redirect`. Ler só a linha do `window.location`
+    // via literal não vê NADA: o alvo é uma variável. Por isso o destino é
+    // resolvido por `literaisNomeados` — que casa tanto `const X = '/y'`
+    // quanto `redirect = '/y'` e `destino: string = '/y'` de assinatura.
+    //
     // (`reload()` e a LEITURA de `location.pathname` seguem livres — não
-    // escolhem destino.)
+    // escolhem destino. Destino que NÃO resolve para literal — ex.:
+    // `= PREFIXO_NOVO`, `= rotaNova(...)`, `= pathname + search` — também
+    // passa: não há endereço fixo para julgar, e é assim que se escreve certo.)
     const saltos: string[] = []
-    const varre = (dir: string) => {
-      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-        const p = path.join(dir, e.name)
-        if (e.isDirectory()) { varre(p); continue }
-        if (!/\.tsx?$/.test(e.name) || /\.test\.tsx?$/.test(e.name)) continue
-        fs.readFileSync(p, 'utf-8').split('\n').forEach((linha, i) => {
-          if (/window\.location\s*(?:\.href\s*=|\.assign\(|\.replace\()/.test(linha)) {
-            saltos.push(`${path.relative(SRC, p)}:${i + 1}  ${linha.trim()}`)
-          }
-        })
-      }
+    for (const p of MODULOS_DO_FRONT_NOVO) {
+      const texto = fs.readFileSync(p, 'utf-8')
+      const constantes = literaisNomeados(texto)
+      texto.split('\n').forEach((linha, i) => {
+        const m = linha.match(
+          /window\.location\s*(?:\.href\s*=|\.assign\(|\.replace\()\s*(?:"(\/[^"]*)"|'(\/[^']*)'|`(\/[^`]*)`|([A-Za-z_$][\w$]*))/,
+        )
+        if (!m) return
+        const destino = m[1] ?? m[2] ?? m[3] ?? constantes.get(m[4] ?? '')
+        if (destino && !ehDoFrontNovo(destino)) {
+          saltos.push(`${path.relative(SRC, p)}:${i + 1}  → ${destino}   ${linha.trim()}`)
+        }
+      })
     }
-    varre(path.join(SRC, 'app'))
     expect(
       saltos,
       'window.location leva a pessoa para FORA do front novo, de página inteira ' +
-        '— use navegar(rotaNova(...)). Se o destino é mesmo outra aplicação, ' +
-        'diga isso aqui em voz alta, nunca por silêncio:\n' + saltos.join('\n'),
+        '— use rotaNova()/PREFIXO_NOVO. Se o destino é mesmo outra aplicação, ' +
+        'diga isso em EXCECOES em voz alta, nunca por silêncio:\n' + saltos.join('\n'),
     ).toEqual([])
   })
 })

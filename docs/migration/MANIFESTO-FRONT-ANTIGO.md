@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 393 arquivos, 66.368 linhas
+## Situação — 393 arquivos, 66.427 linhas
 
 | status | arquivos |
 |---|---:|
@@ -41,7 +41,7 @@ apagado não são a mesma coisa.
 | arquivo | status | migrado para | linhas |
 |---|---|---|---:|
 | `src/App.tsx` | `INFRA` | — | 112 |
-| `src/AppRoutes.tsx` | `INFRA` | — | 188 |
+| `src/AppRoutes.tsx` | `INFRA` | — | 201 |
 | `src/components/annotation/AnnotationStudio.css.ts` | `INFRA` | — | 514 |
 | `src/components/annotation/AnnotationStudio.tsx` | `INFRA` | — | 1487 |
 | `src/components/annotation/boxGeometry.ts` | `INFRA` | — | 81 |
@@ -135,7 +135,7 @@ apagado não são a mesma coisa.
 | `src/components/shared/ProcedenciaEvento.tsx` | `INFRA` | — | 112 |
 | `src/components/shared/StatusBadge.tsx` | `INFRA` | — | 18 |
 | `src/components/shared/VereditoHumano.tsx` | `INFRA` | — | 72 |
-| `src/components/TenantContextBanner.tsx` | `INFRA` | — | 172 |
+| `src/components/TenantContextBanner.tsx` | `INFRA` | — | 179 |
 | `src/components/training/CameraFilterSelector.css.ts` | `INFRA` | — | 148 |
 | `src/components/training/CameraFilterSelector.tsx` | `INFRA` | — | 131 |
 | `src/components/training/CameraModelScope.tsx` | `INFRA` | — | 486 |
@@ -207,7 +207,7 @@ apagado não são a mesma coisa.
 | `src/constants/epiClasses.ts` | `INFRA` | — | 29 |
 | `src/hooks/useAnimations.ts` | `INFRA` | — | 54 |
 | `src/hooks/useAuth.ts` | `INFRA` | — | 115 |
-| `src/hooks/useAutoAssumeTenantContext.ts` | `INFRA` | — | 93 |
+| `src/hooks/useAutoAssumeTenantContext.ts` | `INFRA` | — | 101 |
 | `src/hooks/useCameraSnapshot.ts` | `INFRA` | — | 103 |
 | `src/hooks/useEdgeTelemetrySocket.ts` | `INFRA` | — | 74 |
 | `src/hooks/useFrameExtraction.ts` | `INFRA` | — | 109 |
@@ -223,7 +223,7 @@ apagado não são a mesma coisa.
 | `src/hooks/useTraining.ts` | `INFRA` | — | 95 |
 | `src/hooks/useTrainingSocket.ts` | `INFRA` | — | 127 |
 | `src/main.tsx` | `INFRA` | — | 21 |
-| `src/services/api.ts` | `INFRA` | — | 244 |
+| `src/services/api.ts` | `INFRA` | — | 257 |
 | `src/services/cameraService.ts` | `INFRA` | — | 269 |
 | `src/services/confidenceDisplay.ts` | `INFRA` | — | 59 |
 | `src/services/countingService.ts` | `INFRA` | — | 64 |
@@ -231,14 +231,14 @@ apagado não são a mesma coisa.
 | `src/services/dashboardEdgeService.ts` | `INFRA` | — | 103 |
 | `src/services/edgeService.ts` | `INFRA` | — | 197 |
 | `src/services/eventsService.ts` | `INFRA` | — | 167 |
-| `src/services/impersonation.ts` | `INFRA` | — | 93 |
+| `src/services/impersonation.ts` | `INFRA` | — | 100 |
 | `src/services/modelDisplay.ts` | `INFRA` | — | 33 |
 | `src/services/moduleService.ts` | `INFRA` | — | 54 |
 | `src/services/monitoringService.ts` | `INFRA` | — | 108 |
 | `src/services/propagationService.ts` | `INFRA` | — | 157 |
 | `src/services/reportService.ts` | `INFRA` | — | 34 |
 | `src/services/searchService.ts` | `INFRA` | — | 158 |
-| `src/services/tenantContext.ts` | `INFRA` | — | 265 |
+| `src/services/tenantContext.ts` | `INFRA` | — | 276 |
 | `src/services/trainingService.ts` | `INFRA` | — | 58 |
 | `src/stores/appStore.ts` | `INFRA` | — | 49 |
 | `src/stores/cameraGridStore.ts` | `INFRA` | — | 132 |
