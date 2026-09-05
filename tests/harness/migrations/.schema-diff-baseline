@@ -25,8 +25,8 @@
 +CREATE INDEX idx_cameras_tenant ON public.cameras USING btree (tenant_id);
 +CREATE INDEX idx_frames_priority ON public.training_frames USING btree (tenant_id, module_code, quality_status, priority_rank);
 #
-# --- Migration 049_counting_deepsort_rebuild.sql (DROP CASCADE incondicional
-# --- derruba a FK de counting_events na 2ª passada — achado CRÍTICO em
-# --- triagem: em produção o mesmo DROP roda a cada redeploy) ---
--    ADD CONSTRAINT counting_events_session_id_fkey FOREIGN KEY (session_id) REFERENCES public.counting_sessions(id) ON DELETE CASCADE;
--ALTER TABLE ONLY public.counting_events
+# --- Migration 049_counting_deepsort_rebuild.sql: DÍVIDA QUITADA (#683/#694).
+# --- As duas linhas "-" da FK counting_events_session_id_fkey saíram daqui: a
+# --- guarda de redeploy (runner_core._guarda_pula) não deixa mais a 049 rodar
+# --- num banco que já tem tenant, então o DROP CASCADE não derruba mais a FK
+# --- na 2ª passada. Medido: diff material caiu de 3 para 1 linha. ---
