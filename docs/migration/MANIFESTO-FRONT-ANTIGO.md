@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 393 arquivos, 66.290 linhas
+## Situação — 393 arquivos, 66.298 linhas
 
 | status | arquivos |
 |---|---:|
@@ -94,7 +94,7 @@ apagado não são a mesma coisa.
 | `src/components/dashboard/widgets/EventLogWidget.tsx` | `INFRA` | — | 85 |
 | `src/components/dashboard/widgets/RecentAlertsWidget.tsx` | `INFRA` | — | 63 |
 | `src/components/dashboard/widgets/TopCamerasWidget.tsx` | `INFRA` | — | 88 |
-| `src/components/dashboard/widgets/useDashboardAlerts.ts` | `INFRA` | — | 65 |
+| `src/components/dashboard/widgets/useDashboardAlerts.ts` | `INFRA` | — | 73 |
 | `src/components/dashboard/widgets/violationLabels.ts` | `INFRA` | — | 18 |
 | `src/components/dashboard/widgets/ViolationsDistributionWidget.tsx` | `INFRA` | — | 93 |
 | `src/components/dashboard/widgets/widgets.css.ts` | `INFRA` | — | 221 |
