@@ -1,9 +1,28 @@
-# Revisão obrigatória do dono nos caminhos sensíveis.
-*                                   @logikos33
-/infra/migrations/                  @logikos33
-/services/api/app/core/auth.py      @logikos33
-/services/inference/                @logikos33
-/.github/workflows/                 @logikos33
-/scripts/check_license_gate.py      @logikos33
-/constitution.md                    @logikos33
-/docs/DIRETRIZ_OPERACAO_CLAUDE_CODE.md  @logikos33
+# Mapa vivo de onde o review pesado é obrigatório.
+# O dono é o mesmo em tudo — o valor destas linhas é NOMEAR a zona quente,
+# para que o PR que a toca já chegue sabendo que regra vale (ver CLAUDE.md).
+
+*                                       @logikos33
+
+# --- Isolamento e dado do cliente ---
+/infra/migrations/                      @logikos33
+/services/api/app/core/auth.py          @logikos33
+/services/api/app/infrastructure/database/  @logikos33
+
+# --- Caminho servido (licença Apache; zero AGPL) ---
+/services/inference/                    @logikos33
+/deepstream/                            @logikos33
+/scripts/check_license_gate.py          @logikos33
+/requirements/                          @logikos33
+
+# --- Treino (o que vira modelo do cliente) ---
+/training/                              @logikos33
+
+# --- O que decide o que roda ---
+/.github/workflows/                     @logikos33
+/railway_start.py                       @logikos33
+
+# --- Regra da casa ---
+/constitution.md                        @logikos33
+/CLAUDE.md                              @logikos33
+/docs/decisions/                        @logikos33
