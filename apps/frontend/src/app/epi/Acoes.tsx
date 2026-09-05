@@ -59,7 +59,7 @@
  * recorte que junte violação+observação sem trazer conformidade junto.
  */
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   Check, ChevronDown, ChevronRight, Clock, ClipboardCheck, ImageOff, LayoutGrid, List,
   TriangleAlert, X,
@@ -81,8 +81,14 @@ const ICONE = { strokeWidth: 1.7, strokeLinecap: 'square' } as const
 const DIAS = 30
 const POR_PAGINA = 50
 
-/** Rota do front ATUAL — a fila de eventos nova ainda não está registrada. */
-const EVENTOS_HOJE = '/epi/alerts'
+/**
+ * A fila de eventos NOVA, que existe desde a primeira leva
+ * (`RotasNovas.tsx`, `path="epi/eventos"`). O comentário anterior dizia que
+ * ela "ainda não está registrada" e mandava para `/epi/alerts` — era falso, e
+ * o efeito era despejar no front ANTIGO quem clicasse em "Ir para eventos"
+ * a partir do estado vazio desta tela.
+ */
+const ROTA_EVENTOS = rotaNova('/epi/eventos')
 
 interface Violacao { class: string }
 
@@ -336,7 +342,10 @@ export function Acoes() {
           Ações nascem de eventos. Nos últimos {DIAS} dias não houve evento de violação
           para reconhecer nesta operação.
         </span>
-        <a className={s.botaoPrimario} href={EVENTOS_HOJE}>Ir para eventos</a>
+        {/* `<Link>`, não `<a href>`: âncora recarrega a aplicação inteira
+            (perde o Shell, o token em memória e o contexto de tenant) para ir
+            a uma rota que o próprio Router já serve. */}
+        <Link className={s.botaoPrimario} to={ROTA_EVENTOS}>Ir para eventos</Link>
       </div>
     )
   }

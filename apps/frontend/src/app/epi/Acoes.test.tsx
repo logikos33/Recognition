@@ -23,6 +23,7 @@
  *    certo, e só aparecem com `verification:write`.
  */
 import { render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { get, post, navegar } = vi.hoisted(() => ({
@@ -111,7 +112,7 @@ beforeEach(() => {
 describe('de onde vem o dado', () => {
   it('pede os TRÊS recortes reais do ledger (aberto/feito/união), só violações e na mesma janela', async () => {
     servir([evento('1111aaaa-0000-0000-0000-000000000000', false)], [])
-    render(<Acoes />)
+    render(<Acoes />, { wrapper: MemoryRouter })
     await waitFor(() => expect(get).toHaveBeenCalledTimes(3))
 
     const caminhos = get.mock.calls.map((c) => c[0] as string)
@@ -132,7 +133,7 @@ describe('de onde vem o dado', () => {
     // reabriria a fila de AÇÃO com conformidade dentro de novo. O indecidido
     // não some do produto — tem filtro próprio em /epi/eventos.
     servir([evento('1111aaaa-0000-0000-0000-000000000000', false)], [])
-    render(<Acoes />)
+    render(<Acoes />, { wrapper: MemoryRouter })
     await waitFor(() => expect(get).toHaveBeenCalledTimes(3))
     const caminhos = get.mock.calls.map((c) => c[0] as string)
     expect(caminhos.every((p) => !p.includes('kind=observacao'))).toBe(true)
@@ -144,7 +145,7 @@ describe('de onde vem o dado', () => {
     servir([evento('a1111111-0000-0000-0000-000000000000', false)],
            [evento('b1111111-0000-0000-0000-000000000000', true)],
            [3000, 1000])
-    render(<Acoes />)
+    render(<Acoes />, { wrapper: MemoryRouter })
     await screen.findByText('25%')
     expect(screen.getByText('1000/4000 RECONHECIDAS')).toBeTruthy()
   })
@@ -154,7 +155,7 @@ describe('agir', () => {
   it('reconhecer chama o endpoint real e recarrega o ledger', async () => {
     servir([evento('c1111111-0000-0000-0000-000000000000', false)], [])
     post.mockResolvedValue({})
-    render(<Acoes />)
+    render(<Acoes />, { wrapper: MemoryRouter })
 
     const botao = await screen.findByRole('button', { name: /marcar reconhecida/i })
     botao.click()
@@ -168,7 +169,7 @@ describe('agir', () => {
   it('sem alerts:feedback não há botão de reconhecer', async () => {
     permissoes = ['alerts:read']
     servir([evento('d1111111-0000-0000-0000-000000000000', false)], [])
-    render(<Acoes />)
+    render(<Acoes />, { wrapper: MemoryRouter })
 
     await screen.findByText('Sem capacete')
     expect(screen.queryByRole('button', { name: /marcar reconhecida/i })).toBeNull()
@@ -180,7 +181,7 @@ describe('veredito — Confirmar/Descartar', () => {
     permissoes = ['alerts:read', 'alerts:feedback', 'verification:write']
     servir([evento('f1111111-0000-0000-0000-000000000000', false)], [])
     post.mockResolvedValue({})
-    render(<Acoes />)
+    render(<Acoes />, { wrapper: MemoryRouter })
 
     const botao = await screen.findByRole('button', { name: /^confirmar$/i })
     botao.click()
@@ -199,7 +200,7 @@ describe('veredito — Confirmar/Descartar', () => {
     permissoes = ['alerts:read', 'alerts:feedback', 'verification:write']
     servir([evento('a2222222-0000-0000-0000-000000000000', false)], [])
     post.mockResolvedValue({})
-    render(<Acoes />)
+    render(<Acoes />, { wrapper: MemoryRouter })
 
     const botao = await screen.findByRole('button', { name: /^descartar$/i })
     botao.click()
@@ -215,7 +216,7 @@ describe('veredito — Confirmar/Descartar', () => {
   it('sem verification:write não há Confirmar/Descartar', async () => {
     permissoes = ['alerts:read', 'alerts:feedback']
     servir([evento('b3333333-0000-0000-0000-000000000000', false)], [])
-    render(<Acoes />)
+    render(<Acoes />, { wrapper: MemoryRouter })
 
     await screen.findByText('Sem capacete')
     expect(screen.queryByRole('button', { name: /^confirmar$/i })).toBeNull()
@@ -226,7 +227,7 @@ describe('veredito — Confirmar/Descartar', () => {
     servir([evento('c4444444-0000-0000-0000-000000000000', false, {
       verification_verdict: 'approve', verified_by: 'user:u1',
     })], [])
-    render(<Acoes />)
+    render(<Acoes />, { wrapper: MemoryRouter })
     await screen.findByText('Procedente')
   })
 })
@@ -239,7 +240,7 @@ describe('evidência — miniatura e abrir o evento', () => {
       undefined,
       { 'd5555555-0000-0000-0000-000000000000': 'https://r2.example/d5.jpg' },
     )
-    render(<Acoes />)
+    render(<Acoes />, { wrapper: MemoryRouter })
 
     const img = await screen.findByRole('img')
     expect((img as HTMLImageElement).src).toBe('https://r2.example/d5.jpg')
@@ -250,7 +251,7 @@ describe('evidência — miniatura e abrir o evento', () => {
 
   it('sem evidence_key, mostra placeholder honesto e não pede snapshot', async () => {
     servir([evento('e6666666-0000-0000-0000-000000000000', false)], [])
-    render(<Acoes />)
+    render(<Acoes />, { wrapper: MemoryRouter })
 
     await screen.findByText('Sem capacete')
     expect(screen.getByText(/sem evidência/i)).toBeTruthy()
@@ -260,7 +261,7 @@ describe('evidência — miniatura e abrir o evento', () => {
 
   it('clicar no cartão abre o evento — e NÃO marca reconhecida', async () => {
     servir([evento('f7777777-0000-0000-0000-000000000000', false)], [])
-    render(<Acoes />)
+    render(<Acoes />, { wrapper: MemoryRouter })
 
     const cartao = await screen.findByRole('button', { name: /abrir evento f7777777/i })
     cartao.click()
@@ -273,7 +274,7 @@ describe('evidência — miniatura e abrir o evento', () => {
 describe('tratativa — sem backend', () => {
   it('mostra o selo de dependência, nunca um formulário de verdade', async () => {
     servir([evento('a8888888-0000-0000-0000-000000000000', false)], [])
-    render(<Acoes />)
+    render(<Acoes />, { wrapper: MemoryRouter })
 
     await screen.findByText('Sem capacete')
     const tratativa = screen.getByRole('button', { name: /^tratativa$/i })
@@ -285,7 +286,7 @@ describe('tratativa — sem backend', () => {
 describe('nada de dado inventado', () => {
   it('sem evento, vazio honesto — nenhum cartão de exemplo', async () => {
     servir([], [])
-    render(<Acoes />)
+    render(<Acoes />, { wrapper: MemoryRouter })
 
     await screen.findByText('Nenhuma ação aberta')
     expect(screen.queryByText(/Reforçar DDS/i)).toBeNull()
@@ -293,7 +294,7 @@ describe('nada de dado inventado', () => {
 
   it('não renderiza campo que o backend não serve', async () => {
     servir([evento('e1111111-0000-0000-0000-000000000000', false)], [])
-    render(<Acoes />)
+    render(<Acoes />, { wrapper: MemoryRouter })
 
     await screen.findByText('Sem capacete')
     // A nota é o ÚNICO lugar onde essas palavras podem aparecer — e lá elas
@@ -306,7 +307,7 @@ describe('nada de dado inventado', () => {
 
   it('erro mostra o endpoint REAL e deixa tentar de novo', async () => {
     get.mockRejectedValue(new Error('timeout'))
-    render(<Acoes />)
+    render(<Acoes />, { wrapper: MemoryRouter })
 
     await screen.findByText('Não foi possível carregar')
     expect(screen.getByText(/GET \/api\/alerts/)).toBeTruthy()
@@ -331,7 +332,7 @@ describe('rajada (ux2/dedup) — cartão não repete a mesma cena', () => {
       ],
       [],
     )
-    render(<Acoes />)
+    render(<Acoes />, { wrapper: MemoryRouter })
     await screen.findByText(/\+1 repetiç/)
     // Só 1 cartão de verdade na tela, não 2 — "EVENTO <id>" só aparece 1x.
     expect(screen.getAllByText(/^EVENTO 1{8}/)).toHaveLength(1)
@@ -345,7 +346,7 @@ describe('rajada (ux2/dedup) — cartão não repete a mesma cena', () => {
       ],
       [],
     )
-    render(<Acoes />)
+    render(<Acoes />, { wrapper: MemoryRouter })
     const alternador = await screen.findByText(/\+1 repetiç/)
     alternador.click()
     // Representante ("Marcar reconhecida") + repetição ("Reconhecer", sem o
@@ -362,7 +363,7 @@ describe('rajada (ux2/dedup) — cartão não repete a mesma cena', () => {
       ],
       [],
     )
-    render(<Acoes />)
+    render(<Acoes />, { wrapper: MemoryRouter })
     await screen.findAllByText(/^EVENTO 44444444/)
     expect(screen.getAllByText(/^EVENTO 44444444/)).toHaveLength(2)
     expect(screen.queryByText(/repetiç/)).toBeNull()
@@ -376,7 +377,7 @@ describe('rajada (ux2/dedup) — cartão não repete a mesma cena', () => {
       {},
       [2, 1],
     )
-    render(<Acoes />)
+    render(<Acoes />, { wrapper: MemoryRouter })
     await screen.findByText('1/3 SITUAÇÕES RECONHECIDAS · 10/76 eventos')
   })
 
@@ -393,7 +394,7 @@ describe('rajada (ux2/dedup) — cartão não repete a mesma cena', () => {
       [2, 2],
       3,
     )
-    render(<Acoes />)
+    render(<Acoes />, { wrapper: MemoryRouter })
     await screen.findByText('2/3 SITUAÇÕES RECONHECIDAS · 5/10 eventos')
     expect(screen.queryByText(/2\/4 SITUAÇÕES/)).toBeNull()
   })
@@ -406,7 +407,7 @@ describe('rajada (ux2/dedup) — cartão não repete a mesma cena', () => {
           : { data: { alerts: [], total: 0 } },
       ),
     )
-    render(<Acoes />)
+    render(<Acoes />, { wrapper: MemoryRouter })
     await screen.findByText('0/1 RECONHECIDAS')
     expect(screen.queryByText(/SITUAÇÕES/)).toBeNull()
   })

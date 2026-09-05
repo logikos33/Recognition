@@ -5,7 +5,7 @@
 import { Suspense, lazy } from 'react'
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
-import { Login } from './pages/Login'
+import { Entrar } from './app/acesso/Entrar'
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
 import { ResetPasswordPage } from './pages/ResetPasswordPage'
 import { AppRoutes } from './AppRoutes'
@@ -18,9 +18,9 @@ import { Shell } from './app/shell/Shell'
 import { ThemeProvider } from './theme/ThemeProvider'
 import type { User } from './hooks/useAuth'
 
-// F5 SR2 — Acesso novo, ADITIVO ao ramo deslogado. Login/ForgotPasswordPage/
-// ResetPasswordPage acima seguem intocados e atendem o catch-all `*`.
-const Entrar = lazy(() => import('./app/acesso/Entrar').then((m) => ({ default: m.Entrar })))
+// A PORTA: o catch-all deslogado serve `Entrar` (o antigo `pages/Login.tsx`
+// chamava `login()` sem 3º arg → default '/' do useAuth → front ANTIGO). Importe
+// ESTÁTICO — é a 1ª pintura de todo visitante; lazy a deixava em branco.
 const EsqueciSenha = lazy(() => import('./app/acesso/EsqueciSenha').then((m) => ({ default: m.EsqueciSenha })))
 const RedefinirSenha = lazy(() => import('./app/acesso/RedefinirSenha').then((m) => ({ default: m.RedefinirSenha })))
 
@@ -94,7 +94,7 @@ export default function App() {
             <Route path={rotaNova('/redefinir-senha')} element={<RedefinirSenha />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
-            <Route path="*" element={<Login />} />
+            <Route path="*" element={<Entrar />} />
           </Routes>
         </Suspense>
       </BrowserRouter>

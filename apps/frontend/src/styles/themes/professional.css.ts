@@ -22,10 +22,17 @@ export const professionalTheme = createTheme(vars, {
     textMuted: '#8a8a93',
     textDim: '#52525b',
 
-    primary: '#8b5cf6',
-    primaryLight: '#a78bfa',
-    primaryDark: '#7c3aed',
-    primaryAlpha: 'rgba(139, 92, 246, 0.1)',
+    // Rodada V1 (set/2026): a família primary era roxa (#8b5cf6/#a78bfa/
+    // #7c3aed) e um clique no switch do TopBar deixava o produto inteiro
+    // roxo. O switch saiu; estes valores passam a ler as MESMAS CSS vars de
+    // white-label que `recognition-dark` já lê, com o ciano da marca como
+    // default — então nem um `mode: 'professional'` velho no localStorage
+    // reintroduz o roxo, e o tema legado passa a respeitar a cor do tenant.
+    // Regra da casa: magenta/roxo só no loader.
+    primary: 'var(--color-primary, #06b6d4)',
+    primaryLight: 'var(--color-primary-light, #22d3ee)',
+    primaryDark: 'var(--color-primary-dark, #0891b2)',
+    primaryAlpha: 'var(--color-primary-alpha, rgba(6, 182, 212, 0.1))',
 
     accent: '#22d3ee',
     accentLight: '#67e8f9',

@@ -53,7 +53,7 @@ vi.mock('react-router-dom', async () => {
 })
 
 import { ApiError } from '../../services/api'
-import { EventoDetalhe, caixaEmPorcento } from './EventoDetalhe'
+import { EventoDetalhe, caixaEmPorcento, procedenciaDeclarada } from './EventoDetalhe'
 
 /** Formato real de `GET /api/alerts/:id` (RVB Isolantes — CAM-04 Expedição). */
 const EVENTO = {
@@ -131,6 +131,104 @@ describe('badge de procedência', () => {
     montar()
     await screen.findByText('CAM-04 Expedição')
     expect(screen.queryByText(/coleta retroativa/i)).toBeNull()
+  })
+})
+
+// ── procedência DECLARADA (v1, 05/09) ───────────────────────────────────────
+// MEDIDO no DEV: 4.609 dos 5.174 eventos têm `violations[].origem =
+// 'anotacao_humana'` — a caixa foi desenhada por PESSOA, no estúdio de
+// anotação, e carregada em lote pelo `scripts/ops/eventos_acervo_rvb.py`. O
+// badge temporal NUNCA acende nesses eventos (o script grava
+// `created_at == timestamp`, atraso zero), então a tela ficava muda justamente
+// onde tinha mais o que dizer — e o rótulo da caixa original ainda afirmava
+// "ONDE A IA MARCOU" por cima de uma caixa humana. Duas mentiras, uma tela.
+
+const V_HUMANA = {
+  class: 'no_helmet',
+  confidence: 1,
+  bbox: [100, 50, 200, 400] as [number, number, number, number],
+  bbox_unidade: 'pixels_xywh_frame_original',
+  origem: 'anotacao_humana',
+  anotacao_source: 'manual',
+  lote: 'acervo-rvb-2026-09',
+}
+const V_MODELO = { ...V_HUMANA, origem: 'modelo_onnx', confidence: 0.87 }
+
+describe('procedência declarada no dado', () => {
+  it('caixa de PESSOA não pode ser anunciada como "onde a IA marcou"', async () => {
+    responde({ ...EVENTO, violations: [V_HUMANA] })
+    montar()
+    await montarFrame([1920, 1080], [960, 540])
+    fireEvent.click(screen.getByText('Corrigir caixa'))
+    expect(await screen.findByTestId('caixa-correcao')).toBeTruthy()
+    expect(screen.queryByText(/ONDE A IA MARCOU/i)).toBeNull()
+    expect(screen.getByText(/ONDE A PESSOA MARCOU/i)).toBeTruthy()
+  })
+
+  it('caixa do MODELO segue dizendo que é da IA', async () => {
+    responde({ ...EVENTO, violations: [V_MODELO] })
+    montar()
+    await montarFrame([1920, 1080], [960, 540])
+    fireEvent.click(screen.getByText('Corrigir caixa'))
+    expect(await screen.findByText(/ONDE A IA MARCOU/i)).toBeTruthy()
+  })
+
+  it('o badge lê a ORIGEM, não a diferença de tempo — evento humano sem atraso acende', async () => {
+    // captura == gravação: o badge TEMPORAL (5 min) fica calado, e é
+    // exatamente esse o caso dos 4.609 eventos semeados.
+    responde({
+      ...EVENTO,
+      violations: [V_HUMANA],
+      captured_at: '2026-08-25T14:32:08Z',
+      created_at: '2026-08-25T14:32:08Z',
+    })
+    montar()
+    const badge = await screen.findByTestId('procedencia')
+    expect(badge.textContent).toMatch(/anotação humana/i)
+    expect(badge.textContent).toMatch(/demonstração/i)
+  })
+
+  it('evento sem origem declarada não ganha afirmação nenhuma', async () => {
+    montar()   // EVENTO padrão: violação sem `origem`, vinda do edge
+    await screen.findByText('CAM-04 Expedição')
+    expect(screen.queryByTestId('procedencia')).toBeNull()
+  })
+
+  it('a função é pura e diz a verdade sobre cada origem', () => {
+    expect(procedenciaDeclarada([V_HUMANA])?.origem).toBe('humana')
+    expect(procedenciaDeclarada([V_MODELO])?.origem).toBe('modelo')
+    expect(procedenciaDeclarada([V_MODELO])?.rotulo).toMatch(/modelo/i)
+    // sem `lote` não existe demonstração para anunciar
+    const { lote: _lote, ...semLote } = V_HUMANA
+    expect(procedenciaDeclarada([semLote])?.rotulo).not.toMatch(/demonstração/i)
+    expect(procedenciaDeclarada([{ class: 'no_helmet', confidence: 0.9 }])).toBeNull()
+    expect(procedenciaDeclarada([])).toBeNull()
+  })
+})
+
+// ── evidência que expirou (v1, 05/09) ───────────────────────────────────────
+
+describe('evidência indisponível', () => {
+  it('imagem que não carrega vira aviso honesto, não tela em branco', async () => {
+    // MEDIDO: a URL assinada do R2 vale 1h (`ttl=3600` em alerts/routes.py) e
+    // depois devolve HTTP 403 ExpiredRequest. Sem `onError` a <img> falhava em
+    // silêncio e o palco ficava vazio — o operador via um retângulo preto e
+    // concluía que o evento não tinha evidência.
+    montar()
+    const img = await screen.findByAltText('Frame da evidência')
+    fireEvent.error(img)
+    expect(await screen.findByText(/não foi possível carregar a imagem/i)).toBeTruthy()
+    expect(screen.getByRole('button', { name: /link|tentar/i })).toBeTruthy()
+  })
+
+  it('o botão do aviso refaz o GET — é ele que assina uma URL nova', async () => {
+    montar()
+    fireEvent.error(await screen.findByAltText('Frame da evidência'))
+    const antes = get.mock.calls.length
+    fireEvent.click(await screen.findByRole('button', { name: /link|tentar/i }))
+    await waitFor(() => expect(get.mock.calls.length).toBeGreaterThan(antes))
+    // e a imagem volta: o estado de falha não gruda no próximo carregamento
+    expect(await screen.findByAltText('Frame da evidência')).toBeTruthy()
   })
 })
 

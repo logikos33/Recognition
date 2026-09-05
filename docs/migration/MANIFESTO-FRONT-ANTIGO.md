@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 392 arquivos, 66.132 linhas
+## Situação — 392 arquivos, 66.117 linhas
 
 | status | arquivos |
 |---|---:|
@@ -113,7 +113,7 @@ apagado não são a mesma coisa.
 | `src/components/layout/Sidebar/CollapsibleSidebar.tsx` | `INFRA` | — | 187 |
 | `src/components/layout/Sidebar/Sidebar.css.ts` | `INFRA` | — | 171 |
 | `src/components/layout/TopBar/TopBar.css.ts` | `INFRA` | — | 128 |
-| `src/components/layout/TopBar/TopBar.tsx` | `INFRA` | — | 118 |
+| `src/components/layout/TopBar/TopBar.tsx` | `INFRA` | — | 116 |
 | `src/components/monitoring/AlertsPanel.css.ts` | `INFRA` | — | 48 |
 | `src/components/monitoring/AlertsPanel.tsx` | `INFRA` | — | 72 |
 | `src/components/monitoring/CameraPlayer.css.ts` | `INFRA` | — | 74 |
@@ -246,8 +246,8 @@ apagado não são a mesma coisa.
 | `src/stores/themeStore.ts` | `INFRA` | — | 37 |
 | `src/styles/global.css.ts` | `INFRA` | — | 88 |
 | `src/styles/theme.css.ts` | `INFRA` | — | 95 |
-| `src/styles/themes/cyberpunk.css.ts` | `INFRA` | — | 86 |
-| `src/styles/themes/professional.css.ts` | `INFRA` | — | 88 |
+| `src/styles/themes/cyberpunk.css.ts` | `INFRA` | — | 89 |
+| `src/styles/themes/professional.css.ts` | `INFRA` | — | 95 |
 | `src/theme/chartColors.ts` | `INFRA` | — | 29 |
 | `src/theme/tenant-theme/defaults.ts` | `INFRA` | — | 19 |
 | `src/theme/tenant-theme/resolver.ts` | `INFRA` | — | 84 |
@@ -400,7 +400,7 @@ apagado não são a mesma coisa.
 | `src/pages/HomePage.css.ts` | `PENDENTE` | — | 108 |
 | `src/pages/HomePage.tsx` | `PENDENTE` | — | 134 |
 | `src/pages/Login.css.ts` | `PENDENTE` | — | 177 |
-| `src/pages/Login.tsx` | `PENDENTE` | — | 106 |
+| `src/pages/Login.tsx` | `PENDENTE` | — | 82 |
 | `src/pages/ModuleSelectionPage.css.ts` | `PENDENTE` | — | 172 |
 | `src/pages/monitoring/ChartsSection.tsx` | `PENDENTE` | — | 479 |
 | `src/pages/monitoring/CollectionPanel.tsx` | `PENDENTE` | — | 101 |
@@ -425,7 +425,7 @@ apagado não são a mesma coisa.
 | `src/pages/epi/EpiScenarioEditorPage.tsx` | `SEM-DESENHO` | — | 38 |
 | `src/pages/epi/EpiSitesPage.tsx` | `SEM-DESENHO` | — | 160 |
 | `src/pages/epi/InvestigationPage.tsx` | `SEM-DESENHO` | — | 746 |
-| `src/pages/ModuleSelectionPage.tsx` | `SEM-DESENHO` | — | 165 |
+| `src/pages/ModuleSelectionPage.tsx` | `SEM-DESENHO` | — | 166 |
 | `src/modules/quality/pages/QualityCamerasPage.tsx` | `SUBSTITUIDA` | src/app/qualidade/Qualidade.tsx | 211 |
 | `src/modules/quality/pages/QualityConfigPage.tsx` | `SUBSTITUIDA` | src/app/qualidade/ConfigQualidade.tsx | 741 |
 | `src/modules/quality/pages/QualityDashboard.tsx` | `SUBSTITUIDA` | src/app/qualidade/Qualidade.tsx | 117 |
