@@ -8,6 +8,7 @@ import logging
 import os
 
 from celery import Celery
+from celery.schedules import crontab
 
 logger = logging.getLogger(__name__)
 
@@ -66,9 +67,16 @@ SAFE_BEAT_SCHEDULE = {
     # agendada e ficaria numa fila que ninguém lê, que é exatamente o silêncio
     # que este backup existe para acabar. Quem pegou isso foi
     # test_beat_schedule.py, cuja regra é: entrada ativa só com worker na fila.
+    # ⚠️ `crontab` e NÃO `43200` (12h). MEDIDO em 05/09: com intervalo, o beat
+    # só dispara `intervalo` depois do ÚLTIMO BOOT — o estado do
+    # PersistentScheduler vive em /tmp (efêmero, ver railway_start.py) e nasce
+    # zerado a cada deploy. O DEV redeploya sozinho a cada merge na develop;
+    # num dia de mutirão isso é mais de uma vez a cada 12h, então a entrada
+    # com intervalo NUNCA venceria. Cron é hora de parede: reiniciar não adia
+    # o próximo disparo. 03:00 e 15:00 UTC = 00:00 e 12:00 em Brasília.
     "backup-postgres": {
         "task": "tasks.backup.backup_database",
-        "schedule": 43200,  # 12h → 2x/dia
+        "schedule": crontab(minute=0, hour="3,15"),  # 2x/dia, hora de parede
         "options": {"queue": "reports"},
     },
     # Compliance EPI — relatório diário arquivado no R2 (task-043 lacuna 2)

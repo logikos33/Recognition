@@ -6,14 +6,45 @@
 FROM python:3.11-slim
 
 # System deps: ffmpeg (extração), libgl1 + libglib2.0-0 (opencv headless)
+#
+# postgresql-client-18 = o `pg_dump` do backup (tasks/backup.py). MEDIDO em
+# 05/09/2026 dentro do container do DEV (`railway ssh -s celery-worker --
+# which pg_dump`): NÃO EXISTIA. `libpq-dev` traz a libpq e os headers, não o
+# binário. O backup cai na fila `reports`, que só ESTE container consome —
+# logo o agendamento dispararia certinho e a tarefa devolveria
+# "pg_dump ausente na imagem" para sempre, num logger.error que ninguém lê.
+#
+# O `postgresql_18` do nixpacks.toml NUNCA valeu aqui: este serviço builda por
+# DOCKERFILE (worker-railway.toml → este arquivo) e a API por
+# services/api/railway.toml — nixpacks não builda serviço nenhum neste projeto
+# (medido via Railway API em 05/09).
+#
+# Repositório PGDG e não o `postgresql-client` do Debian: o servidor do Railway
+# é PostgreSQL 18.6 e o pg_dump NÃO pode ser mais antigo que o servidor (ele
+# aborta em vez de gerar arquivo torto). A base python:3.11-slim é Debian 13
+# (trixie), cujo main só tem o client 17. O codename sai do próprio
+# /etc/os-release para não quebrar quando a base subir de release.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
     curl \
+    ca-certificates \
+    gnupg \
     ffmpeg \
     libgl1 \
     libglib2.0-0 \
+    && install -d /usr/share/postgresql-common/pgdg \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+         -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+    && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo $VERSION_CODENAME)-pgdg main" \
+         > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client-18 \
     && rm -rf /var/lib/apt/lists/*
+
+# Falha de build ALTA em vez de backup silenciosamente morto em runtime: se o
+# pg_dump não entrou na imagem, o deploy não sobe.
+RUN pg_dump --version
 
 # Non-root user
 RUN groupadd -r epi && useradd -r -g epi -m epi

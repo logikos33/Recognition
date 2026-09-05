@@ -159,7 +159,9 @@ def backup_database(self, prefixo: str | None = None) -> dict:  # noqa: ANN001
         # olhar o log precisa saber que é a IMAGEM que está faltando peça.
         logger.error(
             "backup_sem_pg_dump: binário não encontrado no PATH — falta "
-            "'postgresql' no nixPkgs (nixpacks.toml)"
+            "postgresql-client-18 em services/api/Dockerfile.worker (é ESTE "
+            "container que consome a fila `reports`). nixpacks.toml NÃO builda "
+            "este serviço; apontar para lá custou uma noite em 05/09."
         )
         return {"status": "erro", "motivo": "pg_dump ausente na imagem"}
 
