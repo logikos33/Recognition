@@ -2,6 +2,17 @@
 Recognition — CRUD handlers for camera routes.
 
 Handlers: list_cameras, create_camera, get_camera, update_camera, delete_camera.
+
+Gate de permissão (registry canônico — app/core/permissions.py):
+  cameras:write   create / update / archive / restore  (superadmin, admin)
+  cameras:delete  delete                               (superadmin, admin)
+
+Antes só havia @jwt_required(): QUALQUER papel do tenant (viewer, operator,
+trainer, analyst) cadastrava, editava e APAGAVA câmera — e o DELETE leva
+junto alerts/events/operations por CASCADE. As chaves já existiam no registry
+e o front (app/epi/Cameras.tsx) já escondia os botões por `cameras:write`;
+faltava a fiação no backend, que era quem de fato precisava barrar.
+Prova: tests/security/test_lote_p0_permission_gates.py.
 """
 import json as _json
 import logging
@@ -13,6 +24,7 @@ from flask_jwt_extended import jwt_required
 from app.core.auth import get_current_user_id, get_tenant_id
 from app.core.exceptions import EpiMonitorError
 from app.core.responses import success, error
+from app.core.tenant import require_permission
 from app.domain.services.platform_flags import platform_flag_enabled
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.camera_repository import CameraRepository
@@ -98,6 +110,7 @@ def list_cameras():  # type: ignore[no-untyped-def]
 
 
 @jwt_required()
+@require_permission("cameras:write")
 def create_camera():  # type: ignore[no-untyped-def]
     """---
     tags: [cameras]
@@ -166,6 +179,7 @@ def get_camera(camera_id: str):  # type: ignore[no-untyped-def]
 
 
 @jwt_required()
+@require_permission("cameras:write")
 def update_camera(camera_id: str):  # type: ignore[no-untyped-def]
     """---
     tags: [cameras]
@@ -206,6 +220,7 @@ def update_camera(camera_id: str):  # type: ignore[no-untyped-def]
 
 
 @jwt_required()
+@require_permission("cameras:delete")
 def delete_camera(camera_id: str):  # type: ignore[no-untyped-def]
     """---
     tags: [cameras]
@@ -230,6 +245,7 @@ def delete_camera(camera_id: str):  # type: ignore[no-untyped-def]
 
 
 @jwt_required()
+@require_permission("cameras:write")
 def archive_camera(camera_id: str):  # type: ignore[no-untyped-def]
     """---
     tags: [cameras]
@@ -257,6 +273,7 @@ def archive_camera(camera_id: str):  # type: ignore[no-untyped-def]
 
 
 @jwt_required()
+@require_permission("cameras:write")
 def restore_camera(camera_id: str):  # type: ignore[no-untyped-def]
     """---
     tags: [cameras]

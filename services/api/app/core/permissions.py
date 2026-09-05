@@ -18,8 +18,13 @@ Cada entrada tem:
                   role-set do check inline original — paridade garantida por
                   teste (tests/security/test_permission_gate_parity.py).
   enforced     — True quando existe gate real usando require_permission/
-                 has_permission com esta chave. False = documentacional
-                 (endpoint protegido por decorator de role ou sem gate).
+                 has_permission/require_training_role com esta chave.
+                 False = documentacional (endpoint protegido por decorator de
+                 role ou sem gate nenhum).
+                 NÃO é autodeclaração: tests/security/
+                 test_lote_p0_permission_gates.py::TestRegistryEnforcedHonesto
+                 varre app/ e falha se uma chave marcada enforced não estiver
+                 amarrada a gate nenhum.
 
 Precedência de resolução (PermissionService):
   deny override > allow override > custom_role > default_roles(role)
@@ -76,12 +81,12 @@ PERMISSION_REGISTRY: dict[str, dict[str, Any]] = {
     "cameras:write": _entry(
         "Cadastrar/editar câmeras",
         "Permite cadastrar novas câmeras e editar nome, local e credenciais.",
-        "Câmeras", ["superadmin", "admin"],
+        "Câmeras", ["superadmin", "admin"], enforced=True,
     ),
     "cameras:delete": _entry(
         "Remover câmeras",
         "Permite excluir câmeras do sistema. Ação irreversível.",
-        "Câmeras", ["superadmin", "admin"],
+        "Câmeras", ["superadmin", "admin"], enforced=True,
     ),
     "cameras:test": _entry(
         "Testar conexão de câmera",
@@ -108,7 +113,7 @@ PERMISSION_REGISTRY: dict[str, dict[str, Any]] = {
     "frames:annotate": _entry(
         "Anotar frames",
         "Permite desenhar e validar anotações (bounding boxes) em frames de treinamento.",
-        "Treinamento", ["superadmin", "admin", "operator", "trainer"],
+        "Treinamento", ["superadmin", "admin", "operator", "trainer"], enforced=True,
     ),
     "training:read": _entry(
         "Ver treinamentos",
@@ -118,17 +123,17 @@ PERMISSION_REGISTRY: dict[str, dict[str, Any]] = {
     "training:write": _entry(
         "Criar treinamentos",
         "Permite criar e disparar novos jobs de treinamento de modelo.",
-        "Treinamento", ["superadmin", "admin", "trainer"],
+        "Treinamento", ["superadmin", "admin", "trainer"], enforced=True,
     ),
     "training:approve": _entry(
         "Aprovar treinamentos",
         "Permite aprovar ou rejeitar treinamentos pendentes de revisão da plataforma.",
-        "Treinamento", ["superadmin"],
+        "Treinamento", ["superadmin"], enforced=True,
     ),
     "models:approve": _entry(
         "Aprovar modelos",
         "Permite aprovar a publicação de um modelo treinado para uso em produção.",
-        "Treinamento", ["superadmin", "admin"],
+        "Treinamento", ["superadmin", "admin"], enforced=True,
     ),
     # ── Módulos ───────────────────────────────────────────────────────────────
     # Catálogo GLOBAL de plataforma (public.module_classes, sem tenant_id):
@@ -254,7 +259,7 @@ PERMISSION_REGISTRY: dict[str, dict[str, Any]] = {
         "Ver qualidade",
         "Permite visualizar inspeções, peças, retrabalhos e estações do módulo Qualidade.",
         "Qualidade", ["superadmin", "admin", "operator", "analyst", "viewer"],
-        module="quality",
+        module="quality", enforced=True,
     ),
     "quality:write": _entry(
         "Operar qualidade",

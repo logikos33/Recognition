@@ -16,14 +16,14 @@ from flask import Blueprint, request
 from flask_jwt_extended import get_jwt, get_jwt_identity, verify_jwt_in_request
 
 from app.api.v1.quality.classes import DEFECT_CATEGORIES, QUALITY_CLASSES, VALID_CLASS_IDS
-from app.core.auth import get_role
+from app.core.auth import get_role, get_tenant_schema, require_training_role
 from app.core.quality_video_security import (
     RateLimitError,
     SecurityError,
     generate_quality_view_url,
-    verify_andon_access,
 )
 from app.core.responses import error, success
+from app.core.tenant import require_permission
 
 logger = logging.getLogger(__name__)
 
@@ -697,94 +697,86 @@ def submit_feedback(inspection_id: str):
 
 
 # ============================================================
-# MONITOR ANDON — sem autenticação JWT, apenas IP interno
+# MONITOR ANDON — JWT + escopo do tenant do token
 # ============================================================
 
 @quality_bp.route("/andon/<camera_id>", methods=["GET"])
+@require_permission("quality:read")
 def get_andon_data(camera_id: str):
     """GET /api/v1/quality/andon/<camera_id> — dados para monitor de operação.
-    Acesso sem JWT — validação por IP interno apenas.
+
+    Exige JWT e responde SÓ com dados do tenant do token.
+
+    Antes: rodava sem autenticação nenhuma, com allowlist de IP privado como
+    único portão — e a allowlist não vale nada em nuvem (atrás de proxy o
+    `remote_addr` é o do proxy, sempre privado) nem com ANDON_ALLOW_EXTERNAL=true.
+    Pior: para achar a câmera, VARRIA `public.tenants` e dava SET search_path em
+    CADA schema até casar o id, servindo inspeções, CEP e turno do cliente a
+    quem passasse um UUID. Vazamento cross-tenant explorável com um curl.
+
+    Agora a busca acontece só no schema do JWT: câmera de outro tenant não
+    existe aqui e responde 404 — nunca 403 (C-01, não vazar existência).
+
+    Painel de chão de fábrica sem sessão: a tela vive dentro do app autenticado
+    (QualityLayout) e o cliente já manda o Bearer. Se um dia precisar de
+    display sem login, o caminho é token dedicado com escopo de UMA câmera
+    (como o device token RS256 do edge, ADR-0019) — nunca varredura de schemas.
     """
-    if not verify_andon_access(request.remote_addr):
-        return error("Acesso negado: apenas rede interna", 403)
-
-    # Para andon, buscar o tenant_schema via camera_id na tabela pública
-    # Estratégia: tentar cada tenant schema até encontrar a câmera
+    tenant_schema = get_tenant_schema()
     try:
-        import psycopg2
-        import psycopg2.extras
-        db_url = os.environ.get("DATABASE_URL", "")
-        if not db_url:
-            return error("Banco não configurado", 500)
+        pool = _get_pool()
+        with pool.get_connection() as conn:
+            cur = conn.cursor()
+            _set_search_path(cur, tenant_schema)
+            cur.execute(
+                "SELECT id, name, location, status, active_module "
+                "FROM cameras WHERE id = %s",
+                (camera_id,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return error("Câmera não encontrada", 404)
+            camera_data = dict(row)
 
-        conn = psycopg2.connect(db_url)
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            # Config da câmera
+            cur.execute(
+                "SELECT * FROM quality_camera_config WHERE camera_id = %s",
+                (camera_id,),
+            )
+            config_row = cur.fetchone()
+            config = dict(config_row) if config_row else {}
 
-        # Buscar todos os tenant schemas
-        cur.execute("SELECT schema_name FROM public.tenants WHERE schema_name IS NOT NULL")
-        schemas = [r["schema_name"] for r in cur.fetchall()]
+            # Últimas 10 inspeções do turno
+            cur.execute("""
+                SELECT result, defect_category, confidence, created_at, is_cep_alert
+                FROM quality_inspections
+                WHERE camera_id = %s AND shift = %s
+                ORDER BY created_at DESC
+                LIMIT 10
+            """, (camera_id, _current_shift()))
+            recent = [dict(r) for r in cur.fetchall()]
 
-        camera_data = None
-        found_schema = None
+            # Métricas do turno atual
+            cur.execute("""
+                SELECT
+                    COUNT(*) AS total,
+                    COUNT(*) FILTER (WHERE result = 'ok') AS ok_count,
+                    COUNT(*) FILTER (WHERE result = 'nok') AS nok_count,
+                    COUNT(*) FILTER (WHERE feedback_status = 'pending') AS pending_feedback
+                FROM quality_inspections
+                WHERE camera_id = %s AND shift = %s
+                  AND DATE(created_at) = CURRENT_DATE
+            """, (camera_id, _current_shift()))
+            shift_stats = dict(cur.fetchone())
 
-        for schema in schemas:
-            try:
-                _set_search_path(cur, schema)
-                cur.execute(
-                    "SELECT id, name, location, status, active_module "
-                    "FROM cameras WHERE id = %s",
-                    (camera_id,)
-                )
-                row = cur.fetchone()
-                if row:
-                    camera_data = dict(row)
-                    found_schema = schema
-                    break
-            except Exception:
-                continue
-
-        if camera_data is None:
-            conn.close()
-            return error("Câmera não encontrada", 404)
-
-        _set_search_path(cur, found_schema)
-
-        # Config da câmera
-        cur.execute("SELECT * FROM quality_camera_config WHERE camera_id = %s", (camera_id,))
-        config_row = cur.fetchone()
-        config = dict(config_row) if config_row else {}
-
-        # Últimas 10 inspeções do turno
-        cur.execute("""
-            SELECT result, defect_category, confidence, created_at, is_cep_alert
-            FROM quality_inspections
-            WHERE camera_id = %s AND shift = %s
-            ORDER BY created_at DESC
-            LIMIT 10
-        """, (camera_id, _current_shift()))
-        recent = [dict(r) for r in cur.fetchall()]
-
-        # Métricas do turno atual
-        cur.execute("""
-            SELECT
-                COUNT(*) AS total,
-                COUNT(*) FILTER (WHERE result = 'ok') AS ok_count,
-                COUNT(*) FILTER (WHERE result = 'nok') AS nok_count,
-                COUNT(*) FILTER (WHERE feedback_status = 'pending') AS pending_feedback
-            FROM quality_inspections
-            WHERE camera_id = %s AND shift = %s
-              AND DATE(created_at) = CURRENT_DATE
-        """, (camera_id, _current_shift()))
-        shift_stats = dict(cur.fetchone())
-
-        # Status CEP
-        cur.execute("""
-            SELECT ucl, mean_nok_rate
-            FROM quality_cep_baseline
-            WHERE camera_id = %s
-            ORDER BY baseline_date DESC LIMIT 1
-        """, (camera_id,))
-        cep_row = cur.fetchone()
+            # Status CEP
+            cur.execute("""
+                SELECT ucl, mean_nok_rate
+                FROM quality_cep_baseline
+                WHERE camera_id = %s
+                ORDER BY baseline_date DESC LIMIT 1
+            """, (camera_id,))
+            cep_row = cur.fetchone()
 
         nok_total = shift_stats.get("total") or 1
         current_nok_rate = (shift_stats.get("nok_count") or 0) / nok_total
@@ -795,8 +787,6 @@ def get_andon_data(camera_id: str):
                 cep_status = "out_of_control"
             elif cep_row["mean_nok_rate"] and current_nok_rate > cep_row["mean_nok_rate"]:
                 cep_status = "warning"
-
-        conn.close()
 
         return success({
             "camera": {
@@ -1004,6 +994,7 @@ def get_annotation_progress(inspection_id: str):
 
 
 @quality_bp.route("/inspections/<inspection_id>/create-training-job", methods=["POST"])
+@require_training_role("write")
 def create_job_from_inspection(inspection_id: str):
     """POST /api/v1/quality/inspections/<id>/create-training-job — job de retreino."""
     try:
@@ -1054,6 +1045,7 @@ def create_job_from_inspection(inspection_id: str):
 # ============================================================
 
 @quality_bp.route("/training/jobs", methods=["POST"])
+@require_training_role("write")
 def create_training_job():
     """POST /api/v1/quality/training/jobs — cria job de treinamento por vídeo."""
     try:
@@ -1175,6 +1167,7 @@ def get_training_progress(job_id: str):
 
 
 @quality_bp.route("/training/models/<model_id>/activate", methods=["POST"])
+@require_permission("models:approve")
 def activate_model(model_id: str):
     """POST /api/v1/quality/training/models/<id>/activate — ativa modelo para câmeras.
 
