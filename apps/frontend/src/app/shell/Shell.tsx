@@ -249,6 +249,17 @@ export function Shell({ carregando }: ShellProps) {
                * erro trocava a URL e continuava olhando a tela de erro — beco
                * sem saída até dar F5. Trocar a chave remonta o boundary limpo,
                * e a nav volta a ser saída de verdade (regra C2).
+               *
+               * O preço da chave, dito por extenso: ela remonta a subárvore em
+               * TODA troca de caminho, inclusive entre sub-abas de uma mesma
+               * área (`/novo/estudio/dados` → `/novo/estudio/cobertura`
+               * remonta o layout do Estúdio). Medido antes de aceitar: os
+               * layouts de Estúdio e Admin não guardam estado nenhum (nenhum
+               * `useState`/`useQuery`), e o cache do react-query sobrevive ao
+               * remonte. No dia em que um layout desses passar a guardar
+               * estado, o conserto é o `ErrorBoundary` ganhar `resetKeys`
+               * (como o do `react-error-boundary`) em vez de `key` — aí o
+               * reset deixa de custar remonte.
                */
               <ErrorBoundary key={pathname}>
                 <Suspense
