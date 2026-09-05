@@ -124,20 +124,28 @@ jobs:
           import json, os, sys
           from datetime import date
 
-          # pacote -> (issue que rastreia, prazo ISO)
+          # pacote -> (issue que rastreia, prazo ISO, severidade TRIADA)
+          #
+          # A severidade é TETO, não rótulo. O que foi triado foi aquele nível:
+          # se o pacote piorar (high -> critical), a allowlist não cobre e o
+          # gate reprova pedindo triagem nova. Sem esse teto o gate imprimiria
+          # "nenhum high/critical fora da allowlist" sentado em cima de um
+          # critical — a mesma mentira que este workflow acabou de perder, só
+          # que menor.
           ALLOWLIST = {
               "frontend": {
-                  "browserslist": ("#655", "2026-10-06"),
+                  "browserslist": ("#655", "2026-10-06", "high"),
               },
               "landing": {
                   # árvore do astro 4.16.19 — migração 4→7, não bump (#421)
-                  "astro": ("#421", "2026-10-06"),
-                  "sharp": ("#421", "2026-10-06"),
-                  "vite": ("#421", "2026-10-06"),
-                  "browserslist": ("#655", "2026-10-06"),
+                  "astro": ("#421", "2026-10-06", "high"),
+                  "sharp": ("#421", "2026-10-06", "high"),
+                  "vite": ("#421", "2026-10-06", "high"),
+                  "browserslist": ("#655", "2026-10-06", "high"),
               },
           }
-          BLOQUEIA = {"high", "critical"}
+          NIVEL = {"high": 1, "critical": 2}
+          BLOQUEIA = set(NIVEL)
 
           app = os.environ["APP"]
           permitido = ALLOWLIST.get(app, {})
@@ -158,7 +166,12 @@ jobs:
               if nome not in permitido:
                   bloqueando.append(f"{v['severity']:8} {nome}")
                   continue
-              issue, prazo = permitido[nome]
+              issue, prazo, teto = permitido[nome]
+              if NIVEL[v["severity"]] > NIVEL[teto]:
+                  bloqueando.append(
+                      f"{v['severity']:8} {nome:22} PIOROU — allowlist triou "
+                      f"{teto} ({issue}); reveja antes de tolerar")
+                  continue
               linha = f"{v['severity']:8} {nome:22} {issue} ate {prazo}"
               (vencido if hoje > prazo else tolerado).append(linha)
 
