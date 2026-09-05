@@ -3,6 +3,7 @@ Recognition — Auth Routes.
 
 POST /api/auth/register
 POST /api/auth/login
+POST /api/auth/refresh
 GET  /api/auth/me
 POST /api/auth/forgot-password
 POST /api/auth/reset-password
@@ -11,9 +12,10 @@ import logging
 import os
 
 from flask import Blueprint, request
-from flask_jwt_extended import create_access_token, jwt_required
+from flask_jwt_extended import create_access_token, decode_token, get_jwt, jwt_required
 
 from app.core.auth import get_current_user_id
+from app.core.tenant_context import TENANT_CTX_CLAIM
 from app.core.responses import success, error
 from app.core.exceptions import AuthenticationError, EpiMonitorError
 from app.core import login_account_limiter
@@ -177,66 +179,11 @@ def login():  # type: ignore[no-untyped-def]
         # da conta (recomendação OWASP).
         login_account_limiter.reset(email)
 
-        # Validar campos obrigatórios do tenant — sem fallback silencioso (ADR-0017)
-        tenant_schema = user.get("tenant_schema")
-        if not tenant_schema:
-            raise AuthenticationError(
-                "Usuário sem tenant atribuído. Contate o administrador."
-            )
-        tenant_id = user.get("tenant_id")
-        if not tenant_id:
-            raise AuthenticationError(
-                "Usuário sem tenant_id. Possível corrupção de banco."
-            )
-        role = user.get("role")
-        if not role:
-            raise AuthenticationError(
-                "Usuário sem role atribuída. Contate o administrador."
-            )
-
-        modules_raw = user.get("modules_enabled") or []
-        # modules_enabled pode vir como list ou como string JSON do psycopg2
-        if isinstance(modules_raw, str):
-            import json as _json
-            try:
-                modules_raw = _json.loads(modules_raw)
-            except Exception:
-                modules_raw = []
-
-        additional_claims = {
-            "tenant_id": str(tenant_id),
-            "tenant_schema": tenant_schema,
-            "email": user.get("email", ""),
-            "role": role,
-            "modules": modules_raw,
-        }
-
-        # WS7: permissões efetivas (role ∪ custom_role ± overrides) na claim
-        # 'perms'. Best-effort: falha no cálculo NUNCA bloqueia o login —
-        # token sai sem a claim e os gates caem no fallback por role.
-        perms = _resolve_permissions(user)
-        if perms is not None:
-            additional_claims["perms"] = perms
-
-        token = create_access_token(identity=str(user["id"]), additional_claims=additional_claims)
+        token, user_response = _issue_session_token(user)
 
         # Sessões concorrentes: registra sessão e aplica single_session do
         # tenant ("última sessão ganha") — best-effort, nunca bloqueia o login
-        _register_session(token, str(user["id"]), str(tenant_id))
-
-        # Remover campos internos do response
-        user_response = {
-            k: v for k, v in user.items()
-            if k not in ("password_hash", "tenant_schema", "modules_enabled")
-        }
-        user_response["tenant_schema"] = tenant_schema
-        user_response["modules"] = modules_raw
-        # WS7: permissões efetivas expostas p/ gating de UI
-        if perms is not None:
-            user_response["permissions"] = perms
-        else:
-            from app.core.permissions import permissions_for_role
-            user_response["permissions"] = permissions_for_role(role)
+        _register_session(token, str(user["id"]), str(user_response["tenant_id"]))
 
         return success({"token": token, "user": user_response})
     except EpiMonitorError:
@@ -315,6 +262,178 @@ def _resolve_permissions(user: dict) -> list | None:
     except Exception as exc:
         logger.warning("perms_claim_failed: %s", exc)
         return None
+
+
+def _issue_session_token(user: dict) -> tuple[str, dict]:
+    """Emite o token de sessão a partir do registro do usuário NO BANCO.
+
+    Fonte ÚNICA das claims de sessão: /login e /refresh passam por aqui. Se
+    cada rota montasse o próprio dicionário, a primeira claim nova entraria só
+    num dos dois — e renovar a sessão passaria a *tirar* permissão de quem
+    renovou, em silêncio.
+
+    Nada aqui lê o corpo da request nem as claims do token que chegou: tenant,
+    role e módulos saem do `user` carregado do banco. É o que impede a
+    renovação de virar escada de privilégio (ver docstring de /refresh).
+
+    Sem fallback silencioso de tenant (ADR-0017): falta tenant/role → erro.
+    """
+    tenant_schema = user.get("tenant_schema")
+    if not tenant_schema:
+        raise AuthenticationError(
+            "Usuário sem tenant atribuído. Contate o administrador."
+        )
+    tenant_id = user.get("tenant_id")
+    if not tenant_id:
+        raise AuthenticationError(
+            "Usuário sem tenant_id. Possível corrupção de banco."
+        )
+    role = user.get("role")
+    if not role:
+        raise AuthenticationError(
+            "Usuário sem role atribuída. Contate o administrador."
+        )
+
+    modules_raw = user.get("modules_enabled") or []
+    # modules_enabled pode vir como list ou como string JSON do psycopg2
+    if isinstance(modules_raw, str):
+        import json as _json
+        try:
+            modules_raw = _json.loads(modules_raw)
+        except Exception:
+            modules_raw = []
+
+    additional_claims = {
+        "tenant_id": str(tenant_id),
+        "tenant_schema": tenant_schema,
+        "email": user.get("email", ""),
+        "role": role,
+        "modules": modules_raw,
+    }
+
+    # WS7: permissões efetivas (role ∪ custom_role ± overrides) na claim
+    # 'perms'. Best-effort: falha no cálculo NUNCA bloqueia o login —
+    # token sai sem a claim e os gates caem no fallback por role.
+    perms = _resolve_permissions(user)
+    if perms is not None:
+        additional_claims["perms"] = perms
+
+    token = create_access_token(
+        identity=str(user["id"]), additional_claims=additional_claims
+    )
+
+    # Remover campos internos do response
+    user_response = {
+        k: v for k, v in user.items()
+        if k not in ("password_hash", "tenant_schema", "modules_enabled")
+    }
+    user_response["tenant_id"] = str(tenant_id)
+    user_response["tenant_schema"] = tenant_schema
+    user_response["modules"] = modules_raw
+    # WS7: permissões efetivas expostas p/ gating de UI
+    if perms is not None:
+        user_response["permissions"] = perms
+    else:
+        from app.core.permissions import permissions_for_role
+        user_response["permissions"] = permissions_for_role(role)
+
+    return token, user_response
+
+
+def _get_user_repository() -> UserRepository:
+    """Factory: repositório de usuários (ponto de mock nos testes)."""
+    pool = DatabasePool.get_instance()
+    if pool is None:
+        raise RuntimeError("Database pool not initialized")
+    return UserRepository(pool)
+
+
+# Claims que marcam token de ESCOPO ESPECIAL e TTL curto de propósito:
+#   tenant_ctx  — superadmin operando dentro de um tenant (30 min, ADR/D-48)
+#   imp         — "ver como" outro usuário (30 min, WS6)
+#   token_type  — token de enrollment de device (não é sessão de gente)
+# Renovar qualquer um deles AQUI transformaria 30 minutos auditados em 24h de
+# sessão comum — exatamente a escada de privilégio que /refresh não pode ser.
+# Contexto assumido e impersonation têm caminho próprio de renovação, com
+# auditoria: POST /api/admin/tenant-context/renew.
+_CLAIMS_NAO_RENOVAVEIS = (TENANT_CTX_CLAIM, "imp", "token_type")
+
+
+@auth_bp.route("/refresh", methods=["POST"])
+@limiter.limit("30 per hour")
+@jwt_required()
+def refresh():  # type: ignore[no-untyped-def]
+    """
+    ---
+    tags:
+      - auth
+    summary: Troca um token de sessão AINDA VÁLIDO por outro com prazo cheio
+    description: >
+      Sem esta rota o operador era derrubado a cada JWT_EXPIRY_HOURS (24h) e
+      perdia o que estivesse anotando (issue #667). Não é refresh token de
+      sessão longa: não existe credencial nova, nem armazenamento novo. É a
+      troca de um token vivo por outro.
+
+      Por que não é escada de privilégio:
+        · `@jwt_required()` recusa token expirado, adulterado ou revogado
+          (a blocklist de jti é consultada em toda request autenticada) —
+          quem não tem sessão válida não sai daqui com uma;
+        · nenhuma claim vem do corpo da request nem é copiada do token que
+          chegou: tenant, role, módulos e permissões são relidos do BANCO
+          pelo `sub` do token. Token com tenant velho renova para o tenant
+          ATUAL do usuário, nunca para o que ele carregava;
+        · usuário desativado não renova (is_active) — sem isso, demitir
+          alguém deixaria de encerrar a sessão dele;
+        · token de contexto assumido / "ver como" / device é RECUSADO: o TTL
+          curto deles é a contenção, e esticá-lo aqui seria contorná-la.
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: Novo token, mesmas claims, prazo cheio
+      401:
+        description: Token expirado, ausente, revogado ou usuário inativo
+      403:
+        description: Token de escopo especial (contexto assumido, "ver como", device)
+    """
+    try:
+        claims = get_jwt()
+        for claim in _CLAIMS_NAO_RENOVAVEIS:
+            if claims.get(claim):
+                return error(
+                    "Esta sessão é temporária e não pode ser renovada por aqui.",
+                    403,
+                    error_code="refresh_not_allowed",
+                )
+
+        user_id = get_current_user_id()
+        user = _get_user_repository().get_by_id_with_tenant(str(user_id))
+        # Mensagem idêntica para "sumiu" e "desativado": quem chama já tem
+        # token válido, mas não há por que confirmar o estado da conta.
+        if not user or not user.get("is_active"):
+            raise AuthenticationError(
+                "Sessão não pode ser renovada. Entre novamente."
+            )
+
+        token, user_response = _issue_session_token(user)
+
+        # Mesmo bookkeeping do login: com single_session ligado, o token
+        # ANTERIOR é revogado aqui — renovar não pode deixar duas sessões
+        # vivas onde a política do tenant permite uma.
+        _register_session(token, str(user["id"]), str(user_response["tenant_id"]))
+
+        return success({
+            "token": token,
+            "user": user_response,
+            # O front não decodifica JWT (evita uma segunda fonte de verdade
+            # sobre expiração). O prazo vem pronto, em epoch (segundos).
+            "expires_at": decode_token(token).get("exp"),
+        })
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("refresh_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
 
 
 @auth_bp.route("/me", methods=["GET"])
