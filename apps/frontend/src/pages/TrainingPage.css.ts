@@ -180,13 +180,13 @@ export const uploadZone = style({
   marginBottom: vars.space.lg,
   ':hover': {
     borderColor: vars.color.primary,
-    background: 'rgba(139, 92, 246, 0.03)',
+    background: vars.color.primaryAlpha,
   },
 })
 
 export const uploadZoneActive = style({
   borderColor: vars.color.primary,
-  background: 'rgba(139, 92, 246, 0.06)',
+  background: vars.color.primaryAlpha,
 })
 
 export const uploadText = style({
