@@ -136,13 +136,41 @@ const ehDoFrontNovo = (destino: string): boolean =>
  * deixou #760 passar.
  */
 function literaisNomeados(texto: string): Map<string, string> {
-  const mapa = new Map<string, string>()
+  // O próprio prefixo é um identificador que resolve — `href = PREFIXO_NOVO`
+  // (impersonation.ts) é destino conhecido, não destino ilegível.
+  const mapa = new Map<string, string>([['PREFIXO_NOVO', PREFIXO_NOVO]])
   for (const m of texto.matchAll(
     /\b([A-Za-z_$][\w$]*)\s*(?::\s*[\w$<>[\]|.\s]+?)?\s*=\s*(?:"(\/[^"]*)"|'(\/[^']*)'|`(\/[^`]*)`)/g,
   )) {
     mapa.set(m[1], m[2] ?? m[3] ?? m[4])
   }
+  // ...e o jeito CERTO de escrever o mesmo destino: `redirect = rotaNova('/x')`
+  // e `destino = PREFIXO_NOVO`. Sem estes dois, o conserto de #760 fica
+  // ilegível para o guard — e destino ilegível é exatamente o que ele deixa
+  // passar em serviço (ver o laço do `window.location`).
+  for (const m of texto.matchAll(
+    /\b([A-Za-z_$][\w$]*)\s*(?::\s*[\w$<>[\]|.\s]+?)?\s*=\s*(?:rotaNova\(\s*['"`](\/[^'"`]*)['"`]\s*\)|(PREFIXO_NOVO)\b)/g,
+  )) {
+    mapa.set(m[1], m[2] !== undefined ? PREFIXO_NOVO + m[2] : PREFIXO_NOVO)
+  }
   return mapa
+}
+
+/**
+ * Como o `useNavigate()` se chama NESTE arquivo.
+ *
+ * `navigate`/`navegar`/`nav` fixos na regex deixavam passar
+ * `const ir = useNavigate(); ir('/quality/cameras')` — o furo 2 com a variável
+ * renomeada, e nada obriga ninguém a usar um dos três nomes. Lê-se o binding
+ * de verdade; os três nomes seguem no conjunto como piso, para o caso de a
+ * navegação vir por prop (`{ navegar }`) em vez de hook.
+ */
+function nomesDeNavegar(texto: string): string {
+  const nomes = new Set(['navigate', 'navegar', 'nav'])
+  for (const m of texto.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*useNavigate\s*\(/g)) {
+    nomes.add(m[1])
+  }
+  return [...nomes].join('|')
 }
 
 /**
@@ -216,6 +244,7 @@ describe('front novo e front antigo convivem', () => {
       if (path.relative(SRC, p) === 'app/RotasNovas.tsx') continue
       const texto = fs.readFileSync(p, 'utf-8')
       const constantes = literaisNomeados(texto)
+      const navs = nomesDeNavegar(texto)
       // Este arquivo navega para um campo de objeto SEM prefixar na hora
       // (`navegar(c.destino)`, `to={c.destino}`)? Então o prefixo tem de já
       // estar guardado na tabela, e os literais dela passam a ser cobrados
@@ -223,21 +252,28 @@ describe('front novo e front antigo convivem', () => {
       // não casam aqui — o argumento não começa com identificador-ponto —, que
       // é justamente a diferença entre guardar um caminho relativo de propósito
       // e vazar um absoluto por descuido.
-      const consomeBruto = /(?:to|href)=\{\s*[A-Za-z_$][\w$]*\.[\w$.]+\s*\}|\b(?:navigate|navegar|nav)\(\s*[A-Za-z_$][\w$]*\.[\w$.]+\s*[,)]/.test(texto)
+      const consomeBruto = new RegExp(
+        `(?:to|href)=\\{\\s*[A-Za-z_$][\\w$]*\\.[\\w$.]+\\s*\\}|\\b(?:${navs})\\(\\s*[A-Za-z_$][\\w$]*\\.[\\w$.]+\\s*[,)]`,
+      ).test(texto)
       texto.split('\n').forEach((linha, i) => {
-        const mLink = linha.match(/(?:to|href)=(?:"(\/[^"]*)"|\{`(\/[^`]*)`\})/)
+        // `to={'/x'}` e `to={"/x"}` contam: são o furo 1 com uma chave a mais.
+        const mLink = linha.match(
+          /(?:to|href)=(?:"(\/[^"]*)"|\{\s*`(\/[^`]*)`\s*\}|\{\s*'(\/[^']*)'\s*\}|\{\s*"(\/[^"]*)"\s*\})/,
+        )
         const mNav = linha.match(
-          /\b(?:navigate|navegar|nav)\(\s*(?:"(\/[^"]*)"|'(\/[^']*)'|`(\/[^`]*)`)/,
+          new RegExp(`\\b(?:${navs})\\(\\s*(?:"(\\/[^"]*)"|'(\\/[^']*)'|\`(\\/[^\`]*)\`)`),
         )
         const mConst = linha.match(
-          /(?:to|href)=\{\s*([A-Za-z_$][\w$]*)\s*\}|\b(?:navigate|navegar|nav)\(\s*([A-Za-z_$][\w$]*)\s*[,)]/,
+          new RegExp(
+            `(?:to|href)=\\{\\s*([A-Za-z_$][\\w$]*)\\s*\\}|\\b(?:${navs})\\(\\s*([A-Za-z_$][\\w$]*)\\s*[,)]`,
+          ),
         )
         const viaConstante = constantes.get(mConst?.[1] ?? mConst?.[2] ?? '')
         const mProp = linha.match(
           /\b(?:destino|rota|caminho|to|href)\s*:\s*(?:"(\/[^"]*)"|'(\/[^']*)'|`(\/[^`]*)`)/,
         )
         const viaTabela = consomeBruto ? mProp?.[1] ?? mProp?.[2] ?? mProp?.[3] : undefined
-        const alvo = mLink?.[1] ?? mLink?.[2] ?? mNav?.[1] ?? mNav?.[2] ?? mNav?.[3]
+        const alvo = mLink?.[1] ?? mLink?.[2] ?? mLink?.[3] ?? mLink?.[4] ?? mNav?.[1] ?? mNav?.[2] ?? mNav?.[3]
         for (const destino of [alvo, viaConstante, viaTabela]) {
           if (destino && !ehDoFrontNovo(destino)) {
             infratores.push(`${path.relative(SRC, p)}:${i + 1}  ${destino}`)
@@ -299,7 +335,13 @@ describe('front novo e front antigo convivem', () => {
         )
         if (!m) return
         const destino = m[1] ?? m[2] ?? m[3] ?? constantes.get(m[4] ?? '')
-        const vaza = eTela ? true : destino !== undefined && !ehDoFrontNovo(destino)
+        // Fora de `app/`: o destino tem de ser LEGÍVEL e do front novo. Antes
+        // aqui se lia `destino !== undefined && ...` — destino ilegível
+        // (`href = o.campo`) saía de graça, no exato tipo de arquivo onde
+        // #760 morou. Escrever o destino de um jeito que o guard leia
+        // (`rotaNova('/x')`, `PREFIXO_NOVO`, literal) é o preço de trocar a
+        // aplicação inteira de dentro de um serviço.
+        const vaza = eTela ? true : destino === undefined || !ehDoFrontNovo(destino)
         if (vaza) {
           saltos.push(`${rel}:${i + 1}  → ${destino ?? '(destino não literal)'}   ${linha.trim()}`)
         }
