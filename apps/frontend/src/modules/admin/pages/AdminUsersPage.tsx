@@ -6,7 +6,10 @@ import { CreateUserWizard } from '../components/CreateUserWizard'
 import { UserRoleBadge } from '../components/UserRoleBadge'
 import * as s from '../components/admin.css'
 import type { AdminUser, UserRole } from '../types/admin'
+import { PAPEL_LABEL } from '../papeis'
 
+// Filtro da lista — mesmo vocabulário pt-BR das telas de criação; a chave
+// técnica (`operator`) fica no `value`, nunca no texto que o dono lê.
 const ROLES: UserRole[] = ['admin', 'operator', 'analyst', 'trainer', 'viewer']
 
 export function AdminUsersPage() {
@@ -76,7 +79,7 @@ export function AdminUsersPage() {
         </div>
         <select className={s.select} value={roleFilter} onChange={(e) => { setRoleFilter(e.target.value); setPage(1) }}>
           <option value="">Todas as roles</option>
-          {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+          {ROLES.map((r) => <option key={r} value={r}>{PAPEL_LABEL[r]}</option>)}
         </select>
       </div>
 

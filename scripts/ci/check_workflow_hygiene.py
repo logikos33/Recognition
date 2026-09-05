@@ -27,6 +27,18 @@ Dois checks, ambos motivados por defeito REAL e medido — não por hipótese.
          run 32165120756  Install Playwright browsers  17:21 -> 17:55  (34min)
      Nos dois o passo de E2E ficou `skipped` — o teste nunca foi o culpado.
 
+  3. `continue-on-error: true` no JOB.
+     Não faz o job "avisar sem barrar" — faz o WORKFLOW reportar `success`
+     com o job em `failure`. Quem quer avisar sem barrar põe
+     `continue-on-error` no STEP (ou `|| true` no comando): aí o job fica
+     verde de verdade e uma falha de INFRA (pip, checkout, rede) ainda
+     aparece.
+
+     Medido: `Security Scan` na develop reportou `conclusion=success` em
+     25/25 runs amostrados (05/09), todos com 1-2 jobs em `failure`. Verde
+     de 100% e honestidade de 0%. Os três `continue-on-error` de job foram
+     removidos no PR #680; este check existe para que não voltem.
+
 Uso:
   python scripts/ci/check_workflow_hygiene.py
 """
@@ -121,6 +133,14 @@ def main() -> int:
                     f"{rel}: job `{job_id}` pede {timeout}min (teto: {MAX_MINUTES}min)"
                 )
 
+            if job.get("continue-on-error") in (True, "true"):
+                errors.append(
+                    f"{rel}: job `{job_id}` com `continue-on-error` de JOB — "
+                    f"isso não avisa sem barrar, faz o WORKFLOW dizer `success` "
+                    f"com o job em `failure`. Ponha no STEP que pode falhar "
+                    f"(ou `|| true` no comando)"
+                )
+
     if errors:
         print("Guard-rail de higiene de workflows FALHOU:\n")
         for e in errors:
@@ -130,7 +150,7 @@ def main() -> int:
     print(
         f"Guard-rail de higiene de workflows OK "
         f"({files_checked} arquivos, {jobs_checked} jobs: sem chave duplicada, "
-        f"todos com timeout-minutes)."
+        f"todos com timeout-minutes, nenhum `continue-on-error` de job)."
     )
     return 0
 

@@ -14,12 +14,12 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 391 arquivos, 66.013 linhas
+## Situação — 392 arquivos, 66.132 linhas
 
 | status | arquivos |
 |---|---:|
 | `INFRA` | 231 |
-| `PENDENTE` | 143 |
+| `PENDENTE` | 144 |
 | `SEM-DESENHO` | 7 |
 | `SUBSTITUIDA` | 6 |
 | `MIGRADO` | 4 |
@@ -294,7 +294,7 @@ apagado não são a mesma coisa.
 | `src/modules/admin/components/TenantCard.tsx` | `PENDENTE` | — | 28 |
 | `src/modules/admin/components/TicketRow.tsx` | `PENDENTE` | — | 30 |
 | `src/modules/admin/components/TrainingApprovalCard.tsx` | `PENDENTE` | — | 49 |
-| `src/modules/admin/components/UserPermissionsDrawer.tsx` | `PENDENTE` | — | 334 |
+| `src/modules/admin/components/UserPermissionsDrawer.tsx` | `PENDENTE` | — | 336 |
 | `src/modules/admin/components/UserRoleBadge.tsx` | `PENDENTE` | — | 16 |
 | `src/modules/admin/components/WorkerStatusBadge.tsx` | `PENDENTE` | — | 25 |
 | `src/modules/admin/constants/integrationCatalog.ts` | `PENDENTE` | — | 100 |
@@ -317,12 +317,12 @@ apagado não são a mesma coisa.
 | `src/modules/admin/pages/AdminRetentionPage.tsx` | `PENDENTE` | — | 330 |
 | `src/modules/admin/pages/AdminRolesPage.tsx` | `PENDENTE` | — | 366 |
 | `src/modules/admin/pages/AdminSettingsPage.tsx` | `PENDENTE` | — | 42 |
-| `src/modules/admin/pages/AdminTenantDetailPage.tsx` | `PENDENTE` | — | 673 |
+| `src/modules/admin/pages/AdminTenantDetailPage.tsx` | `PENDENTE` | — | 687 |
 | `src/modules/admin/pages/AdminTenantsPage.tsx` | `PENDENTE` | — | 210 |
 | `src/modules/admin/pages/AdminTestConsolePage.tsx` | `PENDENTE` | — | 771 |
 | `src/modules/admin/pages/AdminTicketsPage.tsx` | `PENDENTE` | — | 85 |
 | `src/modules/admin/pages/AdminTrainingApprovalsPage.tsx` | `PENDENTE` | — | 93 |
-| `src/modules/admin/pages/AdminUsersPage.tsx` | `PENDENTE` | — | 167 |
+| `src/modules/admin/pages/AdminUsersPage.tsx` | `PENDENTE` | — | 170 |
 | `src/modules/admin/pages/AdminVersionsPage.tsx` | `PENDENTE` | — | 247 |
 | `src/modules/admin/pages/AdminWorkersPage.tsx` | `PENDENTE` | — | 27 |
 | `src/modules/admin/pages/DemoEventsPage.tsx` | `PENDENTE` | — | 321 |
@@ -335,6 +335,7 @@ apagado não são a mesma coisa.
 | `src/modules/admin/pages/observability/StreamsPanel.tsx` | `PENDENTE` | — | 157 |
 | `src/modules/admin/pages/observability/TimeseriesChart.tsx` | `PENDENTE` | — | 136 |
 | `src/modules/admin/pages/observability/WorkersPanel.tsx` | `PENDENTE` | — | 172 |
+| `src/modules/admin/papeis.ts` | `PENDENTE` | — | 100 |
 | `src/modules/admin/services/adminService.ts` | `PENDENTE` | — | 535 |
 | `src/modules/admin/types/admin.ts` | `PENDENTE` | — | 595 |
 | `src/modules/quality/components/AnnotationCanvas.tsx` | `PENDENTE` | — | 135 |

@@ -24,16 +24,9 @@ import { useToast } from '../../../components/ui/Toast/useToast'
 import { adminService } from '../services/adminService'
 import * as s from './admin.css'
 import type { CustomRole, Tenant, UserRole } from '../types/admin'
+import { PAPEIS_ATRIBUIVEIS, ROTULO_SEM_PAPEL, SEM_PAPEL } from '../papeis'
 
 const STEPS = [{ label: 'Dados' }, { label: 'Acesso' }, { label: 'Credenciais' }]
-
-const ROLE_OPTIONS: Array<{ value: UserRole; label: string; description: string }> = [
-  { value: 'admin', label: 'Admin', description: 'Gerencia usuários, câmeras e configurações do tenant' },
-  { value: 'operator', label: 'Operador', description: 'Opera câmeras e trata alertas no dia a dia' },
-  { value: 'analyst', label: 'Analista', description: 'Analisa dados e relatórios, sem alterar configurações' },
-  { value: 'trainer', label: 'Treinador', description: 'Gerencia treinamento e anotação de modelos' },
-  { value: 'viewer', label: 'Visualizador', description: 'Somente leitura — vê painéis e alertas' },
-]
 
 const MODULE_LABELS: Record<string, string> = {
   epi: 'EPI Monitor',
@@ -65,7 +58,7 @@ export function CreateUserWizard({ open, onClose, onCreated }: CreateUserWizardP
   // Passo 1 — Dados
   const [email, setEmail] = useState('')
   const [emailError, setEmailError] = useState<string | null>(null)
-  const [role, setRole] = useState<UserRole>('operator')
+  const [role, setRole] = useState<UserRole | typeof SEM_PAPEL>(SEM_PAPEL)
   const [tenantId, setTenantId] = useState('')
   const [tenantSearch, setTenantSearch] = useState('')
   const [tenants, setTenants] = useState<Tenant[]>([])
@@ -90,7 +83,7 @@ export function CreateUserWizard({ open, onClose, onCreated }: CreateUserWizardP
   useEffect(() => {
     if (!open) return
     setStep(0)
-    setEmail(''); setEmailError(null); setRole('operator')
+    setEmail(''); setEmailError(null); setRole(SEM_PAPEL)
     setTenantId(''); setTenantSearch('')
     setTenantDetail(null); setCustomRoles([]); setCustomRoleId(''); setAccessExpiresAt('')
     setCreateError(null); setCredentials(null); setShowPassword(false); setShowToken(false)
@@ -127,7 +120,7 @@ export function CreateUserWizard({ open, onClose, onCreated }: CreateUserWizardP
   }, [tenants, tenantSearch])
 
   const selectedTenant = tenants.find((t) => t.id === tenantId) ?? null
-  const selectedRole = ROLE_OPTIONS.find((r) => r.value === role)
+  const selectedRole = PAPEIS_ATRIBUIVEIS.find((r) => r.valor === role) ?? null
 
   const validateEmail = (): boolean => {
     if (!EMAIL_RE.test(email.trim())) {
@@ -138,7 +131,8 @@ export function CreateUserWizard({ open, onClose, onCreated }: CreateUserWizardP
     return true
   }
 
-  const step1Valid = EMAIL_RE.test(email.trim()) && Boolean(tenantId)
+  // `selectedRole` entra na validação: sem papel escolhido o wizard não avança.
+  const step1Valid = EMAIL_RE.test(email.trim()) && Boolean(tenantId) && Boolean(selectedRole)
 
   const handleCreate = async () => {
     setSaving(true)
@@ -256,12 +250,18 @@ export function CreateUserWizard({ open, onClose, onCreated }: CreateUserWizardP
               value={role}
               onChange={(e) => setRole(e.target.value as UserRole)}
             >
-              {ROLE_OPTIONS.map((r) => (
-                <option key={r.value} value={r.value}>{r.label}</option>
+              <option value={SEM_PAPEL}>{ROTULO_SEM_PAPEL}</option>
+              {PAPEIS_ATRIBUIVEIS.map((r) => (
+                <option key={r.valor} value={r.valor}>{r.rotulo}</option>
               ))}
             </select>
             {selectedRole && (
-              <div className={s.muted} style={{ marginTop: 4 }}>{selectedRole.description}</div>
+              <>
+                <div className={s.muted} style={{ marginTop: 4 }}>{selectedRole.resumo}</div>
+                <div style={{ marginTop: 4 }}>
+                  <Banner variant="warning">{selectedRole.alerta}</Banner>
+                </div>
+              </>
             )}
           </div>
 
