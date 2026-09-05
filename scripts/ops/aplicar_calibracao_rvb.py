@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 """Aplica ao catálogo do tenant a decisão que a régua da ADR-0067 já tomou.
 
-Isto NÃO é migration, de propósito. `railway_start.py` re-roda toda migration a
-cada boot; polaridade de classe é dado de cliente e decisão humana, e um
-backfill automático desfaria a correção de um admin a cada reinício (a própria
-migration 125 registra esse cuidado). Então: script manual, env-gated, com
-dry-run por padrão.
+Isto NÃO é migration, de propósito: polaridade de classe é dado de cliente e
+decisão humana. Script manual, env-gated, com dry-run por padrão.
 
 O que a régua decidiu (medido em 31/08 sobre vereditos humanos reais — rode
 `calibracao_classes.py` para reconferir ANTES de aplicar; o dado se move):
@@ -20,6 +17,24 @@ O que a régua decidiu (medido em 31/08 sobre vereditos humanos reais — rode
 alerta (inference.py `_has_violation`) e a classe não conta como conformidade
 (`_nomes_por_polaridade` usa IS TRUE / IS FALSE). A detecção continua sendo
 gravada — só deixa de acusar. Nada é apagado.
+
+A DECISÃO FICA MARCADA (migration 136). Sem a marca
+(`violation_decision` + `violation_decided_at`) esta calibração era desfeita no
+boot seguinte: em modo LEGADO — o da produção — o runner reexecuta TODA
+migration a cada deploy, e o primeiro UPDATE da 125 casa o prefixo "Sem "/"Uso
+incorreto" e devolve "Sem protetor de ouvido" para TRUE, ou seja, ela volta a
+ACUSAR quem cumpre. Com a marca gravada, a 136 restaura a decisão na mesma
+passagem de boot. Prova: services/api/tests/integration/
+test_polaridade_decidida_sobrevive.py.
+
+⛔ NÃO CRIA CLASSE. Duas razões, ambas medidas: (a) 'Sem Óculos', 'Sem Luvas' e
+'Óculos' já existem no catálogo GLOBAL (`module_classes`, como `display_name`
+de no_glasses/no_gloves/glasses) — criar homônima em `yolo_classes` duplicaria
+a taxonomia e partiria o acervo em dois `class_id` (ADR-0071, e é o que
+`TenantClassService._reject_if_in_global_catalog` bloqueia nas rotas); (b)
+`yolo_classes.user_id` é NOT NULL com FK para users, então o INSERT anterior
+deste script nem chegava a rodar. Classe que não existe é cadastro, não
+calibração: o script reporta e segue.
 
 Uso:
     DATABASE_URL=... python3 scripts/ops/aplicar_calibracao_rvb.py            # mostra, não aplica
@@ -36,17 +51,7 @@ from psycopg2.extras import RealDictCursor
 TENANT_SLUG = "rvb"
 MODULE_CODE = "epi"
 
-# A migration 127 (`polaridade_nao_erode`) faz, a cada boot em modo LEGADO:
-#     UPDATE yolo_classes SET is_violation = NULL
-#      WHERE is_violation IS FALSE AND created_at >= '2026-08-25'
-# Ela existe para desfazer o backfill cego da 125, e o próprio cabeçalho dela
-# avisa: "no dia em que existir uma rota que grave is_violation, esta migration
-# passa a apagar decisão humana". Este script É essa rota. Então marcar uma
-# classe nova como CONFORMIDADE (False) não sobrevive ao próximo deploy — e
-# falhar em silêncio é justamente o que a casa não aceita. Avisamos.
-EROSAO_127_A_PARTIR_DE = "2026-08-25"
-
-# (nome, is_violation, porquê) — o porquê fica no banco? Não: fica aqui e no relatório.
+# (nome, is_violation, porquê) — o porquê fica aqui e no relatório, não no banco.
 # NULL = indecisa (registra, não acusa). True = acusa. False = conformidade.
 DECISOES = [
     ("Sem protetor de ouvido", None, "27,3% de precisão em 22 julgados — ADR-0067 já a reprovava a 40%"),
@@ -55,6 +60,8 @@ DECISOES = [
     ("Sem Luvas", True, "69,7% em 33 julgados — sustenta a régua"),
     ("Óculos", False, "classe de presença: alimenta conformidade, nunca alerta"),
 ]
+
+ROTULO = {True: "acusa", False: "conformidade", None: "indecisa"}
 
 
 def main() -> int:
@@ -67,6 +74,7 @@ def main() -> int:
         print("DATABASE_URL não definida.", file=sys.stderr)
         return 2
 
+    pendencias: list[str] = []
     conn = psycopg2.connect(dsn)
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -82,54 +90,80 @@ def main() -> int:
 
             for nome, alvo, porque in DECISOES:
                 cur.execute(
-                    "SELECT id, is_violation FROM public.yolo_classes"
-                    " WHERE tenant_id = %s AND name = %s",
+                    "SELECT id, is_violation, violation_decided_at"
+                    "  FROM public.yolo_classes"
+                    " WHERE tenant_id = %s AND lower(name) = lower(%s)",
                     (tenant_id, nome),
                 )
                 atual = cur.fetchone()
-                rotulo = {True: "acusa", False: "conformidade", None: "indecisa"}
 
-                if atual is None:
-                    acao = f"CRIAR   {nome:<26} → {rotulo[alvo]}"
+                if atual is not None:
+                    ja_no_alvo = atual["is_violation"] is alvo
+                    ja_marcada = atual["violation_decided_at"] is not None
+                    if ja_no_alvo and ja_marcada:
+                        print(f"ok       {nome:<26} já está em {ROTULO[alvo]}, decisão marcada")
+                        continue
+                    if ja_no_alvo:
+                        acao = f"MARCAR   {nome:<26} {ROTULO[alvo]} (valor certo, faltava a marca)"
+                    else:
+                        acao = f"MUDAR    {nome:<26} {ROTULO[atual['is_violation']]} → {ROTULO[alvo]}"
                     if args.aplicar:
                         cur.execute(
-                            "INSERT INTO public.yolo_classes (tenant_id, module_code, name, is_violation)"
-                            " VALUES (%s, %s, %s, %s)",
-                            (tenant_id, MODULE_CODE, nome, alvo),
+                            "UPDATE public.yolo_classes"
+                            "   SET is_violation = %s,"
+                            "       violation_decision = %s,"
+                            "       violation_decided_at = NOW()"
+                            " WHERE id = %s",
+                            (alvo, alvo, atual["id"]),
                         )
-                elif atual["is_violation"] is alvo:
-                    print(f"ok      {nome:<26} já está em {rotulo[alvo]}")
+                    print(f"{acao}\n         porque: {porque}")
                     continue
-                else:
-                    acao = (f"MUDAR   {nome:<26} {rotulo[atual['is_violation']]} → {rotulo[alvo]}")
-                    if args.aplicar:
-                        cur.execute(
-                            "UPDATE public.yolo_classes SET is_violation = %s"
-                            " WHERE tenant_id = %s AND name = %s",
-                            (alvo, tenant_id, nome),
-                        )
-                print(f"{acao}\n        porque: {porque}")
 
-        # Aviso de erosão: só CONFORMIDADE (False) em linha nova é apagada pela 127.
-        erodiveis = [nome for nome, alvo, _ in DECISOES if alvo is False]
-        if erodiveis:
-            print("\n⚠️  NÃO SOBREVIVE AO PRÓXIMO DEPLOY — a migration 127 roda a cada boot e faz")
-            print(f"    is_violation=FALSE → NULL para classe criada a partir de {EROSAO_127_A_PARTIR_DE}:")
-            for nome in erodiveis:
-                print(f"   · {nome} volta a 'indecisa' (registra, não acusa — não vira violação)")
-            print("    A própria 127 previu isto: ela precisa ganhar a condição \"e ninguém decidiu")
-            print("    explicitamente\" agora que existe um escritor de polaridade. Até lá, o efeito")
-            print("    é degradação para indecisa, não acusação falsa — mas é silencioso, então fica dito.")
+                # Não é classe do tenant. Está no catálogo GLOBAL?
+                cur.execute(
+                    "SELECT class_name, display_name, is_violation"
+                    "  FROM public.module_classes"
+                    " WHERE module_code = %s"
+                    "   AND (lower(class_name) = lower(%s) OR lower(display_name) = lower(%s))",
+                    (MODULE_CODE, nome, nome),
+                )
+                global_ = cur.fetchone()
+                if global_ is not None:
+                    onde = f"catálogo global ({global_['class_name']})"
+                    if global_["is_violation"] is alvo:
+                        print(f"ok       {nome:<26} já está em {ROTULO[alvo]} no {onde}")
+                    else:
+                        print(
+                            f"⚠️  FORA   {nome:<26} está em {ROTULO[global_['is_violation']]} "
+                            f"no {onde}, alvo é {ROTULO[alvo]}"
+                        )
+                        pendencias.append(
+                            f"{nome}: {ROTULO[global_['is_violation']]} → {ROTULO[alvo]} "
+                            f"no {onde} — o catálogo global é COMPARTILHADO entre tenants, "
+                            "mudar ali é decisão de produto, não calibração de um cliente"
+                        )
+                    continue
+
+                print(f"⚠️  AUSENTE {nome:<26} não existe nem no tenant nem no catálogo global")
+                pendencias.append(
+                    f"{nome}: classe inexistente — cadastrá-la é decisão de cadastro "
+                    "(precisa de dono/user_id) e o Estúdio já exige a polaridade na criação"
+                )
 
         if args.aplicar:
             conn.commit()
-            print("\n✅ aplicado.")
+            print("\n✅ aplicado — e a decisão está MARCADA (migration 136), sobrevive ao redeploy.")
             print("   O worker cacheia polaridade por ~5 min (inference.py `_polaridade_do_tenant`):")
             print("   a mudança só vale para alertas novos depois desse intervalo.")
             print("   Alertas JÁ gravados mudam de rótulo na leitura, não no dado.")
         else:
             conn.rollback()
             print("\nNada foi gravado. Reconfira com calibracao_classes.py e rode com --aplicar.")
+
+        if pendencias:
+            print("\n⚠️  NÃO RESOLVIDO POR ESTE SCRIPT (de propósito):")
+            for p in pendencias:
+                print(f"   · {p}")
     finally:
         conn.close()
     return 0
