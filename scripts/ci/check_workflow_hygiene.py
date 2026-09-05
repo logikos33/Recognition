@@ -41,6 +41,11 @@ Dois checks, ambos motivados por defeito REAL e medido — não por hipótese.
 
 Uso:
   python scripts/ci/check_workflow_hygiene.py
+
+Testes: services/api/tests/unit/ci/test_workflow_hygiene_gate.py — `checar()`
+recebe o diretório de propósito, para que o teste possa alimentar workflows
+DEFEITUOSOS e provar que o gate reprova. Gate que só é exercitado contra o
+repositório saudável não prova que ainda morde.
 """
 
 import pathlib
@@ -80,22 +85,26 @@ _StrictLoader.add_constructor(
 )
 
 
-def main() -> int:
-    if not WORKFLOWS_DIR.is_dir():
-        print(f"Diretório de workflows não encontrado: {WORKFLOWS_DIR}")
-        return 1
+def checar(workflows_dir: pathlib.Path) -> tuple[list[str], int, int]:
+    """(erros, arquivos_checados, jobs_checados) para os workflows do diretório.
 
+    Recebe o diretório em vez de ler WORKFLOWS_DIR direto: é o que permite ao
+    teste montar um workflow com chave duplicada / sem timeout e provar que o
+    gate REPROVA. Sem isso o único caso exercitável seria o repo saudável.
+    """
     errors: list[str] = []
     jobs_checked = 0
     files_checked = 0
 
-    paths = sorted(WORKFLOWS_DIR.glob("*.yml")) + sorted(WORKFLOWS_DIR.glob("*.yaml"))
+    paths = sorted(workflows_dir.glob("*.yml")) + sorted(workflows_dir.glob("*.yaml"))
     if not paths:
-        print(f"Nenhum workflow encontrado em {WORKFLOWS_DIR}")
-        return 1
+        return ([f"Nenhum workflow encontrado em {workflows_dir}"], 0, 0)
 
     for path in paths:
-        rel = path.relative_to(REPO_ROOT)
+        try:
+            rel = path.relative_to(REPO_ROOT)
+        except ValueError:  # diretório fora do repo (teste com tmp_path)
+            rel = path.name
         files_checked += 1
         try:
             doc = yaml.load(path.read_text(encoding="utf-8"), Loader=_StrictLoader)
@@ -140,6 +149,16 @@ def main() -> int:
                     f"com o job em `failure`. Ponha no STEP que pode falhar "
                     f"(ou `|| true` no comando)"
                 )
+
+    return errors, files_checked, jobs_checked
+
+
+def main() -> int:
+    if not WORKFLOWS_DIR.is_dir():
+        print(f"Diretório de workflows não encontrado: {WORKFLOWS_DIR}")
+        return 1
+
+    errors, files_checked, jobs_checked = checar(WORKFLOWS_DIR)
 
     if errors:
         print("Guard-rail de higiene de workflows FALHOU:\n")

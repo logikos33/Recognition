@@ -28,6 +28,11 @@ a ferramenta do próprio gate: nada de AGPL, nada de pip install.
 Uso:
   python scripts/ci/check_docs_gate.py                # falha (exit 1) se violação
   python scripts/ci/check_docs_gate.py --report-only  # imprime, não falha
+
+Testes: services/api/tests/unit/ci/test_docs_gate.py — `check()` recebe a raiz
+de propósito, para que o teste monte uma árvore de docs VIOLANDO cada uma das
+regras e prove que o gate reprova. Rodar o gate só contra o repositório
+saudável prova que ele existe, não que ele ainda morde.
 """
 import importlib.util
 import pathlib
@@ -99,9 +104,10 @@ def _extract_status(text: str) -> str | None:
 
 
 class Adr:
-    def __init__(self, path: pathlib.Path, file_num: int):
+    def __init__(self, path: pathlib.Path, file_num: int, root: pathlib.Path = ROOT):
         self.path = path
         self.file_num = file_num
+        self.root = root
         text = path.read_text(encoding="utf-8")
         title = _ADR_TITLE_RE.search(text)
         self.internal_num = int(title.group(1)) if title else None
@@ -112,19 +118,22 @@ class Adr:
         )
 
     def rel(self) -> str:
-        return self.path.relative_to(ROOT).as_posix()
+        try:
+            return self.path.relative_to(self.root).as_posix()
+        except ValueError:  # raiz forjada (teste)
+            return self.path.name
 
 
-def _load_adrs() -> list[Adr]:
+def _load_adrs(root: pathlib.Path = ROOT) -> list[Adr]:
     adrs = []
-    for path in sorted(ADR_DIR.glob("*.md")):
+    for path in sorted((root / "docs" / "decisions" / "adr").glob("*.md")):
         m = _ADR_FILE_RE.match(path.name)
         if not m:
             continue  # RECONCILIACAO_*.md e outros não-ADR
         num = int(m.group(1))
         if num == 0:
             continue  # 0000-template.md
-        adrs.append(Adr(path, num))
+        adrs.append(Adr(path, num, root))
     return adrs
 
 
@@ -140,9 +149,10 @@ def _class_set(block: str) -> frozenset[str]:
     return frozenset(_deburr(i) for i in items if i.strip())
 
 
-def check() -> list[tuple[str, str]]:
+def check(root: pathlib.Path = ROOT) -> list[tuple[str, str]]:
+    claude_md = root / "CLAUDE.md"
     violations: list[tuple[str, str]] = []
-    adrs = _load_adrs()
+    adrs = _load_adrs(root)
     by_num: dict[int, list[Adr]] = {}
     for adr in adrs:
         by_num.setdefault(adr.file_num, []).append(adr)
@@ -176,8 +186,8 @@ def check() -> list[tuple[str, str]]:
 
     # Regra 4 — CLAUDE.md cita um ADR Superseded.
     superseded_nums = {a.file_num for a in adrs if a.superseded}
-    if CLAUDE_MD.exists():
-        cited = {int(n) for n in _ADR_CITATION_RE.findall(CLAUDE_MD.read_text(encoding="utf-8"))}
+    if claude_md.exists():
+        cited = {int(n) for n in _ADR_CITATION_RE.findall(claude_md.read_text(encoding="utf-8"))}
         for num in sorted(cited & superseded_nums):
             violations.append((
                 "CLAUDE.md",
@@ -186,10 +196,10 @@ def check() -> list[tuple[str, str]]:
 
     # Regra 6 — taxonomia RVB diverge entre documentos (extrai de cada, compara).
     taxonomies: list[tuple[str, frozenset[str]]] = []
-    for path in _iter_markdown(ROOT):
+    for path in _iter_markdown(root):
         m = _CLASS_BLOCK_RE.search(path.read_text(encoding="utf-8"))
         if m:
-            taxonomies.append((path.relative_to(ROOT).as_posix(), _class_set(m.group(1))))
+            taxonomies.append((path.relative_to(root).as_posix(), _class_set(m.group(1))))
     if len({t[1] for t in taxonomies}) > 1:
         files = ", ".join(f for f, _ in taxonomies)
         detail = " | ".join(f"{f}: {{{', '.join(sorted(s))}}}" for f, s in taxonomies)
@@ -199,14 +209,14 @@ def check() -> list[tuple[str, str]]:
         ))
 
     # Regra 7 — registro de decisões (um arquivo por decisão).
-    violations.extend(_check_decisoes())
+    violations.extend(_check_decisoes(root))
 
     return violations
 
 
-def _check_decisoes() -> list[tuple[str, str]]:
+def _check_decisoes(root: pathlib.Path = ROOT) -> list[tuple[str, str]]:
     """Delega a tools/decisoes.py — a regra mora junto da ferramenta que a cumpre."""
-    tool = ROOT / "tools" / "decisoes.py"
+    tool = root / "tools" / "decisoes.py"
     if not tool.exists():
         return []
     spec = importlib.util.spec_from_file_location("decisoes", tool)
