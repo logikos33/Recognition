@@ -40,7 +40,7 @@ import {
   SlidersHorizontal,
   BookOpen,
 } from 'lucide-react'
-import { api } from '../../services/api'
+import { ApiError, api } from '../../services/api'
 import { precisaDeReabastecimento } from './studioQueue'
 import { useToast } from '../ui/Toast/useToast'
 import { vars } from '../../styles/theme.css'
@@ -274,9 +274,12 @@ export function AnnotationStudio({
     setLoadingFrame(true)
     setLoadFailed(false)
     try {
-      const res = await api.get<{ success: boolean; annotations: RawAnnotation[] }>(
-        `/training/frames/${frameId}/annotations`,
-      )
+      const res = await api.get<{
+        success: boolean
+        annotations: RawAnnotation[]
+        version?: string
+      }>(`/training/frames/${frameId}/annotations`)
+      if (res?.version) versoesRef.current[frameId] = res.version
       dispatchBoxes({
         type: 'load',
         frameId,
@@ -297,33 +300,58 @@ export function AnnotationStudio({
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const savingRef = useRef<Set<string>>(new Set())
 
+  // Versão que ESTE navegador leu de cada frame (#801). Vai junto no POST: o
+  // servidor só deixa substituir o estado que o cliente viu. Sem isto, dois
+  // anotadores no mesmo frame (a fila é a mesma para os três da RVB, e todos
+  // começam pelo primeiro item) e o segundo save apaga as caixas do primeiro
+  // com 200 na cara dele. Fora do reducer de propósito: não é estado de
+  // render, é token de concorrência.
+  // ponytail: frame cuja carga FALHOU não tem versão conhecida e salva sem
+  // guarda (comportamento antigo) — a alternativa seria travar o save e
+  // perder o trabalho do anotador, que é pior. Se virar problema, o caminho
+  // é buscar a versão antes do primeiro save do frame.
+  const versoesRef = useRef<Record<string, string>>({})
+
   const saveFrame = useCallback(
-    async (frameId: string) => {
+    async (frameId: string): Promise<boolean> => {
       const st = statesRef.current[frameId]
-      if (!st?.dirty || savingRef.current.has(frameId)) return
+      if (!st?.dirty || savingRef.current.has(frameId)) return true
       const boxesAtSave = st.boxes
       savingRef.current.add(frameId)
       setSaveStatus('saving')
       try {
-        await api.post<{ success: boolean; saved: number }>(
+        const res = await api.post<{ success: boolean; saved: number; version?: string }>(
           `/training/frames/${frameId}/annotations`,
           {
             annotations: boxesAtSave.map(b =>
               boxToPayload(b, classesRef.current.find(c => c.classId === b.classId)?.name, moduleCode),
             ),
+            version: versoesRef.current[frameId],
           },
         )
+        // Versão NOVA do servidor: sem atualizar, o próximo autosave deste
+        // mesmo frame bateria em conflito contra o meu próprio trabalho.
+        if (res?.version) versoesRef.current[frameId] = res.version
         if (statesRef.current[frameId]?.boxes === boxesAtSave) {
           dispatchBoxes({ type: 'markSaved', frameId })
         }
         setSaveStatus('saved')
-      } catch {
+        return true
+      } catch (err) {
+        // 409 = outra pessoa gravou neste frame desde que eu o abri. As
+        // caixas ficam `dirty` de propósito (nada é descartado) e o aviso do
+        // servidor — "Fulano salvou anotações neste frame há 2 minutos" — já
+        // sai pelo tratamento global do api.ts, com nome e horário.
+        if (err instanceof ApiError && err.status === 409) {
+          toast.error('Recarregue o frame: as caixas dele são mais novas que as suas.')
+        }
         setSaveStatus('error')
+        return false
       } finally {
         savingRef.current.delete(frameId)
       }
     },
-    [moduleCode],
+    [moduleCode, toast],
   )
   const saveFrameRef = useRef(saveFrame)
   saveFrameRef.current = saveFrame
@@ -361,6 +389,10 @@ export function AnnotationStudio({
             annotations: st.boxes.map(b =>
               boxToPayload(b, classesRef.current.find(c => c.classId === b.classId)?.name, moduleCode),
             ),
+            // Mesma guarda do save normal. Fechar a aba não é licença para
+            // apagar o trabalho de quem estava no mesmo frame — aqui ninguém
+            // veria o aviso, então o certo é o servidor recusar.
+            version: versoesRef.current[frameId],
           }),
         })
       })
@@ -485,9 +517,12 @@ export function AnnotationStudio({
     let prevState = statesRef.current[prevId]
     if (!prevState?.loaded) {
       try {
-        const res = await api.get<{ success: boolean; annotations: RawAnnotation[] }>(
-          `/training/frames/${prevId}/annotations`,
-        )
+        const res = await api.get<{
+          success: boolean
+          annotations: RawAnnotation[]
+          version?: string
+        }>(`/training/frames/${prevId}/annotations`)
+        if (res?.version) versoesRef.current[prevId] = res.version
         dispatchBoxes({ type: 'load', frameId: prevId, boxes: (res?.annotations ?? []).map(rawToBox) })
         prevState = statesRef.current[prevId]
       } catch {
@@ -503,18 +538,37 @@ export function AnnotationStudio({
     commitBoxesRef.current([...currentBoxesRef.current, ...cloneBoxes(source)])
   }, [frames, toast])
 
+  // ── mensagem de falha de ação do teclado (#788) ───────────────────────────
+  // O anotador tem de saber O QUE aconteceu e que o frame NÃO andou. Sem
+  // código HTTP na tela: 403 é falta de permissão, e é isso que se diz.
+  const avisarFalha = useCallback(
+    (err: unknown, acao: string) => {
+      const semPermissao = err instanceof ApiError && err.status === 403
+      toast.error(
+        semPermissao
+          ? `Seu acesso não permite ${acao}. O frame continua aberto.`
+          : `Não deu para ${acao}. O frame continua aberto — tente de novo.`,
+      )
+    },
+    [toast],
+  )
+
   // ── marcar em dúvida e avançar (F) ────────────────────────────────────────
+  // Avança SÓ depois do 200 (#788). Antes, o `goTo` vinha antes do POST e a
+  // tela andava mesmo com 403: o anotador achava que tinha marcado 40 frames
+  // e não tinha marcado nenhum.
   const markDuvida = useCallback(() => {
     const frame = frames[indexRef.current]
     if (!frame) return
-    goToRef.current(indexRef.current + 1)
+    const alvo = indexRef.current + 1
     void api
       .post<ApiResponse<{ updated: number }>>('/training/frames/curation', {
         frame_ids: [frame.id],
         status: 'duvida',
       })
-      .catch(() => toast.error('Erro ao marcar em dúvida'))
-  }, [frames, toast])
+      .then(() => goToRef.current(alvo))
+      .catch(err => avisarFalha(err, 'marcar frames em dúvida'))
+  }, [frames, avisarFalha])
 
   // ── fila de aprovação de propostas: aprovar (V) / rejeitar (X) ────────────
   // migration 111. Só agem quando o frame corrente tem alguma caixa de
@@ -528,6 +582,7 @@ export function AnnotationStudio({
   const approvePendingReview = useCallback(() => {
     const frame = frames[indexRef.current]
     if (!frame || !hasPendingProposal(frame.id)) return
+    const alvo = indexRef.current + 1
     const isDirty = !!statesRef.current[frame.id]?.dirty
     if (isDirty) {
       // ⛔ Corrida autosave × accept: o usuário editou a proposta (moveu,
@@ -542,14 +597,22 @@ export function AnnotationStudio({
       //    seu próprio flush do frame que está saindo — inofensivo aqui:
       //    o guard `savingRef` de saveFrame já reserva a chamada síncrona
       //    abaixo, então a chamada duplicada de goTo vira no-op.
-      void saveFrameRef.current(frame.id).then(() =>
-        api
+      void saveFrameRef.current(frame.id).then(salvou => {
+        // Save falhou (rede, ou 409 de outro anotador) → NÃO estampa
+        // 'accepted' por cima e NÃO avança: aprovar uma proposta cujas caixas
+        // não chegaram ao servidor é a mesma mentira do #788, na outra ponta.
+        if (!salvou) {
+          toast.error('As caixas não foram salvas — a proposta não foi aprovada.')
+          return
+        }
+        return api
           .post<ApiResponse<{ frame_id: string; status: string }>>(
             `/training/frames/${frame.id}/pre-annotation-review`,
             { status: 'accepted' },
           )
-          .catch(() => toast.error('Erro ao aprovar proposta')),
-      )
+          .then(() => goToRef.current(alvo))
+          .catch(err => avisarFalha(err, 'aprovar propostas'))
+      })
     } else {
       // Não editou nada — aceitar tal como veio. accept-suggestions já
       // estampa 'accepted' na MESMA transação do INSERT (annotation_
@@ -558,10 +621,17 @@ export function AnnotationStudio({
         .post<ApiResponse<{ frame_id: string; accepted: number }>>(
           `/training/frames/${frame.id}/accept-suggestions`,
         )
-        .catch(() => toast.error('Erro ao aprovar proposta'))
+        .then(() => {
+          // O aceite criou caixas novas no servidor: a versão que este
+          // navegador tinha do frame morreu aqui (#801). Esquecer a versão
+          // velha evita que uma edição posterior deste mesmo frame leve 409
+          // contra o trabalho do próprio anotador.
+          delete versoesRef.current[frame.id]
+          goToRef.current(alvo)
+        })
+        .catch(err => avisarFalha(err, 'aprovar propostas'))
     }
-    goToRef.current(indexRef.current + 1)
-  }, [frames, hasPendingProposal, toast])
+  }, [frames, hasPendingProposal, toast, avisarFalha])
 
   const rejectPendingProposal = useCallback(() => {
     const frame = frames[indexRef.current]
@@ -578,14 +648,17 @@ export function AnnotationStudio({
     setDraftBox(null)
     setTransientBoxes(null)
     interactionRef.current = null
-    setIndex(clamp(indexRef.current + 1, 0, frames.length - 1))
+    const alvo = clamp(indexRef.current + 1, 0, frames.length - 1)
     void api
       .post<ApiResponse<{ frame_id: string; status: string }>>(
         `/training/frames/${frame.id}/pre-annotation-review`,
         { status: 'rejected' },
       )
-      .catch(() => toast.error('Erro ao rejeitar proposta'))
-  }, [frames, hasPendingProposal])
+      // Avança SÓ depois do 200 (#788): a rejeição que não foi gravada não
+      // pode passar por gravada.
+      .then(() => setIndex(alvo))
+      .catch(err => avisarFalha(err, 'rejeitar propostas'))
+  }, [frames, hasPendingProposal, avisarFalha])
 
   // ── zoom ──────────────────────────────────────────────────────────────────
   const applyZoom = useCallback((factor: number, originX?: number, originY?: number) => {
