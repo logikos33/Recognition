@@ -269,10 +269,10 @@ describe('front novo e front antigo convivem', () => {
     // resolvido por `literaisNomeados` — que casa tanto `const X = '/y'`
     // quanto `redirect = '/y'` e `destino: string = '/y'` de assinatura.
     //
-    // (`reload()` e a LEITURA de `location.pathname` seguem livres — não
-    // escolhem destino. Destino que NÃO resolve para literal — ex.:
-    // `= PREFIXO_NOVO`, `= rotaNova(...)`, `= pathname + search` — também
-    // passa: não há endereço fixo para julgar, e é assim que se escreve certo.)
+    // (`reload()` e a LEITURA de `location.pathname` seguem livres em todo
+    // lugar — não escolhem destino. O que cada metade cobra está dito no
+    // corpo do laço abaixo: em `app/` é proibido escrever, e fora de `app/` o
+    // que se cobra é o destino.)
     const saltos: string[] = []
     for (const p of MODULOS_DO_FRONT_NOVO) {
       const rel = path.relative(SRC, p)
