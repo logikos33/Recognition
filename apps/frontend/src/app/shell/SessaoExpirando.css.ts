@@ -75,8 +75,23 @@ export const descricao = style({
   color: lk.cor.cinzaNevoa,
 })
 
+/**
+ * Falha ao renovar. Aqui o vermelho é legítimo — é falha consumada de uma ação
+ * que a pessoa PEDIU, não o "atenção" ambiente do cartão. Vem com texto: cor
+ * sozinha nunca é estado.
+ */
+export const erro = style({
+  margin: 0,
+  fontSize: '12px',
+  lineHeight: 1.45,
+  color: lk.estado.nc,
+})
+
 export const acoes = style({
   display: 'flex',
+  // Envolve porque no estado de falha são três botões em 330px — melhor
+  // quebrar linha que espremer alvo de clique.
+  flexWrap: 'wrap',
   gap: lk.espaco.x1,
 })
 
@@ -86,6 +101,12 @@ const botao = style({
   fontFamily: lk.fonte.ui,
   fontSize: '13px',
   cursor: 'pointer',
+  // Renovação em voo: o botão fica inerte para o clique duplo não emitir dois
+  // tokens (com single_session ligado, o segundo revoga o primeiro).
+  ':disabled': {
+    opacity: 0.6,
+    cursor: 'progress',
+  },
   ':focus-visible': {
     // Foco é ciano em todo o sistema — inclusive dentro de um cartão âmbar.
     outline: `2px solid ${lk.cor.cianoVisao}`,
