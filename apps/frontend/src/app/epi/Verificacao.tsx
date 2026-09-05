@@ -157,6 +157,7 @@ import { Link } from 'react-router-dom'
 import { anexarSemRepetir } from '../../components/annotation/studioQueue'
 import { HANDLES, boxFromDrag, clamp, moveBox, resizeBox, type HandleId } from '../../components/annotation/boxGeometry'
 import type { Box } from '../../components/annotation/studioTypes'
+import { procedenciaDeclarada } from '../../components/shared/ProcedenciaEvento'
 import { useAuth } from '../../hooks/useAuth'
 import {
   ESCALA_MAX, ESCALA_MIN, LUPA_INICIAL, distanciaEntre, proximoEstado,
@@ -187,6 +188,12 @@ interface Violacao {
   confidence?: number
   bbox?: Bbox
   bbox_unidade?: string
+  /** Quem desenhou ESTA caixa, declarado por quem gravou o evento. Chega na
+   *  fila porque `get_human_queue` faz `SELECT a.*` — o JSONB `violations`
+   *  vem cru do banco, com `origem` e `lote` dentro. */
+  origem?: string
+  /** Marca da carga em lote do acervo de demonstração. */
+  lote?: string
 }
 
 /** Última correção de caixa registrada no ledger append-only do alerta
@@ -938,6 +945,9 @@ export function Verificacao() {
   const indexPrincipal = violacoesTodas.findIndex((v) => v.bbox && v.bbox_unidade === BBOX_PIXELS)
   const principal = desenhaveis[0]?.bbox
   const confianca = atual.confidence ?? atual.violations?.[0]?.confidence
+  /** Origem DECLARADA das caixas (issue #670) — regra compartilhada,
+   *  não recopiada. `null` quando ninguém declarou nada. */
+  const procedencia = procedenciaDeclarada(atual.violations)
 
   // Fora do modo de correção: caixas de leitura, `pointerEvents: none` (lei
   // da casa) — nunca alvo de clique. Em modo de correção: a caixa "ONDE A IA
@@ -1136,6 +1146,27 @@ export function Verificacao() {
             <span className={s.fichaDado}>{atual.camera_name ?? atual.camera_id ?? '—'}</span>
             <span className={s.fichaRotulo}>Horário</span>
             <span className={s.fichaDado}>{horaDe(atual)}</span>
+            {/* PROCEDÊNCIA (issue #670). Esta é a tela onde o operador JULGA, e
+                era a única das cinco superfícies que não dizia quem desenhou a
+                caixa: 4.609 dos 5.174 eventos do DEV são acervo semeado com
+                caixa de PESSOA (`origem = 'anotacao_humana'`, lote de
+                demonstração) e chegavam aqui indistinguíveis de uma detecção do
+                modelo em produção — pedindo veredito sobre encenação sem avisar.
+                A regra é a MESMA de `ProcedenciaEvento` (dono único), não uma
+                cópia. Sem declaração, sem linha: ausência de badge continua
+                sendo ausência de afirmação. */}
+            {procedencia && (
+              <>
+                <span className={s.fichaRotulo}>Procedência</span>
+                <span
+                  className={s.fichaDado}
+                  title={procedencia.titulo}
+                  data-testid="procedencia"
+                >
+                  {procedencia.rotulo}
+                </span>
+              </>
+            )}
             <span className={s.fichaRotulo}>Confiança</span>
             <span className={s.fichaDado}>
               {confiancaInternaOuCliente(confianca, isSuperAdmin)}

@@ -1166,3 +1166,43 @@ describe('rajada (ux2/dedup) — avisa sem decidir', () => {
     expect(post).not.toHaveBeenCalledWith('/verification/r2/review', expect.anything())
   })
 })
+
+// ── 12 · Procedência: quem desenhou a caixa que estou julgando ──────────────
+// Issue #670, buraco achado na revisão do PR #713. Esta é a tela onde o
+// operador JULGA, e era a única das CINCO superfícies que consomem o mesmo
+// `violations` sem dizer quem desenhou a caixa. 4.609 dos 5.174 eventos do
+// DEV são acervo semeado com caixa de PESSOA e chegam aqui pela fila
+// (`get_human_queue` faz `SELECT a.*`, o JSONB vem cru): sem esta linha o
+// operador dá veredito sobre encenação achando que julga o modelo.
+
+const SEMEADO = item('s1', 'no_helmet', 0.61, {
+  violations: [{ class: 'no_helmet', confidence: 0.61, origem: 'anotacao_humana', lote: 'acervo_rvb_2026_08' }],
+})
+const DO_MODELO = item('m1', 'no_helmet', 0.61, {
+  violations: [{ class: 'no_helmet', confidence: 0.61, origem: 'modelo_onnx' }],
+})
+
+describe('a fila diz QUEM desenhou a caixa que se está julgando', () => {
+  it('caixa desenhada por PESSOA no acervo semeado é anunciada como tal', async () => {
+    get.mockResolvedValue(fila([SEMEADO]))
+    montar()
+    const selo = await screen.findByTestId('procedencia')
+    expect(selo.textContent).toContain('anotação humana')
+    expect(selo.textContent).toContain('demonstração')
+  })
+
+  it('caixa do MODELO é dita como do modelo, sem a ressalva de demonstração', async () => {
+    get.mockResolvedValue(fila([DO_MODELO]))
+    montar()
+    const selo = await screen.findByTestId('procedencia')
+    expect(selo.textContent).toContain('detecção do modelo')
+    expect(selo.textContent).not.toContain('demonstração')
+  })
+
+  it('sem origem declarada, a tela não afirma nada — nenhuma linha de procedência', async () => {
+    get.mockResolvedValue(fila([A]))
+    montar()
+    await screen.findByText('Sem capacete')
+    expect(screen.queryByTestId('procedencia')).toBeNull()
+  })
+})
