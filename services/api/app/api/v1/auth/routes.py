@@ -51,7 +51,8 @@ def _public_registration_enabled() -> bool:
     Sem tenant no payload, o usuário nasce com role='operator' e SEM
     tenant_id; o próprio /login depois recusa essa conta ("Usuário sem tenant
     atribuído", ADR-0017). Ou seja: a rota aberta só sabia produzir conta
-    órfã. Contas são criadas pelo administrador em /admin/usuarios.
+    órfã. Contas são criadas pelo administrador em /admin/users — rota
+    POST /api/admin/users, que exige tenant_id e superadmin.
 
     Lido a cada request de propósito: liga/desliga sem redeploy.
     """

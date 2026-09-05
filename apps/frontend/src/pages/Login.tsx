@@ -6,7 +6,7 @@
  * criava conta com role='operator' e SEM tenant_id, e o próprio login depois
  * recusava essa conta ("Usuário sem tenant atribuído", ADR-0017) — o usuário
  * ficava travado sem entender por quê. Contas são criadas pelo administrador
- * em /admin/usuarios; a rota POST /api/auth/register está fechada por padrão
+ * em /admin/users; a rota POST /api/auth/register está fechada por padrão
  * (ALLOW_PUBLIC_REGISTRATION).
  */
 import { useState, FormEvent } from 'react'
