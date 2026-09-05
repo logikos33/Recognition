@@ -304,7 +304,13 @@ def run_legacy(
 
     for f in files:
         basename = os.path.basename(f)
-        sql_text = open(f).read()
+        # encoding EXPLÍCITO, aqui e nas outras leituras de .sql deste módulo: 113
+        # dos 125 arquivos têm byte não-ASCII e `open()` sem encoding usa o locale
+        # do processo. Sob LANG=C (ou PYTHONCOERCECLOCALE=0) isso vira
+        # UnicodeDecodeError — e como railway_start chama run_migrations() FORA de
+        # try/except, o erro mata o boot da API. Encoding é do arquivo, não do
+        # ambiente. Prova: test_runner_le_migration_como_utf8_qualquer_que_seja_o_locale.
+        sql_text = open(f, encoding="utf-8").read()
         if _guarda_pula(basename, sql_text, established, log):
             continue
         log.info("  %s...", basename)
@@ -385,7 +391,7 @@ def _load_baseline_duplicate_versions(migrations_dir: str) -> set[str]:
     path = os.path.join(migrations_dir, BASELINE_FILENAME)
     versions: set[str] = set()
     if os.path.isfile(path):
-        for line in open(path):
+        for line in open(path, encoding="utf-8"):
             line = line.strip()
             if line and not line.startswith("#"):
                 versions.add(line)
@@ -479,7 +485,7 @@ def _apply_one(conn, path: str, log: logging.Logger, ledger_established: bool = 
     basename = os.path.basename(path)
     version = version_of(basename)
     checksum = sha256_of_file(path)
-    sql_text = open(path).read()
+    sql_text = open(path, encoding="utf-8").read()
 
     cur = conn.cursor()
     cur.execute("SELECT pg_advisory_xact_lock(%s)", (MIGRATION_ADVISORY_LOCK_KEY,))
@@ -573,7 +579,9 @@ def run_ledger(dsn: str, migrations_dir: str = DEFAULT_MIGRATIONS_DIR, log: logg
             # A guarda vale aqui também: um banco estabelecido cujo ledger ainda
             # está vazio (o cutover feito sem o backfill) faria o runner novo
             # reaplicar a 049 do zero — mesmo estrago, outro loop.
-            if _guarda_pula(basename, open(path).read(), established, log):
+            if _guarda_pula(
+                basename, open(path, encoding="utf-8").read(), established, log
+            ):
                 summary.guarded.append(basename)
                 continue
             outcome = _apply_one(

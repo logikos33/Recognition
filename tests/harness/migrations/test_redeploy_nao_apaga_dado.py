@@ -73,12 +73,13 @@ def _derruba_banco(dsn_base: str, nome: str) -> None:
     conn.close()
 
 
-def _aplica(dsn: str, passada: int, ledger: bool) -> None:
+def _aplica(dsn: str, passada: int, ledger: bool, extra_env: dict | None = None) -> None:
     """Roda o runner exatamente como o boot da API roda (processo separado)."""
     env = dict(os.environ)
     env.pop("MIGRATIONS_LEDGER_CUTOVER", None)
     if ledger:
         env["MIGRATIONS_LEDGER_CUTOVER"] = "1"
+    env.update(extra_env or {})
     r = subprocess.run(
         [sys.executable, str(_RUNNER), "--dsn", dsn, "--pass", str(passada)],
         env=env, capture_output=True, text=True, timeout=600,
@@ -191,3 +192,44 @@ def test_redeploy_nao_apaga_dado_nem_reescreve_credencial(
     semente = _semeia(banco)
     _aplica(banco, 2, ledger=passada2_ledger)
     _confere(banco, semente)
+
+
+# ---------------------------------------------------------------------------
+# Locale do container não pode decidir se a API sobe
+# ---------------------------------------------------------------------------
+
+# 113 dos 125 .sql têm byte não-ASCII (comentário em português, ✅, →). Ler esses
+# arquivos com o encoding do AMBIENTE em vez do encoding do ARQUIVO faz
+# UnicodeDecodeError sob qualquer locale que não seja UTF-8 — e basta
+# PYTHONCOERCECLOCALE=0 / LANG=C no serviço para chegar lá.
+#
+# Por que isso é um teste e não um detalhe: em railway_start.py a chamada
+# `run_migrations()` (linha 665) NÃO está dentro de try/except. Um erro que sobe
+# do runner mata o boot antes de `start_api()` — a API não sobe, nem degradada.
+_LOCALE_HOSTIL = {
+    "LC_ALL": "C",
+    "LANG": "C",
+    "PYTHONUTF8": "0",
+    "PYTHONCOERCECLOCALE": "0",
+}
+
+
+@pytest.mark.parametrize("ledger", [False, True], ids=["legado", "ledger"])
+def test_runner_le_migration_como_utf8_qualquer_que_seja_o_locale(banco, ledger):
+    _aplica(banco, 1, ledger=ledger, extra_env=_LOCALE_HOSTIL)
+
+    # exit 0 não basta: o loop legado engole erro por arquivo e segue. O que prova
+    # é o banco ter ficado migrado de verdade.
+    conn = psycopg2.connect(banco, cursor_factory=psycopg2.extras.RealDictCursor)
+    conn.autocommit = True
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = 'public'"
+    )
+    tabelas = cur.fetchone()["n"]
+    cur.execute("SELECT COUNT(*) AS n FROM public.users WHERE email = 'vitor@logikos.com'")
+    superadmin = cur.fetchone()["n"]
+    conn.close()
+
+    assert tabelas > 50, f"locale hostil deixou o banco pela metade: {tabelas} tabelas"
+    assert superadmin == 1, "a 027 não rodou sob locale hostil"
