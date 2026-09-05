@@ -4,6 +4,68 @@
  */
 import { useToastStore } from '../components/ui/Toast/useToast'
 
+// ── Nada de tripa na tela (issues #799/#800) ────────────────────────────────
+// MEDIDO no DEV: numa janela de deploy, qualquer uma das 8 telas do EPI
+// imprimia o SELECT que falhou e o nome interno do schema do tenant
+// (`rvb_isolantes`). O conserto de raiz é no backend — a resposta não sai mais
+// com isso. Esta é a segunda tranca: o `api.ts` monta `ApiError.message` a
+// partir do corpo do servidor, e dezenas de telas jogam esse texto na tela.
+// Se algum dia voltar tripa de uma resposta que não é da nossa API (proxy,
+// gateway, worker antigo), ela para aqui.
+const TRIPA = new RegExp(
+  [
+    '\\b(select|insert|update|delete|drop|truncate|alter|create)\\b[\\s\\S]{0,120}?' +
+      '\\b(from|into|table|set|where|values|join|returning)\\b',
+    'search_path',
+    '\\bschemas?\\b',
+    'psycopg',
+    'sqlalchemy',
+    '\\btraceback\\b',
+    '\\.py["\']?[,:]?\\s*line\\s+\\d+',
+    '\\b[a-z][a-z0-9+.-]*://[^\\s/@]*:[^\\s/@]*@',
+    '\\b(postgres|postgresql|mysql|mongodb|redis|amqp)://',
+    '\\bconnection\\s+pool\\b',
+    '\\bpool\\s+(exhausted|timeout)',
+    '\\brelation\\s+"',
+    '\\bcolumn\\s+"',
+    '\\bduplicate\\s+key\\s+value\\b',
+    'violates\\s+\\w+\\s+constraint',
+    '\\b(DETAIL|HINT|CONTEXT):',
+    '\\bcould\\s+not\\s+connect\\s+to\\s+server\\b',
+    '\\bserver\\s+closed\\s+the\\s+connection\\b',
+    // Estouro de render (o que o ErrorBoundary pega): a mensagem do runtime do
+    // JS é tão jargão quanto um SELECT para quem opera a fábrica.
+    '\\b(type|reference|syntax|range)error\\b',
+    'cannot\\s+read\\s+propert',
+    'is\\s+not\\s+a\\s+function',
+    '(undefined|null)\\s+is\\s+not\\s+an?\\s+',
+    'unexpected\\s+token',
+    'failed\\s+to\\s+fetch',
+    'dynamically\\s+imported\\s+module',
+    '\\bchunk\\b.{0,20}\\bload',
+  ].join('|'),
+  'i',
+)
+
+// Sem número de HTTP: "503" não diz nada para quem opera a fábrica.
+const GENERICA_CLIENTE = 'Não foi possível concluir esta ação. Confira os dados e tente de novo.'
+const GENERICA_SERVIDOR = 'O sistema não conseguiu responder agora. Tente de novo em instantes.'
+
+/** True quando o texto carrega tripa técnica que não pode ir para a tela. */
+export function pareceTripa(texto: string): boolean {
+  return !!texto && TRIPA.test(texto)
+}
+
+/**
+ * Texto que pode ir para a tela. No-op quando a mensagem já é de gente — só
+ * troca quando detecta tripa (ou quando não veio mensagem nenhuma).
+ * Nunca engole o erro: quem chama continua mostrando QUE falhou.
+ */
+export function mensagemHumana(rawMessage: string, status = 0): string {
+  if (rawMessage && !pareceTripa(rawMessage)) return rawMessage
+  return status >= 400 && status < 500 ? GENERICA_CLIENTE : GENERICA_SERVIDOR
+}
+
 const TRANSLATIONS: Array<{ match: (status: number, url: string, msg: string) => boolean; text: string }> = [
   { match: (s, u) => s === 404 && u.includes('stream'), text: 'Camera nao esta transmitindo' },
   { match: (s) => s === 503, text: 'Servico temporariamente indisponivel, tentando reconectar...' },
@@ -17,8 +79,7 @@ export function translateError(status: number, url: string, rawMessage: string):
   for (const t of TRANSLATIONS) {
     if (t.match(status, url, rawMessage)) return t.text
   }
-  if (status >= 500) return 'Erro interno do servidor'
-  return rawMessage || `Erro ${status}`
+  return mensagemHumana(rawMessage, status)
 }
 
 // Deduplication: track recent messages to group identical errors
