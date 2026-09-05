@@ -527,7 +527,7 @@ export function Dashboard() {
       <div className={s.telaCentral}>
         <AlertTriangle size={36} strokeWidth={1.5} color={lk.estado.nc} aria-hidden="true" />
         <span className={s.telaTitulo}>Não foi possível carregar</span>
-        <span className={s.telaDetalhe}>GET /API/MODULES/EPI/STATS</span>
+        <span className={s.telaDetalhe}>Os indicadores deste módulo não responderam.</span>
         <button type="button" className={s.botaoPrimario} onClick={atualizar}>
           Tentar novamente
         </button>

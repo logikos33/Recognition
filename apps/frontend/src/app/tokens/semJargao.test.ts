@@ -85,6 +85,18 @@
  * texto antigo do banner (o que estava em produção) como fixture e mostra a
  * régua pegando — com os 4 furos JUNTOS: `.py`, `::`, `_snake_case` e `#519`.
  *
+ * ATUALIZAÇÃO (rodada V1, set/2026 — jargão final): as 4 formas acima ficaram
+ * VERDES enquanto o bundle SERVIDO do DEV mostrava três coisas na cara do
+ * usuário. Não foi escopo nem string montada em runtime — os arquivos já eram
+ * varridos e os textos já eram `JsxText` literal. Faltavam TRÊS formas:
+ *   - `rota de API`        → `GET /API/MODULES/EPI/STATS` (epi/Dashboard.tsx:530)
+ *   - `issue` sem "#"      → `(issue 519)`                (epi/Cameras.tsx:365)
+ *   - `chave de permissão` → `(requer cameras:configure)` (epi/Cameras.tsx:366)
+ * As três estão abaixo, cada uma com prova por mutação NO ARQUIVO REAL (bloco
+ * "rodada V1" no fim deste arquivo). Elas acusaram 51 trechos em 22 telas; as
+ * 3 do mandato deste PR foram traduzidas, os outros 41 pares estão congelados
+ * um a um em `DEBITO_ESTRUTURAL_V1`.
+ *
  * ─── ESTRATÉGIA ANTI-FALSO-POSITIVO (texto/JSX) ─────────────────────────
  *
  * `semHexSolto.test.ts` varre LINHA por LINHA (regex de hex é simples e
@@ -226,9 +238,46 @@ const ESTRUTURAIS: Array<{ nome: string; re: RegExp; sugestao: string }> = [
     sugestao: 'nome de função/identificador interno (underscore líder) — descreva o QUE faz, não o nome da função',
   },
   {
+    // FURO REAL (rodada V1, set/2026): `#\d{3,}` exige o "#", e o texto
+    // servido em `app/epi/Cameras.tsx:365` escrevia "(issue 519)" — sem "#".
+    // A régua ficou VERDE com o número de issue na cara do usuário. O "#" é
+    // opcional quando a PALAVRA "issue"/"PR" já diz o que o número é.
     nome: 'issue #NNN',
-    re: /#\d{3,}\b/,
+    // O ramo da PALAVRA não aceita "#" — assim "issue #519" continua sendo
+    // acusado como `#519` (a calibração antiga, com teste), e "issue 519"
+    // entra pelo ramo novo.
+    re: /#\d{3,}\b|\b(?:issues?|PRs?)\s+n?º?\s*\d+\b/i,
     sugestao: 'número de issue/PR interno — não aparece pro cliente; se for útil, vai pro modo avançado (superadmin)',
+  },
+  {
+    // FURO REAL (rodada V1, set/2026): `app/epi/Dashboard.tsx:530` pintava
+    // `GET /API/MODULES/EPI/STATS` no estado de erro — a rota crua da API como
+    // única explicação de "não foi possível carregar". Nenhum dos 16 termos e
+    // nenhuma das 3 formas estruturais de então batia nisso.
+    //
+    // Duas formas, ambas medidas no repo: verbo HTTP + caminho, e caminho que
+    // começa por `/api/` ou `/v1/` (as duas bases que este front chama).
+    // Não vira `\S*/\S*`: "24/7", "km/h" e data "05/09" não têm nem verbo nem
+    // base — passam por CONSTRUÇÃO. A base é `api|v1` LITERAL, não `v\d`:
+    // com `v\d` o texto real "(V1/V2/V3 = etapa da bancada)" de
+    // `qualidade/GestaoQualidade.tsx:507` batia em "/V2/V3" — falso positivo
+    // medido, não hipótese.
+    nome: 'rota de API',
+    re: /\b(?:GET|POST|PUT|PATCH|DELETE)\s+\/\S*|\/(?:api|v1)\/[\w/{}:.-]+/i,
+    sugestao: 'rota da API — diga o que falhou ("não foi possível carregar os indicadores"), não o endereço; se for útil, vai pro modo avançado (superadmin)',
+  },
+  {
+    // FURO REAL (rodada V1, set/2026): `app/epi/Cameras.tsx:366` pintava
+    // "(requer cameras:configure)" — a CHAVE de permissão do registry, não o
+    // nome do que o usuário precisa pedir. A forma `escopo ::` exige DOIS
+    // dois-pontos; um só passava batido.
+    //
+    // Calibração: exige minúscula dos dois lados e ZERO espaço, então "Nota:
+    // texto" (tem espaço), "10:30" (dígito) e "https://x" (o `//` quebra o
+    // lado direito) não batem — todos conferidos contra o repo.
+    nome: 'chave de permissão',
+    re: /(?<![\w:/.])[a-z][a-z_]*:[a-z][a-z_*]+(?![\w:/])/,
+    sugestao: 'chave de permissão do registry — diga o PODER em português ("permissão para configurar câmeras"), não a chave',
   },
 ]
 
@@ -464,6 +513,71 @@ const DEBITO_DE_OUTRA_FRENTE = [
   'components/training/operationTypeForms/ZoneTuningForm.tsx',
 ]
 
+/**
+ * DÉBITO ESTRUTURAL V1 — congelado por PAR `arquivo|termo`, não por arquivo.
+ *
+ * As três formas novas desta rodada (rota de API, chave de permissão, issue
+ * sem "#") acusaram 51 trechos em 22 telas. Este PR tem mandato sobre TRÊS
+ * arquivos (`epi/Dashboard.tsx`, `epi/Cameras.tsx`, `epi/Eventos.tsx` — as
+ * telas das strings medidas no bundle servido e das issues #771/#795); os
+ * outros 41 pares ficam NOMEADOS aqui, um a um, com a issue aberta junto com
+ * este PR.
+ *
+ * Por PAR e não por ARQUIVO de propósito: congelar o arquivo inteiro
+ * devolveria a cegueira que esta rodada acabou de tirar — uma rota NOVA em
+ * `epi/Acoes.tsx` entraria calada. Congelado o par exato, qualquer rota ou
+ * chave nova no mesmo arquivo continua reprovando.
+ *
+ * NÃO É UM CEMITÉRIO: o teste `o débito congelado ainda descreve achado real`
+ * abaixo reprova se um par deixar de casar — quem consertar a tela é obrigado
+ * a apagar a linha daqui.
+ *
+ * Caminho relativo a `src/`. Formato: `<arquivo>|<termo exato acusado>`.
+ */
+const DEBITO_ESTRUTURAL_V1 = [
+  'app/admin/Auditoria.tsx|GET /v1/admin/audit-log',
+  'app/admin/TenantDetalhe.tsx|/v1/admin/tenants/',
+  'app/admin/TenantDetalhe.tsx|GET /v1/admin/tenants/',
+  'app/admin/Tenants.tsx|GET /v1/admin/tenants',
+  'app/admin/Usuarios.tsx|GET /v1/admin/users',
+  'app/admin/VisaoGeral.tsx|GET /v1/admin/dashboard',
+  'app/carga/Carga.tsx|GET /api',
+  'app/carga/Carga.tsx|GET /api/fueling/events',
+  'app/carga/Carga.tsx|PATCH /sessions/<id>',
+  'app/carga/Carga.tsx|counting:read',
+  'app/carga/Carga.tsx|counting:write',
+  'app/epi/Acoes.tsx|GET /api/alerts',
+  'app/epi/AoVivo.tsx|GET /cameras',
+  'app/epi/AoVivo.tsx|cameras:read',
+  'app/epi/Cenario.tsx|GET /api/cameras/',
+  'app/epi/EventoDetalhe.tsx|GET /api/alerts/',
+  'app/epi/EventoDetalhe.tsx|verification:write',
+  'app/epi/Operacoes.tsx|GET /api/cameras/',
+  'app/epi/Operacoes.tsx|PUT /operations/<id>',
+  'app/epi/Relatorios.tsx|GET /api',
+  'app/epi/Relatorios.tsx|reports:export',
+  'app/epi/Verificacao.tsx|GET /api/verification/queue',
+  'app/epi/Verificacao.tsx|verification:read',
+  'app/epi/Verificacao.tsx|verification:write',
+  'app/estudio/CamerasPorModulo.tsx|GET /api',
+  'app/estudio/Classes.tsx|GET /api',
+  'app/estudio/Modelo.tsx|GET /api/training/models',
+  'app/modulos/Modulos.tsx|GET /api/modules',
+  'app/qualidade/ConfigQualidade.tsx|GET /api',
+  'app/qualidade/GestaoQualidade.tsx|GET /api',
+  'app/qualidade/GestaoQualidade.tsx|GET /v1/quality/gate/pieces/export',
+  'app/qualidade/GestaoQualidade.tsx|reports:export',
+  'app/qualidade/Qualidade.tsx|PATCH /gate/reworks/<id>/complete',
+  'app/qualidade/Qualidade.tsx|quality:write',
+  'app/qualidade/RevisaoQualidade.tsx|GET /api',
+  'app/qualidade/RevisaoQualidade.tsx|GET /inspections',
+  'app/qualidade/RevisaoQualidade.tsx|GET /reference-snapshots/&lt;camera_id&gt;',
+  'app/qualidade/RevisaoQualidade.tsx|PATCH /inspections/<id>/feedback',
+  'app/qualidade/RevisaoQualidade.tsx|verification:read',
+  'app/qualidade/RevisaoQualidade.tsx|verification:write',
+  'modules/admin/pages/AdminAnnouncementsPage.tsx|tenant:uuid',
+]
+
 function ehDebitoDeOutraFrente(arquivo: string): boolean {
   const rel = path.relative(path.dirname(APP), arquivo).split(path.sep).join('/')
   return DEBITO_DE_OUTRA_FRENTE.includes(rel)
@@ -497,7 +611,34 @@ function resolveImport(arquivoBase: string, specifier: string): string | null {
  * é o critério que pega `CameraModelScope.tsx` (achado real) sem trazer
  * telas do front legado que só `pages/`/`modules/` ainda usam.
  */
+const SRC = path.dirname(APP)
+
+/** Caminho do arquivo relativo a `src/` — a chave do `DEBITO_ESTRUTURAL_V1`. */
+function relDoSrc(arquivo: string): string {
+  return path.relative(SRC, arquivo).split(path.sep).join('/')
+}
+
+/**
+ * MEMO — issue #766: este cálculo varre `src/app` + `src/pages` + `src/modules`
+ * e faz uma BFS de imports sobre `src/components`. Nove testes deste arquivo o
+ * chamam; sem memo, a árvore inteira era relida NOVE vezes (22 ms cada,
+ * medidos), ~180 ms de trabalho puramente repetido num arquivo que já estourava
+ * o teto de 5 s em máquina de dev. O conteúdo do repo não muda no meio da
+ * suíte, então o resultado é o mesmo nas nove.
+ */
+let memoAlvo: string[] | null = null
+
+/** Só para o teste que PROVA a memoização — conta quantas vezes a árvore foi varrida. */
+export const contadorDeVarreduras = { valor: 0 }
+
 export function arquivosVisiveisAoTenant(): string[] {
+  if (memoAlvo) return memoAlvo
+  memoAlvo = calcularArquivosVisiveisAoTenant()
+  return memoAlvo
+}
+
+function calcularArquivosVisiveisAoTenant(): string[] {
+  contadorDeVarreduras.valor += 1
   // Semeada TAMBÉM a partir do front legado (furo F, cético da rodada O2):
   // sem isto, 38 arquivos de `src/components/**` renderizados por `/epi/*`
   // ficavam invisíveis — 17 achados de jargão, medidos, nas telas de
@@ -528,13 +669,28 @@ export function arquivosVisiveisAoTenant(): string[] {
   return [...alcancados, ...legado]
 }
 
+/**
+ * TETO DE TEMPO (issue #766) — o caso pesado varre 352 arquivos e faz AST de
+ * todos. Medido nesta máquina: 640 ms sozinho; medido pelo relator da #766 num
+ * laptop sob carga: 5.986 ms contra o `testTimeout` padrão de 5.000 ms. Verde
+ * no CI, vermelho no laptop: o teste dependia da VELOCIDADE DA MÁQUINA.
+ *
+ * 30 s é ~5× o pior número já medido — folga que não some porque alguém abriu
+ * o Chrome. O trabalho em si também caiu (a BFS deixou de rodar 9 vezes, ver
+ * `arquivosVisiveisAoTenant`), mas o custo do AST é intrínseco: o teto tinha de
+ * ser explícito e proporcional ao que o caso varre, não o default de 5 s.
+ */
+const TETO_DA_VARREDURA_MS = 30_000
+
 describe('front novo: sem jargão técnico em texto de cliente', () => {
   it('nenhum termo da régua aparece fora do modo avançado', () => {
     const relatorio: string[] = []
     for (const arquivo of arquivosVisiveisAoTenant()) {
       const rel = path.relative(APP, arquivo)
+      const congelados = new Set(DEBITO_ESTRUTURAL_V1)
       const codigo = fs.readFileSync(arquivo, 'utf-8')
       for (const a of acharJargao(rel, codigo)) {
+        if (congelados.has(`${relDoSrc(arquivo)}|${a.termo}`)) continue
         relatorio.push(`${rel}:${a.linha}  [${a.tipo}] "${a.termo}" em "${a.trecho}"  →  use: ${a.sugestao}`)
       }
     }
@@ -544,7 +700,7 @@ describe('front novo: sem jargão técnico em texto de cliente', () => {
         `"Cenário e Operações.dc.html") ou marque \`// ${MARCADOR_EXCECAO}: <motivo>\` ` +
         `na linha anterior se for modo avançado (superadmin):\n${relatorio.join('\n')}`,
     ).toEqual([])
-  })
+  }, TETO_DA_VARREDURA_MS)
 })
 
 describe('escopo: a régua alcança components/** renderizado pelo front novo (furo B3.a)', () => {
@@ -870,5 +1026,165 @@ describe('detecção estrutural: referência a código-fonte em texto de UI (fur
     expect(achados.filter((a) => /^#\d{3,}$/.test(a.termo)).map((a) => a.termo).sort()).toEqual(['#519', '#535'])
     // não fica silencioso — a mutação FALHA a régua, como devia (é o que prova que a régua funciona)
     expect(achados.length).toBeGreaterThanOrEqual(5)
+  })
+})
+
+/**
+ * ─── RODADA V1 (jargão final) ────────────────────────────────────────────
+ *
+ * As duas réguas anti-jargão estavam VERDES enquanto o bundle servido do DEV
+ * mostrava, na cara do usuário:
+ *
+ *   `epi/Dashboard.tsx:530`  <span>GET /API/MODULES/EPI/STATS</span>
+ *   `epi/Cameras.tsx:365`    "…não recebe classe por câmera (issue 519)."
+ *   `epi/Cameras.tsx:366`    "…somente de leitura (requer cameras:configure)."
+ *
+ * POR QUE NÃO ERAM VISTAS — não é escopo, e não é string montada em runtime:
+ * os três arquivos JÁ estavam no escopo, e os três textos são `JsxText`
+ * literal, que a régua JÁ lia. O furo era o VOCABULÁRIO ESTRUTURAL, que
+ * cobria 4 formas e não cobria estas 3:
+ *
+ *   1. `GET /API/MODULES/EPI/STATS` — rota de API. Não é `.py`, não tem `::`,
+ *      não tem `_` líder, não tem `#`. Nenhuma das 4 formas descrevia "rota".
+ *   2. `(issue 519)` — número de issue SEM `#`. A forma era `#\d{3,}`; o texto
+ *      servido escrevia a palavra "issue" e o número, sem o "#".
+ *   3. `(requer cameras:configure)` — chave de permissão. A forma `escopo ::`
+ *      exige DOIS dois-pontos; `recurso:acao` tem um só.
+ *
+ * Cada um dos três ganhou uma forma nova em `ESTRUTURAIS`, e cada uma é
+ * provada por MUTAÇÃO no ARQUIVO REAL abaixo: o texto de hoje passa, o texto
+ * servido ontem reprova. Sem isso "a régua cobre agora" seria afirmação.
+ */
+describe('rodada V1: as 3 formas que deixavam jargão servido passar', () => {
+  const casos: Array<[string, string, string, string]> = [
+    [
+      'app/epi/Dashboard.tsx',
+      'Os indicadores deste módulo não responderam.',
+      'GET /API/MODULES/EPI/STATS',
+      'GET /API/MODULES/EPI/STATS',
+    ],
+    [
+      'app/epi/Cameras.tsx',
+      'o box edge ainda não recebe classe por câmera.',
+      'o box edge ainda não recebe classe por câmera (issue 519).',
+      'issue 519',
+    ],
+    [
+      'app/epi/Cameras.tsx',
+      'peça a quem administra o seu acesso a permissão de configurar câmeras',
+      'requer cameras:configure',
+      'cameras:configure',
+    ],
+    [
+      'app/epi/Cameras.tsx',
+      'A lista de câmeras não respondeu · {erro}',
+      'GET /api/cameras · {erro}',
+      'GET /api/cameras',
+    ],
+    [
+      'app/epi/Eventos.tsx',
+      'Ver eventos exige permissão para consultar eventos.',
+      'Ver eventos exige a permissão <code>alerts:read</code>.',
+      'alerts:read',
+    ],
+  ]
+
+  it.each(casos)(
+    'prova por MUTAÇÃO em %s: reinstalar o texto servido volta a acusar',
+    (rel, hoje, servidoAntes, termo) => {
+      const arquivo = path.join(SRC, rel)
+      const atual = fs.readFileSync(arquivo, 'utf-8')
+      expect(atual.includes(hoje), `${rel}: o texto de hoje não está no arquivo`).toBe(true)
+      expect(acharJargao(rel, atual), `${rel} ainda tem jargão`).toEqual([])
+      const mutado = atual.replace(hoje, servidoAntes)
+      expect(mutado, `${rel}: a mutação não mudou nada`).not.toEqual(atual)
+      expect(
+        acharJargao(rel, mutado).map((a) => a.termo),
+        `${rel}: a régua NÃO pegou o texto que estava servido`,
+      ).toContain(termo)
+    },
+  )
+
+  it('calibração das 3 formas novas: o que NÃO pode disparar', () => {
+    // Cada linha é uma forma real de texto de UI que se PARECE com as novas
+    // regras. Se qualquer uma disparar, a régua vira ruído e alguém a desliga.
+    const codigo = [
+      'export const X = () => (',
+      '  <div>',
+      '    <span>Cobertura 24/7 · 60 km/h · turno 05/09</span>',
+      '    <span>Início às 10:30, fim às 18:45</span>',
+      '    <span>Manual em https://logikos.com.br/ajuda</span>',
+      '    <span>Nota: a contagem reinicia à meia-noite</span>',
+      '    <span>(V1/V2/V3 = etapa da bancada)</span>',
+      '    <span>Versão 2 do relatório, item 12</span>',
+      '  </div>',
+      ')',
+      '',
+    ].join('\n')
+    expect(acharJargao('fixture.tsx', codigo)).toEqual([])
+  })
+
+  it('rota de API dispara nas duas formas medidas (verbo+caminho e base /api|/v1)', () => {
+    const comVerbo = acharJargao('f.tsx', 'export const X = () => <p>GET /cameras · 500</p>\n')
+    expect(comVerbo.map((a) => a.termo)).toEqual(['GET /cameras'])
+    const semVerbo = acharJargao('f.tsx', 'export const X = () => <p>falhou em /v1/admin/users</p>\n')
+    expect(semVerbo.map((a) => a.termo)).toEqual(['/v1/admin/users'])
+  })
+
+  it('chave de permissão dispara com um dois-pontos (a forma `::` exigia dois)', () => {
+    const achados = acharJargao('f.tsx', 'export const X = () => <p>exige quality:write aqui</p>\n')
+    expect(achados.map((a) => a.termo)).toEqual(['quality:write'])
+    expect(achados[0].sugestao).toMatch(/em português/)
+  })
+})
+
+/**
+ * O congelamento de 41 pares só é honesto enquanto DESCREVE achado real. Um
+ * par que não casa mais é lixo que fica no caminho de quem lê a lista para
+ * saber o que falta — e, pior, dá a impressão de dívida maior do que a que
+ * existe. Este teste obriga quem consertar a tela a apagar a linha daqui.
+ */
+describe('débito estrutural V1: congelado por par, e sem cemitério', () => {
+  it('todo par congelado ainda casa com um achado de hoje', () => {
+    const vivos = new Set<string>()
+    for (const arquivo of arquivosVisiveisAoTenant()) {
+      const rel = relDoSrc(arquivo)
+      for (const a of acharJargao(rel, fs.readFileSync(arquivo, 'utf-8'))) vivos.add(`${rel}|${a.termo}`)
+    }
+    const mortos = DEBITO_ESTRUTURAL_V1.filter((par) => !vivos.has(par))
+    expect(
+      mortos,
+      `pares congelados que não descrevem mais achado nenhum — apague estas ` +
+        `linhas de DEBITO_ESTRUTURAL_V1:\n${mortos.join('\n')}`,
+    ).toEqual([])
+  }, TETO_DA_VARREDURA_MS)
+
+  it('a lista é a MEDIDA de hoje — 41 pares em 22 telas', () => {
+    expect(DEBITO_ESTRUTURAL_V1.length).toBe(41)
+    expect(new Set(DEBITO_ESTRUTURAL_V1.map((p) => p.split('|')[0])).size).toBe(22)
+    // Nenhuma das 3 telas do mandato deste PR pode estar congelada.
+    expect(
+      DEBITO_ESTRUTURAL_V1.filter((p) => /epi\/(Dashboard|Cameras|Eventos)\.tsx/.test(p)),
+    ).toEqual([])
+  })
+})
+
+/**
+ * Issue #766 — o teto de 5 s estourava porque a árvore era varrida NOVE vezes
+ * (uma por teste que chama `arquivosVisiveisAoTenant`). Guard por CONTAGEM, não
+ * por relógio: cronômetro num teste é exatamente o que produziu a #766.
+ *
+ * PROVA POR MUTAÇÃO: apague o `if (memoAlvo) return memoAlvo` e este teste fica
+ * vermelho na hora (o contador vira 10+, não 1).
+ */
+describe('teto de tempo (#766): a árvore é varrida UMA vez por execução', () => {
+  it('duas chamadas seguidas não varrem duas vezes', () => {
+    const a = arquivosVisiveisAoTenant()
+    const b = arquivosVisiveisAoTenant()
+    expect(b).toBe(a)
+    expect(
+      contadorDeVarreduras.valor,
+      'a BFS rodou mais de uma vez nesta execução — a memoização caiu',
+    ).toBe(1)
   })
 })

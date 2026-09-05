@@ -358,11 +358,15 @@ describe('EPI Dashboard — vazio, erro e turno', () => {
     expect(screen.getByText('Ver câmeras')).toBeTruthy()
   })
 
-  it('falha de carga mostra a rota que falhou e um retry que refaz a chamada', async () => {
+  it('falha de carga diz o que falhou (sem a rota crua) e um retry que refaz a chamada', async () => {
     getStats.mockRejectedValue(new Error('timeout'))
     montar()
     expect(await screen.findByText(/Não foi possível carregar/)).toBeTruthy()
-    expect(screen.getByText(/GET \/API\/MODULES\/EPI\/STATS/)).toBeTruthy()
+    // Rodada V1 do jargão: o detalhe era `GET /API/MODULES/EPI/STATS` — a rota
+    // da API como única explicação, servida no DEV. O estado de erro continua
+    // DIZENDO o que falhou; o que saiu foi o endereço.
+    const detalhe = screen.getByText(/não responderam/)
+    expect(detalhe.textContent, 'a rota da API voltou para a tela').not.toMatch(/GET |\/api\//i)
 
     getStats.mockResolvedValue({ ...STATS_RVB })
     fireEvent.click(screen.getByText('Tentar novamente'))
