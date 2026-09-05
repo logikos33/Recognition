@@ -95,9 +95,13 @@ def _make_ann_with_provenance(frame_id, source, reviewed_by, **kwargs):
 
 
 def _run(v2_mod, frames, annotations, storage=None, dataset_repo=None,
-         pending_version=None, **kwargs):
+         pending_version=None, gabaritos=0, **kwargs):
     ann_repo = MagicMock()
     ann_repo._execute.side_effect = [frames, annotations]
+    # _contar_gabaritos (trava holdout-only, migration 133) usa _execute_one.
+    # Fixado em 0 por padrão: sem isto o MagicMock devolveria int(MagicMock())
+    # == 1 e todo teste passaria a afirmar um número inventado.
+    ann_repo._execute_one.return_value = {"total": gabaritos}
 
     dataset_repo = dataset_repo or MagicMock()
     dataset_repo.create_version_v2.return_value = {"id": DV_ID}
@@ -140,6 +144,46 @@ class TestSnapshotQuery:
     def test_no_frames_raises_value_error(self, v2_mod):
         with pytest.raises(ValueError, match="Nenhum frame rotulado"):
             _run(v2_mod, [], [])
+
+
+class TestTravaHoldoutOnly:
+    """Migration 133: gabarito mede modelo, NUNCA treina.
+
+    O teste que prova a exclusão de verdade é o de integração, contra
+    Postgres real (test_versioning_v2_export_filters.py::TestTravaHoldoutOnly
+    — frame marcado some do pool, frame normal continua). Aqui ficam as duas
+    coisas que não precisam de banco e falham ALTO se alguém remover a trava
+    por engano daqui a três meses: o predicado estar nas DUAS queries do pool,
+    e a contagem de recusados chegar ao resultado do export.
+    """
+
+    def test_predicado_nas_duas_queries_do_pool(self, v2_mod):
+        frames = [_make_frame(uuid4(), i) for i in range(5)]
+        anns = [_make_ann(frames[0]["id"])]
+        _, ann_repo, _, _ = _run(v2_mod, frames, anns)
+
+        pool_sql = ann_repo._execute.call_args_list[0].args[0]
+        anns_sql = ann_repo._execute.call_args_list[1].args[0]
+        # As duas TÊM de concordar sobre o universo: se só uma filtrar, a
+        # anotação sobrevive sem o frame (ou vice-versa) e o COCO sai quebrado.
+        assert "tf.dataset_role = 'pool'" in pool_sql
+        assert "tf.dataset_role = 'pool'" in anns_sql
+
+    def test_contagem_de_recusados_sai_no_resultado(self, v2_mod):
+        frames = [_make_frame(uuid4(), i) for i in range(5)]
+        anns = [_make_ann(frames[0]["id"])]
+        result, _, _, _ = _run(v2_mod, frames, anns, gabaritos=7)
+
+        # Exclusão que só existe no log é indistinguível de bug na hora de
+        # conferir a contagem (D-165) — o número é campo de primeira classe.
+        assert result["holdout_recusados"] == 7
+
+    def test_sem_gabarito_o_campo_e_zero(self, v2_mod):
+        frames = [_make_frame(uuid4(), i) for i in range(5)]
+        anns = [_make_ann(frames[0]["id"])]
+        result, _, _, _ = _run(v2_mod, frames, anns)
+        assert result["holdout_recusados"] == 0
+        assert result["total_frames"] == 5  # não-regressão: nada foi retido
 
 
 class TestProvenanceGate:
@@ -488,6 +532,50 @@ class TestLineageInsert:
             )
         status_call = dataset_repo.update_version_status.call_args
         assert status_call.args[2] == "error"
+
+
+class TestMembresiaDoSplitCongelada:
+    """O build grava QUEM caiu em cada split (migration 131).
+
+    `dataset_versions.split` só guarda a proporção. Sem esta gravação o
+    holdout do A/B é irrecuperável — o build 42023066 sorteou com
+    `random.shuffle` sem semente e nem re-executar o código recupera.
+    """
+
+    def test_grava_membresia_com_os_ids_exatos_de_cada_split(self, v2_mod):
+        frames = [_make_frame(uuid4(), i) for i in range(9)]
+        result, _, dataset_repo, _ = _run(v2_mod, frames, [_make_ann(frames[0]["id"])])
+
+        membresia = dataset_repo.update_split_membership.call_args.args[2]
+        assert set(membresia) == {"train", "val", "test"}
+
+        # Os ids gravados são exatamente os frames do export — nem um a mais,
+        # nem um a menos, e nenhum em dois splits.
+        gravados = [i for nome in membresia for i in membresia[nome]]
+        assert sorted(gravados) == sorted(str(f["id"]) for f in frames)
+        assert len(gravados) == len(set(gravados))
+
+        # E as contagens gravadas na row batem com o tamanho das listas.
+        for nome in ("train", "val", "test"):
+            assert len(membresia[nome]) == result[f"{nome}_count"]
+
+    def test_membresia_gravada_antes_do_ready(self, v2_mod):
+        """Versão 'ready' é imutável — se a membresia entrasse depois, o
+        artefato ficaria pronto sem a prova que o define."""
+        ordem = []
+        dataset_repo = MagicMock()
+        dataset_repo.create_version_v2.return_value = {"id": DV_ID}
+        dataset_repo.get_pending_version.return_value = None
+        dataset_repo.update_split_membership.side_effect = (
+            lambda *a, **k: ordem.append("membresia")
+        )
+        dataset_repo.update_version_status.side_effect = (
+            lambda *a, **k: ordem.append(f"status:{a[2]}")
+        )
+        frames = [_make_frame(uuid4(), i) for i in range(5)]
+        _run(v2_mod, frames, [_make_ann(frames[0]["id"])], dataset_repo=dataset_repo)
+
+        assert ordem.index("membresia") < ordem.index("status:ready")
 
 
 class TestRetryReusesExistingVersion:

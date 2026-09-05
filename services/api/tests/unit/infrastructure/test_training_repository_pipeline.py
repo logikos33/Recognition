@@ -156,6 +156,35 @@ class TestCreateModelExtended:
         json_params = [p for p in params if isinstance(p, str) and p.startswith("{")]
         assert any("per_class" in p for p in json_params)
 
+    def test_display_name_included_when_present(self):
+        """Regra de nomenclatura do modelo no nascimento: display_name é
+        opcional no mesmo padrão dos demais campos 098 (framework,
+        r2_onnx_key, metrics...) — só entra no INSERT quando presente."""
+        uid = uuid4()
+        cur = MagicMock()
+        cur.fetchone.return_value = {"id": str(uuid4())}
+        repo, cur = _repo(cur)
+        repo.create_model({
+            "user_id": uid, "name": "rfdetr-epi-v1", "model_path": "models/best.onnx",
+            "display_name": "Logikos EPI Completo · 04/09 14h30",
+        })
+        query, params = cur.execute.call_args[0]
+        assert "display_name" in query
+        assert "Logikos EPI Completo · 04/09 14h30" in params
+
+    def test_display_name_omitted_when_absent(self):
+        """Payload sem display_name — coluna fora do INSERT (default NULL do
+        schema, retrocompat com callers que ainda não a calculam)."""
+        uid = uuid4()
+        cur = MagicMock()
+        cur.fetchone.return_value = {"id": str(uuid4())}
+        repo, cur = _repo(cur)
+        repo.create_model({
+            "user_id": uid, "name": "m", "model_path": "models/best.onnx",
+        })
+        query, _ = cur.execute.call_args[0]
+        assert "display_name" not in query
+
     def test_explicit_tenant_short_circuits_subquery(self):
         """tenant_id explícito → COALESCE usa o valor, não o lookup em users."""
         tenant = uuid4()

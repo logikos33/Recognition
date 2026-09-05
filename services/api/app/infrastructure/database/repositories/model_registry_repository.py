@@ -125,6 +125,17 @@ class ModelRegistryRepository(BaseRepository):
         }
         if error:
             payload["validation_error"] = error[:500]
+        return self.merge_metrics(model_id, payload)
+
+    def merge_metrics(
+        self, model_id: UUID | str, payload: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
+        """Funde `payload` em trained_models.metrics (JSONB `||`, top-level).
+
+        Merge e não overwrite: `metrics` acumula fatos de origens diferentes
+        (validação do ONNX, custo de GPU, censo, agora os limiares por classe)
+        e sobrescrever apagaria o que a outra origem gravou.
+        """
         return self._execute_mutation(
             "UPDATE trained_models "
             "SET metrics = COALESCE(metrics, '{}'::jsonb) || %s::jsonb "

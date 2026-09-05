@@ -330,8 +330,12 @@ class TestListUnlabeledByUncertainty:
         cur.fetchall.side_effect = [[], []]
         repo, cur = _repo(cur)
         repo.list_unlabeled_by_uncertainty(tenant_id, "quality", limit=7)
+        tid = str(tenant_id)
         for call in cur.execute.call_args_list:
-            assert call[0][1] == (str(tenant_id), "quality", 7)
+            # tenant + módulo, os 4 do escopo de câmera (migration 134, ver
+            # `escopo_params`), e o limite por último.
+            assert call[0][1] == (tid, "quality", tid, "quality", tid, "quality", 7)
+            assert "camera_modules" in call[0][0]
 
 
 # ---------------------------------------------------------------------------

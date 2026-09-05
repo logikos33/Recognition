@@ -31,6 +31,9 @@ from app.core.exceptions import (
 )
 from app.core.responses import error, success
 from app.infrastructure.database.connection import DatabasePool
+from app.infrastructure.database.repositories.camera_module_repository import (
+    CameraModuleRepository,
+)
 from app.infrastructure.database.repositories.camera_repository import CameraRepository
 from app.infrastructure.database.repositories.model_rollout_repository import (
     ModelRolloutRepository,
@@ -63,6 +66,33 @@ def _get_model_rollout_repo() -> ModelRolloutRepository:
     if pool is None:
         raise RuntimeError("Database pool not initialized")
     return ModelRolloutRepository(pool)
+
+
+def _get_camera_module_repo() -> CameraModuleRepository:
+    pool = DatabasePool.get_instance()
+    if pool is None:
+        raise RuntimeError("Database pool not initialized")
+    return CameraModuleRepository(pool)
+
+
+def _check_camera_module(camera_id: str, tenant_id: str, target_module: str) -> None:
+    """Valida que a CÂMERA serve o módulo alvo (public.camera_modules, 134).
+
+    Irmã de `_check_model_module`: aquela confere o lado do modelo, esta o lado
+    da câmera. Sem ela, apontar o modelo de EPI para a Guarita é aceito e
+    gravado, e só a inferência ao vivo descobriria — tarde, e sem dizer nada.
+
+    Recusa ALTA (400 via ValidationError, mesmo canal do irmão): é escrita
+    deliberada de humano, e escrita ignorada em silêncio é o pior modo de
+    falha desta tela. Passa direto enquanto o dono não declarou nenhuma câmera
+    para o módulo (escopo não declarado não bloqueia trabalho legítimo).
+    """
+    repo = _get_camera_module_repo()
+    if not repo.camera_serves_module(str(tenant_id), str(camera_id), target_module):
+        raise ValidationError(
+            f"Câmera não está vinculada ao módulo '{target_module}' — "
+            "vincule na tela de atribuição de módulos antes de apontar um modelo"
+        )
 
 
 def _check_model_module(model: dict, target_module: str) -> None:
@@ -144,6 +174,7 @@ def set_camera_model(camera_id: str):  # type: ignore[no-untyped-def]
             if not model:
                 raise NotFoundError("Modelo", str(model_id))
             _check_model_module(model, active_module)
+            _check_camera_module(camera_id, str(tenant_id), active_module)
 
         row = camera_repo.set_model_assignment(
             camera_id, tenant_id, active_module, str(model_id) if model_id else None
@@ -247,6 +278,7 @@ def put_camera_models(camera_id: str):  # type: ignore[no-untyped-def]
             if not model:
                 raise NotFoundError("Modelo", str(model_id))
             _check_model_module(model, module)
+            _check_camera_module(camera_id, str(tenant_id), module)
 
         row = camera_repo.set_model_assignment(
             camera_id, tenant_id, module, str(model_id) if model_id else None

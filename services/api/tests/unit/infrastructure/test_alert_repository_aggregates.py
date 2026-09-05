@@ -140,7 +140,15 @@ class TestViolationsByClass:
         )
         sql, params = _last_call(pool)
         assert sql.index("= ANY(%s::text[])") < sql.index("= ANY(%s)")
-        assert list(params) == [tenant, FROM_TS, TO_TS, "epi", ["capacete"], ["no_helmet"]]
+        # Os 4 params do escopo de módulo (migration 134) entram logo depois do
+        # module_code, na mesma ordem em que o predicado aparece no WHERE —
+        # ver `escopo_params`. Sem eles a taxa de conformidade contaria
+        # violação de câmera que o dono não declarou no módulo.
+        assert list(params) == [
+            tenant, FROM_TS, TO_TS, "epi",
+            tenant, "epi", tenant, "epi",
+            ["capacete"], ["no_helmet"],
+        ]
 
 
 class TestTopCamerasByAlerts:
@@ -232,6 +240,94 @@ class TestComplianceAggregates:
             assert "is_violation IS TRUE" in sql
             assert "module_code = %s" in sql
             assert "epi" in params
+
+
+class TestCaptureProfile:
+    """O eixo de tempo do perfil é a CAPTURA, e isso não pode regredir.
+
+    `created_at` é quando a linha entrou no banco. Numa carga em lote os dois
+    campos divergem por dias — medido no DEV, a captura se espalha das 10h às
+    19h (o dia da fábrica) e o `created_at` empilha em 3 horários (as vezes em
+    que o processo de ingestão rodou). Trocar de volta transforma "em que
+    horário a fábrica gera violação" em "a que horas o servidor gravou", e o
+    erro passa despercebido porque continua desenhando um gráfico plausível.
+    """
+
+    def test_agrupa_e_filtra_por_timestamp_nunca_por_created_at(self):
+        repo, pool = _make_repo()
+        repo.capture_profile(str(uuid4()), FROM_TS, TO_TS, "epi")
+        sql, _ = _last_call(pool)
+        assert "date_trunc('hour', a.timestamp)" in sql
+        assert "a.timestamp >= %s" in sql
+        assert "a.created_at" not in sql
+
+    def test_tenant_scoped(self):
+        repo, pool = _make_repo()
+        tenant = str(uuid4())
+        repo.capture_profile(tenant, FROM_TS, TO_TS)
+        sql, params = _last_call(pool)
+        assert "a.tenant_id = %s" in sql
+        assert tenant in params
+
+    def test_tres_baldes_de_polaridade_e_nao_dois(self):
+        """Conformidade (EPI em uso) e classe indecidida não são violação."""
+        repo, pool = _make_repo()
+        repo.capture_profile(str(uuid4()), FROM_TS, TO_TS, "epi")
+        sql, _ = _last_call(pool)
+        assert "'conformidade'" in sql
+        assert "'violacao'" in sql
+        assert "'indefinido'" in sql
+
+    def test_situacao_le_a_mesma_janela_de_captura(self):
+        """Dois cartões da mesma tela sobre o MESMO conjunto de eventos."""
+        repo, pool = _make_repo()
+        pool.mock_cursor.fetchone.return_value = {"total": 423, "nao_reconhecidos": 396}
+        situacao = repo.review_situation(str(uuid4()), FROM_TS, TO_TS, "epi")
+        sql, _ = _last_call(pool)
+        assert "a.timestamp >= %s" in sql
+        assert "a.created_at" not in sql
+        assert situacao["total"] == 423
+
+
+class TestTimelineTimeColumn:
+
+    def test_default_continua_sendo_a_ingestao(self):
+        """Opt-in: quem já chamava a timeline não pode ver o eixo mudar."""
+        repo, pool = _make_repo()
+        repo.timeline_by_bucket(str(uuid4()), FROM_TS, TO_TS, include_demo=False)
+        sql, _ = _last_call(pool)
+        assert "a.created_at" in sql
+        assert "a.timestamp" not in sql
+
+    def test_captura_troca_a_coluna_do_ramo_alerts(self):
+        repo, pool = _make_repo()
+        repo.timeline_by_bucket(
+            str(uuid4()), FROM_TS, TO_TS, include_demo=False, time_column="timestamp"
+        )
+        sql, _ = _last_call(pool)
+        assert "a.timestamp" in sql
+        assert "a.created_at" not in sql
+
+    def test_demo_events_fica_em_created_at_porque_nao_tem_timestamp(self):
+        """`demo_events` não tem coluna `timestamp` — a UNION quebraria."""
+        repo, pool = _make_repo()
+        repo.timeline_by_bucket(
+            str(uuid4()), FROM_TS, TO_TS, include_demo=True, time_column="timestamp"
+        )
+        sql, _ = _last_call(pool)
+        assert "SELECT a.timestamp AS ts" in sql
+        assert "SELECT d.created_at AS ts" in sql
+        assert "d.timestamp" not in sql
+
+    def test_coluna_fora_da_whitelist_cai_no_default(self):
+        repo, pool = _make_repo()
+        repo.timeline_by_bucket(
+            str(uuid4()), FROM_TS, TO_TS, include_demo=False,
+            time_column="created_at FROM alerts; DROP TABLE alerts--",
+        )
+        sql, _ = _last_call(pool)
+        assert "DROP" not in sql
+        assert "a.created_at" in sql
 
 
 class TestTimelineWeekBucket:

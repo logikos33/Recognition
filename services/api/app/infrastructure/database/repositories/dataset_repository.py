@@ -158,6 +158,77 @@ class DatasetRepository(BaseRepository):
             ),
         )
 
+    def update_split_membership(
+        self,
+        version_id: UUID,
+        tenant_id: str,
+        membership: dict[str, list[str]],
+    ) -> Optional[dict[str, Any]]:
+        """Congela QUEM caiu em cada split — {"train":[ids],"val":[...],"test":[...]}.
+
+        A coluna `split` só guarda a proporção pedida. Sem esta membresia o
+        holdout é uma promessa: o split do build 42023066 saiu de um
+        `random.shuffle` sem semente e não é reproduzível nem re-executando o
+        código. Gravada no build, antes de 'ready' — a partir daí a versão é
+        imutável e o holdout também.
+        """
+        return self._execute_mutation(
+            "UPDATE dataset_versions SET split_membership = %s::jsonb "
+            "WHERE id = %s AND tenant_id = %s RETURNING id",
+            (json.dumps(membership), str(version_id), str(tenant_id)),
+        )
+
+    def get_holdout(
+        self, version_id: UUID, preferencia: tuple[str, ...] = ("test", "val")
+    ) -> Optional[dict[str, Any]]:
+        """O holdout da versão pedida — independente de qual modelo o consome.
+
+        Este é o ponto: `_resolve_holdout_split` escolhia o split pela contagem
+        da dataset_version DO PRÓPRIO MODELO, e por isso o ranking histórico
+        comparou modelos em provas diferentes. Aqui a entrada é o id do holdout
+        e nada mais; dois modelos que pedem o mesmo id recebem a mesma lista.
+
+        Retorna None se a versão não existe. `frame_ids=None` + `frozen=False`
+        quando a versão é anterior à migration 131 (membresia irrecuperável) —
+        ausência de congelamento nunca é devolvida como congelamento.
+        """
+        row = self._execute_one(
+            "SELECT id, coco_r2_key, split_membership, test_count, val_count "
+            "FROM dataset_versions WHERE id = %s",
+            (str(version_id),),
+        )
+        if row is None:
+            return None
+
+        membership = row.get("split_membership") or {}
+        if isinstance(membership, str):  # driver sem parse automático de jsonb
+            membership = json.loads(membership)
+
+        for nome in preferencia:
+            frame_ids = membership.get(nome)
+            if frame_ids:
+                return {
+                    "dataset_version_id": str(row["id"]),
+                    "coco_r2_key": row.get("coco_r2_key"),
+                    "split": nome,
+                    "frame_ids": [str(f) for f in frame_ids],
+                    "frozen": True,
+                }
+
+        # Sem membresia gravada: cai na contagem (comportamento legado), mas
+        # devolve frozen=False para quem gravar a métrica registrar que a prova
+        # não estava congelada.
+        for nome in preferencia:
+            if int(row.get(f"{nome}_count") or 0) > 0:
+                return {
+                    "dataset_version_id": str(row["id"]),
+                    "coco_r2_key": row.get("coco_r2_key"),
+                    "split": nome,
+                    "frame_ids": None,
+                    "frozen": False,
+                }
+        return None
+
     def get_versions_by_dataset(
         self, dataset_id: UUID, tenant_id: str
     ) -> list[dict[str, Any]]:

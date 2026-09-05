@@ -77,6 +77,15 @@ class CostCapExceededError(RuntimeError):
     """Custo estimado do job excede o teto configurado — pod NÃO foi criado."""
 
 
+class SaldoInsuficienteError(RuntimeError):
+    """A conta não tem saldo para terminar o job — pod NÃO foi criado.
+
+    Distinto de `CostCapExceededError`: o teto é uma decisão nossa sobre quanto
+    QUEREMOS gastar; o saldo é um fato sobre quanto PODEMOS. Um job dentro do
+    teto e fora do saldo começa, roda, e morre na metade levando junto tudo o
+    que já foi pago."""
+
+
 # --------------------------------------------------------------------- config
 
 _DEFAULT_TIMEOUT_SECONDS: dict[JobKind, int] = {
@@ -154,6 +163,54 @@ def cloud_type_default() -> str:
 
 def estimate_cost_usd(price_usd_h: float, timeout_seconds: int) -> float:
     return round(price_usd_h * (timeout_seconds / 3600.0), 4)
+
+
+def margem_de_saldo() -> float:
+    """Quanto de folga o saldo precisa ter sobre o custo projetado (default 1,25).
+
+    Não é conservadorismo gratuito: a projeção sai do timeout, e um job que
+    demora mais que o previsto (a placa sorteada é mais lenta, o dataset é
+    maior) gasta acima da estimativa. 25% cobre o desvio comum sem travar
+    disparo legítimo."""
+    return _env_float("RUNPOD_SALDO_MARGEM", 1.25)
+
+
+def check_saldo(client: Any, estimated_cost: float, *, kind: JobKind | str) -> float:
+    """Confere se a conta aguenta o job ANTES de criar o pod. Devolve o saldo.
+
+    Complementa `check_cost_cap`, não substitui: o teto diz quanto queremos
+    gastar, o saldo diz quanto a conta pode. Foram necessários os dois porque
+    em 02/09 o teto autorizado (US$ 40) era o DOBRO do saldo real (US$ 20,30),
+    e três pods concorrentes teriam esgotado a conta em ~9h contra ~8h de
+    treino — todos morrendo juntos, perdendo o que já fora pago.
+
+    Saldo ilegível NÃO bloqueia: avisa alto e deixa passar. Uma falha de leitura
+    da API de billing não pode impedir um treino autorizado — o teto de custo
+    continua guardando o orçamento nesse caso.
+    """
+    try:
+        saldo = float(client.get_saldo())
+    except Exception as exc:  # noqa: BLE001 — billing fora do ar não trava treino autorizado
+        logger.warning(
+            "check_saldo: saldo ilegível (%s) — seguindo só com o teto de custo", exc
+        )
+        return float("nan")
+
+    preciso = estimated_cost * margem_de_saldo()
+    if saldo < preciso:
+        raise SaldoInsuficienteError(
+            f"Saldo da conta RunPod (${saldo:.2f}) não cobre o job kind={JobKind(kind).value} "
+            f"(projetado ${estimated_cost:.2f} × margem {margem_de_saldo():.2f} = ${preciso:.2f}) "
+            "— pod NÃO criado. Recarregue a conta ou reduza o timeout do job."
+        )
+    # Alerta antes do bloqueio: dá tempo de recarregar sem interromper nada.
+    if saldo < preciso * 2:
+        logger.warning(
+            "runpod_saldo_baixo: $%.2f na conta, projetado $%.2f para este job — "
+            "resta folga para ~%.1f job(s) deste tamanho. Considere recarregar.",
+            saldo, estimated_cost, saldo / estimated_cost if estimated_cost else 0.0,
+        )
+    return saldo
 
 
 def check_cost_cap(kind: JobKind | str, estimated_cost: float) -> None:
@@ -393,9 +450,15 @@ def run_runpod_job(
     timeout_seconds = timeout_seconds or timeout_seconds_for_kind(kind)
     poll_interval = poll_interval or poll_interval_seconds()
 
-    price = client.get_gpu_price(gpu_type)
+    # O tier tem de ser o MESMO na cotação e no create_pod (linha do cloud_type
+    # abaixo): a API devolve o preço da COMMUNITY quando ninguém pergunta, e
+    # cotar COMMUNITY para rodar em SECURE valida o teto contra menos da metade
+    # da conta (4090 medida em 02/09: $0,34 vs $0,74).
+    cloud_type = cloud_type_default()
+    price = client.get_gpu_price(gpu_type, secure_cloud=cloud_type.upper() == "SECURE")
     estimated_cost = estimate_cost_usd(price, timeout_seconds)
     check_cost_cap(kind, estimated_cost)
+    check_saldo(client, estimated_cost, kind=kind)
 
     onstart = build_onstart(executor_source, timeout_seconds, executor_filename=executor_filename)
     pod_env = {
@@ -410,7 +473,7 @@ def run_runpod_job(
         env=pod_env,
         docker_start_cmd=["/bin/bash", "-c", onstart],
         container_disk_gb=container_disk_gb_default(),
-        cloud_type=cloud_type_default(),
+        cloud_type=cloud_type,
     )
     pod_id = str(pod["id"])
     persist_instance_ref_fn(pod_id)

@@ -32,6 +32,9 @@ from app.core.exceptions import EpiMonitorError, NotFoundError, ValidationError
 from app.core.responses import error, success
 from app.domain.services.geometry_validation import validate_deployment_config
 from app.infrastructure.database.connection import DatabasePool
+from app.infrastructure.database.repositories.camera_module_repository import (
+    CameraModuleRepository,
+)
 from app.infrastructure.database.repositories.camera_repository import CameraRepository
 from app.infrastructure.database.repositories.model_deployment_repository import (
     ModelDeploymentRepository,
@@ -57,6 +60,10 @@ def _get_deployment_repo() -> ModelDeploymentRepository:
 
 def _get_registry_repo() -> ModelRegistryRepository:
     return ModelRegistryRepository(DatabasePool.get_instance())
+
+
+def _get_camera_module_repo() -> CameraModuleRepository:
+    return CameraModuleRepository(DatabasePool.get_instance())
 
 
 def _serialize(row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
@@ -171,6 +178,22 @@ def post_camera_model_config(camera_id: str):  # type: ignore[no-untyped-def]
 
         if _get_registry_repo().get_for_tenant(model_uuid, tenant_id) is None:
             return error("Modelo não encontrado", 404)
+
+        # ESCOPO DE MÓDULO — recusa ALTO, como a ingestão e ao contrário do
+        # pool. Aqui é uma ESCRITA deliberada de um humano apontando um modelo
+        # a uma câmera: ignorar em silêncio seria o pior dos mundos — a tela
+        # diria "salvo", o deployment não valeria para a inferência, e o dono
+        # ficaria esperando detecção de uma câmera que nunca entrou no módulo.
+        # Recusa explícita transforma isso numa pergunta respondível.
+        if not _get_camera_module_repo().camera_serves_module(
+            str(tenant_id), camera_id, module_code
+        ):
+            return error(
+                f"Câmera não está vinculada ao módulo '{module_code}' — "
+                "vincule na tela de atribuição de módulos antes de "
+                "apontar um modelo",
+                422,
+            )
 
         config_errors = validate_deployment_config(config)
         if config_errors:

@@ -5,6 +5,7 @@ Endpoints:
   GET /api/v1/events/search    JWT obrigatório; busca combinada de alertas por tenant
   GET /api/v1/events/timeline  JWT obrigatório; contagem de eventos por bucket de tempo
   GET /api/v1/events/summary   JWT obrigatório; agregado por classe e por câmera no período
+  GET /api/v1/events/profile   JWT obrigatório; volume por hora de CAPTURA × polaridade
 
 Filtros comuns:
   camera_id[]     UUID (repetível para múltiplas câmeras)
@@ -66,6 +67,17 @@ def _parse_float(value: str | None) -> float | None:
         return float(value)
     except (ValueError, TypeError):
         return None
+
+
+def _time_column() -> str:
+    """Coluna de tempo pedida na query — 'captured' vira `alerts.timestamp`.
+
+    Default 'created' (= `created_at`) preserva byte a byte o comportamento de
+    quem já chama a timeline. Só o eixo de CAPTURA responde "em que horário a
+    fábrica gera violação"; `created_at` responde "a que horas o servidor
+    gravou" (ver `AlertRepository.capture_profile`).
+    """
+    return "timestamp" if request.args.get("time_field") == "captured" else "created_at"
 
 
 def _safe_list(key: str) -> list[str]:
@@ -182,6 +194,7 @@ def events_timeline():
             class_names=class_names,
             module_code=module_code,
             include_demo=include_demo,
+            time_column=_time_column(),
         )
 
         timeline = [
@@ -268,3 +281,76 @@ def events_summary():
     except Exception as exc:
         logger.error("events_summary_error: %s", exc, exc_info=True)
         return error("Erro no resumo de eventos", 500)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/events/profile
+# ---------------------------------------------------------------------------
+@events_bp.route("/events/profile", methods=["GET"])
+@jwt_required()
+def events_profile():
+    """Perfil do período pelo HORÁRIO DE CAPTURA: volume × polaridade + tratativa.
+
+    Um pedido só para as três perguntas que o painel faz sobre o mesmo conjunto
+    de eventos — em que HORA DO DIA a fábrica gera violação, em que DIAS, e
+    o que aquele total soma (violação × conformidade × não classificada).
+
+    As linhas saem em bucket de hora UTC, como `/events/timeline`; a dobra em
+    hora-do-dia e em dia é do cliente, que é quem sabe o fuso de quem lê. Ver
+    `AlertRepository.capture_profile` para por que o eixo é `timestamp` e não
+    `created_at`.
+    """
+    try:
+        tenant_id = get_tenant_id()
+
+        from_ts = _parse_iso(request.args.get("from"))
+        to_ts = _parse_iso(request.args.get("to"))
+        if not from_ts or not to_ts:
+            return error("Parâmetros 'from' e 'to' são obrigatórios", 400)
+        if to_ts < from_ts:
+            return error("'to' deve ser posterior a 'from'", 400)
+        if (to_ts - from_ts).days > _MAX_SUMMARY_DAYS:
+            return error(f"Período máximo de {_MAX_SUMMARY_DAYS} dias", 400)
+
+        module_code = (request.args.get("module_code") or "").strip() or None
+
+        repo = _get_repo()
+        rows = repo.capture_profile(
+            tenant_id=tenant_id, from_ts=from_ts, to_ts=to_ts, module_code=module_code
+        )
+        situacao = repo.review_situation(
+            tenant_id=tenant_id, from_ts=from_ts, to_ts=to_ts, module_code=module_code
+        )
+
+        def _iso(value):  # type: ignore[no-untyped-def]
+            return value.isoformat() if value is not None else None
+
+        return success(
+            {
+                "rows": [
+                    {
+                        "bucket": _iso(r.get("bucket")),
+                        "kind": r["kind"],
+                        "count": r["count"],
+                    }
+                    for r in rows
+                ],
+                "situacao": {
+                    "total": situacao.get("total", 0),
+                    "nao_reconhecidos": situacao.get("nao_reconhecidos", 0),
+                    "procedentes": situacao.get("procedentes", 0),
+                    "improcedentes": situacao.get("improcedentes", 0),
+                    "cameras": situacao.get("cameras", 0),
+                    "primeira_captura": _iso(situacao.get("primeira_captura")),
+                    "ultima_captura": _iso(situacao.get("ultima_captura")),
+                    "confianca_media": (
+                        float(situacao["confianca_media"])
+                        if situacao.get("confianca_media") is not None
+                        else None
+                    ),
+                },
+            }
+        )
+    except Exception as exc:
+        logger.error("events_profile_error: %s", exc, exc_info=True)
+        return error("Erro no perfil de eventos", 500)

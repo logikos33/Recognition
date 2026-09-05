@@ -18,7 +18,9 @@ linhagem completa (status building→ready|error).
 Filtros do export: frames com curation_status='excluida' nunca entram no
 pool (curation 'duvida' CONTINUA entrando — ainda não há decisão humana);
 anotações cuja classe custom do tenant está arquivada (yolo_classes.
-archived_at) são excluídas do COCO, mesmo que o frame continue no pool.
+archived_at) são excluídas do COCO, mesmo que o frame continue no pool;
+frame com dataset_role='holdout' (gabarito, migration 133) NUNCA entra —
+ver `_snapshot_labeled_frames` e `holdout_recusados` no resultado.
 
 Corrige os bugs da task legada (versioning.py): key mismatch no copy e
 ausência de INSERT. A task legada permanece para compat; esta é a oficial.
@@ -27,7 +29,6 @@ import hashlib
 import json
 import traceback
 import logging
-import random
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from typing import Any
@@ -101,6 +102,18 @@ def _snapshot_labeled_frames(
     (ver frame_repository.py list_frames/list_by_camera). 'duvida' CONTINUA
     entrando — ainda não há decisão humana; excluir preventivamente só
     encolheria o pool sem necessidade (registrado no PR).
+
+    ⛔ TRAVA HOLDOUT-ONLY (migration 133): `dataset_role = 'pool'`. Frame
+    marcado como GABARITO mede modelo e nunca alimenta treino — "um quadro só
+    tem UM emprego para sempre". Se o gabarito vaza para o treino, o modelo
+    decora a prova e toda avaliação posterior mente para cima sem que nada
+    acuse: é a única falha desta lista que corrompe a MEDIÇÃO, não o dado.
+    ALLOWLIST (`= 'pool'`), não denylist (`<> 'holdout'`), para que qualquer
+    papel futuro nasça FORA do treino até alguém decidir o contrário.
+    O mesmo predicado tem de estar em `_fetch_annotations` — as duas queries
+    do pool precisam concordar sobre o mesmo universo (ver o motivo lá).
+    Quem quiser saber quantos frames a trava reteve: `_contar_gabaritos`,
+    devolvido em `holdout_recusados` no resultado do build.
     """
     return annotation_repo._execute(
         """
@@ -114,11 +127,42 @@ def _snapshot_labeled_frames(
            AND tf.module_code = %s
            AND tf.is_annotated = TRUE
            AND tf.curation_status != 'excluida'
+           AND tf.dataset_role = 'pool'
          ORDER BY (tf.validated_at IS NOT NULL) DESC,
                   tf.video_id, tf.frame_number
         """,
         (str(tenant_id), module_code),
     )
+
+
+def _contar_gabaritos(
+    annotation_repo, tenant_id: str, module_code: str
+) -> int:
+    """Quantos frames a trava holdout-only reteve NESTE export.
+
+    Mesmo universo de `_snapshot_labeled_frames` com o papel invertido: o que
+    ENTRARIA no pool se não fosse gabarito. Só isso é "recusado" — frame de
+    outro módulo, não anotado ou excluído na curadoria não entraria de
+    qualquer jeito, e contá-lo transformaria o número em ruído.
+
+    Existe porque exclusão silenciosa é o padrão que já custou 1.098 anotações
+    descartadas sem ninguém saber. O número sobe no resultado do build
+    (`holdout_recusados`), não só no log — aviso que ninguém lê é silêncio com
+    passos extras (D-165).
+    """
+    row = annotation_repo._execute_one(
+        """
+        SELECT COUNT(*) AS total
+          FROM training_frames tf
+         WHERE tf.tenant_id = %s
+           AND tf.module_code = %s
+           AND tf.is_annotated = TRUE
+           AND tf.curation_status != 'excluida'
+           AND tf.dataset_role <> 'pool'
+        """,
+        (str(tenant_id), module_code),
+    )
+    return int(row["total"]) if row else 0
 
 
 def _fetch_annotations(
@@ -159,10 +203,11 @@ def _fetch_annotations(
     archived_at, migration 110 — "aposentar" uma classe sem apagar caixas
     já salvas): a classe continua existindo, só não alimenta mais treino.
 
-    curation_status != 'excluida': mesmo filtro do pool de frames (ver
+    curation_status != 'excluida' e dataset_role = 'pool' (trava
+    holdout-only, migration 133): mesmos filtros do pool de frames (ver
     _snapshot_labeled_frames) — sem efeito prático isolado (o frame já
-    não estaria em `frames`), mas mantém as duas queries com o mesmo
-    universo e evita trabalho desperdiçado. Mesma razão: SEM filtro de
+    não estaria em `frames`), mas mantêm as duas queries com o mesmo
+    universo e evitam trabalho desperdiçado. Mesma razão: SEM filtro de
     câmera ativa (ver _snapshot_labeled_frames) — as duas queries do pool
     têm de concordar, senão uma anotação sobrevive no snapshot e some
     aqui (ou vice-versa), quebrando o COCO por baixo do frame.
@@ -182,6 +227,7 @@ def _fetch_annotations(
            AND tf.module_code = %s
            AND tf.is_annotated = TRUE
            AND tf.curation_status != 'excluida'
+           AND tf.dataset_role = 'pool'
            AND (a.class_id < 100000
                 OR (c.id IS NOT NULL AND c.archived_at IS NULL))
          ORDER BY a.frame_id, a.id
@@ -371,20 +417,177 @@ def _split_estavel(chave: str, seed: str, split: dict[str, float]) -> str:
     return "val" if ponto < corte_val else "test"
 
 
+def _split_estratificado(
+    groups: dict[str, list[dict[str, Any]]], split: dict[str, float], seed: str,
+    anns_by_frame: dict[str, list[dict[str, Any]]] | None,
+) -> dict[str, list[dict[str, Any]]]:
+    """Atribui GRUPOS INTEIROS aos splits pelo maior déficit relativo por classe.
+
+    ⛔ O grupo (vídeo, ou câmera+dia) continua indivisível — é ele que impede o
+    leakage, e nada aqui o quebra. O que muda é COMO o grupo é escolhido: o
+    sorteio anterior (embaralhar as chaves e cortar por posição) trata todos os
+    grupos como intercambiáveis, e classe rara não é intercambiável. Ela vive em
+    poucos grupos; um grupo grande caindo em val/test leva metade da classe
+    junto. Medido no RVB (semente 'rvb-epi:v17', 4.983 frames): `Sem Luvas`
+    perdeu 93 de 178 caixas para val+test — 52%, contra 24% da média — e chegou
+    ao treino com 85. É a única classe de ausência que sustenta a régua de
+    precisão de campo, então esse é o gargalo do modelo, não um detalhe.
+
+    O critério: guloso determinístico, um grupo por vez, cada um indo ao split
+    de maior DÉFICIT RELATIVO ponderado — a ideia da estratificação iterativa de
+    Sechidis et al. (2011), a mesma do `IterativeStratification` do
+    scikit-multilearn, com o grupo no lugar da amostra. O peso é o que faz a
+    classe rara mandar; ver `custo` para a fórmula e para o que foi medido.
+
+    A ordem de visita é por DOMINÂNCIA: primeiro o grupo que concentra a maior
+    fatia de alguma classe. É o guloso clássico — a peça difícil entra enquanto
+    os três splits ainda têm folga, e as fáceis ajustam o resto no fim.
+    Desempate por sha256(seed, chave), que é o que mantém `split_seed` sendo um
+    parâmetro real. A atribuição é função de (seed, grupos, contagens) e de nada
+    mais: mesmo pool + mesma semente = mesmo split, que é a invariante do #515
+    (o retry reescrevendo o mesmo COCO).
+
+    Medido no RVB, pior desvio de UMA classe contra os 30% de val+test pedidos,
+    em três sementes (v17/v18/v19): sorteio antigo **22,2 pp** (`Sem Luvas`,
+    52%) → estratificado **4,9 pp**. Na distribuição sintética do teste (classe
+    rara em 4 de 30 grupos): 30 pp → **0 pp**.
+
+    Preço, explícito: a atribuição olha a população inteira, então um SUBCONJUNTO
+    não herda a decisão. Quem precisa dessa garantia usa `estavel=True`
+    (`_split_estavel`), que segue intocado — ver a nota em `_split_by_group`.
+    """
+    total_frames = sum(len(v) for v in groups.values())
+    if len(groups) < len(_SPLIT_NAMES):
+        logger.warning(
+            "dataset_export_split_poucos_grupos: %d grupo(s) de câmera+dia para "
+            "%d splits — não há como estratificar classe alguma; a proporção sai "
+            "do que `_garante_val_e_test` conseguir recortar. Base pequena "
+            "demais para a métrica de val/test significar algo",
+            len(groups), len(_SPLIT_NAMES),
+        )
+
+    por_grupo: dict[str, dict[str, int]] = {}
+    total_classe: dict[str, int] = {}
+    for key, group_frames in groups.items():
+        contagem: dict[str, int] = {}
+        for frame in group_frames:
+            for ann in (anns_by_frame or {}).get(str(frame["id"]), []):
+                nome = ann["class_name"]
+                contagem[nome] = contagem.get(nome, 0) + 1
+                total_classe[nome] = total_classe.get(nome, 0) + 1
+        por_grupo[key] = contagem
+
+    alvo_classe = {
+        nome: {s: total * float(split.get(s, 0.0)) for s in _SPLIT_NAMES}
+        for nome, total in total_classe.items()
+    }
+    alvo_frames = {
+        s: total_frames * float(split.get(s, 0.0)) for s in _SPLIT_NAMES
+    }
+
+    def prioridade(key: str) -> tuple[float, str]:
+        # Grupo sem anotação entra pela fatia de FRAMES que representa, senão a
+        # posição dele na fila fica arbitrária.
+        contagem = por_grupo[key]
+        dominancia = max(
+            (n / total_classe[c] for c, n in contagem.items()), default=0.0
+        )
+        peso = max(dominancia, len(groups[key]) / max(total_frames, 1))
+        return (-peso, hashlib.sha256(f"{seed}\x00{key}".encode()).hexdigest())
+
+    splits: dict[str, list[dict[str, Any]]] = {s: [] for s in _SPLIT_NAMES}
+    atual_classe: dict[str, dict[str, int]] = {
+        nome: dict.fromkeys(_SPLIT_NAMES, 0) for nome in total_classe
+    }
+    atual_frames = dict.fromkeys(_SPLIT_NAMES, 0)
+    # Caixas de cada classe ainda NÃO atribuídas — a "liberdade" que resta para
+    # consertá-la mais adiante. Ver `custo`.
+    restante_classe = dict(total_classe)
+
+    for key in sorted(groups, key=prioridade):
+        contagem = por_grupo[key]
+        tamanho = len(groups[key])
+
+        def custo(nome_split: str) -> float:
+            """Quanto o erro global CRESCE ao pôr ESTE grupo aqui — menor ganha.
+
+            Três decisões, cada uma com um erro medido atrás dela:
+
+            1. MARGINAL, não distância absoluta até o alvo. Com a distância
+               absoluta, todo split de alvo grande carrega também a penalidade
+               das classes que o grupo NÃO contém, e o `train` sai VAZIO
+               (medido). Aqui, classe ausente do grupo contribui zero.
+
+            2. Erro de classe dividido por `total × restante`, não por `total²`.
+               `restante` é quanto daquela classe ainda não foi atribuído: à
+               medida que a classe se esgota, o termo dela pesa mais e ela passa
+               a decidir. É a ideia de Sechidis (a rara escolhe primeiro) escrita
+               como PESO em vez de prioridade rígida — a prioridade rígida foi
+               tentada e destruiu as classes comuns (`mascara` a 74% do holdout
+               contra 30% pedidos), porque quando chegava a vez delas já não
+               havia grupo livre. Só `1/total²`, o oposto: a comum vencia a rara
+               por volume de votos e a sintética saía a 10 pp.
+
+            3. Um termo de contagem de frames, que segura a proporção global
+               pedida — sem ele o split é bem estratificado e do tamanho errado.
+            """
+            erro = 0.0
+            for classe, n_no_grupo in contagem.items():
+                desvio = atual_classe[classe][nome_split] - alvo_classe[classe][nome_split]
+                escala = total_classe[classe] * max(restante_classe[classe], 1)
+                erro += n_no_grupo * (2 * desvio + n_no_grupo) / escala
+            desvio_f = atual_frames[nome_split] - alvo_frames[nome_split]
+            erro += tamanho * (2 * desvio_f + tamanho) / max(total_frames, 1) ** 2
+            return erro
+
+        escolhido = min(_SPLIT_NAMES, key=custo)
+        splits[escolhido].extend(groups[key])
+        atual_frames[escolhido] += tamanho
+        for classe, n in contagem.items():
+            atual_classe[classe][escolhido] += n
+            restante_classe[classe] -= n
+
+    total = total_frames or 1
+    logger.info(
+        "dataset_export_split_estratificado: %d grupos, proporção real "
+        "train=%.3f val=%.3f test=%.3f (pedida train=%.2f val=%.2f)",
+        len(groups), len(splits["train"]) / total, len(splits["val"]) / total,
+        len(splits["test"]) / total, split.get("train", 0.7), split.get("val", 0.2),
+    )
+    return splits
+
+
 def _split_by_group(
     frames: list[dict[str, Any]], split: dict[str, float], seed: str | None = None,
     estavel: bool = False,
+    anns_by_frame: dict[str, list[dict[str, Any]]] | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """Split por grupo (sem leakage: frames do mesmo vídeo no mesmo split).
 
-    `seed` torna o sorteio DETERMINÍSTICO por (dataset_id, version) — #515.
+    `seed` torna a atribuição DETERMINÍSTICA por (dataset_id, version) — #515.
     A task tem `max_retries=2` e o retry reaproveita a row e o MESMO prefixo
     R2. Com shuffle sem semente, uma tentativa que morre no meio da etapa 7
     (subir os COCO por split) deixa `train/_annotations.coco.json` de um
     sorteio e `val/` de outro: o v9-freeze saiu `ready` com 514 frames que os
     dois declaram — 93% da "validação" vista no treino. Com semente, o retry
-    reproduz o mesmo sorteio e reescrever vira idempotente em vez de
-    destrutivo. `seed=None` preserva o comportamento antigo.
+    reproduz a mesma partição e reescrever vira idempotente em vez de
+    destrutivo.
+
+    Dois caminhos, e a escolha entre eles não é gosto:
+
+    * `estavel=False` (padrão, e o que a rota do produto usa) →
+      `_split_estratificado`: equilibra as CLASSES entre os splits, priorizando
+      as raras. Substituiu o sorteio por posição, que sacrificava classe rara —
+      ver a docstring de lá para o número medido no RVB.
+    * `estavel=True` → `_split_estavel`: hash por grupo, atribuição
+      independente da população. É a garantia de que um SUBCONJUNTO herda a
+      mesma partição, que é o que um A/B entre dois pools precisa (#536).
+      Estratificar quebraria essa garantia, então este caminho segue por hash —
+      e paga o preço em desequilíbrio de classe rara. `_diagnosticar_split`
+      avisa quando isso acontece, nos DOIS caminhos.
+
+    `anns_by_frame` é o que permite estratificar; sem ele (chamador antigo,
+    teste que só olha leakage) a atribuição equilibra apenas contagem de frames.
     """
     groups: dict[str, list[dict[str, Any]]] = {}
     for frame in frames:
@@ -405,34 +608,9 @@ def _split_by_group(
         )
         return _garante_val_e_test(splits_e)
 
-    # `sorted` antes do shuffle: a semente pina o SORTEIO, não a ENTRADA dele.
-    # `groups` nasce na ordem em que as linhas voltaram do banco, e essa ordem
-    # NÃO é total — frame de NVR entra com video_id NULL e frame_number=0, e o
-    # `ORDER BY (validated_at IS NOT NULL) DESC, video_id, frame_number` do
-    # snapshot empata o pool inteiro (empate volta do Postgres em ordem
-    # arbitrária; validar um frame entre as tentativas troca a primeira chave).
-    # Sem ordem canônica, a re-tentativa embaralha uma lista DIFERENTE com a
-    # mesma semente — outro sorteio, e o vazamento de train para val volta.
-    group_keys = sorted(groups)
-    rnd = random.Random(seed) if seed is not None else random  # noqa: S311
-    rnd.shuffle(group_keys)  # noqa: S311 — split de dataset, não cripto
-
-    n = len(group_keys)
-    n_train = max(1, int(n * split.get("train", 0.7)))
-    n_val = int(n * split.get("val", 0.2))
-    train_keys = set(group_keys[:n_train])
-    val_keys = set(group_keys[n_train:n_train + n_val])
-
-    splits: dict[str, list[dict[str, Any]]] = {s: [] for s in _SPLIT_NAMES}
-    for key, group_frames in groups.items():
-        if key in train_keys:
-            splits["train"].extend(group_frames)
-        elif key in val_keys:
-            splits["val"].extend(group_frames)
-        else:
-            splits["test"].extend(group_frames)
-
-    return _garante_val_e_test(splits)
+    return _garante_val_e_test(
+        _split_estratificado(groups, split, seed or "", anns_by_frame)
+    )
 
 
 def _garante_val_e_test(
@@ -537,6 +715,30 @@ def _diagnosticar_split(
             f"classe(s) com suporte no train e ZERO no test: {cegas} — a avaliação "
             f"não mede essas classes, e o veredito sai sem elas"
         )
+    # Classe sacrificada pelo split: perdeu para val+test MUITO mais que a
+    # proporção pedida. `_split_estratificado` existe para evitar isso, mas o
+    # caminho `estavel=True` é por hash e não equilibra classe — e mesmo o
+    # estratificado não consegue quando a classe vive em um grupo só. Medido no
+    # RVB antes da estratificação: `Sem Luvas` 52% em val+test contra 30%
+    # pedidos, treinando com 85 de 178 caixas.
+    no_val = _classes("val")
+    alvo_fora = float(split_pedido.get("val", 0.0)) + float(split_pedido.get("test", 0.0))
+    if alvo_fora:
+        sacrificadas = []
+        for classe in sorted(set(no_treino) | set(no_val) | set(no_test)):
+            total_c = no_treino.get(classe, 0) + no_val.get(classe, 0) + no_test.get(classe, 0)
+            fora = no_val.get(classe, 0) + no_test.get(classe, 0)
+            if total_c and fora / total_c - alvo_fora > _DESVIO_PROPORCAO_MAX:
+                sacrificadas.append(
+                    f"{classe}={fora}/{total_c} ({fora / total_c:.0%})"
+                )
+        if sacrificadas:
+            avisos.append(
+                f"classe(s) perdendo para val+test muito acima dos {alvo_fora:.0%} "
+                f"pedidos ({', '.join(sacrificadas)}) — o treino recebe menos "
+                "dessas classes do que o split promete"
+            )
+
     fracas = sorted(
         c for c in set(no_treino) & set(no_test)
         if no_test[c] < _MIN_INSTANCIAS_CLASSE_TEST
@@ -728,11 +930,32 @@ def build_dataset_version_v2(
         annotation_repo = _get_annotation_repo()
         storage = _get_storage(tenant_id)
 
-        # 1. Snapshot de frames rotulados (reviewed primeiro)
+        # 1. Snapshot de frames rotulados (reviewed primeiro), já SEM gabarito
         frames = _snapshot_labeled_frames(annotation_repo, tenant_id, module_code)
+
+        # Quantos a trava holdout-only reteve. Contado à parte porque o
+        # snapshot já veio filtrado: sem esta consulta o export não teria como
+        # dizer o tamanho do próprio recorte, e "excluído em silêncio" é
+        # exatamente o modo de falha que a trava não pode ter.
+        holdout_recusados = _contar_gabaritos(
+            annotation_repo, tenant_id, module_code
+        )
+        if holdout_recusados:
+            logger.info(
+                "dataset_export_gabarito_retido: %d frame(s) com "
+                "dataset_role='holdout' fora do treino (tenant=%s módulo=%s) — "
+                "gabarito mede modelo, nunca alimenta",
+                holdout_recusados, tenant_id, module_code,
+            )
+
         if not frames:
             raise ValueError(
                 "Nenhum frame rotulado encontrado para o tenant/módulo"
+                + (
+                    f" ({holdout_recusados} retido(s) pela trava holdout-only "
+                    "— são gabarito, não pool de treino)"
+                    if holdout_recusados else ""
+                )
             )
 
         # 2. Anotações YOLO normalizadas por frame
@@ -768,6 +991,7 @@ def build_dataset_version_v2(
         splits = _split_by_group(
             frames, split, seed=split_seed or f"{dataset_id}:{version}",
             estavel=split_seed is not None,
+            anns_by_frame=anns_by_frame,
         )
         split_warnings = _diagnosticar_split(splits, split, anns_by_frame)
         for aviso in split_warnings:
@@ -946,6 +1170,16 @@ def build_dataset_version_v2(
         # 7b. Conferência antes do 'ready' — ver _conferir_splits.
         _conferir_splits(splits, cocos)
 
+        # 7c. Congela a MEMBRESIA do split (migration 131). `split` guarda só a
+        # proporção pedida; sem esta lista o holdout é promessa, não artefato —
+        # o build 42023066 sorteou com `random.shuffle` sem semente e não é
+        # reproduzível nem re-executando o código. Gravada ANTES do 'ready':
+        # dali em diante a versão é imutável e o holdout com ela.
+        dataset_repo.update_split_membership(
+            row["id"], tenant_id,
+            {nome: [str(f["id"]) for f in splits[nome]] for nome in _SPLIT_NAMES},
+        )
+
         # 8. building → ready (grava prefixo R2 dos COCO)
         dataset_repo.update_version_status(
             row["id"], tenant_id, DatasetVersionStatus.READY.value,
@@ -970,6 +1204,10 @@ def build_dataset_version_v2(
             # Sai no resultado, não só no log: aviso que ninguém lê é silêncio
             # com passos extras (D-165).
             "split_warnings": split_warnings,
+            # Quantos frames a trava holdout-only manteve fora deste dataset.
+            # Mesma razão do campo acima: uma exclusão que só existe no log é
+            # indistinguível de bug quando alguém conferir a contagem.
+            "holdout_recusados": holdout_recusados,
         }
         logger.info(
             "build_dataset_v2_done: version_id=%s total=%d train=%d val=%d test=%d",

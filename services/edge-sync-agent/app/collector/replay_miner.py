@@ -40,6 +40,31 @@ CHANNEL POLICY (Vitor, decisão 15/08 — ver briefing da task): a tabela
 explícita abaixo SUBSTITUI qualquer ranking automático por "quantidade já
 coletada" ou heurística de cobertura — é uma decisão de produto, não um
 cálculo.
+
+MODO FRAME-CHEIO (opt-in, `REPLAY_MINER_FULL_FRAME=1`; default DESLIGADO):
+o detector de pessoa vira GATILHO DE SELEÇÃO, não fonte de recorte — o frame
+que TEM pessoa sobe INTEIRO. Existe porque o caminho SERVIDO é single-stage
+sobre o quadro inteiro (`services/inference/.../inference_engine.py`
+`_run_detector(frame)` -> `predict(frame)`, e o detector redimensiona o frame
+TODO; não há recorte de pessoa em lugar nenhum do que é servido), enquanto
+95,9% do dado de treino é recorte de pessoa. Treinar num domínio e servir
+noutro. Este modo colhe o domínio de produção mantendo a qualidade da seleção
+(sem gate de pessoa, o pool enche de corredor vazio).
+
+O modo NÃO é simétrico com o de recorte em dois pontos, ambos medidos:
+  - DEDUP: o dHash de um frame cheio é quase cego a uma pessoa. A grade 8x9 do
+    dHash tem células de ~213px de largura em 1920; uma pessoa de ~54px cabe
+    inteira numa célula e pode andar 100px sem virar mais que 6 bits (medido:
+    10px->2 bits, 50px->3, 100px->6, com o limiar de recorte em <=6). Com o
+    limiar do recorte, quase toda a colheita cairia como "duplicata". Por isso
+    o modo tem limiar próprio (0 = só descarta dHash idêntico) e o resumo do
+    ciclo GRITA quando a duplicata domina — o modo de falha a evitar é a
+    campanha voltar vazia parecendo normal.
+  - DISCO: frame cheio pesa ~4x mais que recorte no MESMO encoder (medido, ver
+    EstimateParams.avg_full_frame_kb). O pipeline continua sendo em memória
+    (zero escrita), mas a reserva de disco (`has_disk_reserve`) passa a ser
+    conferida por JANELA neste modo, não só por tarefa — o piso é o mesmo, a
+    cadência é mais apertada onde o volume é maior.
 """
 
 from __future__ import annotations
@@ -280,6 +305,17 @@ _LAPLACIAN_KERNEL = (0.0, 1.0, 0.0, 1.0, -4.0, 1.0, 0.0, 1.0, 0.0)
 _DEFAULT_BLUR_VARIANCE_MIN = 150.0
 _DEFAULT_DEDUP_HAMMING_MAX = 6     # de 64 bits do dHash 8x8 — "quase idêntico", não "mesmo dia"
 _DEFAULT_DEDUP_WINDOW = 64         # hashes recentes mantidos por câmera (custo limitado)
+# Modo frame-cheio: limiar PRÓPRIO, e por medição, não por gosto. O dHash de um
+# frame cheio é dominado pelo fundo — que numa câmera fixa é sempre o mesmo. Na
+# cena sintética 1920x1080 com uma "pessoa" de 54x282 andando sobre fundo fixo
+# (medido 2026-09-02, esta mesma `_dhash`): 10px -> 2 bits, 50px -> 3, 100px ->
+# 6, 300px -> 11. Com o limiar de recorte (<=6) tudo abaixo de ~100px de
+# deslocamento vira "duplicata" — e como a comparação é contra os 64 hashes
+# recentes da MESMA câmera, a colheita inteira de um canal cairia depois do
+# primeiro frame. 0 mantém o filtro (dHash idêntico ainda é descartado: cena
+# congelada de verdade) sem apagar a campanha. Ajustável por
+# REPLAY_MINER_DEDUP_HAMMING; o resumo do ciclo grita se a duplicata dominar.
+_DEFAULT_DEDUP_HAMMING_FULL_FRAME = 0
 
 
 def blur_variance(jpeg_bytes: bytes) -> float:
@@ -508,6 +544,14 @@ _MAX_TRANSPORTE_SEGUIDOS = 60
 
 @dataclass
 class MiningStats:
+    # `recorte` (default) | `frame_cheio`. Sem isto, os contadores de descarte
+    # abaixo são ambíguos: os mesmos números significam coisas diferentes em cada
+    # modo (um recorte de 583x696 e um frame de 1920x1080 não caem por blur nem
+    # por duplicata pelas mesmas razões). Um RUN é de um modo só, então os
+    # contadores por categoria continuam sendo um jogo só — o rótulo é o que os
+    # torna legíveis. Trocar por dois jogos paralelos seria contabilidade morta
+    # em metade dos runs.
+    modo: str = "recorte"
     tasks_planned: int = 0
     tasks_attempted: int = 0
     windows_pulled: int = 0
@@ -525,6 +569,10 @@ class MiningStats:
     crops_dropped_blurry: int = 0
     crops_dropped_duplicate: int = 0
     crops_dropped_cap: int = 0
+    # Bytes REALMENTE subidos. É a medida de custo do modo frame-cheio: dividida
+    # por crops_kept dá o KB/payload medido em campo, que é o número que o
+    # dry-run só consegue estimar (EstimateParams.avg_full_frame_kb).
+    bytes_uploaded: int = 0
     uploads_failed: int = 0
     aborted_reason: str | None = None
     per_channel_kept: dict[int, int] = field(default_factory=dict)
@@ -561,15 +609,24 @@ class ReplayMiner:
         sleep_fn: Callable[[float], None] = time.sleep,
         disk_check_fn: Callable[[], bool] | None = None,
         state_path: str | None = DEFAULT_STATE_PATH,
+        full_frame: bool = False,
+        dedup_hamming: int | None = None,
     ) -> None:
         self._recorder = recorder
         self._api_base_url = api_base_url
         self._recorder_id = recorder_id
         self._token_source = token_source
         self._person = person_detector
-        import httpx  # noqa: PLC0415 — mesmo padrão lazy-import de CollectorLoop
+        if http_client is not None:
+            self._http = http_client
+        else:
+            # Importa SÓ quando vai mesmo construir um cliente. No topo do
+            # __init__, o import exigia httpx até de quem injeta o cliente: a
+            # suíte inteira caía com ModuleNotFoundError num ambiente sem httpx,
+            # sem que teste nenhum tocasse em rede.
+            import httpx  # noqa: PLC0415 — mesmo padrão lazy-import de CollectorLoop
 
-        self._http = http_client if http_client is not None else httpx.Client()
+            self._http = httpx.Client()
         self._module_code = module_code
         self._clip_seconds = clip_seconds
         self._pull_interval_min = pull_interval_min
@@ -578,7 +635,13 @@ class ReplayMiner:
         self._pacing_s = pacing_s
         self._upload_fn = upload_fn
         self._extract = frame_extractor
-        self._dedup = dedup_filter or NearDuplicateFilter()
+        self._full_frame = full_frame
+        # Limiar explícito vence; senão, o default DO MODO (ver
+        # _DEFAULT_DEDUP_HAMMING_FULL_FRAME: o do recorte apagaria a colheita).
+        limiar = dedup_hamming if dedup_hamming is not None else (
+            _DEFAULT_DEDUP_HAMMING_FULL_FRAME if full_frame else _DEFAULT_DEDUP_HAMMING_MAX
+        )
+        self._dedup = dedup_filter or NearDuplicateFilter(hamming_threshold=limiar)
         self._blur_min_variance = blur_min_variance
         self._sleep = sleep_fn
         self._disk_ok = disk_check_fn or (lambda: has_disk_reserve(min_free_gb=min_free_gb))
@@ -593,7 +656,10 @@ class ReplayMiner:
         return self._circuit_open
 
     def mine(self, plan: list[MiningTask]) -> MiningStats:
-        stats = MiningStats(tasks_planned=len(plan))
+        stats = MiningStats(
+            tasks_planned=len(plan),
+            modo="frame_cheio" if self._full_frame else "recorte",
+        )
         last_channel: int | None = None
         for task in plan:
             if self._circuit_open:
@@ -659,6 +725,21 @@ class ReplayMiner:
                 if self._campaign_counts.get(campaign_key, 0) >= rule.campaign_max_crops:
                     break  # teto de campanha do canal batido — nada mais a puxar aqui
 
+            # Reserva de disco POR JANELA no modo frame-cheio (ADR-0033/0045).
+            # O piso é o mesmo do modo recorte; o que muda é a cadência: uma
+            # tarefa cobre dezenas de janelas, e neste modo cada janela move ~4x
+            # mais bytes. Conferir só na troca de tarefa deixaria o resto do box
+            # (buffer.db, OTA, logs) cruzar a reserva e ficar horas sem ninguém
+            # olhar. `mine()` reconfere no topo da próxima tarefa e encerra o run.
+            if self._full_frame and not self._disk_ok():
+                stats.aborted_reason = "disk_reserve"
+                logger.error(
+                    "replay_miner_janela_abortada reason=disk_reserve canal=%d "
+                    "min_free_gb=%.1f — modo frame-cheio confere por janela",
+                    task.channel, self._min_free_gb,
+                )
+                return
+
             try:
                 clip_bytes = _pull_clip_bytes(self._recorder, task.camera_id, start, end)
             except RecorderAuthError:
@@ -721,19 +802,25 @@ class ReplayMiner:
             stats.frames_scanned += len(frames)
 
             window_kept = 0
-            for frame in frames:
+            for indice, frame in enumerate(frames):
                 if rule.per_window_cap is not None and window_kept >= rule.per_window_cap:
                     break
                 if rule.campaign_max_crops is not None and (
                     self._campaign_counts.get(campaign_key, 0) >= rule.campaign_max_crops
                 ):
                     break
-                crop = self._gate_and_crop(frame, task, stats)
-                if crop is None:
+                payload = self._gate_and_payload(frame, task, stats)
+                if payload is None:
                     continue
-                if self._upload(task.camera_id, crop):
+                payload_bytes, crop_origin = payload
+                # QUANDO A CENA ACONTECEU, não quando a mineramos. O extrator
+                # devolve os frames em ordem, a `sample_fps`, a partir de
+                # `start` — então o instante do frame i é start + i/fps.
+                capturado_em = start + timedelta(seconds=indice / self._sample_fps)
+                if self._upload(task.camera_id, payload_bytes, capturado_em, crop_origin):
                     window_kept += 1
                     stats.crops_kept += 1
+                    stats.bytes_uploaded += len(payload_bytes)
                     stats.per_channel_kept[task.channel] = (
                         stats.per_channel_kept.get(task.channel, 0) + 1
                     )
@@ -743,15 +830,28 @@ class ReplayMiner:
                 else:
                     stats.uploads_failed += 1
 
-    def _gate_and_crop(
+    def _gate_and_payload(
         self, frame_bytes: bytes, task: MiningTask, stats: MiningStats
-    ) -> bytes | None:
-        """Gate de pessoa + recorte + filtros de qualidade. Diferente de
-        CollectorLoop._payload_para_upload: aqui, indeterminado/sem-pessoa
-        DESCARTA (não sobe o frame inteiro) — mineração de replay existe
-        especificamente para produzir recorte de pessoa; um frame inteiro
-        ambíguo não serve ao propósito e o dataset já tem ruído suficiente
-        (ver PersonDetector docstring)."""
+    ) -> "tuple[bytes, dict[str, Any] | None] | None":
+        """Gate de pessoa + (recorte | frame cheio) + filtros de qualidade.
+
+        Devolve `(bytes, vínculo)`. O vínculo (`crop_origin`, migration 132) é a
+        caixa do recorte em coordenadas do frame original — sem ele o recorte
+        nasce órfão e a anotação feita nele não volta pro quadro cheio, que é
+        onde o modelo é servido. No modo `full_frame` o vínculo é None **por
+        estar certo**: não houve recorte, a imagem já É o quadro inteiro.
+
+        O GATE é o mesmo nos dois modos, e é o ponto: em ambos, indeterminado e
+        sem-pessoa DESCARTAM. Diferente de CollectorLoop._payload_para_upload,
+        que sobe o frame inteiro quando o detector não opina — mineração de
+        replay não tem pressa nem janela perecível para justificar quadro
+        ambíguo, e o dataset já tem ruído suficiente (ver PersonDetector).
+
+        A DIFERENÇA entre os modos é só a CARGA: `full_frame` sobe o frame que
+        passou no gate, inteiro e nos bytes em que chegou (sem re-encode — o
+        que entrou é o que sobe); o default recorta a maior pessoa. Blur e
+        dedup rodam sobre a carga que vai subir, seja qual for.
+        """
         result = self._person.detect(frame_bytes)
         if result.undetermined:
             stats.crops_dropped_undetermined += 1
@@ -759,21 +859,40 @@ class ReplayMiner:
         if not result.found:
             stats.crops_dropped_no_person += 1
             return None
-        maior = max(result.boxes, key=lambda b: b.h * b.w)
-        try:
-            crop = crop_person(frame_bytes, maior)
-        except Exception as exc:  # noqa: BLE001 — decode ruim de um frame não pode derrubar a campanha
-            logger.warning("replay_miner_recorte_falhou canal=%d err=%s", task.channel, exc)
-            return None
-        if is_blurry(crop, self._blur_min_variance):
+        crop_origin: "dict[str, Any] | None" = None
+        if self._full_frame:
+            payload = frame_bytes
+        else:
+            maior = max(result.boxes, key=lambda b: b.h * b.w)
+            try:
+                recorte = crop_person(frame_bytes, maior)
+            except Exception as exc:  # noqa: BLE001 — decode ruim de um frame não pode derrubar a campanha
+                logger.warning("replay_miner_recorte_falhou canal=%d err=%s", task.channel, exc)
+                return None
+            payload, crop_origin = recorte.jpeg, recorte.origin
+        if is_blurry(payload, self._blur_min_variance):
             stats.crops_dropped_blurry += 1
             return None
-        if self._dedup.is_duplicate(task.camera_id, crop):
+        if self._dedup.is_duplicate(task.camera_id, payload):
             stats.crops_dropped_duplicate += 1
             return None
-        return crop
+        return payload, crop_origin
 
-    def _upload(self, camera_id: str, crop_bytes: bytes) -> bool:
+    def _upload(
+        self,
+        camera_id: str,
+        payload_bytes: bytes,
+        captured_at: datetime,
+        crop_origin: "dict[str, Any] | None" = None,
+    ) -> bool:
+        """*captured_at* é o instante da GRAVAÇÃO, não o da mineração.
+
+        Isto já foi `datetime.now()`, e num minerador de REPLAY isso é errado
+        por construção: todo frame nascia carimbado com a hora da colheita, e
+        o dataset perdia a única coisa que liga a imagem ao turno, à luz e ao
+        roteiro em que ela foi gravada. Um lote inteiro minerado numa tarde
+        parecia ter acontecido naquela tarde.
+        """
         try:
             bearer = self._token_source.get_bearer()
             self._upload_fn(
@@ -782,9 +901,10 @@ class ReplayMiner:
                 bearer,
                 camera_id,
                 self._recorder_id,
-                crop_bytes,
+                payload_bytes,
                 self._module_code,
-                datetime.now(),
+                captured_at,
+                crop_origin=crop_origin,
             )
         except FrameUploadError as exc:
             logger.warning("replay_miner_upload_failed camera=%s err=%s", camera_id, exc)
@@ -852,6 +972,25 @@ class EstimateParams:
     dedup_rate: float = 0.25
     # MEDIDO em campo (PersonDetector docstring, recorte 1080p nativo)
     avg_crop_kb: float = 10.0
+    # Modo frame-cheio (REPLAY_MINER_FULL_FRAME=1): muda o CUSTO POR FRAME, não
+    # a quantidade colhida (o gate de pessoa é o mesmo). Só o `avg_*_kb` e a
+    # banda de upload mudam.
+    full_frame: bool = False
+    # ⚠️ ASSUMIDO, e conservador de propósito. As três âncoras que existem:
+    #   (a) MEDIDO em campo (collector_loop/person_detector docstrings, JPEG do
+    #       snapshot da própria câmera): frame do substream 704x480 = 157 KB;
+    #       frame do principal 1920x1080 = 789 KB; recorte 1080p = 10 KB.
+    #   (b) MEDIDO 2026-09-02 no encoder que o minerador REALMENTE usa
+    #       (ffmpeg -q:v 3 mjpeg, o de extract_frames_from_clip), sobre uma
+    #       FOTOGRAFIA (macOS Desktop Pictures) — NÃO é frame de CFTV:
+    #       1920x1080 = 96 KB, recorte 583x696 = 23 KB, razão 4,2x.
+    #   (c) Piso geométrico: 1920x1080 tem 5,1x os pixels de um recorte 583x696.
+    # NÃO MEDIDO: frame de CFTV real da RVB pelo caminho de replay — precisa de
+    # DVR. 157 KB (a âncora medida do substream) fica como default por ser
+    # conservadora para o substream e SUBESTIMAR o principal em ~5x: rodando em
+    # 1080p, passar avg_full_frame_kb=789 antes de aprovar a campanha.
+    # O número real do campo sai de MiningStats.bytes_uploaded / crops_kept.
+    avg_full_frame_kb: float = 157.0
 
 
 @dataclass(frozen=True)
@@ -862,6 +1001,10 @@ class DryRunEstimate:
     frames_scanned_total: int
     crops_kept_estimate: int
     bandwidth_mb: float
+    #: Banda de SUBIDA (edge->nuvem) e volume que entra no R2 — é o custo que o
+    #: modo frame-cheio muda, e o que faltava na conta: `bandwidth_mb` acima é
+    #: só a leitura do gravador, idêntica nos dois modos.
+    upload_mb: float
     disk_delta_mb: float
     absence_crops_estimate: int
     absence_yield_low: bool
@@ -959,6 +1102,8 @@ def estimate_dry_run(
     bandwidth_mb = (
         windows_total * params.clip_seconds * params.substream_kbps / 8.0 / 1024.0
     )
+    kb_por_payload = params.avg_full_frame_kb if params.full_frame else params.avg_crop_kb
+    upload_mb = crops_kept_total * kb_por_payload / 1024.0
 
     return DryRunEstimate(
         channels_mined=channels_mined,
@@ -967,6 +1112,7 @@ def estimate_dry_run(
         frames_scanned_total=frames_scanned_total,
         crops_kept_estimate=crops_kept_total,
         bandwidth_mb=round(bandwidth_mb, 1),
+        upload_mb=round(upload_mb, 1),
         # Disco: ~0 por desenho (ADR-0033/0045, pipeline todo em memória) —
         # ver módulo docstring. Reportado explicitamente em vez de inflar um
         # número que não existe nesta arquitetura.
@@ -986,8 +1132,13 @@ def format_estimate_report(estimate: DryRunEstimate, params: EstimateParams) -> 
         f"excluídos/quality: {estimate.channels_excluded}",
         f"Janelas (clip pulls) totais: {estimate.windows_total}",
         f"Frames escaneados (estimado): {estimate.frames_scanned_total}",
-        f"Crops mantidos (estimado, pós blur+dedup+teto): {estimate.crops_kept_estimate}",
-        f"Banda off-recorder (estimada): {estimate.bandwidth_mb:.1f} MB",
+        f"MODO: {'FRAME CHEIO' if params.full_frame else 'recorte (default)'} — "
+        f"{params.avg_full_frame_kb if params.full_frame else params.avg_crop_kb:.0f} KB "
+        "por frame subido",
+        f"Frames mantidos (estimado, pós blur+dedup+teto): {estimate.crops_kept_estimate}",
+        f"Banda off-recorder (estimada): {estimate.bandwidth_mb:.1f} MB "
+        "(igual nos dois modos — é a LEITURA do gravador)",
+        f"Banda de SUBIDA edge->nuvem / volume no R2 (estimado): {estimate.upload_mb:.1f} MB",
         f"Delta de disco no Orin: {estimate.disk_delta_mb:.1f} MB "
         "(pipeline em memória por desenho, ADR-0033/0045 — o guard de 8GB "
         "protege o RESTO do box, não este módulo)",
@@ -1180,6 +1331,12 @@ def _minerar_de_verdade(dias: int) -> int:  # pragma: no cover — I/O de campo
         logger.error("mineracao_sem_channel_map: RECORDER_CHANNEL_MAP vazio")
         return 2
 
+    # Opt-in EXPLÍCITO: qualquer coisa que não seja um "sim" declarado mantém o
+    # modo recorte, que é o que roda em produção hoje.
+    full_frame = (
+        env.get("REPLAY_MINER_FULL_FRAME", "0").strip().lower() in ("1", "true", "yes", "on")
+    )
+    dedup_hamming = env.get("REPLAY_MINER_DEDUP_HAMMING")
     miner = ReplayMiner(
         recorder=recorder,
         api_base_url=env["EDGE_API_URL"],
@@ -1187,6 +1344,20 @@ def _minerar_de_verdade(dias: int) -> int:  # pragma: no cover — I/O de campo
         token_source=token_manager,
         person_detector=build_person_detector_from_env(env),
         module_code=env.get("COLLECTOR_MODULE_CODE", "epi"),
+        full_frame=full_frame,
+        dedup_hamming=int(dedup_hamming) if dedup_hamming else None,
+        blur_min_variance=float(
+            env.get("REPLAY_MINER_BLUR_MIN_VARIANCE", _DEFAULT_BLUR_VARIANCE_MIN)
+        ),
+    )
+    # Dizer o modo ANTES de gastar horas de DVR: os dois modos produzem dado
+    # para domínios diferentes, e descobrir o modo errado só no fim do ciclo
+    # custa o ciclo inteiro.
+    logger.info(
+        "mineracao_modo=%s (REPLAY_MINER_FULL_FRAME) dedup_hamming=%s",
+        "FRAME CHEIO — sobe o quadro inteiro que tem pessoa" if full_frame
+        else "recorte (default) — sobe a maior pessoa do quadro",
+        dedup_hamming or ("0 (default do modo frame-cheio)" if full_frame else "6 (default)"),
     )
 
     agora = datetime.now()
@@ -1239,7 +1410,7 @@ def _resumo_do_ciclo(stats: MiningStats) -> str:
     """
     total = stats.windows_pulled + stats.windows_empty
     linhas = [
-        "=== ciclo de mineração ===",
+        f"=== ciclo de mineração (modo={stats.modo}) ===",
         f"janelas: {total} tentadas | {stats.windows_pulled} extraídas",
         f"  sem_gravacao ...: {stats.windows_sem_gravacao}"
         "   (normal — o DVR grava por movimento)",
@@ -1255,7 +1426,37 @@ def _resumo_do_ciclo(stats: MiningStats) -> str:
         f"teto={stats.crops_dropped_cap} "
         f"indeterminado={stats.crops_dropped_undetermined}",
         f"uploads falhados: {stats.uploads_failed}",
+        # Custo MEDIDO do modo. O dry-run estima KB/payload; isto é o que de
+        # fato saiu pelo link — o único número que fecha a conta de banda.
+        f"bytes subidos: {stats.bytes_uploaded / 1024 / 1024:.1f} MB"
+        + (
+            f" ({stats.bytes_uploaded / stats.crops_kept / 1024:.1f} KB/frame)"
+            if stats.crops_kept
+            else ""
+        ),
     ]
+    # Com pessoa no quadro, o frame só pode virar upload, blur, duplicata ou
+    # upload falhado. É o denominador certo para saber se um filtro está
+    # comendo a colheita.
+    com_pessoa = (
+        stats.crops_kept + stats.crops_dropped_blurry
+        + stats.crops_dropped_duplicate + stats.uploads_failed
+    )
+    for rotulo, quantos in (
+        ("duplicata", stats.crops_dropped_duplicate),
+        ("blur", stats.crops_dropped_blurry),
+    ):
+        if com_pessoa >= 20 and quantos / com_pessoa >= 0.8:
+            # O modo de falha a evitar: campanha volta quase vazia e o log tem
+            # cara de normal. Os dois limiares foram calibrados contra RECORTE
+            # (blur=150 em n=224; dedup<=6 em dHash de recorte) e nenhum dos
+            # dois transporta direto para frame cheio — ver docstring do módulo.
+            linhas.append(
+                f"ATENÇÃO: {quantos}/{com_pessoa} ({quantos / com_pessoa:.0%}) dos frames "
+                f"COM PESSOA caíram por {rotulo} — o limiar está comendo a colheita. "
+                f"Ajuste: REPLAY_MINER_"
+                + ("DEDUP_HAMMING" if rotulo == "duplicata" else "BLUR_MIN_VARIANCE")
+            )
     if stats.aborted_reason:
         linhas.append(f"ABORTADO: {stats.aborted_reason}")
     if stats.windows_pulled == 0 and total > 0:
@@ -1287,12 +1488,25 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover — I/O de C
                         "MARCA-D'AGUA: do fim do ultimo ciclo bem-sucedido ate agora, "
                         f"com teto de {_TETO_MARCA_DAGUA_DIAS} dias. Escopo fixo nao "
                         "sobrevive a um ciclo pulado — deixa buraco permanente.")
+    p.add_argument("--frame-cheio", action="store_true",
+                   help="sobe o FRAME INTEIRO que tem pessoa, em vez do recorte "
+                        "(mesmo gate, mesma cadeia de qualidade). Equivale a "
+                        "REPLAY_MINER_FULL_FRAME=1, que e como o systemd liga. "
+                        "Padrao: recorte, o modo que roda em producao hoje.")
     args = p.parse_args(argv)
 
     if not args.executar:
         print(format_estimate_report(
-            estimate_dry_run(_default_camera_by_channel()), EstimateParams()))
+            estimate_dry_run(
+                _default_camera_by_channel(), EstimateParams(full_frame=args.frame_cheio)
+            ),
+            EstimateParams(full_frame=args.frame_cheio),
+        ))
         return 0
+    if args.frame_cheio:
+        # Uma fonte de verdade só: a flag entra pelo mesmo env que o systemd usa,
+        # em vez de um segundo caminho de configuração para o mesmo botão.
+        os.environ["REPLAY_MINER_FULL_FRAME"] = "1"
     return _minerar_de_verdade(args.dias)
 
 

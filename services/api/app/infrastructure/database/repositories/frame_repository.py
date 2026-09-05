@@ -7,11 +7,15 @@ from uuid import UUID
 
 from app.constants import FrameSource
 from app.infrastructure.database.repositories.base import BaseRepository
+from app.infrastructure.database.repositories.camera_module_repository import (
+    escopo_params,
+    escopo_sql,
+)
 
 _INSERT_COLUMNS = (
     "video_id, frame_number, filename, timestamp_seconds, source, r2_key, "
     "camera_id, recorder_id, width, height, model_confidence, captured_at, "
-    "tenant_id, module_code"
+    "tenant_id, module_code, crop_origin"
 )
 
 # tenant_id NUNCA pode nascer NULL silenciosamente: as queries de auto-training
@@ -46,6 +50,7 @@ class FrameRepository(BaseRepository):
         tenant_id: UUID | str | None = None,
         module_code: str | None = None,
         user_id: UUID | str | None = None,
+        crop_origin: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Cria registro de frame (multi-fonte desde migration 094).
 
@@ -55,6 +60,10 @@ class FrameRepository(BaseRepository):
         r2_key=filename (chave R2 legada), module_code='epi' (default do schema).
         tenant_id cai para o tenant do user_id ou do dono do vídeo quando não
         informado (linha com tenant NULL é invisível às queries tenant-scoped).
+
+        crop_origin (migration 132) liga um RECORTE ao frame de onde ele saiu:
+        {"box": [x,y,w,h], "source_size": [W,H]} em px do original. NULL para
+        tudo que não é recorte — frame cheio, upload manual, extração de vídeo.
         """
         return self._execute_mutation(
             f"INSERT INTO training_frames ({_INSERT_COLUMNS}) "
@@ -62,7 +71,7 @@ class FrameRepository(BaseRepository):
             "%(timestamp_seconds)s, %(source)s, %(r2_key)s, %(camera_id)s, "
             f"%(recorder_id)s, %(width)s, %(height)s, %(model_confidence)s, "
             f"%(captured_at)s, {_TENANT_COALESCE}, "
-            "COALESCE(%(module_code)s, 'epi')) RETURNING *",
+            "COALESCE(%(module_code)s, 'epi'), %(crop_origin)s) RETURNING *",
             {
                 "video_id": str(video_id) if video_id else None,
                 "frame_number": frame_number,
@@ -79,6 +88,7 @@ class FrameRepository(BaseRepository):
                 "tenant_id": str(tenant_id) if tenant_id else None,
                 "user_id": str(user_id) if user_id else None,
                 "module_code": module_code,
+                "crop_origin": json.dumps(crop_origin) if crop_origin else None,
             },
         )  # type: ignore[return-value]
 
@@ -97,7 +107,7 @@ class FrameRepository(BaseRepository):
             "%(timestamp_seconds)s, %(source)s, %(r2_key)s, %(camera_id)s, "
             "%(recorder_id)s, %(width)s, %(height)s, %(model_confidence)s, "
             f"%(captured_at)s, {_TENANT_COALESCE}, "
-            "COALESCE(%(module_code)s, 'epi'))",
+            "COALESCE(%(module_code)s, 'epi'), %(crop_origin)s)",
             rows,  # type: ignore[arg-type]
         )
 
@@ -123,6 +133,9 @@ class FrameRepository(BaseRepository):
             "tenant_id": _opt_str(frame.get("tenant_id")),
             "user_id": _opt_str(frame.get("user_id")),
             "module_code": frame.get("module_code"),
+            "crop_origin": (
+                json.dumps(frame["crop_origin"]) if frame.get("crop_origin") else None
+            ),
         }
 
     def get_by_id(self, frame_id: UUID) -> dict[str, Any] | None:
@@ -538,6 +551,7 @@ class FrameRepository(BaseRepository):
         cursor: "UUID | str | None" = None,
         proposal_classes: "list[str] | None" = None,
         ordenar: str = "recente",
+        module_code: "str | None" = None,
     ) -> "dict[str, Any]":
         """Lista imagens de treino do tenant com filtros ?source=, ?status=,
         ?camera_id=, ?curation_status= (curadoria — migration 110) e
@@ -729,6 +743,28 @@ class FrameRepository(BaseRepository):
         count_where = " AND ".join(conditions)
         count_params = tuple(params)
 
+        # ESCOPO DE MÓDULO — filtra em SILÊNCIO, mas devolve a conta.
+        #
+        # Ao contrário da ingestão (que recusa com 422), aqui o modo de falha
+        # manda filtrar: um 4xx zeraria a galeria inteira e pararia TODO o
+        # trabalho de anotação por causa de uma câmera não declarada. Filtrar
+        # não perde nada — o frame continua no banco, intocado, e volta a
+        # aparecer no instante em que o dono vincular a câmera.
+        #
+        # O que o silêncio custou uma vez nesta casa: 1.098 anotações sumiram
+        # atrás de um filtro que excluía sem dizer. Por isso `fora_do_modulo`
+        # sai no RESULTADO, não no log — é o número que a tela mostra e que o
+        # dono usa para decidir se falta vincular alguma câmera.
+        #
+        # Fica DEPOIS do snapshot de count_where de propósito: a contagem
+        # precisa enxergar o conjunto sem o escopo para poder dizer quantos
+        # ficaram de fora.
+        escopo_frag = escopo_sql("tf.camera_id") if module_code else None
+        escopo_p = escopo_params(str(tenant_id), module_code) if module_code else []
+        if escopo_frag:
+            conditions.append(escopo_frag)
+            params.extend(escopo_p)
+
         if cursor is not None:
             # Paginação por CURSOR (keyset), alternativa ao OFFSET.
             #
@@ -801,12 +837,36 @@ class FrameRepository(BaseRepository):
             if pending_review
             else ""
         )
-        count_row = self._execute_one(
-            f"SELECT COUNT(*) AS total{pending_sum_sql} "
-            f"FROM training_frames tf WHERE {count_where}",
-            count_params,
-        )
+        if escopo_frag:
+            # Uma consulta só: total DENTRO do escopo e total FORA, sobre o
+            # mesmo WHERE. Ordem dos %s = ordem de aparição na string (SELECT
+            # antes do WHERE) — por isso os params do escopo vêm primeiro.
+            escopo_sum_sql = (
+                ", COALESCE(SUM(jsonb_array_length(tf.pre_annotations)) "
+                f"FILTER (WHERE {escopo_frag}), 0) AS total_pending_proposals"
+                if pending_review
+                else ""
+            )
+            count_sql_params: "list[Any]" = list(escopo_p) + list(escopo_p)
+            if pending_review:
+                count_sql_params += list(escopo_p)
+            count_row = self._execute_one(
+                f"SELECT COUNT(*) FILTER (WHERE {escopo_frag}) AS total, "
+                f"COUNT(*) FILTER (WHERE NOT {escopo_frag}) AS fora_do_modulo"
+                f"{escopo_sum_sql} "
+                f"FROM training_frames tf WHERE {count_where}",
+                tuple(count_sql_params + list(count_params)),
+            )
+        else:
+            count_row = self._execute_one(
+                f"SELECT COUNT(*) AS total{pending_sum_sql} "
+                f"FROM training_frames tf WHERE {count_where}",
+                count_params,
+            )
         total = int(count_row["total"]) if count_row else 0
+        fora_do_modulo = (
+            int(count_row["fora_do_modulo"]) if escopo_frag and count_row else None
+        )
         total_pending_proposals = (
             int(count_row["total_pending_proposals"])
             if pending_review and count_row
@@ -866,6 +926,11 @@ class FrameRepository(BaseRepository):
             "frames": list(frames),
             "total": total,
             "total_pending_proposals": total_pending_proposals,
+            # Quantos frames o escopo de módulo tirou da vista. None = sem
+            # escopo pedido. 0 com escopo pedido = o dono ainda não vinculou
+            # nada, OU vinculou e nada ficou de fora — as duas leituras são
+            # "não há material escondido", que é o que a tela precisa saber.
+            "fora_do_modulo": fora_do_modulo,
             "page": page,
             "page_size": page_size,
             "total_pages": max(1, (total + page_size - 1) // page_size),
@@ -882,6 +947,7 @@ class FrameRepository(BaseRepository):
         camera_id: "UUID | str | None" = None,
         curation_status: "str | None" = None,
         camera_ids: "list[UUID | str] | None" = None,
+        module_code: "str | None" = None,
     ) -> "dict[str, Any]":
         """Contagens para o painel de curadoria: por câmera e por status.
 
@@ -908,6 +974,13 @@ class FrameRepository(BaseRepository):
         """
         base_conditions = ["tf.tenant_id = %s"]
         base_params: "list[Any]" = [str(tenant_id)]
+        # Escopo de módulo no `base_` = vale para AS DUAS facetas. Se a galeria
+        # filtra e as facetas não, a barra lateral anuncia um número que a
+        # galeria não entrega — e o anotador procura frames que não existem
+        # mais ali.
+        if module_code:
+            base_conditions.append(escopo_sql("tf.camera_id"))
+            base_params.extend(escopo_params(str(tenant_id), module_code))
         if source is not None:
             base_conditions.append("tf.source = %s")
             base_params.append(str(source))
@@ -1028,6 +1101,58 @@ class FrameRepository(BaseRepository):
             ),
         )
 
+    def set_dataset_role(
+        self,
+        frame_ids: "list[UUID | str]",
+        role: str,
+        tenant_id: "UUID | str",
+    ) -> "dict[str, int]":
+        """Dá EMPREGO a um lote de quadros: 'pool' (treina) ou 'holdout'
+        (gabarito — mede modelo e nunca treina). Migration 133.
+
+        IDEMPOTENTE por construção: o UPDATE só toca as linhas cujo papel
+        DIFERE do pedido (`dataset_role IS DISTINCT FROM %s`), então rodar o
+        mesmo lote duas vezes não reescreve nada e, principalmente, não move
+        `dataset_role_set_at` — a data em que o quadro virou gabarito é o que
+        separa "esta medição é limpa" de "este quadro já estava no treino do
+        v11". Reexecução que carimba data nova apagaria justamente essa prova.
+
+        Escopo SEMPRE por tenant_id (id = ANY(%s::uuid[]) AND tenant_id = %s):
+        id de outro tenant não casa o WHERE e não é atualizado, sem vazar
+        existência (C-01). `::uuid[]` é obrigatório — psycopg2 adapta
+        list[str] para text[] e `uuid = ANY(text[])` não tem operador
+        implícito no Postgres (mesmo achado de update_curation_status).
+
+        Devolve as três contagens que importam para conferir o lote:
+        {'marcados': linhas mudadas agora, 'ja_no_papel': já estavam assim,
+        'nao_encontrados': ids que não existem NESTE tenant}.
+        """
+        ids = [str(fid) for fid in frame_ids]
+        if not ids:
+            return {"marcados": 0, "ja_no_papel": 0, "nao_encontrados": 0}
+
+        existentes = self._execute(
+            "SELECT dataset_role FROM training_frames "
+            "WHERE id = ANY(%s::uuid[]) AND tenant_id = %s",
+            (ids, str(tenant_id)),
+        )
+        ja_no_papel = sum(
+            1 for row in existentes if row["dataset_role"] == str(role)
+        )
+
+        marcados = self._execute_mutation_no_return(
+            "UPDATE training_frames "
+            "SET dataset_role = %s, dataset_role_set_at = NOW() "
+            "WHERE id = ANY(%s::uuid[]) AND tenant_id = %s "
+            "  AND dataset_role IS DISTINCT FROM %s",
+            (str(role), ids, str(tenant_id), str(role)),
+        )
+        return {
+            "marcados": marcados,
+            "ja_no_papel": ja_no_papel,
+            "nao_encontrados": len(set(ids)) - len(existentes),
+        }
+
     def list_unlabeled_by_uncertainty(
         self, tenant_id: "UUID | str", module_code: str, limit: int = 20
     ) -> "list[dict[str, Any]]":
@@ -1061,23 +1186,33 @@ class FrameRepository(BaseRepository):
         # 'excluida'/'duvida' — o mesmo filtro que list_images_filtered aplica
         # desde a migration 110 nunca chegou aqui. Curadoria não apaga frame do
         # banco; sem este predicado, o que o humano descartou volta para a fila.
+        # ESCOPO DE MÓDULO — `tf.module_code` diz sob QUE módulo o frame foi
+        # coletado; o escopo diz se a CÂMERA serve o módulo. São perguntas
+        # diferentes: os 12.854 frames da RVB estão todos com module_code='epi'
+        # porque 'epi' é o default da coluna, inclusive os que vieram de
+        # "Estacionamento Motos". Sem o escopo, essa fila serve exatamente esse
+        # material ao anotador de EPI.
         base_where = (
             "WHERE tf.tenant_id = %s AND tf.module_code = %s "
             "AND tf.is_annotated = FALSE "
-            "AND tf.curation_status = 'active'"
+            "AND tf.curation_status = 'active' "
+            f"AND {escopo_sql('tf.camera_id')}"
+        )
+        base_params = [str(tenant_id), module_code] + escopo_params(
+            str(tenant_id), module_code
         )
 
         scored = list(self._execute(
             f"SELECT {cols} FROM training_frames tf {base_where} "
             "AND tf.model_confidence IS NOT NULL "
             "ORDER BY tf.model_confidence ASC, tf.created_at ASC LIMIT %s",
-            (str(tenant_id), module_code, limit),
+            tuple(base_params + [limit]),
         ))
         unscored = list(self._execute(
             f"SELECT {cols} FROM training_frames tf {base_where} "
             "AND tf.model_confidence IS NULL "
             "ORDER BY tf.created_at ASC LIMIT %s",
-            (str(tenant_id), module_code, limit),
+            tuple(base_params + [limit]),
         ))
 
         out: "list[dict[str, Any]]" = []

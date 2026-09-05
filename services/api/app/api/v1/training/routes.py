@@ -28,6 +28,8 @@ Routes compatíveis com AnnotationInterface.jsx:
   GET  /api/v1/training/search/jobs/<id>
   POST /api/v1/training/search/jobs/<id>/callback           (interno GPU→API)
   POST /api/v1/training/search/jobs/<id>/promote             (achado → proposta pendente)
+  GET  /api/training/gabarito/fila                          (triagem do gabarito do A/B — migration 135)
+  PUT  /api/training/gabarito/frames/<frame_id>             (veredito por imagem+classe; NÃO é anotação)
 """
 from flask import Blueprint
 from flask_jwt_extended import jwt_required
@@ -49,6 +51,10 @@ from .annotation_handlers import (
     update_class_handler,
 )
 from .coverage_handlers import get_coverage_matrix_handler
+from .gabarito_handlers import (
+    get_gabarito_fila_handler,
+    save_gabarito_verdicts_handler,
+)
 from .image_handlers import (
     active_learning_queue_handler,
     curate_frames_handler,
@@ -369,6 +375,26 @@ def get_training_images_facets():  # type: ignore[no-untyped-def]
 @jwt_required()
 def get_training_coverage_matrix():  # type: ignore[no-untyped-def]
     return get_coverage_matrix_handler()
+
+
+# --- Gabarito do A/B de ausência (migration 135) ---
+#
+# Mesmo gate da anotação (`training:write`): quem pode rotular pode julgar.
+# O que se grava aqui NÃO é anotação — vai para public.holdout_verdicts, que
+# nenhuma query de export de treino conhece (ver gabarito_handlers.py).
+
+@training_bp.route("/api/training/gabarito/fila", methods=["GET"])
+@jwt_required()
+@require_training_role("write")
+def get_gabarito_fila():  # type: ignore[no-untyped-def]
+    return get_gabarito_fila_handler()
+
+
+@training_bp.route("/api/training/gabarito/frames/<frame_id>", methods=["PUT"])
+@jwt_required()
+@require_training_role("write")
+def save_gabarito_verdicts(frame_id: str):  # type: ignore[no-untyped-def]
+    return save_gabarito_verdicts_handler(frame_id)
 
 
 # --- Curadoria de frames (migration 110) ---
