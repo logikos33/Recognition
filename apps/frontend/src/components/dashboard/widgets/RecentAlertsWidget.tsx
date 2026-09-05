@@ -4,7 +4,7 @@
 import { NavLink } from 'react-router-dom'
 import { timeAgo, useDashboardAlerts } from './useDashboardAlerts'
 import { violationLabel } from './violationLabels'
-import { ProcedenciaBadge } from '../../shared/ProcedenciaBadge'
+import { ProcedenciaEvento } from '../../shared/ProcedenciaEvento'
 import { WidgetContent } from './WidgetShell'
 import {
   alertList,
@@ -40,7 +40,15 @@ export function RecentAlertsWidget() {
                 nowrap (~130px) — inline empurraria o corpo do card. */}
             <div className={alertRowTime}>
               <div>{timeAgo(alert.timestamp ?? alert.created_at)}</div>
-              <ProcedenciaBadge capturadoEm={alert.timestamp} gravadoEm={alert.created_at} />
+              {/* Origem DECLARADA primeiro, atraso captura→gravação só como
+                  fallback (issue #670): 4.609 dos 5.174 eventos do DEV têm
+                  caixa desenhada por PESSOA e o critério temporal não acende
+                  neles — o widget apresentava anotação humana como detecção. */}
+              <ProcedenciaEvento
+                violations={alert.violations}
+                capturadoEm={alert.timestamp}
+                gravadoEm={alert.created_at}
+              />
             </div>
           </div>
         ))}

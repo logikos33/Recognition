@@ -12,7 +12,8 @@
  * · **Badge de procedência** (item 2, ADR-0066 — "a caixa diz quem a
  *   desenhou"): DUAS fontes, nesta ordem.
  *   1. `violations[].origem`, DECLARADA por quem gravou o evento
- *      (`procedenciaDeclarada()` aqui embaixo). É afirmação de primeira mão.
+ *      (`procedenciaDeclarada()`, em `components/shared/ProcedenciaEvento.tsx`,
+ *      o mesmo módulo que a lista e os widgets usam). É afirmação de primeira mão.
  *   2. só na ausência dela, `classificarLatencia()` de
  *      `components/shared/ProcedenciaBadge.tsx` — o atraso entre captura e
  *      gravação, importado e não recopiado (se o limiar mudar lá, muda aqui).
@@ -61,6 +62,7 @@ import { Link, useParams } from 'react-router-dom'
 import { HANDLES, boxFromDrag, clamp, moveBox, resizeBox, type HandleId } from '../../components/annotation/boxGeometry'
 import type { Box } from '../../components/annotation/studioTypes'
 import { classificarLatencia } from '../../components/shared/ProcedenciaBadge'
+import { ORIGEM_HUMANA, procedenciaDeclarada } from '../../components/shared/ProcedenciaEvento'
 import { useAuth } from '../../hooks/useAuth'
 import { confiancaBruta, confiancaInternaOuCliente } from '../../services/confidenceDisplay'
 import {
@@ -107,51 +109,17 @@ export interface Violacao {
   lote?: string
 }
 
-/** Caixa desenhada/aceita por PESSOA no estúdio de anotação. */
-export const ORIGEM_HUMANA = 'anotacao_humana'
-/** Caixa desenhada pelo detector servido (ONNX). */
-export const ORIGEM_MODELO = 'modelo_onnx'
-
-export interface ProcedenciaDeclarada {
-  origem: 'humana' | 'modelo'
-  rotulo: string
-  titulo: string
-}
-
 /**
- * Procedência DECLARADA no dado — `violations[].origem` — e não a distância
- * entre captura e gravação.
- *
- * Por que não basta o badge temporal (`classificarLatencia`): ele mede
- * ATRASO, e o acervo semeado no DEV grava `created_at == timestamp`. Resultado
- * medido em 05/09: 4.609 dos 5.174 eventos do DEV têm caixa desenhada por
- * PESSOA e o badge nunca acendia — a tela ficava muda exatamente onde tinha
- * mais o que dizer. Origem é afirmação de primeira mão; tempo é indício.
- *
- * Origem ausente ou desconhecida → `null`: sem declaração, sem afirmação
- * (mesma regra do `ProcedenciaBadge`, só que sobre outro campo).
+ * Procedência DECLARADA — a regra mora em
+ * `components/shared/ProcedenciaEvento.tsx` desde a issue #670: a LISTA de
+ * eventos, os dois widgets do dashboard e o histórico antigo liam SÓ o
+ * critério temporal e apresentavam 4.609 anotações humanas como detecção do
+ * modelo. Reexportada aqui porque esta tela foi onde a função nasceu (PR #669)
+ * e é por este módulo que os testes dela entram.
  */
-export function procedenciaDeclarada(
-  violations: Violacao[] | null | undefined,
-): ProcedenciaDeclarada | null {
-  const vs = violations ?? []
-  const humana = vs.some((v) => v.origem === ORIGEM_HUMANA)
-  const modelo = vs.some((v) => v.origem === ORIGEM_MODELO)
-  if (!humana && !modelo) return null
-  const lote = vs.find((v) => v.lote)?.lote
-  const origem = humana ? 'humana' : 'modelo'
-  return {
-    origem,
-    rotulo: [
-      humana ? 'anotação humana' : 'detecção do modelo',
-      lote ? 'demonstração' : null,
-    ].filter(Boolean).join(' · '),
-    titulo: (humana
-      ? 'A caixa deste evento foi desenhada por uma pessoa na anotação, não pelo modelo.'
-      : 'A caixa deste evento foi desenhada pelo modelo de visão.')
-      + (lote ? ` Carregado em lote para demonstração (${lote}).` : ''),
-  }
-}
+export {
+  ORIGEM_HUMANA, ORIGEM_MODELO, procedenciaDeclarada, type ProcedenciaDeclarada,
+} from '../../components/shared/ProcedenciaEvento'
 
 /** Última correção de caixa registrada no ledger append-only do alerta
  *  (`violations_historico` no backend, ver `_ultima_correcao`). */
@@ -269,6 +237,8 @@ export function EventoDetalhe() {
   const [motivo, setMotivo] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [erroAcao, setErroAcao] = useState<string | null>(null)
+  /** 409: alguém julgou antes — informação, não falha (nunca `erroAcao`). */
+  const [avisoAcao, setAvisoAcao] = useState<string | null>(null)
 
   // ── correção de caixa ────────────────────────────────────────────────────
   // Migrada de `pages/epi/AlertDetailPage.tsx` (PATCH /alerts/:id/violations)
@@ -474,6 +444,12 @@ export function EventoDetalhe() {
 
   // ── veredito ──────────────────────────────────────────────────────────────
 
+  /** Relê `GET /alerts/:id` sem derrubar o que já está na tela. */
+  const recarregar = () =>
+    api.get<{ data?: { alert: Evento } }>(`/alerts/${id}`)
+      .then((res) => setEvento(res.data?.alert ?? null))
+      .catch(() => { /* a tela segue mostrando o estado anterior */ })
+
   /**
    * `POST /verification/:id/review`. NÃO toca `/acknowledge`: reconhecer é
    * ciência do operador, veredito é verdade sobre a detecção. `reason` vai
@@ -482,17 +458,30 @@ export function EventoDetalhe() {
   const darVeredito = async (verdict: Veredito) => {
     setSalvando(true)
     setErroAcao(null)
+    setAvisoAcao(null)
     try {
       await api.post(`/verification/${id}/review`, {
         verdict,
         ...(motivo.trim() ? { reason: motivo.trim() } : {}),
       })
       setMotivo('')
-      await api.get<{ data?: { alert: Evento } }>(`/alerts/${id}`)
-        .then((res) => setEvento(res.data?.alert ?? null))
-        .catch(() => { /* a tela segue mostrando o estado anterior */ })
-    } catch {
-      setErroAcao('Não foi possível registrar o veredito.')
+      await recarregar()
+    } catch (e) {
+      // 409 = OUTRA PESSOA julgou este alerta primeiro (guarda
+      // `verification_verdict IS NULL OR verified_by = <eu>` do UPDATE, em
+      // verification_service.py). Não é falha do operador e não é erro desta
+      // tela: a mensagem do servidor já diz QUEM julgou e QUANDO. Recarrega o
+      // alerta para o chip do cabeçalho passar a mostrar o veredito que EXISTE
+      // — a tela continua viva e informada, nunca vermelha.
+      // ⛔ Mesma regra do bloco 4 de `Verificacao.tsx`: não transforme o 409 em
+      // "Não foi possível registrar", que faz o operador clicar de novo.
+      if (e instanceof ApiError && e.status === 409) {
+        setAvisoAcao(e.message)
+        setMotivo('')
+        await recarregar()
+      } else {
+        setErroAcao('Não foi possível registrar o veredito.')
+      }
     } finally {
       setSalvando(false)
     }
@@ -943,6 +932,7 @@ export function EventoDetalhe() {
               )}
 
               {erroAcao && <p role="alert" className={s.erro}>{erroAcao}</p>}
+              {avisoAcao && <p role="status" className={s.aviso}>{avisoAcao}</p>}
             </div>
           ) : (
             <div className={s.vereditoBloco}>

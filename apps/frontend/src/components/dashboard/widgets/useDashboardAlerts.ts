@@ -9,6 +9,14 @@ import { api } from '../../../services/api'
 export interface AlertViolation {
   class: string
   confidence: number
+  /** Quem desenhou ESTA caixa, declarado por quem gravou o evento. Chega aqui
+   *  porque `AlertRepository.list_with_filters` faz `SELECT a.*` — o JSONB
+   *  `violations` vem cru. Os dois widgets JÁ leem este campo (via
+   *  `ProcedenciaEvento`); sem declará-lo o tipo dizia menos do que o payload
+   *  tem, e foi exatamente essa leitura que fez a #670 nascer. */
+  origem?: string
+  /** Marca da carga em lote do acervo de demonstração. */
+  lote?: string
 }
 
 export interface DashboardAlert {
