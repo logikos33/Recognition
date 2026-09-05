@@ -16,6 +16,7 @@ from flask_jwt_extended import jwt_required
 from app.core.auth import get_current_user_id, get_tenant_id
 from app.core.exceptions import AuthorizationError, NotFoundError, ValidationError
 from app.core.responses import error, success
+from app.core.tenant import require_permission
 from app.domain.services.camera_module_service import (
     resolve_active_module,
     validate_schedule_rules,
@@ -81,6 +82,7 @@ def _is_module_allowed(module: str) -> bool:
 
 
 @jwt_required()
+@require_permission("cameras:configure")
 def patch_camera_module(camera_id: str):  # type: ignore[no-untyped-def]
     """
     PATCH /api/cameras/<id>/module
@@ -133,6 +135,7 @@ def patch_camera_module(camera_id: str):  # type: ignore[no-untyped-def]
 
 
 @jwt_required()
+@require_permission("cameras:configure")
 def put_camera_schedule(camera_id: str):  # type: ignore[no-untyped-def]
     """
     PUT /api/cameras/<id>/schedule
