@@ -131,3 +131,54 @@ class TestTodoAgendamentoAtivoTemConsumidor:
             if entrada["options"]["queue"] not in consumidas
         }
         assert not orfas, f"agendadas para fila que ninguém lê: {orfas}"
+
+
+class TestOContainerQueRodaOBackupTemPgDump:
+    """Agendar não basta: a tarefa tem de conseguir RODAR onde ela cai.
+
+    MEDIDO em 05/09/2026, dentro do container do DEV:
+
+        $ railway ssh -s celery-worker -- sh -lc 'which pg_dump'
+        NAO_EXISTE
+        $ ... 'pg_dump --version'
+        sh: 1: pg_dump: not found
+
+    O backup vai para a fila `reports`, consumida SÓ pelo celery-worker. Sem o
+    binário, o beat consertado dispararia certinho e `backup_database` devolveria
+    "pg_dump ausente na imagem" duas vezes por dia, para sempre, num logger.error
+    que ninguém lê — e /health/backup seguiria 503.
+
+    O `postgresql_18` do nixpacks.toml não cobria isto: nixpacks não builda
+    serviço nenhum neste projeto (worker → Dockerfile.worker via
+    worker-railway.toml; API → services/api/railway.toml).
+    """
+
+    def _dockerfile_do_worker(self) -> str:
+        toml = (_RAIZ / "worker-railway.toml").read_text()
+        assert 'services/api/Dockerfile.worker' in toml, (
+            "o worker mudou de Dockerfile — este teste está olhando o arquivo errado"
+        )
+        return (_RAIZ / "services/api/Dockerfile.worker").read_text()
+
+    def test_imagem_do_worker_instala_pg_dump(self):
+        assert "postgresql-client-18" in self._dockerfile_do_worker(), (
+            "libpq-dev traz a libpq, NÃO o binário pg_dump"
+        )
+
+    def test_pg_dump_nao_pode_ser_mais_antigo_que_o_servidor(self):
+        """Servidor Railway = PostgreSQL 18.6; o main do Debian 13 só tem o 17,
+        e pg_dump mais antigo que o servidor ABORTA em vez de dumpar."""
+        assert "apt.postgresql.org" in self._dockerfile_do_worker()
+
+    def test_build_quebra_alto_se_o_binario_nao_entrar(self):
+        """Falha de build > backup morto em silêncio."""
+        assert "RUN pg_dump --version" in self._dockerfile_do_worker()
+
+    def test_erro_de_runtime_aponta_o_arquivo_que_conserta(self):
+        fonte = (
+            _RAIZ / "services/api/app/infrastructure/queue/tasks/backup.py"
+        ).read_text()
+        i = fonte.index("backup_sem_pg_dump")
+        assert "Dockerfile.worker" in fonte[i:i + 400], (
+            "a mensagem mandava editar nixpacks.toml, que não builda nada"
+        )

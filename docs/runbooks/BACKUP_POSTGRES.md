@@ -58,7 +58,7 @@ railway logs -s celery-worker | grep -E "backup_(ok|pg_dump_falhou|drill_reprovo
 
 | Log | Causa | Conserto |
 |---|---|---|
-| `backup_sem_pg_dump` | `postgresql_18` fora do `nixPkgs` | `nixpacks.toml` |
+| `backup_sem_pg_dump` | `pg_dump` não existe na imagem do worker (era o caso até 05/09) | `services/api/Dockerfile.worker` — `postgresql-client-18` via PGDG. **NÃO** é `nixpacks.toml`: nixpacks não builda serviço nenhum neste projeto (worker → `worker-railway.toml` → `Dockerfile.worker`; API → `services/api/railway.toml`). Confirme com `railway ssh -s celery-worker -- sh -lc 'pg_dump --version'` — tem de responder 18.x, porque o servidor é 18.6 e pg_dump mais velho que o servidor aborta. |
 | `backup_pg_dump_falhou` | credencial/rede/versão do servidor | ver stderr truncado no log |
 | `backup_drill_reprovou` | subiu, mas o objeto **não é restaurável** | ⚠️ trate como "sem backup" |
 | `backup_ok` | tem backup íntegro | — |
