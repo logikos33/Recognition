@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 391 arquivos, 66.028 linhas
+## Situação — 391 arquivos, 66.004 linhas
 
 | status | arquivos |
 |---|---:|
@@ -399,7 +399,7 @@ apagado não são a mesma coisa.
 | `src/pages/HomePage.css.ts` | `PENDENTE` | — | 108 |
 | `src/pages/HomePage.tsx` | `PENDENTE` | — | 134 |
 | `src/pages/Login.css.ts` | `PENDENTE` | — | 177 |
-| `src/pages/Login.tsx` | `PENDENTE` | — | 106 |
+| `src/pages/Login.tsx` | `PENDENTE` | — | 82 |
 | `src/pages/ModuleSelectionPage.css.ts` | `PENDENTE` | — | 172 |
 | `src/pages/monitoring/ChartsSection.tsx` | `PENDENTE` | — | 479 |
 | `src/pages/monitoring/CollectionPanel.tsx` | `PENDENTE` | — | 101 |
