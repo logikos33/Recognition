@@ -687,9 +687,9 @@ const TETO_DA_VARREDURA_MS = 30_000
 describe('front novo: sem jargão técnico em texto de cliente', () => {
   it('nenhum termo da régua aparece fora do modo avançado', () => {
     const relatorio: string[] = []
+    const congelados = new Set(DEBITO_ESTRUTURAL_V1)
     for (const arquivo of arquivosVisiveisAoTenant()) {
       const rel = path.relative(APP, arquivo)
-      const congelados = new Set(DEBITO_ESTRUTURAL_V1)
       const codigo = fs.readFileSync(arquivo, 'utf-8')
       for (const a of acharJargao(rel, codigo)) {
         if (congelados.has(`${relDoSrc(arquivo)}|${a.termo}`)) continue
