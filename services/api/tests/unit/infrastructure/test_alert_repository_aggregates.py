@@ -215,6 +215,31 @@ class TestComplianceAggregates:
         assert params[:3] == (tenant, "epi", since)
         assert params[3] == []
 
+    def test_camera_hours_sem_until_nao_ganha_teto(self):
+        """O Dashboard chama sem `until` e continua sem limite superior."""
+        repo, pool = _make_repo()
+        repo.camera_hours_with_violation(str(uuid4()), "epi", FROM_TS)
+        sql, _ = _last_call(pool)
+        assert "a.created_at <= %s" not in sql
+
+    def test_camera_hours_com_until_fecha_a_janela_pelo_topo(self):
+        """Issue #797: o relatório apura períodos FECHADOS. Sem o teto, o
+        "mês anterior" contaria violação até AGORA — o mesmo defeito que
+        `count_since` → `count_in_window` já corrigiu na contagem de eventos.
+
+        A ordem dos params importa: o teto entra ANTES das duas listas de
+        classes, senão o psycopg2 casa `until` com um `text[]`.
+        """
+        repo, pool = _make_repo()
+        tenant = str(uuid4())
+        repo.camera_hours_with_violation(tenant, "epi", FROM_TS, TO_TS)
+        sql, params = _last_call(pool)
+        assert "a.created_at >= %s" in sql
+        assert "a.created_at <= %s" in sql
+        assert params[:4] == (tenant, "epi", FROM_TS, TO_TS)
+        assert params[4] == [] and params[5] == []
+        assert sql.count("%s") == len(params)
+
     def test_violation_hours_by_class_tenant_scoped(self):
         repo, pool = _make_repo()
         tenant = str(uuid4())

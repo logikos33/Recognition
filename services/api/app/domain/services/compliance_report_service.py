@@ -37,6 +37,7 @@ VALID_PERIODS = {"dia", "semana"}
 #: `app/api/v1/modules/routes.py` publica no Dashboard — a tela de Relatórios
 #: e o cartão do painel falam do mesmo score e têm de falar a mesma língua.
 #: (String literal de propósito: `domain` não importa de `api`.)
+RAZAO_SEM_CAMERA = "sem_cameras_ativas"
 RAZAO_SEM_SINAL = "sem_sinal_no_periodo"
 RAZAO_NAO_APURADA = "nao_foi_possivel_apurar"
 
@@ -49,6 +50,16 @@ def _get_alert_repo():  # type: ignore[no-untyped-def]
     if pool is None:
         raise RuntimeError("Database pool not initialized")
     return AlertRepository(pool)
+
+
+def _get_camera_repo():  # type: ignore[no-untyped-def]
+    from app.infrastructure.database.connection import DatabasePool
+    from app.infrastructure.database.repositories.camera_repository import CameraRepository
+
+    pool = DatabasePool.get_instance()
+    if pool is None:
+        raise RuntimeError("Database pool not initialized")
+    return CameraRepository(pool)
 
 
 def _get_storage():  # type: ignore[no-untyped-def]
@@ -249,14 +260,30 @@ class ComplianceReportService:
     ) -> dict[str, Any]:
         """Agrega métricas de compliance do alert_repository.
 
-        Compliance rate = max(0, 1 - violations / max(1, detections)) * 100.
-        Como não temos contagem de detecções totais no banco, usamos uma
-        estimativa conservadora baseada em câmeras × frames/hora × horas.
-        Para o MVP, compliance_rate = max(0, 100 - violations_pct_proxy).
+        **Taxa de Conformidade — issue #797.** A fórmula é a MESMA do cartão do
+        Dashboard (`module_service.get_stats`, ADR-0065):
+
+            100 × (1 − horas-câmera com violação ÷ (câmeras ativas × horas))
+
+        Antes era `100 − (TODOS os alertas ÷ horas) × 50`, e `count_in_window`
+        não filtra tipo: cada evento de **EPI EM USO** — o resultado bom, 3.881
+        dos 5.092 do acervo da RVB — DERRUBAVA a Taxa de Conformidade. Quanto
+        mais gente usando EPI, pior a nota. Medido no DEV: na semana de 04/08 o
+        PDF imprimia **0,0 %** enquanto o Dashboard, sobre os mesmos dados,
+        mostrava **92 · Conforme**. Cerca de 90 pontos de diferença, em
+        direções opostas, com o MESMO rótulo, no mesmo produto — e o do PDF é o
+        que fica arquivado no R2 como prova de auditoria.
+
+        É a inversão que a ADR-0065 já tinha corrigido no Dashboard
+        (`camera_hours_with_violation` conta violação DE VERDADE:
+        `_IS_VIOLATION_SQL AND NOT _IS_COMPLIANCE_SQL`) e que nunca chegou aqui.
+        Agora as duas telas leem o mesmo numerador e o mesmo denominador; o que
+        as separa é só a JANELA que cada uma cobre, e cada uma diz a sua.
 
         `compliance_rate` é `None` (com `compliance_reason`) sempre que o número
         afirmaria mais do que se sabe: nenhum alerta na janela (nada foi
-        observado) ou agregação que falhou. Nunca 100 sobre o vazio.
+        observado), nenhuma câmera ativa (denominador zero) ou agregação que
+        falhou. Nunca 100 sobre o vazio.
         """
         razao: str | None = None
         try:
@@ -300,12 +327,18 @@ class ComplianceReportService:
                 for cam_id, cnt in cam_counter.most_common(10)
             ]
 
-            # Compliance rate: heurística simples (sem contagem de detecções reais)
-            # Número de horas no período como proxy de "oportunidades de conformidade"
+            # ── Taxa de Conformidade (issue #797) ────────────────────────
+            # MESMO numerador e MESMO denominador do cartão do Dashboard.
+            #
+            # numerador: HORAS-CÂMERA COM VIOLAÇÃO — violação de verdade
+            #   (ADR-0065 + contrato A1), pela janela FECHADA do relatório.
+            #   Conformidade (EPI em uso) não entra: era ela que derrubava a
+            #   nota quando o EPI estava sendo USADO.
+            # denominador: câmeras ativas × horas do período — as horas-câmera
+            #   que o módulo SUPÕE ter monitorado. É suposição, e é por isso
+            #   que a legenda da tela tem de dizer o eixo (issue #789).
             hours = max(1.0, (end - start).total_seconds() / 3600)
-            # Estimativa: 1 violação por hora = 50% compliance (floor 0, ceiling 100)
-            violations_proxy = total_violations / hours
-            compliance_rate = max(0.0, min(100.0, 100.0 - (violations_proxy * 50)))
+            violation_hours = 0
 
             if total_violations == 0:
                 # ZERO alerta na janela não é 100 % de conformidade: `count_in_window`
@@ -316,10 +349,26 @@ class ComplianceReportService:
                 # nota máxima. O PDF arquivado no R2 é prova para auditoria.
                 compliance_rate = None
                 razao = RAZAO_SEM_SINAL
+            else:
+                cameras_ativas = _get_camera_repo().count_by_status(tenant_id, "epi", "active")
+                if cameras_ativas <= 0:
+                    # Denominador zero. Mesma razão que `get_stats` publica
+                    # quando não há câmera ativa — a tela já traduz a chave.
+                    compliance_rate = None
+                    razao = RAZAO_SEM_CAMERA
+                else:
+                    violation_hours = alert_repo.camera_hours_with_violation(
+                        tenant_id, "epi", start, end
+                    )
+                    camera_hours = cameras_ativas * hours
+                    compliance_rate = 100.0 * (
+                        1 - min(violation_hours, camera_hours) / camera_hours
+                    )
 
         except Exception as exc:
             logger.warning("compliance_aggregate_failed: %s", exc, exc_info=True)
             total_violations = 0
+            violation_hours = 0
             trend = []
             top_cameras = []
             # ⛔ Era `100.0`. A consulta cair devolvia o relatório PERFEITO —
@@ -332,7 +381,21 @@ class ComplianceReportService:
         return {
             "compliance_rate": None if compliance_rate is None else round(compliance_rate, 2),
             "compliance_reason": razao,
+            # ⚠️ `total_violations` é, e sempre foi, TODO alerta EPI do período
+            # (violação E conformidade) — o nome mente, e a tela o imprime como
+            # "N eventos no período", que é o que ele de fato é. A chave fica
+            # como está de propósito: `Relatorios.tsx` também a usa para decidir
+            # se o período está VAZIO, e trocar o significado sem trocar a tela
+            # faria uma semana de 3.881 eventos de conformidade e zero violação
+            # aparecer como "sem dado". Renomear é tarefa da tela, com a tela
+            # junto — issue própria.
             "total_violations": total_violations,
+            # Estes dois são novos e são o que a taxa REALMENTE usa. Existem
+            # para a tela poder mostrar de onde o número veio em vez de pedir
+            # confiança (e para o próximo a mexer não precisar reconstituir a
+            # fórmula a partir do resultado).
+            "violation_hours": violation_hours,
+            "period_hours": round(max(1.0, (end - start).total_seconds() / 3600), 2),
             "top_cameras": top_cameras,
             "trend_by_hour": trend,
         }

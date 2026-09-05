@@ -77,6 +77,7 @@ import {
 import { Link } from 'react-router-dom'
 
 import { useAuth } from '../../hooks/useAuth'
+import { api } from '../../services/api'
 import { moduleService, type ModuleStats } from '../../services/moduleService'
 import { eventsService } from '../../services/eventsService'
 import { violationLabel } from '../../components/dashboard/widgets/violationLabels'
@@ -176,6 +177,14 @@ const ROTULO_JANELA_RANKING = `ÚLTIMOS ${JANELA_RANKING_DIAS} DIAS`
  */
 const JANELA_PERFIL_DIAS = 90
 
+/**
+ * Janela do cartão "Aguardando tratativa" — 30 dias porque é a janela de
+ * `Acoes.tsx` (`const DIAS = 30`), a tela para onde o cartão manda ("tratar
+ * eventos →"). Cartão e fila de trabalho contando períodos diferentes é a
+ * primeira metade da issue #802; a segunda é o `kind` (ver `tratativa`).
+ */
+const JANELA_TRATATIVA_DIAS = 30
+
 const PADRAO: IdWidget[] = WIDGETS.map((w) => w.id)
 const CHAVE_PREF = 'lk-epi-dashboard-widgets'
 
@@ -235,6 +244,31 @@ function Estado({ nivel, palavra }: { nivel: Severidade; palavra: string }) {
 
 function numero(n: number) {
   return n.toLocaleString('pt-BR')
+}
+
+/**
+ * O score impresso — issue #789.
+ *
+ * ⛔ Era `Math.round(score)`. O score é
+ * `100 × (1 − horas-câmera com violação ÷ (câmeras ativas × 24))`: com as 17
+ * câmeras ativas da RVB o denominador é 408 horas-câmera/dia, então UMA hora
+ * com violação vale 0,245 % e qualquer taxa ≥ 99,5 arredondava para o inteiro
+ * **100**. Medido no acervo do DEV: 25/08 teve **66 violações de EPI** em 1
+ * hora-câmera → taxa 99,8 → a tela imprimia **100 · Conforme**, em verde, no
+ * dia mais violento do mês. E a dica do próprio cartão promete, com estas
+ * palavras, que ele aparece "nunca como 100" quando não é.
+ *
+ * `100` passa a ser reservado ao 100 exato — que é o único valor em que
+ * `horas com violação = 0`. Todo o resto desce para o inteiro abaixo: 99,8 e
+ * 99,5 imprimem **99**, e 99 na tela é a diferença entre "não houve nada" e
+ * "houve, e é pouco em cima de um denominador enorme".
+ *
+ * Isto NÃO conserta o denominador (issue #789 §"Não é só arredondar"): 92 num
+ * dia de 152 violações continua vindo do backend. O que este arredondamento
+ * garante é que a tela nunca AFIRME perfeição sobre um dia que teve violação.
+ */
+export function scoreImpresso(score: number): number {
+  return score >= 100 ? 100 : Math.min(99, Math.floor(score))
 }
 
 function horaCurta(ms: number) {
@@ -474,13 +508,57 @@ export function Dashboard() {
     refetchInterval: 120_000,
   })
 
+  const janelaTratativa = useMemo(() => {
+    const agora = new Date()
+    const inicio = new Date(agora)
+    inicio.setDate(inicio.getDate() - JANELA_TRATATIVA_DIAS)
+    return { de: inicio.toISOString(), ate: agora.toISOString() }
+  }, [])
+
+  /**
+   * O cartão "Aguardando tratativa" — issue #802.
+   *
+   * ⛔ Vinha de `perfil.situacao.nao_reconhecidos`, que é "todo evento do
+   * período ainda sem ciência" — TODO evento, de TODO tipo, em 90 dias.
+   * Medido no DEV (RVB, 05/09): o cartão dizia **5.062** e a tela para onde
+   * ele manda, `/epi/acoes`, dizia **368**. 14× de diferença, e o motivo
+   * estava dois blocos abaixo no próprio Dashboard: a Composição do período
+   * é Violação 504 + **Conformidade (EPI em uso) 3.881** + Não definida 707.
+   * Ninguém "trata" 3.881 registros de EPI EM USO — e `/epi/acoes` sabe
+   * disso (ADR-0065: uma tela de AGIR que listasse conformidade estaria
+   * pedindo ação sobre quem está certo).
+   *
+   * A conta passa a ser a MESMA chamada que `Acoes.tsx` faz para encher a
+   * coluna "Aguardando" — `kind=violation` + `acknowledged=false` + os
+   * mesmos 30 dias, `per_page=1` porque só o envelope importa. Não é uma
+   * segunda leitura do mesmo fato: é a leitura do destino, trazida para cá.
+   *
+   * ⚠️ `module_code=epi` vai junto (o cartão vive no dashboard do EPI e todo
+   * outro número desta tela é escopado assim). `Acoes.tsx` ainda NÃO manda —
+   * num tenant com mais de um módulo a fila contaria alerta de fora do EPI.
+   * Registrado como issue própria; num tenant só-EPI (a RVB) os dois números
+   * são idênticos hoje.
+   */
+  const tratativa = useQuery({
+    queryKey: ['epi', 'tratativa', janelaTratativa.de],
+    queryFn: () =>
+      api.get<{ data?: { total?: number; total_situacoes?: number } }>(
+        `/alerts?kind=violation&acknowledged=false&module_code=epi` +
+          `&start_date=${encodeURIComponent(janelaTratativa.de)}` +
+          `&end_date=${encodeURIComponent(janelaTratativa.ate)}&per_page=1`,
+      ),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  })
+
   const atualizar = useCallback(() => {
     void estatisticas.refetch()
     void linhaDoTempo.refetch()
     void resumo.refetch()
     void rankingCameras.refetch()
     void perfil.refetch()
-  }, [estatisticas, linhaDoTempo, resumo, rankingCameras, perfil])
+    void tratativa.refetch()
+  }, [estatisticas, linhaDoTempo, resumo, rankingCameras, perfil, tratativa])
 
   const alterarPref = useCallback((proxima: Preferencia) => {
     setPref(proxima)
@@ -606,6 +684,13 @@ export function Dashboard() {
   // ── Perfil temporal (horário do dia · dia · composição) ───────────────────
 
   const situacao = perfil.data?.situacao
+
+  // Issue #802 — o cartão de tratativa lê o envelope da MESMA chamada que
+  // enche a coluna "Aguardando" de `/epi/acoes`. `total_situacoes` é a
+  // contagem de RAJADAS do recorte inteiro (não da página); sem ele (backend
+  // antigo/mock) cai para linhas, igual ao sino e à lista de eventos.
+  const eventosAguardando = tratativa.data?.data?.total ?? 0
+  const situacoesAguardando = tratativa.data?.data?.total_situacoes ?? eventosAguardando
   const dadosPerfil = agregarPerfil(perfil.data?.rows ?? [])
   const picoHora = picoDeViolacao(dadosPerfil.porHora)
   const maxHoraDia = dadosPerfil.porHora.reduce((m, p) => (p.total > m ? p.total : m), 0)
@@ -1204,11 +1289,17 @@ export function Dashboard() {
             </div>
           )}
           <div className={s.scoreLinha}>
-            <span className={s.scoreNumero}>{score == null ? '—' : Math.round(score)}</span>
+            <span className={s.scoreNumero}>{score == null ? '—' : scoreImpresso(score)}</span>
             <div className={s.scoreLado}>
               <Estado nivel={nivelScore} palavra={palavraScore} />
               <span className={s.legenda}>
-                {score == null ? razaoSemScore : 'últimas 24 h · todas as câmeras do módulo'}
+                {/* issue #789: a legenda diz o EIXO, não só a janela. "Score de
+                    conformidade" sobre "% das horas-câmera sem violação" é o
+                    que o número mede — e sem isso a única explicação do que
+                    ele afirma vivia atrás do botão "i". */}
+                {score == null
+                  ? razaoSemScore
+                  : '% das horas-câmera sem violação · últimas 24 h · todas as câmeras do módulo'}
               </span>
             </div>
           </div>
@@ -1265,38 +1356,46 @@ export function Dashboard() {
 
         {/* Aguardando tratativa — `alerts.acknowledged`, a mesma coluna que
             `/epi/acoes` escreve. Não é "plano de ação com prazo" (isso não
-            existe, ver cabeçalho): é quantos eventos ninguém abriu ainda. */}
-        {perfil.isSuccess && (
+            existe, ver cabeçalho): é quanta VIOLAÇÃO ninguém abriu ainda.
+            Issue #802: o número é o da fila de destino, e a legenda diz o
+            recorte inteiro (tipo + tempo) em vez de deixar supor. */}
+        {tratativa.isSuccess && (
           <section
             className={`${s.cartaoKpi} ${
-              (situacao?.nao_reconhecidos ?? 0) > 0 ? s.acento.atencao : s.acento.ok
+              situacoesAguardando > 0 ? s.acento.atencao : s.acento.ok
             }`}
             aria-label="Aguardando tratativa"
           >
             <span className={s.overline}>Aguardando tratativa</span>
             <Link
-              // `nao_reconhecidos` = todo evento do período AINDA SEM
-              // ciência. Sem `acknowledged=false` o destino mostrava também o
-              // que já foi tratado — o cartão dizia 396 e a lista, 423.
+              // Os TRÊS eixos do recorte que produziu o número, declarados:
+              // tipo (`violation`), tratativa (`acknowledged=false`) e tempo
+              // (os mesmos 30 dias). Sem o `kind` o destino mostrava também
+              // conformidade; sem `acknowledged` mostrava o que já foi tratado.
               to={linkParaEventos({
-                kind: 'todos',
+                kind: 'violation',
                 acknowledged: 'false',
-                start_date: janelaPerfil.de,
-                end_date: janelaPerfil.ate,
+                start_date: janelaTratativa.de,
+                end_date: janelaTratativa.ate,
               })}
               className={`${s.kpiValor} ${s.linkLimpo}`}
-              aria-label={`Aguardando tratativa: ${numero(situacao?.nao_reconhecidos ?? 0)} · ver eventos`}
+              aria-label={`Aguardando tratativa: ${numero(situacoesAguardando)} · ver eventos`}
             >
-              {numero(situacao?.nao_reconhecidos ?? 0)}
+              {numero(situacoesAguardando)}
             </Link>
             <Estado
-              nivel={(situacao?.nao_reconhecidos ?? 0) > 0 ? 'atencao' : 'ok'}
-              palavra={
-                (situacao?.nao_reconhecidos ?? 0) > 0 ? 'Sem reconhecimento' : 'Tudo reconhecido'
-              }
+              nivel={situacoesAguardando > 0 ? 'atencao' : 'ok'}
+              palavra={situacoesAguardando > 0 ? 'Sem reconhecimento' : 'Tudo reconhecido'}
             />
             <span className={s.legenda}>
-              de {numero(situacao?.total ?? 0)} evento(s) no período
+              {/* SITUAÇÕES no número grande (é o que `/epi/acoes` conta na
+                  coluna "Aguardando"), EVENTOS na legenda (é o que a lista de
+                  `/epi/eventos` conta). As duas unidades aparecem porque as
+                  duas telas de destino usam uma cada — esconder uma delas é
+                  reabrir a divergência por outro caminho. */}
+              {situacoesAguardando !== eventosAguardando
+                ? `${numero(eventosAguardando)} evento(s) · violação sem reconhecimento · ${JANELA_TRATATIVA_DIAS}d`
+                : `violação sem reconhecimento · últimos ${JANELA_TRATATIVA_DIAS} dias`}
             </span>
             {can('alerts:read') && (
               <Link to={rotaNova('/epi/acoes')} className={s.atalho}>

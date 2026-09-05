@@ -21,8 +21,9 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { Dashboard } from './Dashboard'
+import { Dashboard, scoreImpresso } from './Dashboard'
 import { Eventos } from './Eventos'
+import { agruparPorRajada } from '../../utils/rajadas'
 
 const getStats = vi.fn()
 const getTimeline = vi.fn()
@@ -68,10 +69,18 @@ const HORA_BARRA = '2026-08-25T13:00:00.000Z'
  */
 const GRAVACAO_LOTE = '2026-08-25T14:05:00.000Z'
 
+/**
+ * `i === 8` cai 30 s depois de `i === 4` (mesma câmera, mesma classe): é UMA
+ * RAJADA, dois eventos. Existe de propósito — é o que faz `total_situacoes`
+ * divergir de `total` neste acervo, e sem essa divergência o cartão de
+ * tratativa e a lista poderiam concordar por acaso, contando a mesma unidade.
+ */
 const capturaDe = (i: number) =>
   i < 3
     ? new Date(Date.parse(HORA_BARRA) + (i + 1) * 10 * 60_000).toISOString()
-    : new Date(AGORA.getTime() - i * 3 * 3_600_000).toISOString()
+    : i === 8
+      ? new Date(AGORA.getTime() - 4 * 3 * 3_600_000 + 30_000).toISOString()
+      : new Date(AGORA.getTime() - i * 3 * 3_600_000).toISOString()
 
 const ACERVO = Array.from({ length: 24 }, (_, i) => ({
   id: `e${i}`,
@@ -81,7 +90,11 @@ const ACERVO = Array.from({ length: 24 }, (_, i) => ({
   // que é a maioria do acervo real do RVB.
   violations: [{ class: i % 4 === 0 ? 'no_helmet' : 'helmet', confidence: 0.9 }],
   event_kind: (i % 4 === 0 ? 'violation' : 'compliance') as 'violation' | 'compliance',
-  acknowledged: i % 2 === 0,
+  // 1 em cada 3 já foi reconhecido. Com `i % 2` (como era) TODA violação
+  // — que é `i % 4` — caía em índice par e vinha reconhecida: a fila de
+  // "aguardando violação" era zero, e um cartão que conta zero concorda com
+  // qualquer lista.
+  acknowledged: i % 3 === 0,
   // Os DOIS eixos, e eles DIVERGEM (é o defeito das issues #674/#676):
   // gravação num instante só, captura espalhada pelo turno.
   created_at: GRAVACAO_LOTE,
@@ -112,7 +125,20 @@ function servirAlerts(rota: string) {
       (!de || Date.parse(e[eixo]) >= Date.parse(de)) &&
       (!ate || Date.parse(e[eixo]) <= Date.parse(ate)),
   )
-  return { success: true, data: { alerts, total: alerts.length, page: 1, per_page: 20, pages: 1 } }
+  // `total_situacoes` — RAJADAS do recorte inteiro, com o MESMO critério do
+  // backend (câmera+classe, gap ≤60 s, eixo de CAPTURA: `alert_repository
+  // .list_with_filters`). Sem isto o mock não distinguiria as duas unidades
+  // que o produto imprime, e o cartão poderia trocar uma pela outra sem que
+  // nenhum teste percebesse.
+  const total_situacoes = agruparPorRajada(alerts, {
+    cameraId: (e) => e.camera_id,
+    classe: (e) => e.violations?.[0]?.class ?? '',
+    criadoEm: (e) => e.timestamp,
+  }).length
+  return {
+    success: true,
+    data: { alerts, total: alerts.length, total_situacoes, page: 1, per_page: 20, pages: 1 },
+  }
 }
 
 vi.mock('../../services/api', () => ({
@@ -650,20 +676,48 @@ describe('EPI Dashboard — perfil temporal (violações por horário, volume po
     )
   })
 
-  it('"Aguardando tratativa" traz o número real de eventos sem reconhecimento', async () => {
+  /**
+   * ISSUE #802 — "AGUARDANDO TRATATIVA 5.062" abria uma tela que dizia 368.
+   *
+   * O cartão vinha de `perfil.situacao.nao_reconhecidos`: TODO evento, de
+   * TODO tipo, em 90 dias. No DEV (RVB, 05/09) isso somava os **3.881
+   * eventos de CONFORMIDADE (EPI em uso)** que o próprio Dashboard decompõe
+   * dois blocos abaixo — e ninguém trata EPI em uso. 14× de diferença entre
+   * o número e o destino.
+   *
+   * Estes casos travam o recorte NOVO (violação · sem reconhecimento · 30 d,
+   * a janela de `Acoes.tsx`). Volte o cartão para `situacao.nao_reconhecidos`
+   * e o primeiro fica vermelho: 15 (todo tipo, todo estado do perfil) no
+   * lugar de 3.
+   */
+  it('#802: o cartão conta VIOLAÇÃO sem reconhecimento, não o acervo inteiro', async () => {
     getProfile.mockResolvedValue(PERFIL_RVB)
     montar()
     const cartao = await screen.findByLabelText('Aguardando tratativa')
-    expect(within(cartao).getByText('396')).toBeTruthy()
+    // 4 violações sem reconhecimento no acervo (i = 4, 8, 16, 20), e duas
+    // delas (4 e 8) são a MESMA rajada → 3 situações.
+    await waitFor(() => expect(within(cartao).getByText('3')).toBeTruthy())
     expect(within(cartao).getByText('Sem reconhecimento')).toBeTruthy()
-    expect(within(cartao).getByText(/de 423 evento\(s\) no período/)).toBeTruthy()
+    // A legenda declara a outra unidade e o recorte inteiro — o número grande
+    // conta situações (como `/epi/acoes`), a legenda conta eventos (como a
+    // lista de `/epi/eventos`).
+    expect(within(cartao).getByText(/4 evento\(s\) · violação sem reconhecimento · 30d/)).toBeTruthy()
+    // ⛔ o número do perfil (396 sem reconhecimento de 423) não pode reaparecer.
+    expect(within(cartao).queryByText('396')).toBeNull()
   })
 
-  it('sem perfil carregado o cartão de tratativa não entra — não inventa um zero', async () => {
-    getProfile.mockRejectedValue(new Error('timeout'))
+  it('#802: sem a contagem da fila o cartão não entra — não inventa um zero', async () => {
+    const { api } = await import('../../services/api')
+    const get = api.get as unknown as ReturnType<typeof vi.fn>
+    get.mockImplementation((rota: string) =>
+      rota.includes('acknowledged=false')
+        ? Promise.reject(new Error('timeout'))
+        : Promise.resolve(servirAlerts(rota)),
+    )
     montar()
     await screen.findByText('87')
     await waitFor(() => expect(screen.queryByLabelText('Aguardando tratativa')).toBeNull())
+    get.mockImplementation((rota: string) => Promise.resolve(servirAlerts(rota)))
   })
 })
 
@@ -714,13 +768,54 @@ describe('EPI Dashboard — o link carrega o filtro que produziu o número', () 
     expect(href).toContain('violation_type=no_helmet')
   })
 
-  it('"Aguardando tratativa" leva o acknowledged=false que produziu o número', async () => {
+  it('"Aguardando tratativa" leva os TRÊS eixos que produziram o número', async () => {
     getProfile.mockResolvedValue(PERFIL_RVB)
     montar()
     const cartao = await screen.findByLabelText('Aguardando tratativa')
     const href = cartao.querySelector('a')?.getAttribute('href') ?? ''
-    expect(kindDe(href)).toBe('')
+    // #802: `kind` era `''` (todos os tipos) num cartão que a tela chama de
+    // fila de tratativa — e a fila de tratativa (`/epi/acoes`) é de violação.
+    expect(kindDe(href)).toBe('violation')
     expect(href).toContain('acknowledged=false')
+    const q = new URLSearchParams(href.split('?')[1])
+    const dias = (Date.parse(q.get('end_date')!) - Date.parse(q.get('start_date')!)) / 86_400_000
+    expect(Math.round(dias)).toBe(30)
+  })
+
+  /**
+   * PROVA FIM-A-FIM da issue #802: o número que o usuário LÊ no cartão é o
+   * número que ele ENCONTRA quando clica, nas duas unidades que o produto
+   * imprime (situações e eventos). Dashboard e `Eventos` rodam de verdade,
+   * contra o mesmo acervo, ligados só pelo href que o cartão escreveu.
+   */
+  it('PROVA FIM-A-FIM #802: cartão de tratativa == lista de destino (situações E eventos)', async () => {
+    getProfile.mockResolvedValue(PERFIL_RVB)
+    const dashboard = montar()
+    const cartao = await screen.findByLabelText('Aguardando tratativa')
+    await waitFor(() => expect(within(cartao).getByText('3')).toBeTruthy())
+    const doCartao = Number(cartao.querySelector('a')?.textContent?.replace(/\D/g, ''))
+    const eventosDoCartao = Number(
+      (within(cartao).getByText(/evento\(s\)/).textContent ?? '').match(/^\d+/)?.[0],
+    )
+    const href = cartao.querySelector('a')?.getAttribute('href') ?? ''
+    dashboard.unmount()
+
+    render(
+      <MemoryRouter initialEntries={[href.replace('/novo', '')]}>
+        <Routes>
+          <Route path="/epi/eventos" element={<Eventos />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await screen.findAllByText('Entrada Expedição')
+    // "N SITUAÇÕES (…) · M EVENTOS" aparece no cabeçalho E no rodapé da tela.
+    const [contador] = await screen.findAllByText(/EVENTOS$/)
+    const [situacoesDaLista, eventosDaLista] = (contador.textContent ?? '')
+      .match(/\d+/g)!
+      .map(Number)
+
+    expect(situacoesDaLista).toBe(doCartao)
+    expect(eventosDaLista).toBe(eventosDoCartao)
   })
 
   it('PROVA FIM-A-FIM: o número do cartão é o número que a lista de destino mostra', async () => {
@@ -748,8 +843,12 @@ describe('EPI Dashboard — o link carrega o filtro que produziu o número', () 
     // Esperar a LISTA chegar: o rodapé existe desde o primeiro render com
     // "0 EVENTOS", e ler antes da carga daria um zero de loading.
     await screen.findAllByText('Entrada Expedição')
-    const rodape = await screen.findByText(/EVENTOS$/)
-    const daLista = Number((rodape.textContent ?? '').replace(/\D/g, ''))
+    // O contador é "N SITUAÇÕES · M EVENTOS" quando as duas unidades
+    // divergem (o acervo tem uma rajada) e só "M EVENTOS" quando não —
+    // o número de EVENTOS é sempre o ÚLTIMO. `replace(/\D/g,'')`, como era,
+    // colava os dois num "2324".
+    const [contador] = await screen.findAllByText(/EVENTOS$/)
+    const daLista = Number((contador.textContent ?? '').match(/\d+/g)!.at(-1))
 
     expect(daLista).toBe(doCartao)
   })
@@ -794,8 +893,12 @@ describe('EPI Dashboard — o link carrega o filtro que produziu o número', () 
       </MemoryRouter>,
     )
     await screen.findAllByText('Entrada Expedição')
-    const rodape = await screen.findByText(/EVENTOS$/)
-    const daLista = Number((rodape.textContent ?? '').replace(/\D/g, ''))
+    // O contador é "N SITUAÇÕES · M EVENTOS" quando as duas unidades
+    // divergem (o acervo tem uma rajada) e só "M EVENTOS" quando não —
+    // o número de EVENTOS é sempre o ÚLTIMO. `replace(/\D/g,'')`, como era,
+    // colava os dois num "2324".
+    const [contador] = await screen.findAllByText(/EVENTOS$/)
+    const daLista = Number((contador.textContent ?? '').match(/\d+/g)!.at(-1))
 
     // Pelo eixo da GRAVAÇÃO esta janela de uma hora não alcança linha nenhuma
     // (tudo foi gravado às 14:05Z) — a lista viria vazia embaixo de uma barra
@@ -865,5 +968,70 @@ describe('EPI Dashboard — score não afirma mais do que sabe', () => {
     expect(
       await screen.findByText(/ausência de medição, não conformidade/),
     ).toBeTruthy()
+  })
+})
+
+/**
+ * ISSUE #789 — "100 · Conforme" no dia de 66 violações.
+ *
+ * O score é `100 × (1 − horas-câmera com violação ÷ (câmeras ativas × 24))`.
+ * Com as 17 câmeras ativas da RVB o denominador é 408 horas-câmera/dia, então
+ * uma hora-câmera com violação vale 0,245 % — e `Math.round` levava qualquer
+ * taxa ≥ 99,5 para o inteiro **100**. Medido no acervo do DEV:
+ *
+ *   25/08 · 66 violações · 1 hora-câmera → 99,8 → a tela imprimia **100**
+ *   31/07 · 13 violações · 2 horas-câmera → 99,5 → a tela imprimia **100**
+ *
+ * E a dica do próprio cartão promete, com estas palavras, que o score aparece
+ * "nunca como 100" quando não pôde ser afirmado.
+ *
+ * Troque `scoreImpresso` de volta por `Math.round` e os dois primeiros casos
+ * ficam vermelhos.
+ */
+describe('#789 — o score nunca AFIRMA 100 num dia que teve violação', () => {
+  it('99,8 (66 violações reais em 1 hora-câmera) imprime 99, não 100', async () => {
+    getStats.mockResolvedValue({ ...STATS_RVB, compliance_rate: 99.8 })
+    montar()
+    const cartao = await screen.findByLabelText('Score de conformidade')
+    await waitFor(() => expect(within(cartao).getByText('99')).toBeTruthy())
+    expect(within(cartao).queryByText('100')).toBeNull()
+  })
+
+  it('99,5 — a borda exata do arredondamento — também imprime 99', async () => {
+    getStats.mockResolvedValue({ ...STATS_RVB, compliance_rate: 99.5 })
+    montar()
+    const cartao = await screen.findByLabelText('Score de conformidade')
+    await waitFor(() => expect(within(cartao).getByText('99')).toBeTruthy())
+    expect(within(cartao).queryByText('100')).toBeNull()
+  })
+
+  it('100 exato (zero hora-câmera com violação) continua 100 — o dia bom não vira 99', async () => {
+    getStats.mockResolvedValue({ ...STATS_RVB, compliance_rate: 100 })
+    montar()
+    const cartao = await screen.findByLabelText('Score de conformidade')
+    await waitFor(() => expect(within(cartao).getByText('100')).toBeTruthy())
+  })
+
+  it('a legenda diz o EIXO do número, não só a janela', async () => {
+    getStats.mockResolvedValue({ ...STATS_RVB, compliance_rate: 92.4 })
+    montar()
+    const cartao = await screen.findByLabelText('Score de conformidade')
+    await waitFor(() =>
+      expect(within(cartao).getByText(/% das horas-câmera sem violação/)).toBeTruthy(),
+    )
+  })
+
+  it('a tabela inteira do #789: nenhuma taxa < 100 imprime 100', () => {
+    // dia | taxa medida no DEV | o que a tela tem de imprimir
+    const medido: [number, number][] = [
+      [89.2, 89], // 10/08 · 159 violações
+      [92.4, 92], // 07/08 · 152 violações
+      [98.0, 98], // 18/08 ·  44 violações
+      [98.8, 98], // 12/08 ·  37 violações  (era 99 por arredondamento)
+      [99.5, 99], // 31/07 ·  13 violações  (era 100)
+      [99.8, 99], // 25/08 ·  66 violações  (era 100)
+      [100, 100], // zero hora-câmera com violação
+    ]
+    for (const [taxa, impresso] of medido) expect(scoreImpresso(taxa)).toBe(impresso)
   })
 })
