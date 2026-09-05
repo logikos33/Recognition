@@ -29,6 +29,7 @@ from flask_jwt_extended import jwt_required
 from app.core.auth import get_current_user_id, get_role, get_tenant_id
 from app.core.exceptions import EpiMonitorError
 from app.core.responses import error, success
+from app.core.tenant import require_permission
 
 from .helpers import _get_camera_service
 
@@ -81,7 +82,19 @@ def _queue_edge_propagation(camera: dict, user_id) -> dict:  # type: ignore[no-u
         return {"queued": False, "reason": "error"}
 
 
+# `cameras:control` (superadmin, admin, operator) — NÃO `cameras:configure`.
+# Esta rota rodava só com @jwt_required(): viewer e analyst mudavam por curl o
+# FPS de qualquer câmera do tenant. Quem é o dono dela, porém, está em
+# contradição documentada: registry e front novo dizem admin
+# (`app/epi/Cameras.tsx` desabilita o Salvar sem cameras:configure), enquanto
+# `tests/unit/test_camera_config_propagation.py::test_operator_can_trigger_
+# propagation` fixa "operator consegue — intencional (WS10)" e o front legado
+# (CameraFpsConfig.tsx EDIT_ROLES) concorda com o teste. cameras:control tem
+# exatamente o role-set dessa decisão, então o furo fecha sem reverter produto
+# na véspera. A UI mais restrita que a API é o lado seguro (esconde botão, não
+# tranca ninguém). Decisão de qual chave fica: issue de acompanhamento.
 @jwt_required()
+@require_permission("cameras:control")
 def patch_camera_config(camera_id: str):  # type: ignore[no-untyped-def]
     """---
     tags: [cameras]
