@@ -331,3 +331,54 @@ class TestRegistryDeclaraOQueFoiAmarrado:
 
         for chave in ("branding:write", "admin:roles", "admin:users"):
             assert set(default_roles_for(chave)) == {"superadmin", "admin"}, chave
+
+
+class TestLiveViewSegueAbertoAPapelSemControle:
+    """A EXCEÇÃO desta onda, fixada como teste — não como comentário.
+
+    `POST /cameras/<id>/stream/start` ficou DE PROPÓSITO sem
+    `cameras:control`: é o caminho do live view (`hooks/useLiveView.ts` pede a
+    URL tokenizada por ele) e `cameras:read` promete vídeo ao vivo a TODO
+    papel. Gatear o start pela chave de controle apagaria a imagem de viewer,
+    analyst e trainer — e é o "conserto" óbvio que a próxima onda tentaria
+    fazer lendo só o `enforced=True` de cameras:control.
+
+    Este teste é o que segura essa mão: se alguém amarrar o start na chave de
+    controle, ele fica vermelho ANTES de a fábrica ficar sem imagem. O dia em
+    que o start for partido em duas rotas (issue #714), o gate entra na
+    metade que inicia o pipeline e este teste passa a olhar a outra.
+    """
+
+    def _mocks(self):
+        svc = MagicMock()
+        svc.build_stream_url.return_value = "rtsp://x/y"
+        p = "app.api.v1.cameras.stream_handlers."
+        st = ExitStack()
+        st.enter_context(patch(p + "_get_camera_service", return_value=svc))
+        st.enter_context(patch(p + "_get_redis", return_value=MagicMock()))
+        st.enter_context(patch(p + "get_segments_redis", return_value=MagicMock()))
+        st.enter_context(patch(p + "_is_gateway_online", return_value=True))
+        return st
+
+    def test_todo_papel_ainda_obtem_a_url_do_ao_vivo(self, app, client):
+        with self._mocks():
+            for role in TODOS:
+                resp = client.post(
+                    f"/api/cameras/{CAM}/stream/start", headers=_auth(app, role)
+                )
+                assert resp.status_code != 403, (
+                    f"{role} perdeu o live view: {resp.get_data(as_text=True)[:200]}"
+                )
+
+    def test_viewer_sem_cameras_control_ainda_ve(self, app, client):
+        """Papel com a chave de controle NEGADA continua enxergando."""
+        with self._mocks():
+            resp = client.post(
+                f"/api/cameras/{CAM}/stream/start",
+                headers=_auth(app, "viewer", perms=["cameras:read"]),
+            )
+            assert resp.status_code != 403, resp.get_data(as_text=True)[:200]
+
+    def test_sem_token_nao_entra(self, app, client):
+        resp = client.post(f"/api/cameras/{CAM}/stream/start")
+        assert resp.status_code == 401
