@@ -16,6 +16,7 @@ from flask_jwt_extended import jwt_required
 from app.core.auth import get_current_user_id, get_tenant_id
 from app.core.exceptions import EpiMonitorError
 from app.core.responses import success, error
+from app.core.tenant import require_permission
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.alert_repository import AlertRepository
 from app.infrastructure.database.repositories.user_repository import UserRepository
@@ -357,6 +358,7 @@ def _validar_correcoes(body: dict):  # type: ignore[no-untyped-def]
 
 @alerts_bp.route("/<alert_id>/violations", methods=["PATCH"])
 @jwt_required()
+@require_permission("alerts:feedback")
 def corrigir_violations(alert_id: str):  # type: ignore[no-untyped-def]
     """Reposiciona a caixa de uma violação — em PIXELS do frame ORIGINAL.
 

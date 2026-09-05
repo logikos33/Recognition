@@ -59,7 +59,7 @@ const CARD_SPECS: CardSpec[] = [
   {
     type: 'vast_ai',
     title: 'Provedor GPU — Vast.ai',
-    description: 'Treinamento de modelos YOLO em GPUs sob demanda.',
+    description: 'Treinamento de modelos de visão em GPUs sob demanda.',
     configFields: [
       { key: 'gpu_type', label: 'GPU preferida', placeholder: 'RTX_3090' },
     ],

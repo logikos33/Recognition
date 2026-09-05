@@ -10,6 +10,7 @@ from flask import Blueprint, request
 
 from app.core.auth import get_tenant_id, jwt_required_custom
 from app.core.responses import error, success
+from app.core.tenant import require_permission
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.detection_feedback_repository import (
     DetectionFeedbackRepository,
@@ -26,6 +27,9 @@ def _get_repo() -> DetectionFeedbackRepository:
 
 
 @feedback_bp.route("", methods=["POST"])
+# alerts:feedback — a descrição da chave no registry É esta rota ("marcar
+# alertas como corretos ou falsos positivos"). Barra viewer e trainer.
+@require_permission("alerts:feedback")
 @jwt_required_custom
 def create_feedback(current_user_id: str) -> tuple:
     """Registra feedback do operador sobre uma detecção."""

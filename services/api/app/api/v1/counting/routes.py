@@ -29,6 +29,7 @@ from flask_jwt_extended import jwt_required
 from app.core.auth import get_tenant_id
 from app.core.exceptions import EpiMonitorError
 from app.core.responses import success, error
+from app.core.tenant import require_permission
 from app.domain.services.lpr_service import parse_plate
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.counting_repository import CountingRepository
@@ -50,6 +51,7 @@ def _get_repo() -> CountingRepository:
 
 @counting_bp.route("/api/counting/sessions", methods=["POST"])
 @jwt_required()
+@require_permission("counting:write")
 def start_session():  # type: ignore[no-untyped-def]
     """Inicia nova sessão de contagem para uma câmera."""
     body = request.get_json(silent=True) or {}
@@ -91,6 +93,7 @@ def list_sessions():  # type: ignore[no-untyped-def]
 
 @counting_bp.route("/api/counting/sessions/<session_id>", methods=["PATCH"])
 @jwt_required()
+@require_permission("counting:write")
 def update_session(session_id: str):  # type: ignore[no-untyped-def]
     """
     Atualização parcial de uma sessão (whitelist em CountingRepository.UPDATABLE_SESSION_FIELDS):
@@ -124,6 +127,7 @@ def update_session(session_id: str):  # type: ignore[no-untyped-def]
 
 @counting_bp.route("/api/counting/sessions/<session_id>", methods=["DELETE"])
 @jwt_required()
+@require_permission("counting:write")
 def stop_session(session_id: str):  # type: ignore[no-untyped-def]
     """Encerra sessão e retorna totais finais."""
     try:
@@ -166,6 +170,7 @@ def session_stats(session_id: str):  # type: ignore[no-untyped-def]
 
 @counting_bp.route("/api/counting/sessions/<session_id>/plate", methods=["PATCH"])
 @jwt_required()
+@require_permission("counting:write")
 def update_plate(session_id: str):  # type: ignore[no-untyped-def]
     """
     Registra ou corrige a placa associada a uma sessão de carga/descarga.

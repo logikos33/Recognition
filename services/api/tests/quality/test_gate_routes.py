@@ -9,8 +9,10 @@ Estrategia:
 """
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
+from flask_jwt_extended import create_access_token
 
 from app import create_app
 
@@ -107,6 +109,27 @@ def mock_repo():
         "most_common_defect": "surface_scratch",
     }
     return repo
+
+
+def _auth_operador(app) -> dict[str, str]:
+    """Token real de `operator` — quem opera a bancada.
+
+    `_require_jwt` continua stubado para o resto do arquivo, mas
+    `PATCH /gate/reworks/<id>/complete` ganhou gate de permissão
+    (`quality:write`, onda 1 da #678) e o gate verifica o JWT de verdade,
+    antes do corpo do handler. Sem token: 401 — como para qualquer cliente.
+    """
+    with app.app_context():
+        token = create_access_token(
+            identity=str(uuid4()),
+            additional_claims={
+                "tenant_id": str(uuid4()),
+                "tenant_schema": TENANT_SCHEMA,
+                "role": "operator",
+                "modules": ["quality"],
+            },
+        )
+    return {"Authorization": f"Bearer {token}"}
 
 
 @contextmanager
@@ -253,11 +276,23 @@ def test_start_rework_200(client, mock_service, mock_repo):
     assert resp.status_code == 200
 
 
-def test_complete_rework_200(client, mock_service, mock_repo):
-    """PATCH /gate/reworks/<id>/complete deve retornar 200."""
+def test_complete_rework_200(app, client, mock_service, mock_repo):
+    """PATCH /gate/reworks/<id>/complete deve retornar 200 para quem opera."""
+    with _gate_patches(mock_service, mock_repo):
+        resp = client.patch(
+            f"/api/v1/quality/gate/reworks/{REWORK_ID}/complete",
+            headers=_auth_operador(app),
+        )
+    assert resp.status_code == 200
+
+
+def test_complete_rework_sem_token_401(client, mock_service, mock_repo):
+    """Concluir retrabalho exige `quality:write` (onda 1 da #678) — e o gate
+    roda ANTES do corpo, então sem Authorization não há 200 nem efeito."""
     with _gate_patches(mock_service, mock_repo):
         resp = client.patch(f"/api/v1/quality/gate/reworks/{REWORK_ID}/complete")
-    assert resp.status_code == 200
+    assert resp.status_code == 401
+    mock_service.complete_rework.assert_not_called()
 
 
 def test_list_stations_200(client, mock_service, mock_repo):
