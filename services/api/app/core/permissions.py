@@ -76,7 +76,7 @@ PERMISSION_REGISTRY: dict[str, dict[str, Any]] = {
     "cameras:configure": _entry(
         "Configurar câmeras",
         "Permite alterar configurações técnicas da câmera (FPS, modelo, conexão).",
-        "Câmeras", ["superadmin", "admin"],
+        "Câmeras", ["superadmin", "admin"], enforced=True,
     ),
     "cameras:write": _entry(
         "Cadastrar/editar câmeras",

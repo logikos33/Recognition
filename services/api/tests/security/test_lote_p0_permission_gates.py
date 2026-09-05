@@ -35,10 +35,17 @@ SCHEMA = "tenant_test"
 CAM = str(uuid4())
 
 
-def _auth(app, role: str, perms: list[str] | None = None) -> dict[str, str]:
+def _auth(
+    app,
+    role: str,
+    perms: list[str] | None = None,
+    modules: list[str] | None = None,
+) -> dict[str, str]:
     claims: dict = {"tenant_id": TENANT, "tenant_schema": SCHEMA, "role": role}
     if perms is not None:
         claims["perms"] = perms
+    if modules is not None:
+        claims["modules"] = modules
     with app.app_context():
         token = create_access_token(identity=str(uuid4()), additional_claims=claims)
     return {"Authorization": f"Bearer {token}"}
@@ -305,6 +312,50 @@ class TestQualityRotasDeTreino:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# 3b. QUALIDADE — configuração de câmera do módulo (inclui o 2º DELETE aberto)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# (método, url) — todas mutam `cameras` do schema do tenant
+ROTAS_CONFIG_QUALIDADE = [
+    ("post", f"/api/v1/quality/cameras/{CAM}/assign"),
+    ("delete", f"/api/v1/quality/cameras/{CAM}/unassign"),
+    ("patch", f"/api/v1/quality/cameras/{CAM}/config"),
+    ("post", f"/api/v1/quality/cameras/{CAM}/toggle-setup-mode"),
+]
+
+
+class TestQualityConfigDeCamera:
+    """cameras:configure — a MESMA chave que o front já usa para liberar estes
+    controles (app/qualidade/ConfigQualidade.tsx:121). Só faltava no backend."""
+
+    @pytest.mark.parametrize("metodo,url", ROTAS_CONFIG_QUALIDADE)
+    @pytest.mark.parametrize("role", ["viewer", "operator", "trainer", "analyst"])
+    def test_papel_sem_permissao_barrado(self, app, client, metodo, url, role):
+        pool, cur = _mock_pool()
+        with patch("app.api.v1.quality.routes._get_pool", return_value=pool):
+            # modules=['quality'] no token: assim o 403 que o teste vê é do
+            # gate de PERMISSÃO, não do gate de módulo do blueprint.
+            resp = getattr(client, metodo)(
+                url,
+                json={"product_type": "x"},
+                headers=_auth(app, role, modules=["quality"]),
+            )
+        assert resp.status_code == 403, f"{role} em {url}: {resp.get_json()}"
+        cur.execute.assert_not_called()
+
+    @pytest.mark.parametrize("metodo,url", ROTAS_CONFIG_QUALIDADE)
+    def test_admin_passa_do_gate(self, app, client, metodo, url):
+        pool, cur = _mock_pool()
+        cur.fetchone.return_value = None
+        with patch("app.api.v1.quality.routes._get_pool", return_value=pool):
+            resp = getattr(client, metodo)(
+                url,
+                json={"product_type": "x"},
+                headers=_auth(app, "admin", modules=["quality"]),
+            )
+        assert resp.status_code != 403, f"{url}: {resp.get_json()}"
+
+# ═══════════════════════════════════════════════════════════════════════════
 # 4. O registry não pode mentir sobre quem ele barra
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -364,7 +415,8 @@ class TestRegistryEnforcedHonesto:
         from app.core.permissions import PERMISSION_REGISTRY
 
         for chave in (
-            "cameras:write", "cameras:delete", "frames:annotate",
+            "cameras:write", "cameras:delete", "cameras:configure",
+            "frames:annotate",
             "training:write", "training:approve", "models:approve",
             "quality:read",
         ):

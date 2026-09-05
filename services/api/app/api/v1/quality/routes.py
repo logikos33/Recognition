@@ -201,6 +201,7 @@ def list_available_cameras():
 
 
 @quality_bp.route("/cameras/<camera_id>/assign", methods=["POST"])
+@require_permission("cameras:configure")
 def assign_camera(camera_id: str):
     """POST /api/v1/quality/cameras/<id>/assign — atribui câmera ao módulo qualidade."""
     try:
@@ -237,6 +238,7 @@ def assign_camera(camera_id: str):
 
 
 @quality_bp.route("/cameras/<camera_id>/unassign", methods=["DELETE"])
+@require_permission("cameras:configure")
 def unassign_camera(camera_id: str):
     """DELETE /api/v1/quality/cameras/<id>/unassign — remove câmera do módulo qualidade."""
     try:
@@ -263,6 +265,7 @@ def unassign_camera(camera_id: str):
 
 
 @quality_bp.route("/cameras/<camera_id>/config", methods=["PATCH"])
+@require_permission("cameras:configure")
 def update_camera_config(camera_id: str):
     """PATCH /api/v1/quality/cameras/<id>/config — atualiza config da câmera."""
     try:
@@ -310,6 +313,7 @@ def update_camera_config(camera_id: str):
 
 
 @quality_bp.route("/cameras/<camera_id>/toggle-setup-mode", methods=["POST"])
+@require_permission("cameras:configure")
 def toggle_setup_mode(camera_id: str):
     """POST /api/v1/quality/cameras/<id>/toggle-setup-mode — alterna modo setup."""
     try:
