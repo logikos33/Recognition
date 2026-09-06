@@ -17,7 +17,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { mensagemHumana, translateError, showErrorToast } from '../../utils/errorTranslator'
-import { ErrorBoundary } from '../../components/shared/ErrorBoundary'
+import { ErrorBoundary, inicioDaAplicacaoAtual } from '../../components/shared/ErrorBoundary'
+import { PREFIXO_NOVO } from '../../app/RotasNovas'
 import { useToastStore } from '../../components/ui/Toast/useToast'
 
 /** Tripa que não pode aparecer em texto de tela. */
@@ -144,5 +145,64 @@ describe('ErrorBoundary — o estado de erro do front novo', () => {
     expect(
       chamadas.some((c) => c.some((a) => a instanceof Error && a.message === SQL_CRU)),
     ).toBe(true)
+  })
+})
+
+/**
+ * A saída de emergência não pode trocar de APLICAÇÃO (achado do cético, 06/09).
+ *
+ * O `ErrorBoundary` serve os DOIS fronts, e `app/coexistencia.test.tsx` já
+ * reprova `window.location.assign('/')` — mas a varredura dele só olha
+ * `src/app`, e este componente mora em `components/shared`. Resultado: o botão
+ * "Voltar ao início" nasceu mandando `/` fixo, o que despeja quem está em
+ * `/novo/epi/eventos` no front ANTIGO, calado. É o "quinto furo" de 05/09
+ * reaberto pela porta que a guarda não vigia.
+ *
+ * MUTAÇÃO: `inicioDaAplicacaoAtual` voltar a `return '/'` deixa este bloco
+ * vermelho.
+ */
+describe('ErrorBoundary — a saída de emergência fica na mesma aplicação', () => {
+  const comPathname = <T,>(pathname: string, f: (assign: ReturnType<typeof vi.fn>) => T): T => {
+    const original = window.location
+    const assign = vi.fn()
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...original, pathname, assign },
+    })
+    try {
+      return f(assign)
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, value: original })
+    }
+  }
+
+  it.each([
+    [`${PREFIXO_NOVO}/epi/eventos`, PREFIXO_NOVO],
+    [`${PREFIXO_NOVO}/estudio/dados`, PREFIXO_NOVO],
+    [PREFIXO_NOVO, PREFIXO_NOVO],
+    ['/epi/eventos', '/'],
+    ['/', '/'],
+    // não pode casar por prefixo bobo: `/novoteste` é do front antigo
+    ['/novoteste', '/'],
+  ])('de %s o início é %s', (pathname, esperado) => {
+    comPathname(pathname, () => {
+      expect(inicioDaAplicacaoAtual()).toBe(esperado)
+    })
+  })
+
+  it('o botão leva para o início do front NOVO quando o erro é no front novo', () => {
+    comPathname(`${PREFIXO_NOVO}/epi/eventos`, (assign) => {
+      const Estoura = () => {
+        throw new Error(SQL_CRU)
+      }
+      render(
+        <ErrorBoundary>
+          <Estoura />
+        </ErrorBoundary>,
+      )
+      fireEvent.click(screen.getByRole('button', { name: /voltar ao início/i }))
+      expect(assign).toHaveBeenCalledWith(PREFIXO_NOVO)
+      expect(assign).not.toHaveBeenCalledWith('/')
+    })
   })
 })
