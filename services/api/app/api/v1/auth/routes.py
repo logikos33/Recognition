@@ -3,6 +3,7 @@ Recognition — Auth Routes.
 
 POST /api/auth/register
 POST /api/auth/login
+POST /api/auth/change-password
 POST /api/auth/refresh
 GET  /api/auth/me
 POST /api/auth/forgot-password
@@ -14,10 +15,10 @@ import os
 from flask import Blueprint, request
 from flask_jwt_extended import create_access_token, decode_token, get_jwt, jwt_required
 
-from app.core.auth import get_current_user_id
+from app.core.auth import get_current_user_id, hash_password
 from app.core.tenant_context import TENANT_CTX_CLAIM
 from app.core.responses import success, error
-from app.core.exceptions import AuthenticationError, EpiMonitorError
+from app.core.exceptions import AuthenticationError, EpiMonitorError, ValidationError
 from app.core import login_account_limiter
 from app.domain.services.auth_service import AuthService
 from app.domain.services.password_reset_service import PasswordResetService
@@ -179,11 +180,18 @@ def login():  # type: ignore[no-untyped-def]
         # da conta (recomendação OWASP).
         login_account_limiter.reset(email)
 
+        # Credencial confere, mas a senha é temporária: nenhuma sessão sai
+        # daqui enquanto a troca não acontecer.
+        bloqueio = _bloqueia_se_senha_temporaria(user)
+        if bloqueio is not None:
+            return bloqueio
+
         token, user_response = _issue_session_token(user)
 
         # Sessões concorrentes: registra sessão e aplica single_session do
         # tenant ("última sessão ganha") — best-effort, nunca bloqueia o login
         _register_session(token, str(user["id"]), str(user_response["tenant_id"]))
+        _registrar_acesso(str(user["id"]))
 
         return success({"token": token, "user": user_response})
     except EpiMonitorError:
@@ -191,6 +199,129 @@ def login():  # type: ignore[no-untyped-def]
     except Exception as exc:
         logger.error("login_error: %s", exc, exc_info=True)
         return error("Erro interno", 500)
+
+
+@auth_bp.route("/change-password", methods=["POST"])
+@limiter.limit("10 per hour")
+def change_password():  # type: ignore[no-untyped-def]
+    """
+    ---
+    tags:
+      - auth
+    summary: Troca a própria senha provando a senha atual
+    description: >
+      Saída do 403 `password_change_required`. Não exige token (quem tem senha
+      temporária não consegue obter um) e não exige e-mail configurado — é o
+      único caminho de troca que funciona no ambiente do cliente, onde
+      /forgot-password responde 503 por falta de provedor de envio.
+
+      A prova de identidade é a senha ATUAL, verificada pelo mesmo bcrypt do
+      login. Conta inativa é recusada pelo mesmo caminho. Sucesso limpa
+      `force_password_reset` e invalida todas as sessões da conta.
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          required: [email, current_password, new_password]
+          properties:
+            email: {type: string}
+            current_password: {type: string}
+            new_password: {type: string}
+    responses:
+      200:
+        description: Senha trocada — faça login com a nova senha
+      400:
+        description: Nova senha inválida ou igual à atual
+      401:
+        description: Credenciais inválidas
+      429:
+        description: Muitas tentativas (limite por IP ou por conta)
+    """
+    try:
+        data = request.get_json() or {}
+        email = (data.get("email") or "").strip().lower()
+        nova = data.get("new_password") or ""
+
+        # Mesmo bloqueio por conta do /login: esta rota também verifica senha,
+        # e sem isso viraria o caminho fácil para força bruta.
+        if login_account_limiter.is_blocked(email):
+            return error(
+                "Muitas tentativas de login. Tente novamente em alguns minutos.",
+                429,
+            )
+
+        service = _get_auth_service()
+        try:
+            user = service.login(
+                email=email, password=data.get("current_password", "")
+            )
+        except AuthenticationError:
+            login_account_limiter.register_failure(email)
+            raise
+        login_account_limiter.reset(email)
+
+        if len(nova) < 6:
+            raise ValidationError("Senha: mínimo 6 caracteres")
+        # Repetir a senha temporária "trocaria" a senha e limparia a flag sem
+        # trocar nada — a exigência viraria um clique.
+        if nova == (data.get("current_password") or ""):
+            raise ValidationError("A nova senha precisa ser diferente da atual")
+
+        repo = _get_user_repository()
+        # reset_password já limpa force_password_reset (ADR-0042 Fase 2).
+        if not repo.reset_password(str(user["id"]), hash_password(nova)):
+            return error("Não foi possível trocar a senha", 500)
+
+        # Trocar a senha derruba as sessões antigas — inclusive a de quem
+        # tivesse entrado com a senha temporária antes deste conserto.
+        try:
+            from app.domain.services.session_service import invalidate_all_sessions
+            pool = DatabasePool.get_instance()
+            if pool is not None:
+                invalidate_all_sessions(SessionRepository(pool), str(user["id"]))
+        except Exception as exc:
+            logger.warning("change_password_session_invalidation_failed: %s", exc)
+
+        return success(message="Senha alterada. Faça login com a nova senha.")
+    except EpiMonitorError:
+        raise
+    except Exception as exc:
+        logger.error("change_password_error: %s", exc, exc_info=True)
+        return error("Erro interno", 500)
+
+
+# Mensagem única para os dois pontos que emitem sessão. Não é segredo: quem a
+# recebe já provou a senha atual.
+_MSG_SENHA_TEMPORARIA = (
+    "Sua senha é temporária e precisa ser trocada antes do primeiro acesso. "
+    "Defina uma nova senha em POST /api/auth/change-password "
+    "(e-mail, senha atual e nova senha)."
+)
+
+
+def _bloqueia_se_senha_temporaria(user: dict):  # type: ignore[no-untyped-def]
+    """Devolve a resposta 403 quando a conta tem troca de senha pendente.
+
+    `force_password_reset` era escrita por TRÊS caminhos do admin (criação de
+    tenant, POST /users e a rota dedicada) e por NENHUM caminho cobrada: a
+    senha temporária virava permanente (issue #764).
+
+    Cobrada aqui e no /refresh porque emitir sessão é o que a flag tem de
+    barrar — se só o /login checasse, bastaria renovar um token vivo para
+    passar por cima dela por mais 24h.
+    """
+    if not user.get("force_password_reset"):
+        return None
+    return error(_MSG_SENHA_TEMPORARIA, 403, error_code="password_change_required")
+
+
+def _registrar_acesso(user_id: str) -> None:
+    """Grava last_login_at/login_count. Best-effort: nunca derruba o login."""
+    try:
+        _get_user_repository().register_login(user_id, request.remote_addr)
+    except Exception as exc:
+        logger.warning("login_bookkeeping_failed: %s", exc)
 
 
 def _register_session(token: str, user_id: str, tenant_id: str) -> None:
@@ -325,7 +456,10 @@ def _issue_session_token(user: dict) -> tuple[str, dict]:
     # Remover campos internos do response
     user_response = {
         k: v for k, v in user.items()
-        if k not in ("password_hash", "tenant_schema", "modules_enabled")
+        if k not in (
+            "password_hash", "tenant_schema", "modules_enabled",
+            "force_password_reset",
+        )
     }
     user_response["tenant_id"] = str(tenant_id)
     user_response["tenant_schema"] = tenant_schema
@@ -414,6 +548,10 @@ def refresh():  # type: ignore[no-untyped-def]
             raise AuthenticationError(
                 "Sessão não pode ser renovada. Entre novamente."
             )
+
+        bloqueio = _bloqueia_se_senha_temporaria(user)
+        if bloqueio is not None:
+            return bloqueio
 
         token, user_response = _issue_session_token(user)
 

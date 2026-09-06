@@ -51,6 +51,7 @@ class UserRepository(BaseRepository):
                 u.created_at,
                 u.tenant_id,
                 u.custom_role_id,
+                u.force_password_reset,
                 t.schema_name  AS tenant_schema,
                 t.modules_enabled AS modules_enabled
             FROM users u
@@ -79,6 +80,7 @@ class UserRepository(BaseRepository):
                 u.created_at,
                 u.tenant_id,
                 u.custom_role_id,
+                u.force_password_reset,
                 t.schema_name  AS tenant_schema,
                 t.modules_enabled AS modules_enabled
             FROM users u
@@ -102,6 +104,27 @@ class UserRepository(BaseRepository):
             "UPDATE users SET is_active = %s, updated_at = NOW() "
             "WHERE id = %s RETURNING id, email, name, role, is_active",
             (is_active, str(user_id)),
+        )
+
+    def register_login(
+        self, user_id: str, ip_address: str | None = None
+    ) -> Optional[dict[str, Any]]:
+        """Grava o acesso: last_login_at, last_login_ip e login_count + 1.
+
+        As três colunas existem desde a migration 029 e eram servidas por
+        GET /api/v1/admin/users, mas NENHUM caminho as escrevia — o painel
+        mostrava "nunca acessou" para quem tinha acabado de entrar (issue
+        #764). Sem esta escrita, o registro de acesso é enfeite.
+
+        COALESCE no contador porque a coluna nasceu NULLable com DEFAULT 0:
+        linhas anteriores à migration têm NULL, e NULL + 1 é NULL.
+        """
+        return self._execute_mutation(
+            "UPDATE users SET last_login_at = NOW(), "
+            "login_count = COALESCE(login_count, 0) + 1, "
+            "last_login_ip = %s "
+            "WHERE id = %s RETURNING id, last_login_at, login_count",
+            (ip_address, str(user_id)),
         )
 
     def reset_password(self, user_id: str, password_hash: str) -> Optional[dict[str, Any]]:

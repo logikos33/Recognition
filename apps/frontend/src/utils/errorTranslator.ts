@@ -47,6 +47,12 @@ const SILENT_RULES: Array<{ statuses: number[]; pathContains: string }> = [
   // aviso. Sem esta regra saíam DOIS toasts para o mesmo fato — e o genérico
   // saía VERMELHO, dizendo que deu erro o que na verdade é informação.
   { statuses: [409], pathContains: '/verification' },
+  // 403 em /auth/login é SEMPRE `password_change_required` (é o único 403 que
+  // a rota emite — auth/routes.py). Não é "sem permissão": é a senha
+  // temporária cobrada, e a própria tela de login abre o formulário de troca
+  // logo abaixo. O toast genérico saía VERMELHO dizendo a coisa errada em
+  // cima da instrução certa.
+  { statuses: [403], pathContains: '/auth/login' },
 ]
 
 export function showErrorToast(status: number, url: string, rawMessage: string) {
