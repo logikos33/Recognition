@@ -550,11 +550,12 @@ const DEBITO_DE_OUTRA_FRENTE = [
  * o CI ficar verde no PR que criou a lista. Com as contagens MEDIDAS na lista,
  * o teto é exato por par.
  *
- * NÃO É UM CEMITÉRIO: o teste `o débito congelado ainda descreve achado real`
- * abaixo reprova se um par deixar de casar — quem consertar a tela é obrigado
- * a apagar a linha daqui.
+ * NÃO É UM CEMITÉRIO: o teste `todo par congelado ainda casa com o MESMO
+ * NÚMERO de achados de hoje` abaixo reprova nos DOIS sentidos — contagem 0 quer
+ * dizer que a tela foi consertada (apague a linha), contagem maior quer dizer
+ * jargão novo (conserte a tela).
  *
- * Caminho relativo a `src/`. Formato: `<arquivo>|<termo exato acusado>`.
+ * Caminho relativo a `src/`. Formato: `<arquivo>|<termo exato acusado>|<vezes>`.
  */
 const DEBITO_ESTRUTURAL_V1 = [
   'app/admin/Auditoria.tsx|GET /v1/admin/audit-log|1',
