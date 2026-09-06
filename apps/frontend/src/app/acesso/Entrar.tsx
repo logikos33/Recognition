@@ -81,10 +81,22 @@ export function Entrar() {
         current_password: senha,
         new_password: novaSenha,
       })
-      // Entra já com a senha nova — a pessoa não digita credencial duas vezes.
-      await login(email, novaSenha, rotaNova('/'))
     } catch (err: unknown) {
       setErro(err instanceof Error ? err.message : 'Não foi possível trocar a senha')
+      setLoading(false)
+      return
+    }
+    // Daqui para frente a senha temporária NÃO VALE MAIS. Se o login logo
+    // depois falhar (rede), insistir neste formulário mandaria a senha velha
+    // como "senha atual" e devolveria 401 para sempre — o jeito de sair é
+    // voltar ao login com a senha nova, não repetir a troca.
+    try {
+      // Entra já com a senha nova — a pessoa não digita credencial duas vezes.
+      await login(email, novaSenha, rotaNova('/'))
+    } catch {
+      setTrocaExigida(false)
+      setSenha('')
+      setErro('Senha alterada. Entre com a sua senha nova.')
       setLoading(false)
     }
   }

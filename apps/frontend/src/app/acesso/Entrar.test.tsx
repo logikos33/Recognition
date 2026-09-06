@@ -165,6 +165,26 @@ describe('Entrar — senha temporária', () => {
     ).toBeTruthy()
   })
 
+  it('troca OK + login que falha volta ao login, não repete a troca', async () => {
+    // A senha temporária já morreu no servidor: insistir no formulário de
+    // troca mandaria a senha velha como "atual" e devolveria 401 para sempre.
+    login.mockRejectedValueOnce(trocaExigida())
+    post.mockResolvedValue({ success: true })
+    login.mockRejectedValueOnce(new Error('Failed to fetch'))
+    montar()
+    preencherLogin()
+    fireEvent.change(await screen.findByLabelText('Nova senha'), {
+      target: { value: 'minha-senha-1' },
+    })
+    fireEvent.change(screen.getByLabelText('Repita a nova senha'), {
+      target: { value: 'minha-senha-1' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar e entrar' }))
+    expect(await screen.findByText('Senha alterada. Entre com a sua senha nova.')).toBeTruthy()
+    expect(screen.queryByLabelText('Nova senha')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Entrar' })).toBeTruthy()
+  })
+
   it('contraprova: credencial errada (401) NÃO abre o formulário de troca', async () => {
     login.mockRejectedValueOnce(new ApiError('Credenciais inválidas', 401))
     montar()
