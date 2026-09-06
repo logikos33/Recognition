@@ -31,6 +31,12 @@ def _auth(app, user_id: str) -> dict[str, str]:
                 "tenant_id": str(uuid.uuid4()),
                 "tenant_schema": "tenant_test",
                 "role": "operator",
+                # Grant granular explícito: desde o gate de `training:write`
+                # no blueprint (issue #782) o operator não passa por role. O
+                # que ESTE teste mede é posse, não permissão — então o token
+                # entra COM a chave, e o 404 do não-dono continua sendo do
+                # check de posse, não do gate.
+                "perms": ["training:write"],
                 "modules": ["epi"],
             },
         )

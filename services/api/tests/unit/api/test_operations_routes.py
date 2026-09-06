@@ -24,7 +24,12 @@ def auth_headers(app):
             additional_claims={
                 "tenant_id": TENANT_ID,
                 "tenant_schema": "public",
-                "role": "operator",
+                # admin: criar/editar/apagar operação passou a exigir
+                # `cameras:configure` (issue #785 — o blueprint rodava só com
+                # @jwt_required). Estes testes medem template_id/status/
+                # listagem, não permissão — quem mede papel é
+                # tests/security/test_onda4_blueprints_sem_gate.py.
+                "role": "admin",
                 "modules": ["epi"],
             },
         )

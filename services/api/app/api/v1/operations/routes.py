@@ -12,6 +12,7 @@ from flask_jwt_extended import jwt_required
 
 from app.core.auth import get_tenant_id
 from app.core.responses import error, success
+from app.core.tenant import require_permission
 from app.domain.services.operations.registry import OperationTypeRegistry
 from app.infrastructure.database.connection import DatabasePool
 from app.infrastructure.database.repositories.operation_repository import OperationRepository
@@ -85,6 +86,7 @@ def list_camera_operations(camera_id: str):
 
 @operations_bp.route("/cameras/<camera_id>/operations", methods=["POST"])
 @jwt_required()
+@require_permission("cameras:configure")
 def create_operation(camera_id: str):
     """Cria nova operação para a câmera. Valida config antes de persistir."""
     tenant_id = str(get_tenant_id())
@@ -128,6 +130,7 @@ def create_operation(camera_id: str):
 
 @operations_bp.route("/operations/<int:operation_id>", methods=["PUT"])
 @jwt_required()
+@require_permission("cameras:configure")
 def update_operation(operation_id: int):
     """Atualiza nome e config de uma operação. Incrementa version."""
     tenant_id = str(get_tenant_id())
@@ -167,6 +170,7 @@ def update_operation(operation_id: int):
 
 @operations_bp.route("/operations/<int:operation_id>/pause", methods=["POST"])
 @jwt_required()
+@require_permission("cameras:control")
 def pause_operation(operation_id: int):
     """Pausa uma operação (B1): sai da avaliação sem apagar histórico/config.
 
@@ -190,6 +194,7 @@ def pause_operation(operation_id: int):
 
 @operations_bp.route("/operations/<int:operation_id>/resume", methods=["POST"])
 @jwt_required()
+@require_permission("cameras:control")
 def resume_operation(operation_id: int):
     """Retoma uma operação pausada (B1): volta a valer no próximo ciclo."""
     tenant_id = str(get_tenant_id())
@@ -209,6 +214,7 @@ def resume_operation(operation_id: int):
 
 @operations_bp.route("/operations/<int:operation_id>", methods=["DELETE"])
 @jwt_required()
+@require_permission("cameras:configure")
 def delete_operation(operation_id: int):
     """Remove operação. Se há histórico, exige confirm_name no query string."""
     tenant_id = str(get_tenant_id())
@@ -256,6 +262,7 @@ def get_operation_results(operation_id: int):
 
 @operations_bp.route("/operations/<int:operation_id>/test", methods=["POST"])
 @jwt_required()
+@require_permission("cameras:control")
 def test_operation(operation_id: int):
     """Executa evaluate() com detecções fornecidas sem persistir resultado.
 

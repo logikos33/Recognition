@@ -50,7 +50,8 @@ def admin_headers(app, user_id):
     treino e criar/parar job pedem `cameras:write` / `training:write`, que o
     operator não tem no registry canônico (app/core/permissions.py) — antes
     essas rotas não tinham gate NENHUM e o operator passava, o que era o furo
-    fechado no lote P0. Mesmo motivo do token inline de `test_create_class_ok`
+    fechado no lote P0 — e, na onda 4 (#830), também as rotas mutantes de
+    `/api/v1/videos`, `/api/rules` e `/api/cameras/<id>/operations`. Mesmo motivo do token inline de `test_create_class_ok`
     (WS-A1), agora numa fixture em vez de copiado.
 
     Quem prova que o papel errado é barrado:
@@ -325,7 +326,7 @@ class TestTrainingJobs:
 
 class TestVideoRoutes:
 
-    def test_get_upload_url_ok(self, client, auth_headers) -> None:
+    def test_get_upload_url_ok(self, client, admin_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.create_video.return_value = {
             "id": str(uuid4()), "filename": "raw-videos/u/v/test.mp4",
@@ -336,13 +337,13 @@ class TestVideoRoutes:
              patch("app.api.v1.videos.routes.get_storage", return_value=mock_storage):
             res = client.post("/api/v1/videos/upload-url", json={
                 "filename": "test.mp4", "content_type": "video/mp4",
-            }, headers=auth_headers)
+            }, headers=admin_headers)
         assert res.status_code in (200, 201)
 
-    def test_get_upload_url_missing_filename(self, client, auth_headers) -> None:
+    def test_get_upload_url_missing_filename(self, client, admin_headers) -> None:
         with patch("app.api.v1.videos.routes.get_storage", return_value=MagicMock()):
             res = client.post("/api/v1/videos/upload-url", json={},
-                              headers=auth_headers)
+                              headers=admin_headers)
         assert res.status_code in (400, 422, 500)
 
     def test_get_video_status_ok(self, client, auth_headers, user_id) -> None:
@@ -361,7 +362,7 @@ class TestVideoRoutes:
             )
         assert res.status_code == 200
 
-    def test_trigger_extraction_dispatches(self, client, auth_headers, user_id) -> None:
+    def test_trigger_extraction_dispatches(self, client, admin_headers, user_id) -> None:
         """Route updates status to 'extracting' — 200 or 500 both valid here."""
         vid_id = uuid4()
         mock_svc = MagicMock()
@@ -373,7 +374,7 @@ class TestVideoRoutes:
         # extract_frames.delay will fail without Celery broker — that's OK for coverage
         with patch("app.api.v1.videos.routes._video_service", return_value=mock_svc):
             res = client.post(
-                f"/api/v1/videos/{vid_id}/extract", headers=auth_headers
+                f"/api/v1/videos/{vid_id}/extract", headers=admin_headers
             )
         # Route either succeeds or catches the Celery import/broker error as 500
         assert res.status_code in (200, 500)
@@ -726,7 +727,7 @@ class TestDashboardRoutesAuthenticated:
 
 class TestVideoErrorPaths:
 
-    def test_upload_url_error_path(self, client, auth_headers) -> None:
+    def test_upload_url_error_path(self, client, admin_headers) -> None:
         mock_svc = MagicMock()
         mock_svc.create_video.side_effect = RuntimeError("storage error")
         mock_storage = MagicMock()
@@ -734,7 +735,7 @@ class TestVideoErrorPaths:
         with patch("app.api.v1.videos.routes._video_service", return_value=mock_svc), \
              patch("app.api.v1.videos.routes.get_storage", return_value=mock_storage):
             res = client.post("/api/v1/videos/upload-url",
-                              json={"filename": "test.mp4"}, headers=auth_headers)
+                              json={"filename": "test.mp4"}, headers=admin_headers)
         assert res.status_code in (400, 500)
 
     def test_get_video_status_error_path(self, client, auth_headers) -> None:
