@@ -588,7 +588,7 @@ export function Cenario() {
         <span className={s.centroTexto}>
           As regras que já estão valendo continuam funcionando — só a edição está indisponível agora.
         </span>
-        <span className={s.centroTecnico}>GET /api/cameras/{cameraId}/operations · {erro}</span>
+        <span className={s.centroTecnico}>{erro}</span>
         <button className={s.botaoPrimario} onClick={carregar}>Tentar de novo</button>
       </div>
     )

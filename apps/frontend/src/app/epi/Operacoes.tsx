@@ -146,9 +146,7 @@ export function Operacoes() {
       <div className={s.centro}>
         <AlertTriangle size={36} strokeWidth={1.5} color={lk.estado.nc} aria-hidden="true" />
         <span className={s.centroTitulo}>Não foi possível carregar</span>
-        <span className={s.centroTecnico}>
-          GET /api/cameras/{cameraId}/operations · {erro}
-        </span>
+        <span className={s.centroTecnico}>{erro}</span>
         <button className={s.botaoPrimario} onClick={carregar}>
           Tentar novamente
         </button>
@@ -233,7 +231,7 @@ export function Operacoes() {
               <button
                 className={s.acao}
                 disabled
-                title="Sem endpoint: PUT /operations/<id> aceita só name e config; o status é escrito pelo worker."
+                title="Pausar e retomar ainda não está disponível — a operação segue como está."
               >
                 {sit === 'pausada' ? 'Retomar' : 'Pausar'}
               </button>

@@ -566,7 +566,6 @@ export function EventoDetalhe() {
       <div className={s.estadoCentral}>
         <AlertTriangle className={s.estadoIcone.falha} strokeWidth={1.5} aria-hidden />
         <span className={s.estadoTitulo}>Falha ao carregar o evento</span>
-        <span className={s.estadoMono}>GET /api/alerts/{id}</span>
         <button type="button" className={s.botaoPrimario} onClick={() => setTentativa((t) => t + 1)}>
           Tentar novamente
         </button>
@@ -927,7 +926,7 @@ export function EventoDetalhe() {
                 </>
               ) : (
                 <p className={s.aviso}>
-                  Você não tem permissão para julgar detecções (verification:write).
+                  Você não tem permissão para julgar detecções. Peça a quem administra o seu acesso.
                 </p>
               )}
 

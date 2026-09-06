@@ -313,12 +313,15 @@ describe('nada de dado inventado', () => {
     }
   })
 
-  it('erro mostra o endpoint REAL e deixa tentar de novo', async () => {
+  // A rota crua saiu (issue #810): o que o operador precisa é do MOTIVO, não
+  // do endereço. O detalhe continua na tela — só deixou de ser um endpoint.
+  it('erro mostra o motivo real e deixa tentar de novo', async () => {
     get.mockRejectedValue(new Error('timeout'))
     render(<Acoes />, { wrapper: MemoryRouter })
 
     await screen.findByText('Não foi possível carregar')
-    expect(screen.getByText(/GET \/api\/alerts/)).toBeTruthy()
+    expect(screen.getByText('timeout')).toBeTruthy()
+    expect(screen.queryByText(/\/api\//)).toBeNull()
 
     servir([], [])
     screen.getByRole('button', { name: /tentar novamente/i }).click()
