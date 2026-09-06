@@ -59,13 +59,27 @@ def _insert_camera(cur, tenant_id: str, user_id: str, name: str) -> str:
     return cid
 
 
-def _insert_alert(cur, tenant_id: str, camera_id: str, created_at: datetime) -> None:
-    """module_code default 'epi' — o mesmo módulo que ComplianceReportService agrega."""
+def _insert_alert(
+    cur, tenant_id: str, camera_id: str, created_at: datetime, classe: str | None = None
+) -> None:
+    """module_code default 'epi' — o mesmo módulo que ComplianceReportService agrega.
+
+    `classe` sai do catálogo global de EPI (migration 009): `no_helmet` é
+    VIOLAÇÃO (`is_violation = true`), `helmet` é CONFORMIDADE. `None` grava
+    `violations = []` — nem uma coisa nem outra, o balde "observação".
+
+    A polaridade importa desde a issue #797: a Taxa de Conformidade conta
+    horas-câmera COM VIOLAÇÃO, e um seed sem classe nenhuma nunca exercitaria
+    o numerador (era o caso deste teste antes — 3 alertas de `violations=[]`
+    davam 0 horas de violação, e a asserção passava por causa da fórmula
+    antiga, que contava TODO alerta).
+    """
+    violations = "[]" if classe is None else f'[{{"class": "{classe}", "confidence": 0.9}}]'
     cur.execute(
         "INSERT INTO public.alerts "
         "(id, camera_id, tenant_id, module_code, violations, confidence, evidence_key, created_at) "
         "VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s)",
-        (str(uuid4()), camera_id, tenant_id, "epi", "[]", 0.9, "evidence.jpg", created_at),
+        (str(uuid4()), camera_id, tenant_id, "epi", violations, 0.9, "evidence.jpg", created_at),
     )
 
 
@@ -106,31 +120,49 @@ class TestComplianceAggregationIntegration:
                 cam_a = _insert_camera(cur, tenant_a, user_a, "cam-a")
                 cam_b = _insert_camera(cur, tenant_b, user_b, "cam-b")
 
+                # A: 3 VIOLAÇÕES na mesma hora, na mesma câmera → 1 hora-câmera.
                 for _ in range(3):
-                    _insert_alert(cur, tenant_a, cam_a, now)
-                for _ in range(5):
-                    _insert_alert(cur, tenant_b, cam_b, now)
+                    _insert_alert(cur, tenant_a, cam_a, now, "no_helmet")
+                # B: as MESMAS 3 violações + 40 eventos de EPI EM USO. Mesmo
+                # numerador (1 hora-câmera), acervo 14× maior. Issue #797.
+                for _ in range(3):
+                    _insert_alert(cur, tenant_b, cam_b, now, "no_helmet")
+                for _ in range(40):
+                    _insert_alert(cur, tenant_b, cam_b, now, "helmet")
 
             # --- Tenant A: só vê seus 3 alertas ---
             summary_a = compliance_report_service._aggregate(tenant_a, "dia", start, end)
             assert summary_a["total_violations"] == 3, (
-                f"esperado 3 violações seedadas p/ tenant A, veio "
+                f"esperado 3 eventos seedados p/ tenant A, veio "
                 f"{summary_a['total_violations']} — TypeError silenciosamente "
                 "engolido de novo? (bug PR #75 reintroduzido)"
             )
             assert summary_a["top_cameras"] == [{"camera_id": cam_a, "count": 3}]
-            # hours=2.0 exato -> violations_proxy=1.5 -> 100-1.5*50=25.0
-            assert summary_a["compliance_rate"] == 25.0
+            # 1 câmera ativa × 2 h = 2 horas-câmera; 1 delas teve violação.
+            # 100 × (1 − 1/2) = 50,0 — a MESMA fórmula do cartão do Dashboard.
+            assert summary_a["violation_hours"] == 1
+            assert summary_a["period_hours"] == 2.0
+            assert summary_a["compliance_rate"] == 50.0
 
-            # --- Tenant B: só vê seus 5 alertas ---
+            # --- Tenant B: só vê seus 43 alertas ---
             summary_b = compliance_report_service._aggregate(tenant_b, "dia", start, end)
-            assert summary_b["total_violations"] == 5, (
-                f"esperado 5 violações seedadas p/ tenant B, veio "
+            assert summary_b["total_violations"] == 43, (
+                f"esperado 43 eventos seedados p/ tenant B, veio "
                 f"{summary_b['total_violations']}"
             )
-            assert summary_b["top_cameras"] == [{"camera_id": cam_b, "count": 5}]
-            # hours=2.0 exato -> violations_proxy=2.5 -> 100-2.5*50=-25 -> clamp 0.0
-            assert summary_b["compliance_rate"] == 0.0
+            assert summary_b["top_cameras"] == [{"camera_id": cam_b, "count": 43}]
+
+            # ── ISSUE #797, contra Postgres REAL ─────────────────────────
+            # B tem a MESMA violação de A e 40 eventos de EPI EM USO a mais.
+            # A nota tem de ser IDÊNTICA: usar EPI não pode piorar a Taxa de
+            # Conformidade. Pela fórmula antiga (`100 − alertas/h × 50`) seria
+            # A=25,0 e B=0,0 — a semana em que o EPI foi mais usado saindo como
+            # a pior nota do relatório arquivado no R2.
+            assert summary_b["violation_hours"] == 1
+            assert summary_b["compliance_rate"] == summary_a["compliance_rate"] == 50.0, (
+                "40 eventos de EPI EM USO mexeram na Taxa de Conformidade — "
+                f"A={summary_a['compliance_rate']} B={summary_b['compliance_rate']}"
+            )
 
             # --- Isolamento cruzado explícito (C-01) ---
             cam_ids_a = {c["camera_id"] for c in summary_a["top_cameras"]}
