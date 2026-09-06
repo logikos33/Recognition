@@ -151,6 +151,44 @@ def conta_da_taxa(summary: dict[str, Any]) -> str:
     return f"{violacao:g} de {total:g} horas-câmera do período tiveram violação."
 
 
+#: O que o ranking de câmeras conta. `top_cameras` sai de `list_with_filters`
+#: SEM `kind`, então é evento — violação E conformidade (issue #703 conserta o
+#: CONJUNTO; aqui o rótulo passa a dizer que conjunto é).
+EIXO_TOP_CAMERAS = "Eventos"
+
+
+def linhas_do_sumario(summary: dict[str, Any]) -> list[list[str]]:
+    """As linhas da tabela do PDF — os RÓTULOS, onde a #797 sobreviveu.
+
+    A fórmula parou de contar EPI EM USO como violação; a palavra ao lado do
+    número não. Na semana real de 04/08 da RVB o PDF saía assim:
+
+        Taxa de Conformidade   98.9%
+        Total de Violações     3801     ← e a tela, o mesmo campo: "3.801
+                                          eventos no período"
+        31 de 2856 horas-câmera do período tiveram violação.
+
+    3.801 é quase tudo **EPI EM USO** — o resultado bom. Chamá-lo de violação
+    no arquivo do R2 é a inversão da #797 sobrevivendo no rótulo, e é o número
+    que o cliente lê primeiro. Pior depois da conta da #823: as duas linhas
+    passaram a sair na mesma página, a dois centímetros, e não podem ser as
+    duas verdade.
+
+    Função de módulo pelo mesmo motivo de `valor_conformidade`: a suíte dubla
+    `reportlab` em `sys.modules`, e um teste que precisa construir o PDF só
+    passa quando roda sozinho.
+    """
+    return [
+        ["Métrica", "Valor"],
+        ["Taxa de Conformidade", valor_conformidade(summary)],
+        # A tela imprime este MESMO campo como "N eventos no período".
+        ["Eventos no período", str(summary.get("total_violations", 0))],
+        # `len(top_cameras)` é `most_common(10)`: no máximo 10, e são câmeras
+        # com EVENTO, não com violação. O rótulo diz as duas coisas.
+        ["Câmeras com evento (top 10)", str(len(summary.get("top_cameras", [])))],
+    ]
+
+
 def _generate_pdf(tenant_id: str, period: str, summary: dict[str, Any], from_dt: datetime, to_dt: datetime) -> bytes:
     """Gera PDF de compliance em memória. Requer reportlab."""
     from reportlab.lib import colors
@@ -180,19 +218,12 @@ def _generate_pdf(tenant_id: str, period: str, summary: dict[str, Any], from_dt:
     story.append(Spacer(1, 18))
 
     # Sumário
-    total_violations = summary.get("total_violations", 0)
     top_cameras = summary.get("top_cameras", [])
-    valor_pct = valor_conformidade(summary)
 
     story.append(Paragraph("Sumário de Conformidade", styles["Heading2"]))
     story.append(Spacer(1, 6))
 
-    data = [
-        ["Métrica", "Valor"],
-        ["Taxa de Conformidade", valor_pct],
-        ["Total de Violações", str(total_violations)],
-        ["Câmeras com Violações", str(len(top_cameras))],
-    ]
+    data = linhas_do_sumario(summary)
     tbl = Table(data, colWidths=[8 * cm, 6 * cm])
     tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a56db")),
@@ -218,9 +249,9 @@ def _generate_pdf(tenant_id: str, period: str, summary: dict[str, Any], from_dt:
 
     # Top câmeras
     if top_cameras:
-        story.append(Paragraph("Top Câmeras por Violações", styles["Heading2"]))
+        story.append(Paragraph(f"Top Câmeras por {EIXO_TOP_CAMERAS}", styles["Heading2"]))
         story.append(Spacer(1, 6))
-        cam_data = [["Câmera ID", "Violações"]] + [
+        cam_data = [["Câmera ID", EIXO_TOP_CAMERAS]] + [
             [str(c.get("camera_id", "—")), str(c.get("count", 0))]
             for c in top_cameras[:10]
         ]

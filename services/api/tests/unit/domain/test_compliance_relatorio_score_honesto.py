@@ -399,3 +399,94 @@ class TestOEnvelopeEOPdfMostramAContaAtrasDoNumero:
 
         assert "horas-câmera sem violação" in EIXO_CONFORMIDADE
         assert "não é" in EIXO_CONFORMIDADE
+
+
+class TestOPdfNaoChamaEventoDeViolacao:
+    """ISSUE #827 · #703 — a inversão da #797 sobreviveu no RÓTULO.
+
+    A fórmula parou de contar EPI EM USO como violação. A palavra ao lado do
+    número, não. Na semana real de 04/08 da RVB o PDF arquivado no R2 saía:
+
+        Taxa de Conformidade          98.9%
+        Total de Violações            3801
+        Câmeras com Violações           10
+        31 de 2856 horas-câmera do período tiveram violação.
+        Top Câmeras por Violações · cam-1 … 400
+
+    Três leituras do mesmo período na MESMA página: 3.801 violações, 31
+    horas-câmera com violação, 98,9 % de conformidade. Não podem ser as três
+    verdade — e 3.801 é quase tudo **EPI EM USO**, o resultado bom (3.881 dos
+    5.092 do acervo). A tela, sobre o MESMO campo, já diz "3.801 eventos no
+    período"; o arquivo é que ficou chamando uso correto de EPI de violação —
+    e é o arquivo que o auditor abre seis meses depois.
+
+    A conta da #823 ("31 de 2.856") AGRAVOU isto: as duas linhas passaram a
+    sair a dois centímetros uma da outra na mesma página.
+
+    Aqui só o RÓTULO. O CONJUNTO (top_cameras sem `kind`/`module_code`, que faz
+    o ranking contar conformidade e câmera fora do escopo) é a issue #703 e
+    muda NÚMERO — frente própria.
+    """
+
+    #: A semana de 04/08 medida no DEV: 3.801 alertas EPI, 31 horas-câmera com
+    #: violação de verdade, 17 câmeras ativas × 168 h = 2.856 horas-câmera.
+    SEMANA_04_08 = {
+        "compliance_rate": 98.9,
+        "compliance_reason": None,
+        "total_violations": 3801,
+        "violation_hours": 31,
+        "camera_hours": 2856.0,
+        "top_cameras": [{"camera_id": f"cam-{i}", "count": 400} for i in range(10)],
+    }
+
+    def _rotulo(self, linhas, valor: str) -> str:
+        for rotulo, v in linhas:
+            if v == valor:
+                return rotulo
+        raise AssertionError(f"valor {valor!r} não saiu no sumário: {linhas!r}")
+
+    def test_os_3801_eventos_nao_saem_rotulados_como_violacoes(self) -> None:
+        from app.domain.services.compliance_report_service import linhas_do_sumario
+
+        rotulo = self._rotulo(linhas_do_sumario(self.SEMANA_04_08), "3801")
+        assert "iola" not in rotulo.lower(), (
+            "o PDF arquivou 3.801 usos de EPI como VIOLAÇÕES, na mesma página "
+            f"que diz '31 de 2856 horas-câmera tiveram violação': {rotulo!r}"
+        )
+
+    def test_o_rotulo_do_total_e_o_MESMO_da_tela(self) -> None:
+        """`Relatorios.tsx`: "· {total_violations} eventos no período". O PDF é
+        a versão arquivada DESSA tela — mesmo campo, mesma palavra."""
+        from app.domain.services.compliance_report_service import linhas_do_sumario
+
+        rotulo = self._rotulo(linhas_do_sumario(self.SEMANA_04_08), "3801")
+        assert "evento" in rotulo.lower(), (
+            f"a tela chama de 'eventos no período' e o PDF chama de {rotulo!r} — "
+            "o mesmo número com duas palavras é como ter dois números"
+        )
+
+    def test_a_contagem_de_cameras_nao_se_diz_de_violacao_nem_esconde_o_teto(self) -> None:
+        """É `len(top_cameras)`, e `top_cameras` é `most_common(10)`: câmeras
+        com EVENTO, no máximo 10. "Câmeras com Violações: 10" com 17 câmeras
+        ativas lê-se como "10 das 17 violaram"."""
+        from app.domain.services.compliance_report_service import linhas_do_sumario
+
+        rotulo = self._rotulo(linhas_do_sumario(self.SEMANA_04_08), "10")
+        assert "iola" not in rotulo.lower(), rotulo
+        assert "10" in rotulo, f"o teto do ranking continua invisível: {rotulo!r}"
+
+    def test_o_ranking_de_cameras_diz_que_conta_evento(self) -> None:
+        """`top_cameras` sai de `list_with_filters` SEM `kind` — é evento. O
+        título e a coluna do PDF diziam "Violações" (issue #703)."""
+        from app.domain.services.compliance_report_service import EIXO_TOP_CAMERAS
+
+        assert "iola" not in EIXO_TOP_CAMERAS.lower()
+        assert "vento" in EIXO_TOP_CAMERAS.lower()
+
+    def test_a_taxa_continua_saindo_e_pela_MESMA_regra_de_impressao(self) -> None:
+        """O sumário não pode perder a linha da taxa ao ganhar rótulo honesto —
+        nem voltar a arredondar: 99,96 continua saindo 99,9 %, nunca 100,0 %."""
+        from app.domain.services.compliance_report_service import linhas_do_sumario
+
+        linhas = linhas_do_sumario({**self.SEMANA_04_08, "compliance_rate": 99.96})
+        assert self._rotulo(linhas, "99.9%") == "Taxa de Conformidade"
