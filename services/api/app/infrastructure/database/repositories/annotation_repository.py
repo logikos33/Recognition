@@ -68,9 +68,15 @@ def _ha_quanto_tempo(quando: "datetime | None") -> str:
     """
     if quando is None:
         return "antes de você"
-    if quando.tzinfo is None:
-        quando = quando.replace(tzinfo=timezone.utc)
-    segundos = int((datetime.now(timezone.utc) - quando).total_seconds())
+    # `frame_annotations.created_at` é TIMESTAMP **sem** fuso (migration 003)
+    # com default `NOW()`: o Postgres grava a hora LOCAL DELE, não UTC.
+    # Assumir UTC no valor naive dizia "há 3 horas" para uma caixa salva
+    # AGORA em qualquer banco fora do UTC — o CI é UTC e passava, o aviso
+    # nominal do 409 (o coração do UX desta guarda) mentia em campo.
+    # Naive compara com naive: API e banco compartilham o fuso nos dois
+    # ambientes (Railway em UTC, máquina local no fuso da máquina).
+    agora = datetime.now(timezone.utc) if quando.tzinfo else datetime.now()
+    segundos = int((agora - quando).total_seconds())
     if segundos < 60:
         return "agora há pouco"
     if segundos < 3600:

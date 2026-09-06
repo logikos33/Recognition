@@ -15,6 +15,7 @@ Mesmo critério do 409 da fila de Verificação (`verification_service.
 human_review`, onda 1): só o trabalho de OUTRA PESSOA bloqueia; re-salvar o
 próprio segue permitido.
 """
+import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 from uuid import uuid4
@@ -25,6 +26,7 @@ from app.core.exceptions import ConflictError
 from app.infrastructure.database.repositories.annotation_repository import (
     AnnotationRepository,
     VERSAO_VAZIA,
+    _ha_quanto_tempo,
     versao_das_linhas,
 )
 
@@ -194,3 +196,54 @@ class TestMensagem:
         frase = str(excecao.value)
         assert "recarregue o frame" in frase.lower()
         assert "409" not in frase and "conflict" not in frase.lower()
+
+
+@pytest.fixture
+def fuso_do_banco_nao_e_utc(monkeypatch):
+    """Força o processo para um fuso ≠ UTC durante o teste.
+
+    ⚠️ SEM isto estes casos medem NADA no CI: com TZ=UTC o `datetime.now()`
+    naive JÁ é UTC, e o código bugado (que trata o naive como UTC) acerta por
+    coincidência. Medido — a primeira versão desta classe passava tanto com o
+    conserto quanto com o bug reintroduzido, desde que TZ=UTC.
+    """
+    monkeypatch.setenv("TZ", "America/Sao_Paulo")  # UTC-03
+    time.tzset()
+    try:
+        yield
+    finally:
+        monkeypatch.undo()
+        time.tzset()
+
+
+class TestQuandoOColegaSalvou:
+    """`created_at` é TIMESTAMP **sem fuso** (migration 003) com default
+    `NOW()`: o Postgres grava a hora LOCAL DELE, não UTC. Tratar o valor
+    naive como UTC dizia "há 3 horas" para uma caixa gravada AGORA em
+    qualquer banco fora do UTC — medido num Postgres em America/Sao_Paulo,
+    onde o teste de integração do 409 reprovava. O CI roda em UTC e passava:
+    verde por acidente de ambiente, com o aviso nominal (o coração do UX
+    desta guarda) mentindo para o anotador.
+    """
+
+    def test_naive_recem_gravado_e_agora_ha_pouco_fora_do_utc(
+        self, fuso_do_banco_nao_e_utc
+    ):
+        # `datetime.now()` naive é exatamente o que o psycopg2 devolve de um
+        # TIMESTAMP sem fuso: a hora local do banco, sem tzinfo.
+        assert _ha_quanto_tempo(datetime.now()) == "agora há pouco"
+
+    def test_naive_de_duas_horas_atras_nao_vira_cinco(
+        self, fuso_do_banco_nao_e_utc
+    ):
+        assert _ha_quanto_tempo(datetime.now() - timedelta(hours=2)) == "há 2 horas"
+
+    def test_valor_com_fuso_continua_comparando_em_utc(
+        self, fuso_do_banco_nao_e_utc
+    ):
+        # Coluna TIMESTAMPTZ (ou driver configurado) devolve aware — este
+        # ramo não pode ser quebrado pelo conserto do ramo naive.
+        assert _ha_quanto_tempo(datetime.now(timezone.utc)) == "agora há pouco"
+
+    def test_sem_data_nao_inventa_horario(self):
+        assert _ha_quanto_tempo(None) == "antes de você"
