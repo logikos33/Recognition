@@ -166,14 +166,30 @@ class AnnotationService:
         logger.debug("pre_annotations_loaded: frame=%s, count=%d", frame_id, len(result))
         return result
 
+    def annotations_version(self, frame_id: UUID) -> str:
+        """Versão corrente das anotações do frame — o token de concorrência.
+
+        ⚠️ SEM checagem de posse aqui: chame SEMPRE depois de uma operação já
+        conferida (`get_frame_annotations`/`save_annotations`, que fazem o
+        ownership check anti-IDOR). Isolada, devolveria hash de frame de outro
+        tenant.
+        """
+        return self._annotation_repo.versao_do_frame(frame_id)
+
     def save_annotations(
         self,
         frame_id: UUID,
         annotations: list[dict],
         user_id: UUID | None = None,
         tenant_id: "str | UUID | None" = None,
+        versao_esperada: "str | None" = None,
     ) -> int:
-        """Salva anotações de um frame (replace all).
+        """Salva anotações de um frame (replace all — sob a guarda de versão).
+
+        `versao_esperada` é a versão que o cliente leu no GET. Quando vem,
+        substituir só é permitido se ninguém tiver gravado nesse meio-tempo;
+        senão o repository levanta `ConflictError` (409) e NADA é apagado
+        (#801). Ausente = chamada interna sem cliente, comportamento antigo.
 
         Valida formato YOLO: cx, cy, w, h entre 0 e 1.
         Marca frame como anotado.
@@ -202,7 +218,9 @@ class AnnotationService:
             self._validate_annotation(ann)
             self._validate_class(ann, module_classes_cache, tenant_id)
 
-        count = self._annotation_repo.save_batch(frame_id, annotations, user_id)
+        count = self._annotation_repo.save_batch(
+            frame_id, annotations, user_id, versao_esperada=versao_esperada
+        )
 
         if count > 0:
             self._frame_repo.mark_annotated(frame_id)
