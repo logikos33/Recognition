@@ -169,7 +169,8 @@ export function AppRoutes() {
         {/* Admin module — superadmin only, lazy-loaded */}
         <Route element={<AdminRoute />}>
           {/*
-            #762 — as três seções do Admin que JÁ existem no front novo.
+            #762 — as seções do Admin que JÁ existem no front novo (duas: a
+            terceira, `/admin/tenants`, está explicada no fim deste bloco).
             Ficam DENTRO do `AdminRoute` de propósito: quem não é superadmin
             continua sendo devolvido para `/` exatamente como antes, em vez de
             bater no `SemPermissao` do painel novo (que confirmaria a rota).
@@ -177,12 +178,24 @@ export function AppRoutes() {
             Casam antes de `/admin/*` por ranking do React Router (segmento
             estático ganha de splat), então o resto do Admin antigo —
             observability, integrations, planos, flags, branding… — segue
-            intocado, e `/admin/tenants/:id` também: é lá que vive o
-            `UserPermissionsDrawer` (matriz de permissão + revogar sessão),
-            sem equivalente no front novo (`app/admin/Usuarios.tsx`, §3).
+            intocado.
+
+            `/admin/tenants` FICA DE FORA da lista, e não por gosto: a lista
+            antiga é a ÚNICA PORTA CLICÁVEL para `/admin/tenants/:id`
+            (`AdminTenantsPage.tsx:123`, clique na linha), e é lá que vive o
+            `UserPermissionsDrawer` — matriz de permissão por usuário e
+            revogar sessão, 333 linhas SEM equivalente no front novo, dito no
+            §3 de `app/admin/Usuarios.tsx`. A outra porta,
+            `CreateUserWizard.tsx:331`, mora dentro de `/admin/users`. Redirecionar
+            a lista mantém o detalhe roteável e o deixa órfão: some do clique,
+            sobra só digitar o UUID na barra. Manter função que a substituta
+            não tem vale mais do que fechar mais um endereço antigo —
+            especialmente um que só o superadmin alcança (o `AdminRoute` acima
+            barra todo o resto), enquanto o drawer é justamente a ferramenta de
+            consertar permissão de usuário na segunda de manhã.
+            (Mesma razão pela qual `/admin/tenants/:id` já ficava de fora.)
           */}
           <Route path="/admin" element={<Redireciona para={rotaNova('/admin')} />} />
-          <Route path="/admin/tenants" element={<Redireciona para={rotaNova('/admin/tenants')} />} />
           <Route path="/admin/users" element={<Redireciona para={rotaNova('/admin/usuarios')} />} />
           <Route
             path="/admin/*"

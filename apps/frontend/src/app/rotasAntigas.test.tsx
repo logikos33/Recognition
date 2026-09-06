@@ -98,7 +98,6 @@ const REDIRECIONADAS: Array<[antiga: string, nova: string]> = [
 /** As de `/admin/*`, atrás do MESMO gate `AdminRoute` de hoje. */
 const REDIRECIONADAS_ADMIN: Array<[antiga: string, nova: string]> = [
   ['/admin', '/novo/admin'],
-  ['/admin/tenants', '/novo/admin/tenants'],
   ['/admin/users', '/novo/admin/usuarios'],
 ]
 
@@ -150,6 +149,13 @@ const NAO_REDIRECIONAM: Array<[rota: string, porque: string]> = [
   ['/quality/inspections', 'filtros (resultado, feedback, período, ordem) e paginação'],
   ['/epi/counting', 'iniciar contagem (POST /counting/sessions)'],
   ['/admin/tenants/abc-123', 'é onde vive o UserPermissionsDrawer, sem equivalente no novo'],
+  // O detalhe acima só é roteável; quem o ABRE é o clique na linha da lista
+  // antiga (`AdminTenantsPage.tsx:123`) — a outra porta, `CreateUserWizard.tsx:331`,
+  // mora dentro de `/admin/users`. Redirecionar a lista deixava a matriz de
+  // permissão e o revogar-sessão só alcançáveis digitando o UUID na barra:
+  // manter um endereço antigo de pé custa menos do que órfã de porta uma
+  // função que a substituta ainda não tem.
+  ['/admin/tenants', 'é a única porta clicável para /admin/tenants/:id (o drawer de permissões)'],
   ['/epi/investigation', 'SEM-DESENHO: não existe tela nova'],
   ['/epi/sites', 'SEM-DESENHO: não existe tela nova'],
 ]
