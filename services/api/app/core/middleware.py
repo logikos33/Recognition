@@ -6,7 +6,10 @@ Layer: core
 Pattern: Middleware (Flask before/after_request hooks + errorhandlers)
 
 Key exports:
-  - register_error_handlers: catches EpiMonitorError subclasses and generic exceptions
+  - register_error_handlers: catches EpiMonitorError subclasses and generic exceptions,
+    e instala o after_request que RASPA tripa técnica do corpo de QUALQUER resposta
+    de erro (issues #799/#800) — inclusive as que nunca passam por um errorhandler
+    (`responses.error()` chamado direto na rota, `jsonify()` cru, 429 do limiter)
   - register_security_headers: adds OWASP headers (X-Content-Type-Options, X-Frame-Options, HSTS in prod)
   - register_request_logging: logs ONE consolidated access-log line per request — rid,
     método, rota, status, duração, bytes, IP do cliente. Esta é a única linha de access
@@ -20,6 +23,8 @@ Constraints:
   - /health path is excluded from request logging to avoid log noise
   - HSTS header is only injected when FLASK_ENV=production
   - Generic handler never exposes stack traces to clients — logs full traceback internally
+  - Nenhuma resposta 4xx/5xx pode carregar SQL, nome de schema, traceback ou string de
+    conexão no corpo. O detalhe some da RESPOSTA e continua no LOG (`error_body_scrubbed`)
   - flask-limiter registra seu próprio before_request em limiter.init_app() (chamado em
     app/__init__.py ANTES de register_request_id/register_request_logging). Quando o
     limite estoura, a request é abortada antes de chegar aos before_request deste
@@ -29,6 +34,7 @@ Constraints:
 Related: app/core/exceptions.py, app/__init__.py (registration order),
          app/core/logging_config.py (split stdout/stderr + silêncio do access log gevent)
 """
+import json
 import logging
 import os
 import re
@@ -38,7 +44,8 @@ import uuid
 
 from flask import Flask, g, request, jsonify
 
-from app.core.exceptions import EpiMonitorError
+from app.core.exceptions import EpiMonitorError, sanitize_client_message
+from app.core.redact import redact_url_credentials
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +116,58 @@ def register_error_handlers(app: Flask) -> None:
             traceback.format_exc(),
         )
         return jsonify({"success": False, "error": "Erro interno"}), 500
+
+    @app.after_request
+    def scrub_error_body(response):  # type: ignore[no-untyped-def]
+        """Última barreira: nenhuma resposta de erro sai com tripa técnica.
+
+        Os errorhandlers acima cobrem só o que VIRA exceção. A maior parte das
+        rotas responde erro chamando `responses.error(...)` direto — e foi por
+        aí que o SQL cru e o nome do schema do tenant chegaram na tela do
+        cliente (issues #799/#800). O único ponto por onde TODAS as respostas
+        passam é o after_request, então a guarda mora aqui: uma vez, no lugar
+        em que todos os callers desembocam.
+
+        O detalhe não é engolido — vira uma linha `error_body_scrubbed` no log,
+        correlacionável pelo rid. E o cliente continua sabendo que falhou: o
+        status HTTP não muda e a frase que entra diz o que fazer.
+        """
+        if response.status_code < 400 or response.direct_passthrough:
+            return response
+        if not response.is_json:
+            return response
+        body = response.get_json(silent=True)
+        if not isinstance(body, dict):
+            return response
+
+        scrubbed = False
+        # "error" é o campo do envelope da casa; "msg" é o do flask-jwt-extended
+        # (401/422). O `api.ts` do frontend lê `data.error || data.msg` — as duas
+        # portas precisam da mesma tranca.
+        for field in ("error", "msg"):
+            raw = body.get(field)
+            if not isinstance(raw, str):
+                continue
+            clean = sanitize_client_message(raw, response.status_code)
+            if clean != raw:
+                logger.warning(
+                    "error_body_scrubbed: %s %s → %d rid=%s campo=%s cru=%r",
+                    request.method,
+                    request.path,
+                    response.status_code,
+                    getattr(g, "request_id", "-"),
+                    field,
+                    # A tripa pode carregar senha de URL (connection string, RTSP
+                    # do gravador). Log vaza pra todo lado — redige na origem,
+                    # mesma regra do core/redact.py.
+                    redact_url_credentials(raw),
+                )
+                body[field] = clean
+                scrubbed = True
+
+        if scrubbed:
+            response.set_data(json.dumps(body, ensure_ascii=False))
+        return response
 
 
 def register_security_headers(app: Flask) -> None:
