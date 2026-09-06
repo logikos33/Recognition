@@ -168,6 +168,10 @@ def _sem(*roles: str) -> list[str]:
 
 
 _OPERACAO = ("superadmin", "admin", "operator")
+# `verification:write` ganhou `trainer` (issue #774): o anotador é quem julga a
+# detecção que alimenta o modelo. Role-set separado de propósito — se alguém
+# tirar o trainer do registry, é ESTA linha que precisa mudar junto.
+_VERIFICACAO = ("superadmin", "admin", "operator", "trainer")
 _FEEDBACK = ("superadmin", "admin", "operator", "analyst")
 _ADMIN = ("superadmin", "admin")
 
@@ -184,9 +188,9 @@ ROTAS = [
      {"plate_text": "ABC1D23"}, _OPERACAO, ("counting_repo", "update_plate")),
     # ── verification:write ──────────────────────────────────────────────────
     ("verificacao_review", "post", f"/api/verification/{ALERTA}/review", "verification:write",
-     {"verdict": "approve"}, _OPERACAO, ("verif_svc", "human_review")),
+     {"verdict": "approve"}, _VERIFICACAO, ("verif_svc", "human_review")),
     ("qualidade_feedback", "patch", f"/api/v1/quality/inspections/{INSPECAO}/feedback",
-     "verification:write", {"status": "confirmed"}, _OPERACAO, ("quality_cur", "execute")),
+     "verification:write", {"status": "confirmed"}, _VERIFICACAO, ("quality_cur", "execute")),
     # ── alerts:feedback ─────────────────────────────────────────────────────
     ("alerta_corrigir_bbox", "patch", f"/api/alerts/{ALERTA}/violations", "alerts:feedback",
      {"correcoes": [{"index": 0, "bbox": [1, 2, 3, 4]}]}, _FEEDBACK,

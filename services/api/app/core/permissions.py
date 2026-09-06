@@ -280,15 +280,27 @@ PERMISSION_REGISTRY: dict[str, dict[str, Any]] = {
         enforced=True,
     ),
     # ── Verificação ───────────────────────────────────────────────────────────
+    # `trainer` entra nas DUAS por decisão de produto (issue #774): é o papel do
+    # ANOTADOR, e a fila de verificação é o julgamento humano que alimenta o
+    # modelo — o mesmo trabalho da anotação, só que sobre detecção já emitida.
+    # Sem isso, o papel cujo nome diz "quem treina" era o único que não abria
+    # metade do próprio ciclo, e quem escolhesse `trainer` pelo nome (a escolha
+    # óbvia) travava a pessoa no dia seguinte.
+    # Escrita continua subconjunto da leitura (invariante de
+    # tests/unit/core/test_permissions_quality.py).
+    # Nada de plataforma foi concedido: `trainer` segue sem admin:*, sem
+    # cameras:control e sem alerts:*.
     "verification:read": _entry(
         "Ver fila de verificação",
         "Permite visualizar a fila de detecções pendentes de verificação humana.",
-        "Verificação", ["superadmin", "admin", "operator", "analyst"],
+        "Verificação", ["superadmin", "admin", "operator", "analyst", "trainer"],
     ),
     "verification:write": _entry(
         "Verificar detecções",
-        "Permite aprovar, rejeitar ou corrigir detecções na fila de verificação.",
-        "Verificação", ["superadmin", "admin", "operator"], enforced=True,
+        "Permite aprovar, rejeitar ou corrigir detecções na fila de verificação. "
+        "Vale para a fila do EPI e para o veredito de inspeção da Qualidade — "
+        "é a mesma chave nos dois gates.",
+        "Verificação", ["superadmin", "admin", "operator", "trainer"], enforced=True,
     ),
 }
 

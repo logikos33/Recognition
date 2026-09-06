@@ -17,7 +17,7 @@ import { CountingPage } from './pages/CountingPage'
 import ModuleClassesPage from './pages/ModuleClassesPage'
 import { EpiOperationsPage } from './pages/epi/EpiOperationsPage'
 import { EpiScenarioEditorPage } from './pages/epi/EpiScenarioEditorPage'
-import { rotaNova } from './app/RotasNovas'
+import { rotaHomeDoUsuario, rotaNova } from './app/RotasNovas'
 import { InvestigationPage } from './pages/epi/InvestigationPage'
 import { EpiSitesPage } from './pages/epi/EpiSitesPage'
 import { DashboardIntegradoPage } from './pages/DashboardIntegradoPage'
@@ -30,9 +30,22 @@ const TabletKiosk = lazy(() => import('./modules/quality/tablet/TabletKiosk').th
 // /monitoring — página OCULTA de observabilidade do box edge (superadmin only)
 const EdgeMonitoringPage = lazy(() => import('./pages/monitoring/EdgeMonitoringPage').then(m => ({ default: m.EdgeMonitoringPage })))
 
+/**
+ * A RAIZ LOGADA (#762). Serve `/` e o catch-all deste roteador.
+ *
+ * Era `'/admin'` | `'/modules'`, os dois no front ANTIGO — então `/`, o
+ * endereço que a pessoa digita ao reabrir o produto no dia seguinte,
+ * entregava o produto velho. Deslogado a raiz já estava certa (pinta `Entrar`,
+ * com teste em `App.porta.test.tsx`); logado não havia teste nenhum.
+ *
+ * `rotaHomeDoUsuario` é a MESMA regra por papel (superadmin → painel da
+ * plataforma, demais → escolha de módulo), apontando para as telas novas.
+ * Ela já era a home do prefixo (`RaizRotasNovas`) e do logo do Shell — agora
+ * os três lugares respondem a mesma coisa.
+ */
 function RootRedirect() {
   const { isSuperAdmin } = useAuth()
-  return <Navigate to={isSuperAdmin ? '/admin' : '/modules'} replace />
+  return <Navigate to={rotaHomeDoUsuario(isSuperAdmin)} replace />
 }
 
 /** As 6 telas EPI antigas demolidas (lote 1) viraram redirect pro front novo. */

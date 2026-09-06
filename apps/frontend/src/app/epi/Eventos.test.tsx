@@ -437,7 +437,12 @@ describe('estados da rota', () => {
     h.falhar = true
     montar()
     expect(await screen.findByText('Não foi possível carregar')).toBeTruthy()
-    expect(screen.getByText(/GET \/api\/alerts/)).toBeTruthy()
+    // O detalhe DIZ o que falhou, sem a rota crua da API (rodada V1 do jargão:
+    // `GET /api/alerts · HTTP 500` era o que o operador da fábrica lia). O
+    // código numérico fica — é o que o suporte pede.
+    const detalhe = screen.getByText(/não respondeu/)
+    expect(detalhe.textContent).toContain('500')
+    expect(detalhe.textContent, 'a rota da API voltou para a tela').not.toMatch(/GET |\/api\//)
     h.falhar = false
   h.erroDoVeredito = null
   useToastStore.setState({ toasts: [] })
@@ -691,5 +696,55 @@ describe('veredito que colidiu com o de outra pessoa', () => {
     await julgarComConflito(500, 'boom')
     await waitFor(() =>
       expect(useToastStore.getState().toasts.some((x) => x.variant === 'error')).toBe(true))
+  })
+})
+
+/**
+ * Issues #771 e #795 — a porta de entrada que não abre.
+ *
+ * A tela nasce em `periodo:'hoje' + kind:'violation'` (ADR-0065, decisão
+ * mantida). No vazio ela oferecia UM caminho de saída: o botão "Limpar
+ * filtros", que resetava para… `hoje` + `violation`. No primeiro acesso — que
+ * é justamente quando o vazio aparece — clicar não mudava NADA (#795), e o
+ * usuário nunca via os eventos de conformidade que o modelo produziu (#771:
+ * 142 eventos, 100% conformidade, todos escondidos pelo filtro padrão).
+ */
+describe('vazio: a saída oferecida tem de sair do lugar (#771/#795)', () => {
+  const vazio = () => {
+    h.pagina = { alerts: [], total: 0, page: 1, per_page: 20, pages: 0 }
+  }
+
+  it('o botão do painel vazio AFROUXA o recorte — não repete o filtro de abertura', async () => {
+    vazio()
+    montar()
+    await screen.findByText('Nenhum evento no período')
+
+    const abertura = h.gets.at(-1) as string
+    expect(abertura, 'a tela abre em violações — premissa da #771').toContain('kind=violation')
+
+    fireEvent.click(screen.getByRole('button', { name: /30 dias/ }))
+    await waitFor(() => expect(h.gets.length).toBeGreaterThan(1))
+    const depois = h.gets.at(-1) as string
+
+    expect(depois, 'clicar refez a MESMA consulta — é o no-op da #795').not.toBe(abertura)
+    expect(depois, 'continuou filtrando por violação — a #771 segue escondendo tudo').not.toContain('kind=')
+
+    const q = new URLSearchParams(depois.split('?')[1])
+    const dias =
+      (Date.parse(q.get('end_date') as string) - Date.parse(q.get('start_date') as string)) / 86_400_000
+    expect(dias, 'a janela continuou em "hoje"').toBeGreaterThan(20)
+  })
+
+  it('com o recorte já no máximo, o painel para de prometer e diz que o vazio é do acervo', async () => {
+    vazio()
+    montar()
+    await screen.findByText('Nenhum evento no período')
+    fireEvent.click(screen.getByRole('button', { name: /30 dias/ }))
+    await waitFor(() => expect(h.gets.length).toBeGreaterThan(1))
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /30 dias/ }), 'o botão sobreviveu ao próprio efeito').toBeNull(),
+    )
+    expect(screen.getByText(/O vazio é do acervo, não do filtro/)).toBeTruthy()
   })
 })
