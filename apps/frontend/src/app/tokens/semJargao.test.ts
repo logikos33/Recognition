@@ -527,8 +527,19 @@ const DEBITO_DE_OUTRA_FRENTE = [
  *
  * Por PAR e não por ARQUIVO de propósito: congelar o arquivo inteiro
  * devolveria a cegueira que esta rodada acabou de tirar — uma rota NOVA em
- * `epi/Acoes.tsx` entraria calada. Congelado o par exato, qualquer rota ou
- * chave nova no mesmo arquivo continua reprovando.
+ * `epi/Acoes.tsx` entraria calada. Congelado o par exato, uma rota ou chave
+ * nova e DIFERENTE no mesmo arquivo continua reprovando (medido pelo cético:
+ * `<span>GET /api/rota-nova</span>` injetado em `epi/Acoes.tsx`, que já tem
+ * `GET /api/alerts` congelado, reprova; o mesmo vale para uma chave nova).
+ *
+ * LIMITE MEDIDO, não hipótese: a chave é `arquivo|termo` SEM contagem, então
+ * uma SEGUNDA cópia do MESMO termo já congelado, no mesmo arquivo, passa
+ * calada (`<span>GET /api/alerts hoje</span>` em `epi/Acoes.tsx`: 47/47
+ * verdes). Não fechado de propósito — 6 dos 41 pares JÁ ocorrem 2 a 6 vezes
+ * hoje (`qualidade/GestaoQualidade.tsx|GET /api` aparece 6×), então passar a
+ * chave para `arquivo|termo|contagem` reprovaria o CI na hora sem consertar
+ * nada. Fecha junto com as telas, na issue #810; o risco residual é jargão
+ * DUPLICADO numa tela que já mostra esse mesmo jargão.
  *
  * NÃO É UM CEMITÉRIO: o teste `o débito congelado ainda descreve achado real`
  * abaixo reprova se um par deixar de casar — quem consertar a tela é obrigado
