@@ -134,6 +134,22 @@ class TestDeclaradoNaoEProvado:
         assert "PROVADO" in motivo
         assert "NÃO PROVADO" not in motivo
 
+    def test_provado_diz_o_que_provou_e_o_que_nao(self):
+        """PROVADO sem escopo seria a mesma mentira, um degrau menor.
+
+        O digest cobre `services/api/app/**/*.py` e mais nada. Um veredito que
+        afirma "o código servido" inteiro é largo demais para a evidência que o
+        sustenta — e quem lê o alarme às 3h age em cima da linha, não do
+        runbook. Se alguém encolher a mensagem, este teste reprova.
+        """
+        _, motivo = checa.avaliar(
+            SHA, SHA, _ha(120), AGORA,
+            digest_servido=DIGEST_OK, digest_esperado=DIGEST_OK,
+        )
+        assert checa.PACOTE_SERVIDO in motivo, motivo
+        assert "FORA do digest" in motivo, motivo
+        assert "railway_start.py" in motivo and "frontend" in motivo, motivo
+
     def test_digest_batendo_vale_mais_que_a_declaracao_ausente(self):
         """`unknown` + digest batendo = deploy por upload com código CERTO.
 

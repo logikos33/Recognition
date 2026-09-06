@@ -164,10 +164,18 @@ def avaliar(
             # Vale mesmo com `commit` divergente ou "unknown": o que importa é
             # o código servido, e ele É o esperado. Um commit só de docs move o
             # HEAD sem mudar uma linha de `app/` — isso não é degradação.
+            # O veredito NOMEIA o que foi provado. "PROVADO" sozinho
+            # herdaria o defeito que este script existe para matar: uma
+            # afirmação larga demais para a evidência que a sustenta. O digest
+            # cobre `PACOTE_SERVIDO/**/*.py` — não cobre as dependências
+            # instaladas, `railway_start.py`, `infra/migrations` nem o
+            # frontend, e quem lê isto às 3h precisa saber disso na linha.
             return False, (
-                f"PROVADO — o código servido casa com {esperado[:8]} "
-                f"(tree_digest {digest_servido}), declarado como "
-                f"{servido[:8] if servido != 'unknown' else 'unknown'}"
+                f"PROVADO — {PACOTE_SERVIDO}/**/*.py servido casa com "
+                f"{esperado[:8]} (tree_digest {digest_servido}), declarado "
+                f"como {servido[:8] if servido != 'unknown' else 'unknown'}. "
+                "FORA do digest: dependências instaladas, railway_start.py, "
+                "infra/migrations e o frontend."
             )
 
         if idade < carencia_min:
