@@ -15,23 +15,6 @@ import { Component, type ReactNode } from 'react'
 import { mensagemHumana } from '../../utils/errorTranslator'
 import * as styles from './ErrorBoundary.css'
 
-/**
- * Início da aplicação em que este boundary está montado — o front NOVO tem
- * `/novo` por raiz, o ANTIGO tem `/`, e o mesmo componente serve os dois
- * (`app/shell/Shell.tsx` e `AppRoutes.tsx`).
- *
- * Mandar `/` fixo é o "quinto furo" que `app/coexistencia.test.tsx` documenta:
- * troca de APLICAÇÃO calada — a pessoa clica para escapar do erro e cai no
- * produto velho, sem Shell e sem a identidade visual. A varredura daquele
- * teste só olha `src/app`, e este arquivo mora em `components/shared`; por
- * isso a guarda deste caso está em `test/utils/erroNaoVazaTripa.test.tsx`,
- * amarrada a `PREFIXO_NOVO`.
- */
-export function inicioDaAplicacaoAtual(): string {
-  const p = window.location.pathname
-  return p === '/novo' || p.startsWith('/novo/') ? '/novo' : '/'
-}
-
 interface Props { children: ReactNode; fallback?: ReactNode }
 interface State { hasError: boolean; error?: Error }
 
@@ -62,7 +45,7 @@ export class ErrorBoundary extends Component<Props, State> {
             Tentar novamente
           </button>
           <button
-            onClick={() => window.location.assign(inicioDaAplicacaoAtual())}
+            onClick={() => window.location.assign('/')}
             className={styles.retryButton}
             style={{ marginLeft: 8 }}
           >
