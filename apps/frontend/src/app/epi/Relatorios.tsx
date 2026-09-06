@@ -50,6 +50,11 @@ export interface ResumoCompliance {
    *  são as mesmas do Dashboard; a tela nunca deduz a razão do valor. */
   compliance_reason?: string | null
   total_violations: number
+  /** Numerador e denominador REAIS da taxa (`compliance_report_service._aggregate`).
+   *  Existem para a tela MOSTRAR a conta em vez de pedir confiança no número —
+   *  issue #823. `camera_hours` é 0 quando não houve denominador. */
+  violation_hours?: number
+  camera_hours?: number
   top_cameras: Array<{ camera_id: string; count: number }>
   trend_by_hour: Array<{ hour: string; count: number }>
 }
@@ -59,6 +64,37 @@ interface RespostaCompliance {
   pdf_url: string
   period: { period: string; from: string; to: string }
 }
+
+/**
+ * Por que o score veio `null`. As chaves são as que
+ * `compliance_report_service` publica, e as MESMAS que o Dashboard traduz —
+ * as duas telas mostram o mesmo score e têm de dar a mesma explicação.
+ *
+ * Duplicado do `RAZAO_SEM_SCORE` do Dashboard de propósito nesta rodada: a
+ * frente do conserto é esta tela, e mover o mapa para um módulo comum mexeria
+ * em `Dashboard.tsx`. Quando o próximo tocar as duas, isto vai para
+ * `scoreConformidade.ts` junto com o `scoreImpresso`.
+ */
+const RAZAO_SEM_SCORE: Record<string, string> = {
+  sem_cameras_ativas: 'sem câmera ativa para calcular',
+  sem_sinal_no_periodo: 'sem evento no período — nada a apurar',
+  nao_foi_possivel_apurar: 'a consulta não respondeu',
+}
+
+/**
+ * O EIXO do número, em linguagem de gente — issue #823.
+ *
+ * O score NÃO responde "a fábrica está conforme?". Responde "que fração das
+ * horas-câmera supostas do período não teve alerta de violação?" — e com 17
+ * câmeras × 24 h = 408 horas-câmera/dia a escala inteira vive comprimida no
+ * topo: um dia de 152 violações em 31 horas-câmera sai como 92.
+ *
+ * Enquanto #823 não decide o denominador, a tela diz o que o número mede e
+ * mostra a conta ao lado. Mesma frase no PDF (`EIXO_CONFORMIDADE` em
+ * `compliance_report_service.py`): o arquivo do R2 é a versão impressa DESTA
+ * tela e sair com outro rótulo é como sair com outro número.
+ */
+const EIXO_SCORE = '% das horas-câmera sem violação — não é % de pessoas em conformidade'
 
 const ROTA_COMPLIANCE = '/reports/compliance'
 const ROTA_CSV = '/alerts/export'
@@ -323,6 +359,22 @@ export function Relatorios() {
   const topo = resumo.top_cameras[0]
   const janela = `${dia(intervalo.de)} → ${dia(intervalo.ate)}`
 
+  /** A razão vem da API, nunca é deduzida do valor. Chave desconhecida cai no
+   *  texto neutro — inventar a causa é pior que não dá-la. */
+  const razaoSemScore =
+    RAZAO_SEM_SCORE[resumo.compliance_reason ?? ''] ?? 'não foi possível apurar agora'
+
+  /** A conta atrás do score. Só quando o backend serviu o denominador: sem
+   *  `camera_hours` não houve denominador, e reconstruí-lo aqui seria a tela
+   *  calculando — o que este arquivo existe para não fazer. */
+  const contaDaTaxa =
+    resumo.compliance_rate != null && resumo.camera_hours
+      ? {
+          violacao: Math.round(resumo.violation_hours ?? 0).toLocaleString('pt-BR'),
+          total: Math.round(resumo.camera_hours).toLocaleString('pt-BR'),
+        }
+      : null
+
   return (
     <div className={s.raiz}>
       <h1 className={s.titulo}>Relatórios</h1>
@@ -445,13 +497,33 @@ export function Relatorios() {
               <span className={s.score}>
                 {resumo.compliance_rate == null ? '—' : scoreImpresso(resumo.compliance_rate)}
               </span>
-              <span className={s.scoreLegenda}>
-                {resumo.compliance_rate == null
-                  ? `score não apurado · ${janela}`
-                  : `score de conformidade · ${janela}`}
-              </span>
+              <div className={s.scoreLado}>
+                <span className={s.scoreLegenda}>
+                  {resumo.compliance_rate == null
+                    ? `score não apurado · ${janela}`
+                    : `score de conformidade · ${janela}`}
+                </span>
+                {/* Segunda linha SEMPRE: com score, o eixo (o que o número
+                    mede); sem score, a RAZÃO de não haver número. O travessão
+                    sozinho não distingue "nada chegou" de "a consulta caiu",
+                    e é a mesma distinção que o Dashboard já faz — issue #823. */}
+                <span className={s.scoreLegenda}>
+                  {resumo.compliance_rate == null ? razaoSemScore : EIXO_SCORE}
+                </span>
+              </div>
             </div>
             <div className={s.fatos}>
+              {/* A CONTA, quando o backend a serve. "92" sozinho esconde a
+                  escala; "31 de 408 horas-câmera do período tiveram violação"
+                  mostra o denominador enorme que a produz — a queixa inteira
+                  da #823, visível sem que a tela precise decidir a issue. */}
+              {contaDaTaxa && (
+                <span>
+                  · <span className={s.dado}>{contaDaTaxa.violacao}</span> de{' '}
+                  <span className={s.dado}>{contaDaTaxa.total}</span> horas-câmera do período
+                  tiveram violação
+                </span>
+              )}
               <span>
                 · <span className={s.dado}>{resumo.total_violations}</span> eventos no período
                 {pico && <> — pico <span className={s.dado}>{pico}</span></>}

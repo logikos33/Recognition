@@ -202,6 +202,13 @@ export const scoreLegenda = style({
   color: lk.cor.cinzaNevoa,
 })
 
+/** Coluna ao lado do número: nome do score em cima, eixo (ou razão) embaixo. */
+export const scoreLado = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '2px',
+})
+
 export const fatos = style({
   display: 'flex',
   flexDirection: 'column',

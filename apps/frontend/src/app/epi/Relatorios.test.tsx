@@ -330,6 +330,106 @@ describe('estados da rota', () => {
     expect(screen.queryByText(/não tem eventos registrados/i)).toBeNull()
   })
 
+  /**
+   * ISSUE #823 — o que o número MEDE, dito na tela.
+   *
+   * O score é `100 × (1 − horas-câmera com violação ÷ (câmeras ativas ×
+   * horas))`, e o denominador SUPÕE que cada câmera ativa foi monitorada o
+   * período inteiro. Ninguém mede isso. Com as 17 câmeras da RVB são 408
+   * horas-câmera/dia, e a escala inteira vive comprimida no topo: o dia 10/08,
+   * com 152 violações concentradas em 31 horas-câmera, sai **92**.
+   *
+   * "92" sozinho lê-se como "92 % da fábrica está conforme". Não é isso que o
+   * número responde. Enquanto a issue não decide o denominador, a leitura
+   * honesta é a tela dizer o eixo e mostrar a fração medida — e é isso que
+   * `violation_hours`/`camera_hours` (já servidos pelo `_aggregate`) permitem.
+   */
+  const DIA_DE_152 = {
+    data: {
+      ...RESPOSTA.data,
+      summary: {
+        ...RESPOSTA.data.summary,
+        compliance_rate: 92.4,
+        total_violations: 152,
+        violation_hours: 31,
+        camera_hours: 408,
+      },
+    },
+  }
+
+  it('#823: a tela diz o EIXO do número — e diz o que ele NÃO é', async () => {
+    responde(DIA_DE_152)
+    render(<Relatorios />)
+    await carregado()
+
+    expect(screen.getByText('92')).toBeTruthy()
+    // A MESMA frase do cartão do Dashboard e do rodapé do PDF: o mesmo número
+    // com três rótulos diferentes é como ter três números.
+    expect(screen.getByText(/% das horas-câmera sem violação/i)).toBeTruthy()
+    expect(screen.getByText(/não é % de pessoas em conformidade/i)).toBeTruthy()
+  })
+
+  it('#823: a CONTA aparece ao lado do score — 31 de 408, não só "92"', async () => {
+    responde(DIA_DE_152)
+    render(<Relatorios />)
+    await carregado()
+
+    expect(screen.getByText(/horas-câmera do período tiveram violação/i)).toBeTruthy()
+    expect(screen.getByText('31')).toBeTruthy()
+    expect(screen.getByText('408')).toBeTruthy()
+  })
+
+  it('#823: sem denominador servido, a tela não inventa a conta', async () => {
+    // Backend antigo (ou score nulo): sem `camera_hours` não houve denominador.
+    responde(RESPOSTA)
+    render(<Relatorios />)
+    await carregado()
+
+    expect(screen.queryByText(/horas-câmera do período tiveram violação/i)).toBeNull()
+  })
+
+  /**
+   * O travessão sozinho não distingue "nada chegou no período" de "a consulta
+   * caiu" — e as duas coisas pedem ações opostas de quem lê. O Dashboard já
+   * traduz a razão; esta tela mostrava só "score não apurado".
+   */
+  it('#823: travessão vem COM a razão — sem câmera ativa não é "sem evento"', async () => {
+    responde({
+      data: {
+        ...RESPOSTA.data,
+        summary: {
+          ...RESPOSTA.data.summary,
+          compliance_rate: null,
+          compliance_reason: 'sem_cameras_ativas',
+        },
+      },
+    })
+    render(<Relatorios />)
+    await carregado()
+
+    expect(screen.getByText('—')).toBeTruthy()
+    expect(screen.getByText(/sem câmera ativa para calcular/i)).toBeTruthy()
+  })
+
+  it('#823: agregação que caiu diz que caiu, no lugar do número', async () => {
+    responde({
+      data: {
+        ...RESPOSTA.data,
+        summary: {
+          ...RESPOSTA.data.summary,
+          compliance_rate: null,
+          compliance_reason: 'nao_foi_possivel_apurar',
+        },
+      },
+    })
+    render(<Relatorios />)
+    await carregado()
+
+    expect(screen.getByText('—')).toBeTruthy()
+    expect(screen.getByText(/a consulta não respondeu/i)).toBeTruthy()
+    expect(screen.queryByText(/sem evento no período/i)).toBeNull()
+  })
+
   it('erro mostra o motivo + código e o retry refaz a chamada', async () => {
     let primeira = true
     mocks.get.mockImplementation((rota: string) => {
