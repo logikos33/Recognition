@@ -1,7 +1,8 @@
 """Testes — /api/v1/admin/test-console/*.
 
 Cobre:
-  - Role-gate: 403 sem token admin / superadmin
+  - Role-gate: SUPERADMIN (issue #787 — era admin, e admin de tenant
+    cliente disparava o harness da plataforma)
   - Isolamento: tenant de teste (AA) é o único lido/escrito
   - Harness start/stop/status com Redis mockado
   - /models e /evidence com DB mockado
@@ -22,7 +23,7 @@ OTHER_TENANT = "ffffffff-ffff-ffff-ffff-ffffffffffff"
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def _token(app, role: str = "admin") -> str:
+def _token(app, role: str = "superadmin") -> str:
     with app.app_context():
         return create_access_token(
             identity=str(uuid.uuid4()),
@@ -30,7 +31,7 @@ def _token(app, role: str = "admin") -> str:
         )
 
 
-def _auth(app, role: str = "admin") -> dict:
+def _auth(app, role: str = "superadmin") -> dict:
     return {"Authorization": f"Bearer {_token(app, role)}"}
 
 
@@ -119,7 +120,7 @@ def patched_evidence(monkeypatch):
 # ── Role-gate tests ────────────────────────────────────────────────────────────
 
 class TestRoleGate:
-    """Todos os endpoints exigem role admin ou superadmin."""
+    """Todos os endpoints exigem role superadmin (issue #787)."""
 
     ENDPOINTS = [
         ("POST", "/api/v1/admin/test-console/harness/start"),
@@ -142,12 +143,13 @@ class TestRoleGate:
             resp = getattr(client, method.lower())(path, headers=headers)
             assert resp.status_code == 403, f"{method} {path} deveria retornar 403 para operator"
 
-    def test_admin_role_passes_gate(self, app, patched_redis, patched_cameras, patched_dispatch, patched_models, patched_evidence):
+    def test_admin_de_tenant_returns_403(self, app, patched_redis, patched_cameras, patched_dispatch, patched_models, patched_evidence):
+        """#787: admin de tenant cliente NÃO é plataforma (antes: 200/503)."""
         client = app.test_client()
         headers = _auth(app, role="admin")
-        # status com harness inativo retorna 200
-        resp = client.get("/api/v1/admin/test-console/harness/status", headers=headers)
-        assert resp.status_code == 200
+        for method, path in self.ENDPOINTS:
+            resp = getattr(client, method.lower())(path, headers=headers)
+            assert resp.status_code == 403, f"{method} {path} deveria retornar 403 para admin"
 
     def test_superadmin_role_passes_gate(self, app, patched_redis, patched_models):
         client = app.test_client()
