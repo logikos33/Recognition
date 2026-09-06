@@ -20,6 +20,14 @@
  * Sem o formulário abaixo, quem recebesse a senha no papel ficaria parada
  * aqui para sempre, com uma instrução que só um `curl` cumpre. Por isso a
  * troca acontece na PRÓPRIA tela: o 403 não é um beco, é o primeiro passo.
+ *
+ * E o primeiro passo é a PRIMEIRA tela do produto para quem chega com senha
+ * no papel — não pode parecer que deu errado. Este formulário fala a mesma
+ * língua do irmão dele (`RedefinirSenha.tsx`, mesma tarefa por outro
+ * caminho): explicação em texto de apoio, régua de critérios ao vivo e o
+ * botão dizendo o que está fazendo. Os critérios são os que o servidor
+ * VERIFICA em `/auth/change-password` — a prancha pede "letras e números",
+ * regra que o backend não tem, e mostrá-la reprovaria senha que ele aceita.
  */
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
@@ -33,6 +41,9 @@ import { lk } from '../tokens/lk.css'
 import { Marca } from './Marca'
 import * as s from './Acesso.css'
 
+/** Fonte real: `services/api/app/api/v1/auth/routes.py:264` (`len(nova) < 6`). */
+const SENHA_MINIMA = 6
+
 export function Entrar() {
   const { login } = useAuth()
   const [email, setEmail] = useState('')
@@ -43,6 +54,16 @@ export function Entrar() {
   const [trocaExigida, setTrocaExigida] = useState(false)
   const [novaSenha, setNovaSenha] = useState('')
   const [confirmacao, setConfirmacao] = useState('')
+
+  // Régua do que o SERVIDOR verifica em /auth/change-password: tamanho
+  // (routes.py:264) e "diferente da atual" (routes.py:268-269). A terceira
+  // linha é a conferência das duas digitações, que é local e existe para o
+  // erro de digitação não virar uma senha que ninguém sabe.
+  const criterios = [
+    { texto: `Mínimo de ${SENHA_MINIMA} caracteres`, ok: novaSenha.length >= SENHA_MINIMA },
+    { texto: 'Diferente da senha temporária', ok: novaSenha.length > 0 && novaSenha !== senha },
+    { texto: 'As duas digitações coincidem', ok: novaSenha.length > 0 && novaSenha === confirmacao },
+  ]
 
   const enviar = async (e: FormEvent) => {
     e.preventDefault()
@@ -110,9 +131,15 @@ export function Entrar() {
           {trocaExigida ? (
             <form onSubmit={trocarSenha}>
               <div className={s.formStack}>
-                <p className={s.erroTexto}>
+                {/* `textoApoio`, não `erroTexto`: `erroTexto` é o vermelho de
+                    NÃO CONFORME do produto (lk.estado.nc, negrito). Nada deu
+                    errado aqui — e pintado de vermelho este parágrafo ficava
+                    indistinguível da caixa de erro logo abaixo, na primeira
+                    tela que a pessoa vê. */}
+                <p className={s.textoApoio}>
                   A senha que você recebeu é temporária. Escolha uma senha sua
-                  para continuar.
+                  para continuar — o acesso a <strong>{email}</strong> abre em
+                  seguida, sem digitar de novo.
                 </p>
                 <div className={s.campo}>
                   <label htmlFor="entrar-nova-senha" className={s.rotulo}>Nova senha</label>
@@ -142,6 +169,18 @@ export function Entrar() {
                     onChange={(e) => setConfirmacao(e.target.value)}
                   />
                 </div>
+                <div className={s.requisitos}>
+                  {criterios.map((c) => (
+                    <span
+                      key={c.texto}
+                      className={s.requisitoItem}
+                      style={{ color: c.ok ? lk.estado.ok : lk.cor.cinzaNevoa }}
+                    >
+                      <span className={s.requisitoMarcador}>{c.ok ? '✓' : '·'}</span>
+                      {c.texto}
+                    </span>
+                  ))}
+                </div>
                 {erro && (
                   <div className={s.erroBox} role="alert">
                     <AlertTriangle size={14} strokeWidth={2} color={lk.estado.nc} aria-hidden="true" />
@@ -149,7 +188,7 @@ export function Entrar() {
                   </div>
                 )}
                 <button type="submit" className={s.botao} disabled={loading}>
-                  Salvar e entrar
+                  {loading ? 'Salvando...' : 'Salvar e entrar'}
                 </button>
               </div>
             </form>
@@ -203,7 +242,11 @@ export function Entrar() {
         <span className={s.rodape}>ACESSO REGISTRADO NA AUDITORIA · SUPORTE@LOGIKOS.COM.BR</span>
       </div>
 
-      {loading && (
+      {/* Só no login. Durante a troca este overlay preto de tela cheia dizia
+          "ABRINDO LOGIKOS VISION" por cima de uma senha sendo GRAVADA — e
+          quando o servidor recusava a senha, a pessoa tinha visto "abrindo"
+          antes do erro. Na troca quem informa é o próprio botão. */}
+      {loading && !trocaExigida && (
         <div className={s.overlayCarregando}>
           <LogikosLoader estado="waiting" variante="fullscreen" rotulo="ABRINDO LOGIKOS VISION" />
         </div>

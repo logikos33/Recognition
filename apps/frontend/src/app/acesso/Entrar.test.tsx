@@ -19,6 +19,7 @@ vi.mock('../../services/api', async () => {
 })
 
 import { ApiError } from '../../services/api'
+import * as estilo from './Acesso.css'
 import { Entrar } from './Entrar'
 
 const montar = () => render(<MemoryRouter><Entrar /></MemoryRouter>)
@@ -191,5 +192,98 @@ describe('Entrar — senha temporária', () => {
     preencherLogin('errada')
     expect(await screen.findByText('Credenciais inválidas')).toBeTruthy()
     expect(screen.queryByLabelText('Nova senha')).toBeNull()
+  })
+})
+
+
+/**
+ * A tela da troca é a PRIMEIRA tela do produto para quem chega com a senha no
+ * papel — os três acessos novos do RVB começam aqui. Ter saída não basta se a
+ * saída parece um erro: o texto que explica o pedido estava com `erroTexto`,
+ * o vermelho de NÃO CONFORME (`lk.estado.nc`, negrito), o mesmo da caixa de
+ * erro dois elementos abaixo. Nada deu errado; e com os dois vermelhos juntos
+ * não dava para saber qual dos dois era o problema.
+ *
+ * Junto vinham as outras três: nenhuma pista do que o servidor aceita como
+ * senha, o botão mudo enquanto grava, e um overlay preto de tela cheia
+ * dizendo "ABRINDO LOGIKOS VISION" por cima de uma senha sendo salva — que
+ * quando o servidor recusava, virava "abrindo" seguido de erro.
+ */
+describe('Entrar — a troca obrigatória não pode parecer erro', () => {
+  const trocaExigida = () =>
+    new ApiError('Sua senha é temporária...', 403, 'password_change_required')
+
+  const abrirTroca = async () => {
+    login.mockRejectedValueOnce(trocaExigida())
+    montar()
+    preencherLogin()
+    await screen.findByLabelText('Nova senha')
+  }
+
+  it('a explicação é texto de apoio, não o vermelho de não conforme', async () => {
+    await abrirTroca()
+    const texto = screen.getByText(/A senha que você recebeu é temporária/)
+    expect(texto.className).toContain(estilo.textoApoio)
+    expect(texto.className).not.toContain(estilo.erroTexto)
+  })
+
+  it('diz de qual conta é a senha que está sendo trocada', async () => {
+    await abrirTroca()
+    expect(screen.getByText('ana@rvb.com.br')).toBeTruthy()
+  })
+
+  it('mostra os critérios que o SERVIDOR verifica, e nenhum inventado', async () => {
+    await abrirTroca()
+    expect(screen.getByText('Mínimo de 6 caracteres')).toBeTruthy()
+    expect(screen.getByText('Diferente da senha temporária')).toBeTruthy()
+    expect(screen.getByText('As duas digitações coincidem')).toBeTruthy()
+    // A prancha pede "letras e números"; o backend NÃO verifica isso
+    // (auth/routes.py:264,268-269). Exibir reprovaria senha que ele aceita.
+    expect(screen.queryByText(/letras e números/i)).toBeNull()
+  })
+
+  it('os critérios acompanham a digitação — · vira ✓ item a item', async () => {
+    await abrirTroca()
+    const linha = (t: string) => screen.getByText(t).closest('span') as HTMLElement
+    expect(linha('Mínimo de 6 caracteres').textContent).toContain('·')
+
+    fireEvent.change(screen.getByLabelText('Nova senha'), { target: { value: 'minha-senha-1' } })
+    expect(linha('Mínimo de 6 caracteres').textContent).toContain('✓')
+    // A temporária é 'senha-do-papel' (preencherLogin) — já é diferente.
+    expect(linha('Diferente da senha temporária').textContent).toContain('✓')
+    // Confirmação ainda vazia.
+    expect(linha('As duas digitações coincidem').textContent).toContain('·')
+
+    fireEvent.change(screen.getByLabelText('Repita a nova senha'), { target: { value: 'minha-senha-1' } })
+    expect(linha('As duas digitações coincidem').textContent).toContain('✓')
+  })
+
+  it('repetir a senha temporária aparece como critério não cumprido', async () => {
+    await abrirTroca()
+    fireEvent.change(screen.getByLabelText('Nova senha'), { target: { value: 'senha-do-papel' } })
+    const linha = screen.getByText('Diferente da senha temporária').closest('span') as HTMLElement
+    expect(linha.textContent).toContain('·')
+  })
+
+  it('enquanto grava, o botão diz "Salvando..." e nada de "ABRINDO LOGIKOS VISION"', async () => {
+    await abrirTroca()
+    // `post` que não resolve: congela a tela no instante em que a senha está
+    // em trânsito, que é justamente o instante que o overlay sequestrava.
+    post.mockReturnValueOnce(new Promise(() => {}))
+    fireEvent.change(screen.getByLabelText('Nova senha'), { target: { value: 'minha-senha-1' } })
+    fireEvent.change(screen.getByLabelText('Repita a nova senha'), { target: { value: 'minha-senha-1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar e entrar' }))
+
+    expect(await screen.findByRole('button', { name: 'Salvando...' })).toBeTruthy()
+    expect(screen.queryByText('ABRINDO LOGIKOS VISION')).toBeNull()
+    // E o formulário continua visível — a pessoa vê o que mandou.
+    expect(screen.getByLabelText('Nova senha')).toBeTruthy()
+  })
+
+  it('contraprova: no LOGIN o overlay continua aparecendo', async () => {
+    login.mockReturnValueOnce(new Promise(() => {}))
+    montar()
+    preencherLogin()
+    expect(await screen.findByText('ABRINDO LOGIKOS VISION')).toBeTruthy()
   })
 })

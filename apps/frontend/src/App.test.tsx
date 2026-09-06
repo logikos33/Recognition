@@ -89,6 +89,26 @@ describe('App — ramo deslogado (a porta)', () => {
     expect(screen.queryByText('LOGIN-ANTIGO')).toBeNull()
   })
 
+  /**
+   * O outro lado da troca obrigatória de senha (#819): a saída existe, e não
+   * existe atalho ao redor dela.
+   *
+   * Enquanto a senha é temporária o backend recusa o login com 403 e NENHUM
+   * token é emitido (`Entrar.travessia.test.tsx` mede isso). Sem token, a
+   * porta do produto não é uma rota protegida — é este `path="*"`: qualquer
+   * endereço interno digitado na barra vira a tela de login.
+   *
+   * O caso vizinho usa `/qualquer-coisa-que-nao-existe`, que não prova nada
+   * sobre rota REAL: bater numa rota inexistente cairia no catch-all de
+   * qualquer jeito. `/novo/epi/live` EXISTE (RotasNovas.tsx:131) e é o tipo
+   * de endereço que alguém copia de um colega para tentar pular a tela.
+   */
+  it('endereço REAL do produto, deslogado, é a porta — não dá para pular pela URL', async () => {
+    irPara('/novo/epi/live')
+    render(<App />)
+    expect(await screen.findByText('ENTRAR-NOVO')).toBeTruthy()
+  })
+
   it('/forgot-password continua de pé — e entrega a tela NOVA', async () => {
     irPara('/forgot-password')
     render(<App />)
