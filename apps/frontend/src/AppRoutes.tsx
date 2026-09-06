@@ -1,20 +1,23 @@
 /**
- * AppRoutes — todas as rotas da aplicacao.
- * Pos-login: operator → /modules, superadmin → /admin.
- * Rotas /admin/* protegidas por AdminRoute (role superadmin).
+ * AppRoutes — o front ANTIGO, montado no `*` de `App.tsx`.
+ *
+ * Pós-login a home sai de `rotaHomeDoUsuario()` (#808): superadmin →
+ * `/novo/admin`, demais → `/novo/modules` — as duas no front NOVO.
+ * Rotas /admin/* seguem protegidas por AdminRoute (role superadmin).
+ *
+ * Endereço antigo que já tem substituta PRONTA vira `<Redireciona>` daqui
+ * para o novo (#762); o que não tem continua servindo a tela velha, de
+ * propósito e nomeado — ver `app/rotasAntigas.test.tsx`, que guarda os dois
+ * lados.
  */
 import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
 import { ErrorBoundary } from './components/shared/ErrorBoundary'
 import { AdminRoute } from './components/guards/AdminRoute'
 import { useAuth } from './hooks/useAuth'
-import { ModuleSelectionPage } from './pages/ModuleSelectionPage'
-import { TrainingPage } from './pages/TrainingPage'
 import { CameraTriagePage } from './pages/CameraTriagePage'
 import { FuelingPage } from './pages/fueling/FuelingPage'
 import { FuelingValidationPage } from './pages/fueling/FuelingValidationPage'
-import { ReportsPage } from './pages/ReportsPage'
 import { CountingPage } from './pages/CountingPage'
-import ModuleClassesPage from './pages/ModuleClassesPage'
 import { EpiOperationsPage } from './pages/epi/EpiOperationsPage'
 import { EpiScenarioEditorPage } from './pages/epi/EpiScenarioEditorPage'
 import { rotaHomeDoUsuario, rotaNova } from './app/RotasNovas'
@@ -48,10 +51,19 @@ function RootRedirect() {
   return <Navigate to={rotaHomeDoUsuario(isSuperAdmin)} replace />
 }
 
-/** As 6 telas EPI antigas demolidas (lote 1) viraram redirect pro front novo. */
-function Redireciona({ para }: { para: string }) {
-  const location = useLocation()
-  return <Navigate to={`${para}${location.search}`} replace />
+/**
+ * Endereço antigo → endereço novo, PRESERVANDO query e hash.
+ *
+ * O hash entrou em 06/09 (#762): sem ele, `?token=` sobrevivia mas `#linha-3`
+ * não, e é o mesmo salto para os dois — quem chega por link de e-mail ou por
+ * filtro salvo carrega as duas metades da URL, não uma.
+ *
+ * Conserto na função COMPARTILHADA, não em cada rota: são 19 chamadores
+ * (17 aqui, 2 no ramo deslogado de `App.tsx`).
+ */
+export function Redireciona({ para }: { para: string }) {
+  const { search, hash } = useLocation()
+  return <Navigate to={`${para}${search}${hash}`} replace />
 }
 
 function AlertaRedirect() {
@@ -116,7 +128,14 @@ export function AppRoutes() {
       <Routes>
         {/* Entry point — role-based redirect */}
         <Route path="/" element={<RootRedirect />} />
-        <Route path="/modules" element={<ModuleSelectionPage />} />
+        {/*
+          A ESCOLHA DE MÓDULO (#762). `rotaHomeDoUsuario(false)` já manda `/`
+          para `/novo/modules` desde o #808; digitar `/modules` ainda entregava
+          `ModuleSelectionPage`, a tela velha, para o MESMO usuário no MESMO
+          passo da jornada. `app/modulos/Modulos.tsx` é a substituta (spec
+          `design/Módulos.dc.html`).
+        */}
+        <Route path="/modules" element={<Redireciona para={rotaNova('/modules')} />} />
 
         {/* EPI module — canonical routes */}
         <Route path="/epi/dashboard" element={<Redireciona para={rotaNova('/epi/dashboard')} />} />
@@ -124,11 +143,21 @@ export function AppRoutes() {
         <Route path="/epi/cameras/triagem" element={<CameraTriagePage />} />
         <Route path="/epi/alerts" element={<Redireciona para={rotaNova('/epi/eventos')} />} />
         <Route path="/epi/alerts/:alertId" element={<AlertaRedirect />} />
-        <Route path="/epi/training" element={<TrainingPage />} />
-        <Route path="/epi/training/classes" element={<ModuleClassesPage />} />
+        {/*
+          ESTÚDIO (#762). `pages/TrainingPage.tsx` e `pages/ModuleClassesPage.tsx`
+          estão carimbados `MIGRADO` no manifesto — paridade FECHADA em 30/08
+          (PRs #572/#574/#577/#580/#583/#586), não só "tem tela parecida". A
+          raiz do Estúdio manda para `dados`, que é a aba de anotação.
+        */}
+        <Route path="/epi/training" element={<Redireciona para={rotaNova('/estudio')} />} />
+        <Route path="/epi/training/classes" element={<Redireciona para={rotaNova('/estudio/classes')} />} />
         <Route path="/epi/cameras/:cameraId/operations" element={<EpiOperationsPage />} />
         <Route path="/epi/cameras/:cameraId/scenario" element={<EpiScenarioEditorPage />} />
-        <Route path="/epi/reports" element={<ReportsPage />} />
+        {/* `pages/ReportsPage.tsx` está carimbado para `app/epi/Relatorios.tsx`
+            SEM pendência de paridade — a antiga é um placeholder de 31 linhas.
+            (Sem escrever as marcas com arroba: `gera-manifesto-front-antigo.mjs`
+            varre por elas e classificaria ESTE arquivo como tela superada.) */}
+        <Route path="/epi/reports" element={<Redireciona para={rotaNova('/epi/relatorios')} />} />
         <Route path="/epi/verification" element={<Redireciona para={rotaNova('/epi/verificacao')} />} />
         <Route path="/epi/counting" element={<CountingPage />} />
         <Route path="/epi/health" element={<StreamHealthRedirect />} />
@@ -139,6 +168,22 @@ export function AppRoutes() {
 
         {/* Admin module — superadmin only, lazy-loaded */}
         <Route element={<AdminRoute />}>
+          {/*
+            #762 — as três seções do Admin que JÁ existem no front novo.
+            Ficam DENTRO do `AdminRoute` de propósito: quem não é superadmin
+            continua sendo devolvido para `/` exatamente como antes, em vez de
+            bater no `SemPermissao` do painel novo (que confirmaria a rota).
+
+            Casam antes de `/admin/*` por ranking do React Router (segmento
+            estático ganha de splat), então o resto do Admin antigo —
+            observability, integrations, planos, flags, branding… — segue
+            intocado, e `/admin/tenants/:id` também: é lá que vive o
+            `UserPermissionsDrawer` (matriz de permissão + revogar sessão),
+            sem equivalente no front novo (`app/admin/Usuarios.tsx`, §3).
+          */}
+          <Route path="/admin" element={<Redireciona para={rotaNova('/admin')} />} />
+          <Route path="/admin/tenants" element={<Redireciona para={rotaNova('/admin/tenants')} />} />
+          <Route path="/admin/users" element={<Redireciona para={rotaNova('/admin/usuarios')} />} />
           <Route
             path="/admin/*"
             element={
@@ -161,9 +206,12 @@ export function AppRoutes() {
         <Route path="/home" element={<Navigate to="/epi/dashboard" replace />} />
         <Route path="/dashboard" element={<Navigate to="/epi/dashboard" replace />} />
         <Route path="/cameras" element={<Navigate to="/epi/cameras" replace />} />
-        <Route path="/annotation" element={<Navigate to="/epi/training" replace />} />
-        <Route path="/training" element={<Navigate to="/epi/training" replace />} />
-        <Route path="/module-classes" element={<Navigate to="/epi/training/classes" replace />} />
+        {/* Apontavam para `/epi/training`, que agora é ele mesmo um redirect —
+            saltam DIRETO para o destino final, sem o pulo do gato intermediário
+            (que, de quebra, perdia a query). */}
+        <Route path="/annotation" element={<Redireciona para={rotaNova('/estudio')} />} />
+        <Route path="/training" element={<Redireciona para={rotaNova('/estudio')} />} />
+        <Route path="/module-classes" element={<Redireciona para={rotaNova('/estudio/classes')} />} />
         <Route path="/monitoring" element={<EdgeMonitoringGate />} />
         <Route path="/epi/monitoring" element={<Redireciona para={rotaNova('/epi/live')} />} />
         <Route path="/alerts" element={<Redireciona para={rotaNova('/epi/eventos')} />} />

@@ -6,9 +6,7 @@ import { Suspense, lazy } from 'react'
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
 import { Entrar } from './app/acesso/Entrar'
-import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
-import { ResetPasswordPage } from './pages/ResetPasswordPage'
-import { AppRoutes } from './AppRoutes'
+import { AppRoutes, Redireciona } from './AppRoutes'
 import { AppShell } from './components/layout/AppShell/AppShell'
 import { AppLayout } from './components/layout/AppLayout/AppLayout'
 import { ChatFAB } from './components/chat/ChatFAB'
@@ -92,8 +90,21 @@ export default function App() {
             <Route path={rotaNova('/entrar')} element={<Entrar />} />
             <Route path={rotaNova('/esqueci-senha')} element={<EsqueciSenha />} />
             <Route path={rotaNova('/redefinir-senha')} element={<RedefinirSenha />} />
-            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-            <Route path="/reset-password" element={<ResetPasswordPage />} />
+            {/*
+              OS DOIS ENDEREÇOS QUE CIRCULAM EM E-MAIL (#762).
+
+              `password_reset_service.py:69` monta o link como
+              `{frontend_url}/reset-password?token={token}` — então o endereço
+              TEM de continuar de pé, e continua: vira redirect, não 404. O que
+              muda é a tela que ele entrega, que era a marca velha
+              (`◈ Recognition`) na PRIMEIRA tela que um usuário novo vê.
+
+              `Redireciona` preserva query e hash, então o `?token=` chega
+              inteiro em `/novo/redefinir-senha`, que o lê com o mesmo
+              `useSearchParams` e chama o mesmo `POST /auth/reset-password`.
+            */}
+            <Route path="/forgot-password" element={<Redireciona para={rotaNova('/esqueci-senha')} />} />
+            <Route path="/reset-password" element={<Redireciona para={rotaNova('/redefinir-senha')} />} />
             <Route path="*" element={<Entrar />} />
           </Routes>
         </Suspense>
