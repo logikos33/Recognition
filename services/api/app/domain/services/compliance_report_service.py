@@ -25,6 +25,7 @@ Related: app/infrastructure/database/repositories/alert_repository.py,
 """
 import io
 import logging
+import math
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -83,6 +84,12 @@ def _period_range(period: str, from_dt: datetime | None, to_dt: datetime | None)
     return start, now
 
 
+#: O eixo do número, em uma linha. MESMA frase da tela (`Relatorios.tsx`) e do
+#: cartão do Dashboard: o PDF é a versão ARQUIVADA da mesma afirmação, e sair
+#: com outro rótulo é como sair com outro número.
+EIXO_CONFORMIDADE = "% das horas-câmera sem violação — não é % de pessoas em conformidade"
+
+
 def valor_conformidade(summary: dict[str, Any]) -> str:
     """A Taxa de Conformidade como TEXTO, para o PDF.
 
@@ -92,13 +99,26 @@ def valor_conformidade(summary: dict[str, Any]) -> str:
     serviço — e era o que acontecia, porque o `except` de `_aggregate` devolvia
     `compliance_rate = 100.0`.
 
+    **Issue #789 no lugar onde ela é mais cara — o arquivo.** O conserto do 100
+    chegou às duas telas (`scoreImpresso`: 100 só para o 100 exato) e não chegou
+    aqui, que continuava em `f"{pct:.1f}%"` — e `f"{99.96:.1f}%"` é **"100,0%"**.
+    O mesmo período saía "99" na tela e "100,0%" no PDF do R2; das duas versões,
+    a que o auditor abre seis meses depois é a que afirmava perfeição sobre uma
+    semana que teve violação. Com 17 câmeras, 99,96 é UMA hora-câmera com
+    violação em 2.856 — o caso comum, não a borda.
+
+    TRUNCAR na primeira casa (nunca arredondar) mantém a invariante que liga os
+    dois: `floor(texto do PDF) == scoreImpresso(x)` para todo x. A tela mostra
+    99, o PDF mostra 99,9 — o mesmo fato em resoluções diferentes. E 100,0% só
+    sai quando `pct >= 100`, porque `floor(pct * 10)` só chega a 1000 aí.
+
     Função de módulo (e não inline no `_generate_pdf`) porque é a asserção que
     o teste precisa alcançar sem reportlab — que outros testes da suíte
     substituem em `sys.modules`.
     """
     pct = summary.get("compliance_rate")
     if pct is not None:
-        return f"{pct:.1f}%"
+        return f"{math.floor(pct * 10) / 10:.1f}%"
     razao = summary.get("compliance_reason")
     motivo = (
         "sem evento no período — nada a apurar"
@@ -106,6 +126,29 @@ def valor_conformidade(summary: dict[str, Any]) -> str:
         else "não foi possível apurar"
     )
     return f"— ({motivo})"
+
+
+def conta_da_taxa(summary: dict[str, Any]) -> str:
+    """A CONTA que produziu a taxa, em uma linha — issue #823.
+
+    O score sozinho não diz nada sobre a escala em que vive: com as 17 câmeras
+    da RVB o denominador é 408 horas-câmera por dia, e um dia de 152 violações
+    concentradas em 31 horas-câmera sai como **92**. Quem lê "92 · Conforme"
+    não tem como saber disso; quem lê "31 de 408 horas-câmera do período
+    tiveram violação" tem.
+
+    Enquanto #823 não decide o denominador (ninguém mede horas monitoradas de
+    verdade), a leitura honesta é publicar a fração medida ao lado do número
+    derivado dela, em vez de pedir confiança no número.
+
+    Vazio quando não houve denominador — score `None`. Inventar a conta aí
+    seria repetir o defeito com outra roupa.
+    """
+    violacao = summary.get("violation_hours") or 0
+    total = summary.get("camera_hours") or 0
+    if not total:
+        return ""
+    return f"{violacao:g} de {total:g} horas-câmera do período tiveram violação."
 
 
 def _generate_pdf(tenant_id: str, period: str, summary: dict[str, Any], from_dt: datetime, to_dt: datetime) -> bytes:
@@ -163,6 +206,14 @@ def _generate_pdf(tenant_id: str, period: str, summary: dict[str, Any], from_dt:
         ("PADDING", (0, 0), (-1, -1), 6),
     ]))
     story.append(tbl)
+    # O PDF é a versão ARQUIVADA da tela: sai com o mesmo número (`taxa_impressa`),
+    # o mesmo eixo e a mesma conta. Um relatório impresso que discorda da tela é
+    # pior que os dois errados — é o que o auditor lê seis meses depois.
+    story.append(Spacer(1, 6))
+    story.append(Paragraph(f"{EIXO_CONFORMIDADE}.", styles["Italic"]))
+    conta = conta_da_taxa(summary)
+    if conta:
+        story.append(Paragraph(conta, styles["Italic"]))
     story.append(Spacer(1, 18))
 
     # Top câmeras
@@ -339,6 +390,12 @@ class ComplianceReportService:
             #   que a legenda da tela tem de dizer o eixo (issue #789).
             hours = max(1.0, (end - start).total_seconds() / 3600)
             violation_hours = 0
+            # O DENOMINADOR REAL, publicado no envelope (issue #823). Sem ele a
+            # tela consegue dizer "3 horas-câmera com violação" mas não "em
+            # 2.856" — e é a distância entre os dois que explica por que um dia
+            # de 152 violações sai como 92. Fica em 0 quando a taxa é `None`:
+            # não houve denominador, e inventar um seria a mentira de novo.
+            camera_hours = 0.0
 
             if total_violations == 0:
                 # ZERO alerta na janela não é 100 % de conformidade: `count_in_window`
@@ -360,7 +417,7 @@ class ComplianceReportService:
                     violation_hours = alert_repo.camera_hours_with_violation(
                         tenant_id, "epi", start, end
                     )
-                    camera_hours = cameras_ativas * hours
+                    camera_hours = float(cameras_ativas * hours)
                     compliance_rate = 100.0 * (
                         1 - min(violation_hours, camera_hours) / camera_hours
                     )
@@ -369,6 +426,7 @@ class ComplianceReportService:
             logger.warning("compliance_aggregate_failed: %s", exc, exc_info=True)
             total_violations = 0
             violation_hours = 0
+            camera_hours = 0.0
             trend = []
             top_cameras = []
             # ⛔ Era `100.0`. A consulta cair devolvia o relatório PERFEITO —
@@ -396,6 +454,7 @@ class ComplianceReportService:
             # fórmula a partir do resultado).
             "violation_hours": violation_hours,
             "period_hours": round(max(1.0, (end - start).total_seconds() / 3600), 2),
+            "camera_hours": round(camera_hours, 2),
             "top_cameras": top_cameras,
             "trend_by_hour": trend,
         }
