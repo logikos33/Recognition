@@ -26,6 +26,8 @@
   "modules:write",
   "notifications:manage",
   "plans:manage",
+  "quality:read",
+  "quality:write",
   "reports:export",
   "reports:read",
   "retention:write",
@@ -58,6 +60,8 @@
   "gateways:manage",
   "models:approve",
   "notifications:manage",
+  "quality:read",
+  "quality:write",
   "reports:export",
   "reports:read",
   "retention:write",
@@ -77,6 +81,8 @@
   "counting:read",
   "counting:write",
   "frames:annotate",
+  "quality:read",
+  "quality:write",
   "reports:export",
   "reports:read",
   "verification:read",
@@ -88,6 +94,7 @@
   "alerts:read",
   "cameras:read",
   "counting:read",
+  "quality:read",
   "reports:export",
   "reports:read",
   "verification:read"
@@ -96,12 +103,15 @@
   "cameras:read",
   "frames:annotate",
   "training:read",
-  "training:write"
+  "training:write",
+  "verification:read",
+  "verification:write"
  ],
  "viewer": [
   "alerts:read",
   "cameras:read",
   "counting:read",
+  "quality:read",
   "reports:export",
   "reports:read"
  ]
