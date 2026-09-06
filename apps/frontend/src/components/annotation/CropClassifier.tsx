@@ -95,6 +95,50 @@ const cadenciaKey = (c: Cadencia | null): string => (c ? `${c.normais}/${c.propo
  * relativas ao container, então funciona sem precisar da resolução real do
  * frame. Não usado hoje (bbox = frame inteiro cai no branch cropImgContain,
  * sem distorcer proporção) — fica pronto pro bbox de pessoa real. */
+/** Anotações HUMANAS do frame, no shape que o POST aceita.
+ *
+ * `class_name`/`module_code` NÃO são decorativos: `_validate_class` recusa o
+ * batch INTEIRO se qualquer um vier vazio — uma preservada sem nome derruba
+ * junto as novas. Vêm do que o servidor devolveu no GET; o catálogo em
+ * memória é só o fallback (classe arquivada some da lista, mas a anotação
+ * antiga continua válida e não pode ser perdida).
+ *
+ * `source === 'ai'` fica de fora: proposta pendente não vira anotação humana
+ * por engano — ela continua esperando o próprio fluxo de revisão.
+ */
+function preservarHumanas(
+  existentes: RawAnnotation[],
+  catalogo: RuntimeClass[],
+): AnnotationBoxPayload[] {
+  return existentes
+    .filter(a => a.source !== 'ai')
+    .map(a => ({
+      class_id: a.class_id,
+      class_name: a.class_name ?? catalogo.find(c => c.classId === a.class_id)?.name ?? '',
+      module_code: a.module_code ?? MODULE_CODE,
+      x_center: a.x_center, y_center: a.y_center, width: a.width, height: a.height,
+    }))
+}
+
+/** União sem repetir caixa — usada ao refazer a mescla depois de um 409.
+ *
+ * Sem isto, reler-e-somar duplicaria as caixas que já estavam no servidor E
+ * já estavam no meu conjunto. Todo recorte desta aba usa FULL_FRAME_BBOX,
+ * então na prática a chave é a classe; a geometria entra na chave para o dia
+ * em que um bbox de pessoa real alimentar este componente.
+ */
+function unirCaixas(...listas: AnnotationBoxPayload[][]): AnnotationBoxPayload[] {
+  const vistas = new Set<string>()
+  const saida: AnnotationBoxPayload[] = []
+  for (const b of listas.flat()) {
+    const chave = `${b.class_id}|${b.x_center}|${b.y_center}|${b.width}|${b.height}`
+    if (vistas.has(chave)) continue
+    vistas.add(chave)
+    saida.push(b)
+  }
+  return saida
+}
+
 function cropStyle(bbox: readonly [number, number, number, number]): React.CSSProperties {
   const [x, y, w, h] = bbox
   const safeW = Math.max(w, 0.02)
@@ -543,8 +587,12 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
     setExistingAnnotations(null)
     let cancelled = false
     api
-      .get<{ success: boolean; annotations: RawAnnotation[] }>(`/training/frames/${currentFrame.id}/annotations`)
-      .then(res => { if (!cancelled) setExistingAnnotations(res?.annotations ?? []) })
+      .get<{ success: boolean; annotations: RawAnnotation[]; version?: string }>(`/training/frames/${currentFrame.id}/annotations`)
+      .then(res => {
+        if (cancelled) return
+        if (res?.version) versoesRef.current[currentFrame.id] = res.version
+        setExistingAnnotations(res?.annotations ?? [])
+      })
       .catch(() => { if (!cancelled) setExistingAnnotations([]) })
     return () => { cancelled = true }
   }, [currentFrame])
@@ -637,6 +685,67 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
   // Aprovação gravada por uma versão que ainda omitia class_name/module_code
   // fica presa para sempre: o backend responde 400 e nenhum retry resolve.
   // Repara com o catálogo em memória antes de reenviar — o trabalho do humano
+  // Versão que ESTE navegador leu de cada frame (#801). O POST de
+  // /annotations é replace-all: sem ela, dois classificadores no MESMO
+  // recorte — e a fila é a MESMA para os três da RVB (issue #828), todos
+  // começam pelo primeiro item — e o segundo "Aprovar" APAGA a
+  // classificação do primeiro, com 200 na cara dele. É o mesmo #801 do
+  // Estúdio, nesta aba que corre a ~3s/recorte, onde a colisão é mais
+  // provável, não menos.
+  const versoesRef = useRef<Record<string, string>>({})
+
+  /** POST replace-all sob a guarda de versão (#801).
+   *
+   * `montar` recebe as anotações ATUAIS do servidor e devolve o conjunto a
+   * gravar. É isso que permite REFAZER a mescla quando o 409 avisa que
+   * alguém gravou nesse meio-tempo: aqui travar o usuário com "recarregue"
+   * seria matar um fluxo de 3s/recorte — e é desnecessário, porque a
+   * intenção desta aba é aditiva. Releio, somo e reenvio: o trabalho do
+   * colega fica e o meu entra junto, em vez de um apagar o outro.
+   */
+  const gravarAnotacoes = useCallback(
+    async (
+      frameId: string,
+      montar: (existentes: RawAnnotation[]) => AnnotationBoxPayload[],
+      existentes: RawAnnotation[] | null,
+    ) => {
+      const enviar = async (base: RawAnnotation[], versao: string | undefined) => {
+        const res = await api.post<{ version?: string }>(
+          `/training/frames/${frameId}/annotations`,
+          { annotations: montar(base), version: versao },
+        )
+        if (res?.version) versoesRef.current[frameId] = res.version
+      }
+      const reler = async () => {
+        const fresco = await api.get<{ annotations: RawAnnotation[]; version?: string }>(
+          `/training/frames/${frameId}/annotations`,
+        )
+        if (fresco?.version) versoesRef.current[frameId] = fresco.version
+        return fresco
+      }
+      let base = existentes
+      // `Record<string, string>` tipa a chave ausente como `string`, mas em
+      // runtime ela é `undefined` — é justamente esse caso que precisa reler.
+      let versao: string | undefined = versoesRef.current[frameId]
+      // Sem versão conhecida (replay pós-401: o ref morreu junto com a
+      // página; ou o GET do frame ainda não voltou) mandar assim mesmo é
+      // voltar ao bug — a guarda é opt-in no servidor. Releio antes.
+      if (versao === undefined || base === null) {
+        const fresco = await reler()
+        base = fresco?.annotations ?? []
+        versao = fresco?.version
+      }
+      try {
+        await enviar(base, versao)
+      } catch (err) {
+        if (!(err instanceof ApiError) || err.status !== 409) throw err
+        const fresco = await reler()
+        await enviar(fresco?.annotations ?? [], fresco?.version)
+      }
+    },
+    [],
+  )
+
   // é recuperável, o payload é que estava incompleto.
   const repairPending = useCallback(
     (entry: PendingApproval): PendingApproval => ({
@@ -661,9 +770,11 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       let lastErr: unknown = null
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          await api.post(`/training/frames/${repaired.frameId}/annotations`, {
-            annotations: repaired.annotations,
-          })
+          await gravarAnotacoes(
+            repaired.frameId,
+            existentes => unirCaixas(preservarHumanas(existentes, classesRef.current), repaired.annotations),
+            null,
+          )
           setPendingApprovals(prev => prev.filter(p => p.frameId !== repaired.frameId))
           lastErr = null
           break
@@ -681,7 +792,7 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       }
     }
     setSyncing(false)
-  }, [repairPending])
+  }, [repairPending, gravarAnotacoes])
 
   // Replay automático uma vez no mount (ex.: acabou de logar de novo depois
   // do 401 ter interrompido no meio de um Aprovar). Espera o catálogo de
@@ -755,18 +866,9 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       // class_name/module_code viajam junto aqui também: o backend valida
       // TODO o batch, então uma anotação preservada sem nome derruba o save
       // inteiro — inclusive as novas (annotation_service._validate_class).
-      const preserved: AnnotationBoxPayload[] = (existingAnnotations ?? [])
-        .filter(a => a.source !== 'ai')
-        .map(a => ({
-          class_id: a.class_id,
-          // Valores que o próprio servidor devolveu no GET; o catálogo em
-          // memória é só o fallback (classe arquivada some da lista mas a
-          // anotação antiga continua válida e não pode ser perdida).
-          class_name: a.class_name ?? classes.find(c => c.classId === a.class_id)?.name ?? '',
-          module_code: a.module_code ?? MODULE_CODE,
-          x_center: a.x_center, y_center: a.y_center, width: a.width, height: a.height,
-        }))
-      const fullSet = [...preserved, ...payload]
+      const montar = (existentes: RawAnnotation[]): AnnotationBoxPayload[] =>
+        unirCaixas(preservarHumanas(existentes, classesRef.current), payload)
+      const fullSet = montar(existingAnnotations ?? [])
 
       // Persiste ANTES do POST — se a rede cair ou o 401 global redirecionar
       // a página inteira, o trabalho já está gravado (replay no próximo mount).
@@ -788,7 +890,7 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       })
 
       try {
-        await api.post(`/training/frames/${frame.id}/annotations`, { annotations: fullSet })
+        await gravarAnotacoes(frame.id, montar, existingAnnotations)
         setPendingApprovals(prev => prev.filter(p => p.frameId !== frame.id))
       } catch {
         toast.error('Erro ao sincronizar — a aprovação ficou pendente, nada foi perdido')
@@ -797,7 +899,7 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
 
     advance()
   }, [currentFrame, verdict, classes, existingAnnotations, shownAt, toast, advance, suggested, blocoAtual,
-      tiposNaTela])
+      tiposNaTela, gravarAnotacoes])
 
   const markCuration = useCallback(
     async (status: 'duvida' | 'excluida', label: string) => {
@@ -840,16 +942,23 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       }
       return
     }
-    // Mesmo motivo do `preserved` em approve(): sem class_name/module_code o
-    // backend recusa o batch e o desfazer não desfaria nada.
-    const revertSet: AnnotationBoxPayload[] = action.snapshotBefore
-      .filter(a => a.source !== 'ai')
-      .map(a => ({
-        class_id: a.class_id,
-        class_name: a.class_name ?? classes.find(c => c.classId === a.class_id)?.name ?? '',
-        module_code: a.module_code ?? MODULE_CODE,
-        x_center: a.x_center, y_center: a.y_center, width: a.width, height: a.height,
-      }))
+    // Desfazer = tirar SÓ o que EU acabei de somar, do estado ATUAL do
+    // servidor. Regravar `snapshotBefore` cru apagava o que outra pessoa
+    // tivesse classificado neste mesmo recorte depois do meu Aprovar (#801).
+    // Uma ocorrência por classe adicionada — nunca a caixa de mesma classe
+    // que já estava lá antes.
+    const montar = (existentes: RawAnnotation[]): AnnotationBoxPayload[] => {
+      const aRemover = [...action.addedClassIds]
+      return preservarHumanas(
+        existentes.filter(a => {
+          const i = aRemover.indexOf(a.class_id)
+          if (i < 0) return true
+          aRemover.splice(i, 1)
+          return false
+        }),
+        classesRef.current,
+      )
+    }
     setPendingApprovals(prev => prev.filter(p => p.frameId !== action.frameId))
     setApprovedCounts(prev => {
       const next = { ...prev }
@@ -860,11 +969,11 @@ export function CropClassifier({ initialCameraId, initialClassId, onOpenAdjust }
       return next
     })
     try {
-      await api.post(`/training/frames/${action.frameId}/annotations`, { annotations: revertSet })
+      await gravarAnotacoes(action.frameId, montar, null)
     } catch {
       toast.error('Erro ao desfazer aprovação')
     }
-  }, [lastAction, queue, classes, toast])
+  }, [lastAction, queue, classes, toast, gravarAnotacoes])
 
   const openAdjust = useCallback(() => {
     if (!currentFrame) return
