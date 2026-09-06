@@ -15,8 +15,8 @@
  * caminho, de propósito: a plataforma não pode adivinhar em qual cliente
  * entrar.
  *
- * Anti-loop (CRÍTICO): assumeTenantContext troca o token e faz
- * `window.location.href = '/'`, recarregando a página inteira. Sem um guard
+ * Anti-loop (CRÍTICO): assumeTenantContext troca o token e recarrega a página
+ * inteira (aqui, na MESMA rota — ver a chamada abaixo). Sem um guard
  * que sobrevive ao reload, um assume que falhar silenciosamente (ou uma
  * grade que continua reportando o mesmo tenant a cada render) dispararia o
  * mesmo POST /assume em loop. Guard em sessionStorage (sobrevive ao reload,
@@ -84,7 +84,15 @@ export function useAutoAssumeTenantContext(): void {
     if (hasRecentAutoAssumeAttempt(tenantId)) return // fallback: banner manual
 
     sessionStorage.setItem(attemptKey(tenantId), String(Date.now()))
-    void assumeTenantContext(tenantId).catch(() => {
+    // Destino explícito = a tela corrente. O auto-assume dispara COM a grade
+    // de monitoramento aberta; mandar para a home (o default do serviço)
+    // arrancaria a pessoa da grade que ela acabou de abrir. Mesmo argumento
+    // do `SeletorTenant`. (#760: antes ia para o default `'/'`, que logado
+    // caía no front ANTIGO — aqui o destino nunca deveria ter sido a home.)
+    void assumeTenantContext(
+      tenantId,
+      window.location.pathname + window.location.search,
+    ).catch(() => {
       // Falhou sem reload — guard permanece (expira em 60s); o banner
       // manual segue disponível como fallback nesse meio-tempo.
     })
