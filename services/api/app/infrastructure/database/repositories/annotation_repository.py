@@ -1,6 +1,5 @@
 """Repository: Frame Annotations + YOLO Classes."""
 import hashlib
-from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -55,37 +54,41 @@ def versao_das_linhas(linhas: "list[dict[str, Any]]") -> str:
     return hashlib.blake2b("|".join(ids).encode(), digest_size=8).hexdigest()
 
 
-def _ha_quanto_tempo(quando: "datetime | None") -> str:
+def _ha_quanto_tempo(segundos: "int | None") -> str:
     """Texto relativo ("há 2 minutos") para o aviso de conflito.
 
-    Relativo, não data absoluta: o anotador precisa saber se foi AGORA (o
-    colega ao lado, na mesma fila) ou semana passada.
+    Recebe SEGUNDOS já medidos **pelo banco** (`NOW() - created_at`), não uma
+    data: `frame_annotations.created_at` é TIMESTAMP sem fuso (migration 003)
+    com default `NOW()`, ou seja a hora local do Postgres. Subtrair isso de um
+    relógio Python é apostar que API e banco estão no mesmo fuso — a aposta
+    perde silenciosamente e o aviso mente. Medido: com o Postgres em
+    America/Sao_Paulo, uma caixa salva AGORA virava "há 3 horas"; o CI roda em
+    UTC e passava. Quem sabe a diferença é quem gravou o valor, então é ele
+    quem calcula.
 
-    ⚠️ Cópia da mesma função em `verification_service.py` (o 409 da fila de
-    Verificação). Duplicada de propósito nesta rodada: consolidar exigia
-    editar aquele arquivo, fora do escopo desta frente. Issue de unificação
-    aberta no PR.
+    Relativo até em dias, nunca data absoluta: além de ser o que o anotador
+    precisa saber (foi o colega ao lado, agora, ou foi semana passada?), uma
+    data absoluta reintroduziria o mesmo problema — renderizar a hora de
+    parede do banco para um usuário em outro fuso.
+
+    ⚠️ Cópia da mesma ideia em `verification_service.py` (o 409 da fila de
+    Verificação, que tem o MESMO bug de fuso). Consolidar exigia editar aquele
+    arquivo, fora do escopo desta frente — issue #829.
     """
-    if quando is None:
+    if segundos is None:
         return "antes de você"
-    # `frame_annotations.created_at` é TIMESTAMP **sem** fuso (migration 003)
-    # com default `NOW()`: o Postgres grava a hora LOCAL DELE, não UTC.
-    # Assumir UTC no valor naive dizia "há 3 horas" para uma caixa salva
-    # AGORA em qualquer banco fora do UTC — o CI é UTC e passava, o aviso
-    # nominal do 409 (o coração do UX desta guarda) mentia em campo.
-    # Naive compara com naive: API e banco compartilham o fuso nos dois
-    # ambientes (Railway em UTC, máquina local no fuso da máquina).
-    agora = datetime.now(timezone.utc) if quando.tzinfo else datetime.now()
-    segundos = int((agora - quando).total_seconds())
+    segundos = max(0, int(segundos))
     if segundos < 60:
         return "agora há pouco"
-    if segundos < 3600:
-        m = segundos // 60
-        return f"há {m} minuto{'s' if m > 1 else ''}"
-    if segundos < 86400:
-        h = segundos // 3600
-        return f"há {h} hora{'s' if h > 1 else ''}"
-    return f"em {quando.astimezone().strftime('%d/%m/%Y %H:%M')}"
+    for limite, divisor, singular, plural in (
+        (3600, 60, "minuto", "minutos"),
+        (86400, 3600, "hora", "horas"),
+        (None, 86400, "dia", "dias"),
+    ):
+        if limite is None or segundos < limite:
+            n = segundos // divisor
+            return f"há {n} {singular if n == 1 else plural}"
+    raise AssertionError("inalcançável")  # pragma: no cover
 
 
 class AnnotationRepository(BaseRepository):
@@ -676,16 +679,23 @@ class AnnotationRepository(BaseRepository):
         )
         quem, quando = "Outro anotador", "antes de você"
         if recente is not None:
-            quando = _ha_quanto_tempo(recente.get("created_at"))
-            # Nome, NUNCA o UUID: `created_by` é id interno (mesma regra do
-            # `_quem_julgou` da Verificação). Consulta só no ramo de conflito
-            # — o caminho feliz não paga JOIN nenhum.
+            # UMA consulta, só no ramo de conflito (o caminho feliz não paga
+            # JOIN nenhum), trazendo as duas coisas que a frase precisa:
+            #  · o NOME, nunca o UUID — `created_by` é id interno (mesma regra
+            #    do `_quem_julgou` da Verificação);
+            #  · o tempo decorrido medido pelo RELÓGIO DO BANCO, que é o mesmo
+            #    que gravou `created_at` (TIMESTAMP sem fuso). Subquery em vez
+            #    de FROM users: a linha sai mesmo se o usuário não for achado,
+            #    então o horário nunca se perde junto com o nome.
             cur.execute(
-                "SELECT name FROM public.users WHERE id = %s",
-                (str(recente["created_by"]),),
+                "SELECT (SELECT name FROM public.users WHERE id = %s) AS name, "
+                "       EXTRACT(EPOCH FROM (NOW()::timestamp - %s::timestamp))::bigint "
+                "         AS segundos",
+                (str(recente["created_by"]), recente.get("created_at")),
             )
-            achado = cur.fetchone()
-            if achado and achado["name"]:
+            achado = cur.fetchone() or {}
+            quando = _ha_quanto_tempo(achado.get("segundos"))
+            if achado.get("name"):
                 quem = achado["name"]
         return ConflictError(
             f"{quem} salvou anotações neste frame {quando}. "

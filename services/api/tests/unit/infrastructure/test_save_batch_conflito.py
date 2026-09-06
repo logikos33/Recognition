@@ -15,7 +15,6 @@ Mesmo critério do 409 da fila de Verificação (`verification_service.
 human_review`, onda 1): só o trabalho de OUTRA PESSOA bloqueia; re-salvar o
 próprio segue permitido.
 """
-import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 from uuid import uuid4
@@ -61,12 +60,15 @@ def _payload(cx=0.8):
              "x_center": cx, "y_center": 0.8, "width": 0.1, "height": 0.1}]
 
 
-def _roda(linhas_no_banco, *, user_id, versao_esperada, nome_do_autor="Ana"):
+def _roda(linhas_no_banco, *, user_id, versao_esperada, nome_do_autor="Ana",
+          segundos=0):
     """Roda save_batch com cursor falso. Devolve os SQLs emitidos."""
     repo = AnnotationRepository.__new__(AnnotationRepository)
     cur = MagicMock()
     cur.fetchall.return_value = linhas_no_banco
-    cur.fetchone.return_value = {"name": nome_do_autor}
+    # A consulta única do ramo de conflito devolve nome E tempo decorrido
+    # medido pelo relógio do BANCO (ver `_conflito`).
+    cur.fetchone.return_value = {"name": nome_do_autor, "segundos": segundos}
     emitidos: list[str] = []
 
     def espia(sql, params=None):
@@ -100,7 +102,7 @@ class TestGuardaDeVersao:
         repo = AnnotationRepository.__new__(AnnotationRepository)
         cur = MagicMock()
         cur.fetchall.return_value = [_caixa_no_banco(str(ANA))]
-        cur.fetchone.return_value = {"name": "Ana"}
+        cur.fetchone.return_value = {"name": "Ana", "segundos": 0}
         cur.execute = lambda sql, params=None: emitidos.append(sql)
         repo._execute_in_transaction = lambda fn: fn(MagicMock(), cur)  # type: ignore[method-assign]
 
@@ -175,8 +177,12 @@ class TestMensagem:
         antigo = _caixa_no_banco(str(ANA), quando=agora() - timedelta(hours=3))
         recente = _caixa_no_banco(str(BRUNO), quando=agora() - timedelta(minutes=5))
         with pytest.raises(ConflictError) as excecao:
+            # `segundos` é o que o BANCO responde para a linha escolhida — o
+            # que se prova aqui é a ESCOLHA (a mais recente, do Bruno), não a
+            # aritmética do texto (essa é TestQuandoOColegaSalvou).
             _roda([antigo, recente], user_id=uuid4(),
-                  versao_esperada=VERSAO_VAZIA, nome_do_autor="Bruno")
+                  versao_esperada=VERSAO_VAZIA, nome_do_autor="Bruno",
+                  segundos=300)
         assert "Bruno" in str(excecao.value)
         assert "há 5 minutos" in str(excecao.value)
 
@@ -185,8 +191,10 @@ class TestMensagem:
         dia vier NULL: 409 explicativo > exceção dentro do tratamento de
         exceção."""
         with pytest.raises(ConflictError) as excecao:
+            # `NOW() - NULL` é NULL: o banco devolve `segundos` nulo e a frase
+            # não inventa horário.
             _roda([_caixa_no_banco(str(ANA), created_at=None)], user_id=BRUNO,
-                  versao_esperada=VERSAO_VAZIA)
+                  versao_esperada=VERSAO_VAZIA, segundos=None)
         assert "antes de você" in str(excecao.value)
 
     def test_diz_o_que_fazer_sem_jargao_de_http(self):
@@ -198,52 +206,56 @@ class TestMensagem:
         assert "409" not in frase and "conflict" not in frase.lower()
 
 
-@pytest.fixture
-def fuso_do_banco_nao_e_utc(monkeypatch):
-    """Força o processo para um fuso ≠ UTC durante o teste.
-
-    ⚠️ SEM isto estes casos medem NADA no CI: com TZ=UTC o `datetime.now()`
-    naive JÁ é UTC, e o código bugado (que trata o naive como UTC) acerta por
-    coincidência. Medido — a primeira versão desta classe passava tanto com o
-    conserto quanto com o bug reintroduzido, desde que TZ=UTC.
-    """
-    monkeypatch.setenv("TZ", "America/Sao_Paulo")  # UTC-03
-    time.tzset()
-    try:
-        yield
-    finally:
-        monkeypatch.undo()
-        time.tzset()
-
-
 class TestQuandoOColegaSalvou:
-    """`created_at` é TIMESTAMP **sem fuso** (migration 003) com default
-    `NOW()`: o Postgres grava a hora LOCAL DELE, não UTC. Tratar o valor
-    naive como UTC dizia "há 3 horas" para uma caixa gravada AGORA em
-    qualquer banco fora do UTC — medido num Postgres em America/Sao_Paulo,
-    onde o teste de integração do 409 reprovava. O CI roda em UTC e passava:
-    verde por acidente de ambiente, com o aviso nominal (o coração do UX
-    desta guarda) mentindo para o anotador.
+    """`frame_annotations.created_at` é TIMESTAMP **sem fuso** (migration 003)
+    com default `NOW()`: o Postgres grava a hora local DELE. Subtrair isso de
+    um relógio Python só acerta se API e banco estiverem no mesmo fuso —
+    medido, com o Postgres em America/Sao_Paulo uma caixa salva AGORA virava
+    "há 3 horas" na frase do 409, que é o coração do UX desta guarda. O CI roda
+    em UTC e passava: verde por acidente de ambiente.
+
+    Quem sabe a diferença é quem gravou o valor, então quem calcula é o banco.
+    Por isso estes casos são aritmética pura sobre SEGUNDOS — não há fuso de
+    máquina que os faça passar ou falhar por sorte.
     """
 
-    def test_naive_recem_gravado_e_agora_ha_pouco_fora_do_utc(
-        self, fuso_do_banco_nao_e_utc
-    ):
-        # `datetime.now()` naive é exatamente o que o psycopg2 devolve de um
-        # TIMESTAMP sem fuso: a hora local do banco, sem tzinfo.
-        assert _ha_quanto_tempo(datetime.now()) == "agora há pouco"
-
-    def test_naive_de_duas_horas_atras_nao_vira_cinco(
-        self, fuso_do_banco_nao_e_utc
-    ):
-        assert _ha_quanto_tempo(datetime.now() - timedelta(hours=2)) == "há 2 horas"
-
-    def test_valor_com_fuso_continua_comparando_em_utc(
-        self, fuso_do_banco_nao_e_utc
-    ):
-        # Coluna TIMESTAMPTZ (ou driver configurado) devolve aware — este
-        # ramo não pode ser quebrado pelo conserto do ramo naive.
-        assert _ha_quanto_tempo(datetime.now(timezone.utc)) == "agora há pouco"
+    @pytest.mark.parametrize("segundos,esperado", [
+        (0, "agora há pouco"),
+        (59, "agora há pouco"),
+        (60, "há 1 minuto"),
+        (7200, "há 2 horas"),
+        (86400, "há 1 dia"),
+        (86400 * 9, "há 9 dias"),
+        # Relógios que discordam por milissegundos não podem virar "há -1 dia".
+        (-5, "agora há pouco"),
+    ])
+    def test_texto_relativo(self, segundos, esperado):
+        assert _ha_quanto_tempo(segundos) == esperado
 
     def test_sem_data_nao_inventa_horario(self):
         assert _ha_quanto_tempo(None) == "antes de você"
+
+    def test_o_tempo_vem_do_relogio_do_BANCO_nao_do_processo(self):
+        """Mata a volta do bug: se o cálculo migrar de novo para o Python, a
+        consulta do ramo de conflito para de pedir o decorrido ao Postgres."""
+        emitidos: list[str] = []
+        repo = AnnotationRepository.__new__(AnnotationRepository)
+        cur = MagicMock()
+        cur.fetchall.return_value = [_caixa_no_banco(str(ANA))]
+        cur.fetchone.return_value = {"name": "Ana", "segundos": 7200}
+        cur.execute = lambda sql, params=None: emitidos.append(sql)
+        repo._execute_in_transaction = lambda fn: fn(MagicMock(), cur)  # type: ignore[method-assign]
+
+        with pytest.raises(ConflictError):
+            repo.save_batch(uuid4(), _payload(), user_id=BRUNO,
+                            versao_esperada=VERSAO_VAZIA)
+
+        conflito = [sql for sql in emitidos if "public.users" in sql]
+        assert len(conflito) == 1, "o ramo de conflito faz UMA consulta, não duas"
+        assert "NOW()::timestamp - %s::timestamp" in conflito[0]
+
+    def test_frase_usa_o_decorrido_que_o_banco_devolveu(self):
+        with pytest.raises(ConflictError) as excecao:
+            _roda([_caixa_no_banco(str(ANA))], user_id=BRUNO,
+                  versao_esperada=VERSAO_VAZIA, segundos=7200)
+        assert "há 2 horas" in str(excecao.value)
