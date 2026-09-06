@@ -296,7 +296,14 @@ export function Eventos() {
       })
     } catch (e) {
       setDados(null)
-      setErro(e instanceof ApiError ? `GET /api/alerts · HTTP ${e.status}` : 'GET /api/alerts · FALHA')
+      // A rota crua não ajuda quem opera a fábrica — e a régua de jargão não vê
+      // string fora de JSX, então esta linha passou meses servida. O código
+      // numérico fica: é o que o suporte pede.
+      setErro(
+        e instanceof ApiError
+          ? `A lista de eventos não respondeu (código ${e.status}).`
+          : 'A lista de eventos não respondeu.',
+      )
     } finally {
       setCarregando(false)
     }
@@ -356,11 +363,30 @@ export function Eventos() {
   const trocarFiltro = (mudanca: Partial<Filtros>) =>
     setFiltros((f) => ({ ...f, ...mudanca, pagina: 1 }))
 
-  const limparFiltros = () =>
+  /**
+   * AMPLIAR — issue #795. Isto era `limparFiltros`, e resetava para
+   * `periodo:'hoje' + kind:'violation'`: exatamente o estado em que a tela
+   * NASCE. Ou seja, no primeiro acesso — que é o caso do vazio — o único botão
+   * do painel vazio era um NO-OP garantido: o usuário clicava, nada mudava, e
+   * a tela continuava sugerindo "filtro demais".
+   *
+   * Agora ele afrouxa de verdade: 30 dias, TODO tipo de evento, sem câmera,
+   * classe nem status. É a saída que o painel promete. Se depois disso ainda
+   * vier vazio, aí sim é vazio de verdade — e o texto abaixo diz isso.
+   *
+   * Não mexe no DEFAULT da tela (violação primeiro segue valendo, ADR-0065 e a
+   * decisão registrada acima); mexe só na SAÍDA oferecida no vazio.
+   */
+  const ampliarBusca = () =>
     setFiltros({
-      periodo: 'hoje', intervalo: null, cameraId: '', classe: '',
-      status: '', kind: 'violation', pagina: 1,
+      periodo: '30d', intervalo: null, cameraId: '', classe: '',
+      status: '', kind: '', pagina: 1,
     })
+
+  /** O recorte já está no máximo que o botão alcança — não há o que ampliar. */
+  const recorteJaAmplo =
+    filtros.periodo === '30d' && !filtros.intervalo && filtros.kind === '' &&
+    !filtros.cameraId && !filtros.classe && !filtros.status
 
   /** Reconhecer: ato explícito. Não existe chave de permissão para "dar
    *  ciência" no registry (`core/permissions.py` só tem read/feedback/export),
@@ -465,7 +491,7 @@ export function Eventos() {
         <AlertTriangle size={36} strokeWidth={1.5} aria-hidden="true" />
         <span className={s.painelTitulo}>Sem permissão</span>
         <span className={s.painelTexto}>
-          Ver eventos exige a permissão <code>alerts:read</code>. Peça a quem administra
+          Ver eventos exige permissão para consultar eventos. Peça a quem administra
           o seu acesso.
         </span>
       </div>
@@ -792,11 +818,15 @@ export function Eventos() {
           <Inbox size={36} strokeWidth={1.5} aria-hidden="true" />
           <span className={s.painelTitulo}>Nenhum evento no período</span>
           <span className={s.painelTexto}>
-            Nenhuma detecção com os filtros atuais. Bom sinal — ou filtro demais.
+            {recorteJaAmplo
+              ? 'Nenhum evento em 30 dias, com todos os tipos e câmeras. O vazio é do acervo, não do filtro.'
+              : 'Nenhuma detecção com os filtros atuais — e a tela abre mostrando só violações. Eventos de conformidade e de outros dias ficam de fora deste recorte.'}
           </span>
-          <button className={s.botaoPainel} onClick={limparFiltros}>
-            Limpar filtros
-          </button>
+          {!recorteJaAmplo && (
+            <button className={s.botaoPainel} onClick={ampliarBusca}>
+              Ver 30 dias, todos os tipos
+            </button>
+          )}
         </div>
       ) : (
         <>

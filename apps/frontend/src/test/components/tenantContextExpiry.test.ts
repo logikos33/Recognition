@@ -96,7 +96,9 @@ describe('api.ts — expiração do contexto de tenant assumido (401)', () => {
 
     // Superadmin restaurado — NUNCA derruba pro /login enquanto houver backup.
     expect(localStorage.getItem(TOKEN_KEY)).toBe('superadmin-token')
-    expect(window.location.href).toBe('/admin/tenants')
+    // #760: era `/admin/tenants`, o painel do front ANTIGO — o token expirava
+    // e o superadmin acordava no produto velho. Hoje é a MESMA tela no novo.
+    expect(window.location.href).toBe('/novo/admin/tenants')
     expect(window.location.href).not.toBe('/login')
 
     // Backup consumido — não sobra resíduo pro próximo 401 reprocessar (evita loop).
@@ -152,8 +154,8 @@ describe('api.ts — expiração do contexto de tenant assumido (401)', () => {
     )
     expect(results.every((r) => r.status === 'rejected')).toBe(true)
 
-    // O destino é o retorno ao superadmin — NUNCA o /login.
-    expect(window.location.href).toBe('/admin/tenants')
+    // O destino é o retorno ao superadmin — NUNCA o /login, e no front NOVO (#760).
+    expect(window.location.href).toBe('/novo/admin/tenants')
     // E o token restaurado sobrevive às outras 7 respostas.
     expect(localStorage.getItem(TOKEN_KEY)).toBe('superadmin-token')
     expect(sessionStorage.getItem(TENANT_CONTEXT_EXPIRED_FLAG)).toBe('1')

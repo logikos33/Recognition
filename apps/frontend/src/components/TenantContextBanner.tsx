@@ -83,7 +83,14 @@ export function TenantContextBanner() {
     if (!expiredMeta) return
     setReassuming(true)
     try {
-      await assumeTenantContext(expiredMeta.tenant_id) // recarrega em caso de sucesso
+      // Destino explícito = a tela corrente. Este banner aparece em QUALQUER
+      // tela (GlobalBanners, fora das rotas); reassumir o contexto não é razão
+      // para tirar a pessoa de onde ela está. (#760: sem 2º argumento ia para
+      // o default `'/'`, que logado entregava o front ANTIGO.)
+      await assumeTenantContext(
+        expiredMeta.tenant_id,
+        window.location.pathname + window.location.search,
+      ) // recarrega em caso de sucesso
     } catch (err) {
       setReassuming(false)
       toast.error('Erro ao reassumir contexto', err instanceof Error ? err.message : undefined)
