@@ -1214,11 +1214,16 @@ describe('débito estrutural V1: congelado por par E por contagem, sem cemitéri
   })
 
   /**
-   * PROVA DA COTA (furo M12) — sem depender de mutar arquivo do repo: o mesmo
-   * termo, no mesmo arquivo, DUAS vezes, com teto 1. A primeira é engolida
-   * pelo congelamento, a segunda tem de aparecer no relatório.
+   * MEDIDO PELO CÉTICO: este teste NÃO é a prova da cota — ele reimplementa o
+   * corte (`filter`) no próprio corpo, então continua verde mesmo com a cota
+   * do laço principal desligada. Quem fecha o furo M12 de verdade é o teste
+   * acima (`o MESMO NÚMERO de achados`): com a cota mutada e uma segunda
+   * cópia de `GET /api` injetada em `carga/Carga.tsx`, é ele que fica
+   * vermelho. O que ESTE aqui garante — e é real — é que `acharJargao`
+   * devolve UMA entrada por ocorrência, não uma por arquivo: sem isso
+   * nenhuma contagem acima significaria nada.
    */
-  it('a segunda cópia do MESMO termo congelado NÃO passa calada', () => {
+  it('acharJargao conta ocorrência por ocorrência, não uma por arquivo', () => {
     const codigo =
       'export const X = () => (<div>\n' +
       '  <span>GET /api/alerts</span>\n' +

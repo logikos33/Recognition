@@ -63,7 +63,10 @@ describe('Estudio (layout + gate)', () => {
     auth.can.mockImplementation((p: string) => p !== 'frames:annotate')
     monta()
     expect(screen.getByText('Sem permissão')).toBeTruthy()
-    expect(screen.getByText('frames:annotate')).toBeTruthy()
+    // A chave crua saiu da tela (issue #810): o gate continua, o texto diz o
+    // PODER em português. Ver app/shell/SemPermissao.tsx.
+    expect(screen.getByText(/permissão de anotar imagens/)).toBeTruthy()
+    expect(screen.queryByText('frames:annotate')).toBeNull()
     expect(screen.queryByText('conteudo-dados')).toBeNull()
     expect(screen.queryByRole('navigation')).toBeNull()
   })
@@ -199,7 +202,8 @@ describe('lateral do Estúdio × o que o backend permite (issue #688)', () => {
     monta('classes')
     expect(screen.queryByText('conteudo-classes'), 'conteúdo vazou por URL direta').toBeNull()
     expect(screen.getByText('Sem permissão')).toBeTruthy()
-    expect(screen.getByText('training:write')).toBeTruthy()
+    expect(screen.getByText(/permissão de preparar treinos/)).toBeTruthy()
+    expect(screen.queryByText('training:write')).toBeNull()
     // A lateral fica de pé — bloquear não pode virar beco sem saída.
     expect(screen.getByRole('navigation', { name: 'Seções do Estúdio' })).toBeTruthy()
   })
