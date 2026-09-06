@@ -255,6 +255,62 @@ describe('estados da rota', () => {
     expect(screen.queryByText('0')).toBeNull()
   })
 
+  /**
+   * #789 NA TELA IRMÃ. O cético desta rodada mediu: o PR que reservou o 100 ao
+   * 100 exato fez isso no Dashboard e deixou `Math.round` aqui — na tela cujo
+   * número vira PDF no R2 como prova de auditoria.
+   *
+   * E o mesmo PR tornou o defeito COMUM em vez de raro: a fórmula do
+   * relatório passou a ser a do Dashboard,
+   * `100 × (1 − horas-câmera com violação ÷ (câmeras ativas × horas))`. Numa
+   * semana das 17 câmeras da RVB o denominador é 168 × 17 = 2.856
+   * horas-câmera, então UMA hora-câmera com violação dá 99,96 e até 14 delas
+   * ainda ficam ≥ 99,5 — todas arredondavam para **100**. A mesma semana saía
+   * "99" no Dashboard e "100" aqui: o mesmo número, o mesmo produto, duas
+   * telas, uma honesta.
+   *
+   * Troque `scoreImpresso` de volta por `Math.round` e os dois primeiros casos
+   * voltam a imprimir 100.
+   */
+  it('#789 na tela irmã: semana com violação não imprime 100 no relatório', async () => {
+    // 1 hora-câmera com violação em 2.856 — o caso comum, não a borda.
+    responde({
+      data: {
+        ...RESPOSTA.data,
+        summary: { ...RESPOSTA.data.summary, compliance_rate: 99.96, total_violations: 66 },
+      },
+    })
+    render(<Relatorios />)
+    await carregado()
+    expect(screen.getByText('99')).toBeTruthy()
+    expect(screen.queryByText('100')).toBeNull()
+  })
+
+  it('#789 na tela irmã: 99,5 — a borda do arredondamento — também é 99', async () => {
+    responde({
+      data: {
+        ...RESPOSTA.data,
+        summary: { ...RESPOSTA.data.summary, compliance_rate: 99.5, total_violations: 13 },
+      },
+    })
+    render(<Relatorios />)
+    await carregado()
+    expect(screen.getByText('99')).toBeTruthy()
+    expect(screen.queryByText('100')).toBeNull()
+  })
+
+  it('#789 na tela irmã: 100 exato (zero hora-câmera com violação) segue 100', async () => {
+    responde({
+      data: {
+        ...RESPOSTA.data,
+        summary: { ...RESPOSTA.data.summary, compliance_rate: 100, total_violations: 3881 },
+      },
+    })
+    render(<Relatorios />)
+    await carregado()
+    expect(screen.getByText('100')).toBeTruthy()
+  })
+
   it('agregação que falhou não vira "não tem eventos registrados"', async () => {
     responde({
       data: {

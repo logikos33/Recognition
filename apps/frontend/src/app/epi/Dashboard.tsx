@@ -78,6 +78,7 @@ import { Link } from 'react-router-dom'
 
 import { useAuth } from '../../hooks/useAuth'
 import { api } from '../../services/api'
+import { scoreImpresso } from './scoreConformidade'
 import { moduleService, type ModuleStats } from '../../services/moduleService'
 import { eventsService } from '../../services/eventsService'
 import { violationLabel } from '../../components/dashboard/widgets/violationLabels'
@@ -246,30 +247,11 @@ function numero(n: number) {
   return n.toLocaleString('pt-BR')
 }
 
-/**
- * O score impresso — issue #789.
- *
- * ⛔ Era `Math.round(score)`. O score é
- * `100 × (1 − horas-câmera com violação ÷ (câmeras ativas × 24))`: com as 17
- * câmeras ativas da RVB o denominador é 408 horas-câmera/dia, então UMA hora
- * com violação vale 0,245 % e qualquer taxa ≥ 99,5 arredondava para o inteiro
- * **100**. Medido no acervo do DEV: 25/08 teve **66 violações de EPI** em 1
- * hora-câmera → taxa 99,8 → a tela imprimia **100 · Conforme**, em verde, no
- * dia mais violento do mês. E a dica do próprio cartão promete, com estas
- * palavras, que ele aparece "nunca como 100" quando não é.
- *
- * `100` passa a ser reservado ao 100 exato — que é o único valor em que
- * `horas com violação = 0`. Todo o resto desce para o inteiro abaixo: 99,8 e
- * 99,5 imprimem **99**, e 99 na tela é a diferença entre "não houve nada" e
- * "houve, e é pouco em cima de um denominador enorme".
- *
- * Isto NÃO conserta o denominador (issue #789 §"Não é só arredondar"): 92 num
- * dia de 152 violações continua vindo do backend. O que este arredondamento
- * garante é que a tela nunca AFIRME perfeição sobre um dia que teve violação.
- */
-export function scoreImpresso(score: number): number {
-  return score >= 100 ? 100 : Math.min(99, Math.floor(score))
-}
+// `scoreImpresso` mora em `./scoreConformidade` porque `Relatorios.tsx` mostra
+// O MESMO número (issue #789): quando ele vivia aqui, o conserto pegou só esta
+// tela e a mesma semana saía "99" no cartão e "100" no relatório que vira PDF.
+// Reexportado para quem já o importava deste módulo.
+export { scoreImpresso } from './scoreConformidade'
 
 function horaCurta(ms: number) {
   return new Date(ms).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
