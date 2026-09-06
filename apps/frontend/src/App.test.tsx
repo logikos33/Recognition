@@ -8,9 +8,14 @@
  * `login(email, senha, rotaNova('/'))` e entrega o front NOVO.
  *
  * As 3 rotas nomeadas de acesso (`/novo/entrar`, `/novo/esqueci-senha`,
- * `/novo/redefinir-senha`) seguem montando suas telas, e `/forgot-password` e
- * `/reset-password` (endereços antigos, que circulam em e-mail de redefinição)
- * seguem de pé.
+ * `/novo/redefinir-senha`) seguem montando suas telas.
+ *
+ * `/forgot-password` e `/reset-password` — os endereços que circulam em e-mail
+ * de redefinição, escritos pelo BACKEND (`password_reset_service.py:69`) —
+ * seguem DE PÉ, e desde o #762 de pé como redirect: entregam as telas novas
+ * com a query intacta, em vez da marca velha (`◈ Recognition`) na primeira
+ * tela que um usuário recém-criado vê. O que não podia mudar era o endereço
+ * responder; o que ele pinta, podia.
  *
  * As telas em si (Entrar/EsqueciSenha/RedefinirSenha) já têm teste próprio;
  * aqui o alvo é só a FIAÇÃO de rota em App.tsx.
@@ -104,9 +109,24 @@ describe('App — ramo deslogado (a porta)', () => {
     expect(await screen.findByText('ENTRAR-NOVO')).toBeTruthy()
   })
 
-  it('/forgot-password e /reset-password antigos continuam de pé', () => {
+  it('/forgot-password continua de pé — e entrega a tela NOVA', async () => {
     irPara('/forgot-password')
     render(<App />)
-    expect(screen.getByText('ESQUECI-ANTIGO')).toBeTruthy()
+    expect(await screen.findByText('ESQUECI-NOVO')).toBeTruthy()
+    expect(screen.queryByText('ESQUECI-ANTIGO')).toBeNull()
+    expect(window.location.pathname).toBe('/novo/esqueci-senha')
+  })
+
+  it('/reset-password continua de pé, entrega a tela NOVA e o ?token= chega inteiro', async () => {
+    // Este é o endereço que o BACKEND escreve no e-mail
+    // (`password_reset_service.py:69`: `{frontend_url}/reset-password?token=`).
+    // Perder o token no salto seria pior do que a marca velha: o usuário novo
+    // de segunda chega numa tela que não consegue redefinir nada.
+    irPara('/reset-password?token=abc123')
+    render(<App />)
+    expect(await screen.findByText('REDEFINIR-NOVO')).toBeTruthy()
+    expect(screen.queryByText('REDEFINIR-ANTIGO')).toBeNull()
+    expect(window.location.pathname).toBe('/novo/redefinir-senha')
+    expect(window.location.search).toBe('?token=abc123')
   })
 })
