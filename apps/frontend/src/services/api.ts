@@ -16,10 +16,19 @@ export const TOKEN_KEY = 'token'
  */
 export class ApiError extends Error {
   status: number
-  constructor(message: string, status: number) {
+  /**
+   * `error_code` do envelope de erro do backend, quando houver. O status
+   * sozinho não distingue "403 porque falta permissão" de "403 porque a senha
+   * é temporária" — e sem essa distinção a tela de login não tem como oferecer
+   * a saída (`password_change_required`). Opcional: rota que não manda
+   * `error_code` continua chegando com `code === undefined`.
+   */
+  code?: string
+  constructor(message: string, status: number, code?: string) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.code = code
   }
 }
 
@@ -184,7 +193,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       import('../utils/errorTranslator').then(({ showErrorToast }) => {
         showErrorToast(res.status, path, msg)
       }).catch(() => {})
-      throw new ApiError(msg, res.status)
+      throw new ApiError(msg, res.status, data.error_code)
     }
     return data
   } catch (err) {
