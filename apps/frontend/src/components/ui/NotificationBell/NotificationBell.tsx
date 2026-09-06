@@ -108,7 +108,15 @@ export function NotificationBell({ rotaAlertas = '/epi/alerts' }: NotificationBe
   const totalSituacoes = data?.data?.total_situacoes ?? (data as AlertsResponse | undefined)?.total_situacoes
   // Badge/contagem conta SITUAÇÕES (rajadas), não linhas — ux2/dedup. Sem
   // `total_situacoes` (backend/mock antigo), cai pro que já existia.
-  const count = Math.min(totalSituacoes ?? alerts.length, 99)
+  //
+  // ⚠️ issue #803: aqui havia `Math.min(…, 99)`, e o `count > 99 ? '99+'` do
+  // badge (30 linhas abaixo) era código morto por causa dele — `count` nunca
+  // passava de 99. O efeito não era truncar com honestidade: era AFIRMAR 99.
+  // O painel dizia "99 pendentes" com 387 situações abertas no DEV (RVB,
+  // 05/09). Truncar o BADGE é legítimo (espaço de 2 dígitos); afirmar o teto
+  // como se fosse a conta, não. Agora o número real vive aqui, o badge o
+  // trunca para "99+" e o painel imprime o valor inteiro.
+  const pendentes = totalSituacoes ?? alerts.length
 
   // Agrupa o que está NA TELA (as até 30 linhas buscadas) por câmera+classe
   // em <60s — mesma janela do backend (VerificationService). Representante +
@@ -156,8 +164,10 @@ export function NotificationBell({ rotaAlertas = '/epi/alerts' }: NotificationBe
           size={18}
           color={isOpen ? vars.color.primary : vars.color.textSecondary}
         />
-        {count > 0 && (
-          <span className={badge}>{count > 99 ? '99+' : count}</span>
+        {pendentes > 0 && (
+          <span className={badge} title={`${pendentes.toLocaleString('pt-BR')} pendente(s)`}>
+            {pendentes > 99 ? '99+' : pendentes}
+          </span>
         )}
       </button>
 
@@ -166,7 +176,7 @@ export function NotificationBell({ rotaAlertas = '/epi/alerts' }: NotificationBe
           <div className={panelHeader}>
             <span className={panelTitle}>Notificações</span>
             <span style={{ fontSize: 11, color: vars.color.textDim }}>
-              {count} pendente{count !== 1 ? 's' : ''}
+              {pendentes.toLocaleString('pt-BR')} pendente{pendentes !== 1 ? 's' : ''}
             </span>
           </div>
 

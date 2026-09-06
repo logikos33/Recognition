@@ -1120,9 +1120,17 @@ class AlertRepository(BaseRepository):
         return dict(row) if row else {}
 
     def camera_hours_with_violation(
-        self, tenant_id: str, module_code: str, since: datetime
+        self, tenant_id: str, module_code: str, since: datetime, until: datetime | None = None
     ) -> int:
         """Horas-câmera com ≥1 violação DE VERDADE desde `since`.
+
+        `until` (opcional, default `None` = sem limite superior, o
+        comportamento que o Dashboard já usava) fecha a janela pelo topo. Existe
+        para o relatório de compliance (issue #797), que apura períodos
+        FECHADOS ("semana passada", "mês anterior"): sem limite superior ele
+        contaria até AGORA e o PDF arquivado somaria violação de fora do
+        período que ele afirma cobrir — o mesmo defeito que `count_since` →
+        `count_in_window` já corrigiu na contagem de eventos.
 
         ADR-0065: contava TODO alerta, inclusive EPI PRESENTE — o que invertia
         o `compliance_rate` que se apoia neste número (quanto mais gente usava
@@ -1135,19 +1143,22 @@ class AlertRepository(BaseRepository):
         Mesmo predicado de `list_with_filters(kind="violation")`:
         `_IS_VIOLATION_SQL AND NOT _IS_COMPLIANCE_SQL`.
         """
+        teto_sql = " AND a.created_at <= %s" if until is not None else ""
+        teto_params: list = [until] if until is not None else []
         row = self._execute_one(
             f"""
             SELECT COUNT(DISTINCT (a.camera_id, date_trunc('hour', a.created_at))) AS count
             FROM alerts a
-            WHERE a.tenant_id = %s AND a.module_code = %s AND a.created_at >= %s
+            WHERE a.tenant_id = %s AND a.module_code = %s AND a.created_at >= %s{teto_sql}
               AND {self._IS_VIOLATION_SQL} AND NOT {self._IS_COMPLIANCE_SQL}
             """,  # noqa: S608 — só literais internos; valores via %s
-            (
-                str(tenant_id),
-                module_code,
-                since,
-                self.violation_class_names(tenant_id, module_code),
-                self.presence_class_names(tenant_id, module_code),
+            tuple(
+                [str(tenant_id), module_code, since]
+                + teto_params
+                + [
+                    self.violation_class_names(tenant_id, module_code),
+                    self.presence_class_names(tenant_id, module_code),
+                ]
             ),
         )
         return row["count"] if row else 0
