@@ -116,10 +116,11 @@ describe('escolha de módulo', () => {
     expect(await screen.findByText(/nenhum módulo liberado/i)).toBeTruthy()
   })
 
-  it('erro mostra a rota e o retry refaz a chamada', async () => {
+  it('erro mostra o motivo e o retry refaz a chamada', async () => {
     get.mockRejectedValueOnce(new Error('boom')).mockResolvedValue(resposta([mod('epi'), mod('quality')]))
     montar()
-    expect(await screen.findByText(/GET \/api\/modules/)).toBeTruthy()
+    expect(await screen.findByText('boom')).toBeTruthy()
+    expect(screen.queryByText(/GET \/api/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: /tentar novamente/i }))
     await screen.findByText('EPI · Segurança')
   })

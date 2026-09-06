@@ -342,7 +342,7 @@ export function Acoes() {
       <div className={s.centro}>
         <TriangleAlert size={36} {...ICONE} aria-hidden />
         <span className={s.centroTitulo}>Não foi possível carregar</span>
-        <span className={s.centroMono}>GET /api/alerts · {erro.toUpperCase()}</span>
+        <span className={s.centroMono}>{erro}</span>
         <button type="button" className={s.botaoPrimario} onClick={() => void carregar()}>
           Tentar novamente
         </button>

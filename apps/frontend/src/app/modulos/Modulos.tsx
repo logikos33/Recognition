@@ -232,7 +232,7 @@ export function Modulos() {
           <div className={s.vazio}>
             <AlertTriangle size={26} strokeWidth={1.6} color={lk.estado.nc} aria-hidden="true" />
             <h1 className={s.titulo}>Não deu para carregar seus módulos</h1>
-            <p className={s.subtitulo}>GET /api/modules · {erro}</p>
+            <p className={s.subtitulo}>{erro}</p>
             <button className={s.admin} onClick={carregar}>
               Tentar novamente
             </button>

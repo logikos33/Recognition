@@ -205,14 +205,17 @@ describe('export', () => {
     expect(await screen.findByText(/arquivo do período/i)).toBeTruthy()
   })
 
-  it('falha do export mostra o endpoint e o status — cor, ícone e palavra', async () => {
+  it('falha do export mostra o motivo e o código — sem a rota (issue #810)', async () => {
     responde(RESPOSTA)
     mocks.downloadBlob.mockRejectedValue(new Error('HTTP 502'))
     render(<Relatorios />)
     await carregado()
 
     fireEvent.click(screen.getByRole('button', { name: /^exportar$/i }))
-    expect(await screen.findByText(/falha ao gerar o export.*\/alerts\/export · 502/i)).toBeTruthy()
+    expect(
+      await screen.findByText(/não foi possível gerar o arquivo.*código 502/i),
+    ).toBeTruthy()
+    expect(screen.queryByText(/\/alerts\/export/)).toBeNull()
   })
 })
 
@@ -327,7 +330,7 @@ describe('estados da rota', () => {
     expect(screen.queryByText(/não tem eventos registrados/i)).toBeNull()
   })
 
-  it('erro mostra rota + status e o retry refaz a chamada', async () => {
+  it('erro mostra o motivo + código e o retry refaz a chamada', async () => {
     let primeira = true
     mocks.get.mockImplementation((rota: string) => {
       if (String(rota).startsWith('/cameras')) return Promise.resolve(CAMERAS)
@@ -339,7 +342,8 @@ describe('estados da rota', () => {
     })
     render(<Relatorios />)
 
-    expect(await screen.findByText(/\/api\/reports\/compliance · 502/)).toBeTruthy()
+    expect(await screen.findByText(/o relatório não respondeu \(código 502\)/i)).toBeTruthy()
+    expect(screen.queryByText(/\/api\/reports/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: /tentar novamente/i }))
     await carregado()
     expect(chamadasDeRelatorio()).toHaveLength(2)

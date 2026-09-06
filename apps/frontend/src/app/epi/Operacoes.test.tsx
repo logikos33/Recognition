@@ -65,13 +65,15 @@ describe('operações da câmera', () => {
   })
 
   it('Pausar existe no lugar do desenho, mas DESABILITADO — não há rota', async () => {
-    // PUT /operations/<id> aceita só name e config; o status é escrito pelo
-    // worker. Oferecer o botão ativo seria prometer o que não acontece.
+    // A rota de operações aceita só nome e configuração; o estado é escrito
+    // pelo processamento. Oferecer o botão ativo seria prometer o que não
+    // acontece — e o `title` explica isso SEM citar rota (issue #810).
     responde([op(1)])
     montar()
     const pausar = (await screen.findByRole('button', { name: 'Pausar' })) as HTMLButtonElement
     expect(pausar.disabled).toBe(true)
-    expect(pausar.title).toMatch(/name e config|worker/i)
+    expect(pausar.title).toMatch(/ainda não está disponível/i)
+    expect(pausar.title).not.toMatch(/PUT |\/operations/)
   })
 
   it('Avaliações também fica desabilitado — não há onde guardar o julgamento', async () => {
@@ -104,10 +106,11 @@ describe('operações da câmera', () => {
     expect(screen.queryByRole('button', { name: /nova operação/i })).toBeNull()
   })
 
-  it('erro mostra a rota e o retry refaz a chamada', async () => {
+  it('erro mostra o motivo e o retry refaz a chamada', async () => {
     get.mockRejectedValue(new Error('timeout'))
     montar()
-    expect(await screen.findByText(/GET \/api\/cameras\/cam-1\/operations/)).toBeTruthy()
+    expect(await screen.findByText('timeout')).toBeTruthy()
+    expect(screen.queryByText(/\/api\/cameras/)).toBeNull()
     responde([op(1)])
     fireEvent.click(screen.getByRole('button', { name: /tentar novamente/i }))
     expect(await screen.findByText('Operação 1')).toBeTruthy()

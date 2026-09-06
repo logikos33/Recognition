@@ -887,8 +887,8 @@ export function Verificacao() {
         <Lock size={36} strokeWidth={1.5} aria-hidden />
         <span className={s.centroTitulo}>Sem permissão</span>
         <span className={s.centroTexto}>
-          A fila de verificação exige a permissão <code>verification:read</code>. Peça ao
-          administrador do seu tenant.
+          A fila de verificação exige a permissão de ver as detecções para revisar. Peça a
+          quem administra o seu acesso.
         </span>
       </div>
     )
@@ -905,7 +905,7 @@ export function Verificacao() {
       <div className={s.centro}>
         <AlertTriangle size={36} strokeWidth={1.5} className={s.iconeNc} aria-hidden />
         <span className={s.centroTitulo}>Não foi possível carregar a fila</span>
-        <span className={s.centroTecnico}>GET /api/verification/queue · {erro}</span>
+        <span className={s.centroTecnico}>{erro}</span>
         <button
           type="button"
           className={s.acaoPrimaria}
@@ -1349,7 +1349,7 @@ export function Verificacao() {
                 className={s.confirmar}
                 onClick={() => void decidir('approve')}
                 disabled={!podeEscrever || enviando}
-                title={podeEscrever ? undefined : 'Exige a permissão verification:write'}
+                title={podeEscrever ? undefined : 'Exige a permissão de julgar detecções'}
               >
                 <Check size={17} strokeWidth={2.4} aria-hidden />
                 Confirmar <span className={s.teclaBotao}>C</span>
@@ -1360,7 +1360,7 @@ export function Verificacao() {
                 className={s.rejeitar}
                 onClick={() => void decidir('reject')}
                 disabled={!podeEscrever || enviando}
-                title={podeEscrever ? undefined : 'Exige a permissão verification:write'}
+                title={podeEscrever ? undefined : 'Exige a permissão de julgar detecções'}
               >
                 <X size={16} strokeWidth={2.4} aria-hidden />
                 Rejeitar <span className={s.teclaBotao}>R</span>
