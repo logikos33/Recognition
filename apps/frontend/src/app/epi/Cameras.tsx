@@ -362,8 +362,8 @@ function AbaEscopo({ cameras, podeEditar }: EscopoProps) {
       <p className={s.nota}>
         Modelo e classes que valem em cada câmera. Câmera sem modelo cai no detector padrão do
         ambiente — não há como desativar por aqui, só trocar. O escopo vale hoje no shadow e no
-        worker da nuvem; o box edge ainda não recebe classe por câmera (issue 519).
-        {!podeEditar && ' Você tem acesso somente de leitura (requer cameras:configure).'}
+        worker da nuvem; o box edge ainda não recebe classe por câmera.
+        {!podeEditar && ' Você tem acesso somente de leitura — para alterar, peça a quem administra o seu acesso a permissão de configurar câmeras.'}
       </p>
       <table className={s.tabela}>
         <thead>
@@ -998,7 +998,7 @@ export function Cameras() {
       <div className={s.centro}>
         <CircleAlert size={36} strokeWidth={1.7} className={s.tom.nc} />
         <span className={s.centroTitulo}>Não foi possível carregar</span>
-        <span className={s.centroMono}>GET /api/cameras · {erro}</span>
+        <span className={s.centroMono}>A lista de câmeras não respondeu · {erro}</span>
         <button className={s.botaoPrimario} onClick={() => { void carregar() }}>Tentar novamente</button>
       </div>
     )
