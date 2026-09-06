@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 393 arquivos, 66.624 linhas
+## Situação — 393 arquivos, 66.710 linhas
 
 | status | arquivos |
 |---|---:|
@@ -127,7 +127,7 @@ apagado não são a mesma coisa.
 | `src/components/scenario/ScenarioEditor.tsx` | `INFRA` | — | 708 |
 | `src/components/scenario/ZoneTuningControls.tsx` | `INFRA` | — | 197 |
 | `src/components/shared/ErrorBoundary.css.ts` | `INFRA` | — | 32 |
-| `src/components/shared/ErrorBoundary.tsx` | `INFRA` | — | 35 |
+| `src/components/shared/ErrorBoundary.tsx` | `INFRA` | — | 60 |
 | `src/components/shared/LoadingSpinner.css.ts` | `INFRA` | — | 21 |
 | `src/components/shared/LoadingSpinner.tsx` | `INFRA` | — | 14 |
 | `src/components/shared/PolaridadeClasse.tsx` | `INFRA` | — | 144 |
@@ -266,7 +266,7 @@ apagado não são a mesma coisa.
 | `src/utils/classCatalogDuplicate.ts` | `INFRA` | — | 37 |
 | `src/utils/classImbalance.ts` | `INFRA` | — | 65 |
 | `src/utils/concurrencyQueue.ts` | `INFRA` | — | 39 |
-| `src/utils/errorTranslator.ts` | `INFRA` | — | 89 |
+| `src/utils/errorTranslator.ts` | `INFRA` | — | 150 |
 | `src/utils/labels.ts` | `INFRA` | — | 253 |
 | `src/utils/perfilEventos.ts` | `INFRA` | — | 148 |
 | `src/utils/rajadas.ts` | `INFRA` | — | 120 |

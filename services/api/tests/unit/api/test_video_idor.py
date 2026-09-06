@@ -43,6 +43,13 @@ def _auth(app, user_id: str) -> dict[str, str]:
                 "tenant_id": str(uuid.uuid4()),
                 "tenant_schema": "tenant_test",
                 "role": "operator",
+                # Grant granular explícito: o blueprint /api/v1/videos passou a
+                # exigir `training:write` (issue #782 — rodava só com
+                # @jwt_required, e o operador do DEV apagou vídeo com HTTP 200).
+                # Este arquivo mede IDOR — posse, não permissão — então o token
+                # entra COM a chave: o 404 do não-dono continua vindo do check
+                # de posse, e não do gate novo.
+                "perms": ["training:write"],
                 "modules": ["epi"],
             },
         )
