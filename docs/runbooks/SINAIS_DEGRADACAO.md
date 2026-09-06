@@ -46,13 +46,84 @@ horas respondendo `commit: "unknown"` — a marca de deploy sem proveniência
 > quebrou, mas porque o caminho de deploy é assim. Ligar o vigia antes de
 > consertar o deploy cria justamente o alarme que grita à toa.
 
+### 🔴 05/09 — o conserto de 29/08 trocou "não sei" por "acho que sei"
+
+**E isso é pior.** A lição custou nove agentes usando um sinal quebrado como
+prova de procedência num único dia. Vale escrever inteira.
+
+O conserto de 29/08 fez o workflow gravar `GIT_COMMIT_SHA` antes de subir, e o
+`/livez` passou a devolver esse valor. Parecia resolvido. Só que **a variável e
+o código servido são coisas independentes**:
+
+| o que acontece | a variável | o código no ar | o que o `/livez` dizia |
+|---|---|---|---|
+| deploy normal do CI | SHA novo | tree novo | SHA novo ✅ |
+| `railway up` falha depois de gravar a variável | SHA novo | tree ANTIGO | **SHA novo** 🔴 |
+| upload sobe árvore incompleta (`.gitignore` do Railway) | SHA novo | tree PARCIAL | **SHA novo** 🔴 |
+| alguém sobe de fora do CI (não toca a variável) | SHA do CI | tree DE OUTRA PESSOA | **SHA do CI** 🔴 |
+
+Nas três últimas linhas o serviço **afirma um SHA que não está rodando**, e o
+vigia confirmava — `em dia`. Antes do conserto, esses mesmos casos devolviam
+`unknown`, e `unknown` é uma resposta **honesta**: diz "não sei", e "não sei"
+manda a pessoa olhar. O conserto apagou a única informação verdadeira que
+existia e a substituiu por uma afirmação confiante e errada.
+
+**Medido em 05/09**, não deduzido: o deploy vivo da API-V3 no DEV era
+`741b142a`, com `meta.reason = "deploy"` e **sem `commitHash`** — um upload. O
+deploy por git do mesmo SHA (`617e91cb`, `2538d047…`) estava `REMOVED`. E o
+`/livez` respondia `commit: "2538d047…"`, lido da variável.
+
+**A regra que fica: um alarme que não distingue "me disseram" de "eu conferi"
+mente com voz de autoridade.** Sinal que não sabe o que não sabe é pior que
+sinal ausente, porque desliga a desconfiança de quem lê.
+
+#### O conserto: declarado × provado
+
+O `/livez` passou a devolver, além de `commit`, dois campos que separam as duas
+coisas:
+
+| campo | é | vale como |
+|---|---|---|
+| `commit` | SHA que alguém escreveu numa env var | **declaração** |
+| `commit_source` | `RAILWAY_GIT_COMMIT_SHA` (a plataforma injetou, deploy por git) · `GIT_COMMIT_SHA` (alguém escreveu) · `null` | o peso da declaração |
+| `tree_digest` | digest dos hashes de blob git de `app/**/*.py`, calculado dos bytes que o processo tem **em disco** | **prova** |
+
+`tree_digest` é conferível de fora, sem checkout e sem rede — é o mesmo número
+que o repositório produz:
+
+```bash
+git ls-tree -r <sha> -- services/api/app     # os hashes vêm daqui
+python3 scripts/checa_proveniencia.py \
+  --url https://api-v3-desenvolvimento.up.railway.app/livez
+```
+
+O vigia agora tem três vereditos onde antes havia dois:
+
+- **PROVADO** — o `tree_digest` do serviço casa com o da árvore esperada. Vale
+  **mesmo com `commit: "unknown"`**: se o código é o certo, é o certo. Isso
+  resolve o "vermelho para sempre" descrito acima **sem afrouxar nada** — a
+  prova deixou de depender da declaração.
+- **DECLARADO, NÃO PROVADO** — os SHAs batem, mas não houve digest dos dois
+  lados. Não alerta, e **diz em voz alta que não provou**.
+- **🔴 DECLARAÇÃO FALSA** — o serviço afirma o SHA esperado e o código em disco
+  é outro. É o pior caso e agora tem nome próprio.
+
+E o passo final do deploy do DEV deixou de ser `curl /health || warning` (que
+não reprovava nada e só provava que alguém estava de pé): passou a ser essa
+mesma checagem com `--carencia-min 0` — *o que subiu é o que eu mandei subir?*
+
+> ⚠️ **Teto conhecido.** O digest cobre `services/api/app/**/*.py`. Não cobre
+> dependências instaladas, `infra/migrations`, nem o frontend. Um commit só de
+> docs move o HEAD sem mudar o digest — e o veredito PROVADO continua correto,
+> porque a pergunta é qual código está servindo, não qual string de SHA.
+
 Hoje há **dois** vigias, com escopos que não se sobrepõem. **Não duplicar** —
 se um alarme novo couber num dos dois, ele entra ali.
 
 | vigia | onde vive | frequência | o que pergunta | o que faz quando dá ruim |
 |---|---|---|---|---|
 | **Uptime / restauro** | tarefa agendada do **Cowork** (fora deste repositório) | 5×/dia | *o serviço está de pé?* — `/livez` responde | dispara o playbook de restauro |
-| **Proveniência** | `.github/workflows/proveniencia-dev.yml` (neste repositório) | a cada 15 min | *o serviço está rodando o código da develop?* — `/livez.commit` == HEAD | reprova o job, com o motivo e a referência à D-156 |
+| **Proveniência** | `.github/workflows/proveniencia-dev.yml` (neste repositório) | a cada 15 min | *o serviço está rodando o código da develop?* — `/livez.tree_digest` == digest da árvore em HEAD (e, sem digest, `commit` == HEAD, rotulado **NÃO PROVADO**) | reprova o job, com o motivo e a referência à D-156 |
 
 > 🔴 **O vigia de proveniência ainda NÃO está ligado.** O GitHub só **reconhece**
 > `schedule` e `workflow_dispatch` a partir da **branch padrão**, que aqui é
@@ -92,7 +163,9 @@ se um alarme novo couber num dos dois, ele entra ali.
 **A divisão é deliberada.** São perguntas diferentes sobre o mesmo endpoint:
 o primeiro pergunta se há alguém em casa; o segundo, se é a pessoa certa. Um
 serviço pode estar 100% no ar (uptime verde) servindo código que ninguém sabe
-de onde veio — foi exatamente o caso de 29/08.
+de onde veio — foi exatamente o caso de 29/08. E pode servir código que ninguém
+sabe de onde veio **enquanto afirma um SHA específico** — foi o caso de 05/09,
+descrito acima.
 
 **Por que a proveniência mora no repositório e o uptime não.** A checagem de
 proveniência precisa comparar com o HEAD da develop; ela pertence a quem tem o

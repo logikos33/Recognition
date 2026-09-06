@@ -10,6 +10,7 @@
  * NUNCA armazena credenciais do alvo — apenas o token JWT temporário,
  * mesmo perfil de risco do token normal de sessão.
  */
+import { PREFIXO_NOVO } from '../app/RotasNovas'
 import {
   api,
   getToken,
@@ -74,7 +75,11 @@ export async function startImpersonation(userId: string): Promise<void> {
   )
   setToken(token)
   localStorage.setItem('user', JSON.stringify(user))
-  window.location.href = '/'
+  // #760: era `'/'`. Logado, `/` cai no `RootRedirect` — que ATÉ ESTE PR
+  // mandava para `/admin`|`/modules`, os dois no front ANTIGO. Recarregar na
+  // raiz do prefixo novo é o mesmo destino ("a home de quem eu virei"), sem
+  // depender do roteador do outro front para chegar lá.
+  window.location.href = PREFIXO_NOVO
 }
 
 /**
@@ -88,5 +93,7 @@ export async function stopImpersonation(): Promise<void> {
     // Best-effort: o registro de saída falhou, mas a restauração local
     // NUNCA pode ficar presa nisso (o exp do token fecha a sessão)
   }
-  restoreImpersonationBackup('/admin/tenants')
+  // Sem argumento: o default de `restoreImpersonationBackup` já é
+  // `rotaNova('/admin/tenants')` — a mesma tela, no front novo (#760).
+  restoreImpersonationBackup()
 }

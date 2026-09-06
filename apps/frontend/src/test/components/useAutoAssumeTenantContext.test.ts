@@ -74,7 +74,13 @@ describe('useAutoAssumeTenantContext', () => {
     renderHook(() => useAutoAssumeTenantContext())
 
     expect(assumeTenantContext).toHaveBeenCalledTimes(1)
-    expect(assumeTenantContext).toHaveBeenCalledWith('tenant-rvb')
+    // 2º argumento = a tela corrente. O auto-assume dispara COM a grade de
+    // monitoramento aberta; sem destino explícito ele caía no default do
+    // serviço, que era `'/'` — e `/` logado entregava o front ANTIGO (#760).
+    expect(assumeTenantContext).toHaveBeenCalledWith(
+      'tenant-rvb',
+      window.location.pathname + window.location.search,
+    )
     expect(hasRecentAutoAssumeAttempt('tenant-rvb')).toBe(true)
   })
 

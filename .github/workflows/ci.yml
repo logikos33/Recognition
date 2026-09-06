@@ -238,6 +238,14 @@ jobs:
         run: pip install -r services/edge-sync-agent/requirements.txt
       - name: services/edge-sync-agent tests
         run: pytest services/edge-sync-agent/tests/ -v --tb=short -q -p no:cacheprovider --override-ini addopts=
+      # A LÓGICA DO VIGIA DE PROVENIÊNCIA (scripts/checa_proveniencia.py): é ela
+      # que decide se um deploy divergente vira alerta. Ficava fora de todo CI
+      # ativo — só o proveniencia-dev.yml a rodava, e esse workflow não executa
+      # (schedule só vale a partir de `main`). Alarme cuja lógica ninguém testa
+      # é da mesma família do alarme que ninguém lê: foi assim que o de 29/08
+      # morreu. Só stdlib, não importa services/api — roda em 0,02s.
+      - name: checa_proveniencia.py tests (lógica do vigia)
+        run: pytest tests/test_checa_proveniencia.py -v --tb=short -q -p no:cacheprovider --override-ini addopts=
 
   tsc:
     name: TypeScript check

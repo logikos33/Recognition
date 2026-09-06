@@ -18,6 +18,7 @@
  * no meio. Falha no renew não reagenda: o token simplesmente expira e o
  * branch 401 de services/api.ts já cuida de restaurar o superadmin.
  */
+import { PREFIXO_NOVO } from '../app/RotasNovas'
 import {
   api,
   getToken,
@@ -87,14 +88,22 @@ export function getTenantContextMeta(): TenantContextMeta | null {
 export async function assumeTenantContext(
   tenantId: string,
   /**
-   * Para onde recarregar depois de assumir. Padrão `'/'` — o comportamento
-   * que o front antigo sempre teve, e que continua idêntico.
+   * Para onde recarregar depois de assumir. Padrão: a raiz do prefixo novo
+   * (`RaizRotasNovas` → painel admin ou escolha de módulo, conforme o papel).
    *
-   * O front novo passa a rota corrente: assumir o cliente a partir de
-   * `/novo/epi/eventos` e ser devolvido em `/` significava sair do front novo
-   * no exato momento em que a tela finalmente teria dado para mostrar.
+   * #760: o padrão era `'/'`, e `/` LOGADO caía no `RootRedirect` do front
+   * ANTIGO. Como `Tenants.tsx`, `TenantDetalhe.tsx`, `CrossTenantCameraBanner`
+   * e o auto-assume chamam SEM destino, um clique em "Ver como tenant" no
+   * painel admin NOVO despejava o superadmin no produto velho. Consertar aqui
+   * — no default — conserta os quatro chamadores de uma vez; consertar em cada
+   * um deixaria o próximo chamador nascer quebrado.
+   *
+   * Quem quer ficar na tela em que está passa a rota corrente (`SeletorTenant`,
+   * o banner de contexto expirado e o auto-assume da grade): assumir o cliente
+   * a partir de `/novo/epi/eventos` e ser devolvido na home significava sair da
+   * tela no exato momento em que ela finalmente teria dado para mostrar.
    */
-  destino: string = '/',
+  destino: string = PREFIXO_NOVO,
 ): Promise<void> {
   const res = await api.post<AssumeContextResponse>(
     `/v1/admin/tenant-context/tenants/${tenantId}/assume`,
@@ -126,7 +135,9 @@ export async function assumeTenantContext(
  */
 export function exitTenantContext(): void {
   cancelTenantContextRenewal()
-  restoreTenantContextBackup('/admin/tenants')
+  // Sem argumento: o default de `restoreTenantContextBackup` já é
+  // `rotaNova('/admin/tenants')` — a mesma tela, no front novo (#760).
+  restoreTenantContextBackup()
 }
 
 // ── Renovação proativa (D-48, opção C) ───────────────────────────────────
