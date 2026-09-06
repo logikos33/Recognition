@@ -31,8 +31,12 @@ Campos do payload:
                       campos None + degraded=true; a rota ainda responde
                       200 (é diagnóstico, não pode derrubar o painel).
 
-Segurança: @require_admin (admin ou superadmin) — sem dado de tenant,
-introspecção é global do processo, não de um cliente.
+Segurança: @require_superadmin (issue #787). Era `@require_admin` até
+09/2026 — e o argumento de que "não tem dado de tenant" é justamente o
+motivo de NÃO ser de admin de tenant: memória, uptime, requests servidos,
+backend de storage, worker class e o agregado de live view são telemetria
+de infraestrutura da PLATAFORMA, do processo inteiro. Conta de cliente não
+inspeciona o processo que serve os outros clientes.
 """
 import logging
 import os
@@ -44,7 +48,7 @@ import time
 from flask import Blueprint
 
 from app.core.responses import error, success
-from app.core.tenant import require_admin
+from app.core.tenant import require_superadmin
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +183,7 @@ def _live_view_snapshot() -> dict:
 
 
 @admin_introspection_bp.route("/introspection", methods=["GET"])
-@require_admin
+@require_superadmin
 def introspection():
     """Diagnóstico de recursos do processo — separa platô de vazamento de memória."""
     try:

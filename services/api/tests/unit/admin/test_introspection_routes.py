@@ -1,7 +1,8 @@
 """Testes — GET /api/v1/admin/introspection (mutirão item 1.2).
 
 Cobre:
-  - Role-gate: 401 sem token, 403 para role fora de admin/superadmin
+  - Role-gate: 401 sem token, 403 para tudo que não é superadmin
+    (issue #787 — era admin, e telemetria do processo é da plataforma)
   - 200 com payload completo (todos os campos esperados presentes)
   - requests_served incrementa por requisição (before_app_request)
   - storage_backend deriva de type(get_storage()).__name__
@@ -18,7 +19,7 @@ from flask_jwt_extended import create_access_token
 _MOD = "app.api.v1.admin.introspection_routes"
 
 
-def _auth_header(app, role: str = "admin") -> dict[str, str]:
+def _auth_header(app, role: str = "superadmin") -> dict[str, str]:
     with app.app_context():
         token = create_access_token(
             identity=str(uuid4()),
@@ -43,13 +44,13 @@ class TestAuthorization:
         )
         assert resp.status_code == 403
 
-    def test_admin_role_passes_gate(self, app, client):
-        with patch(f"{_MOD}._live_view_snapshot", return_value={"degraded": False}):
-            resp = client.get(
-                "/api/v1/admin/introspection",
-                headers=_auth_header(app, role="admin"),
-            )
-        assert resp.status_code == 200
+    def test_admin_de_tenant_returns_403(self, app, client):
+        """#787: introspecção é do processo inteiro, não de um cliente."""
+        resp = client.get(
+            "/api/v1/admin/introspection",
+            headers=_auth_header(app, role="admin"),
+        )
+        assert resp.status_code == 403
 
     def test_superadmin_role_passes_gate(self, app, client):
         with patch(f"{_MOD}._live_view_snapshot", return_value={"degraded": False}):

@@ -3,8 +3,22 @@ Admin Test Console — endpoints para operação de teste E2E via painel admin.
 
 task-055a / PR C1.
 
-Role-gate: admin ou superadmin. Tudo isolado no tenant de teste
-(00000000-0000-0000-0000-0000000000AA).
+Role-gate: SUPERADMIN em todas as rotas (issue #787).
+
+Era `@require_admin` até 09/2026: admin de QUALQUER tenant cliente
+disparava o harness da plataforma. "Isolado no tenant de teste"
+(00000000-0000-0000-0000-0000000000AA) descreve o DESTINO da escrita,
+não quem pode disparar — o admin da RVB escrevia câmeras num tenant que
+não é o dele, setava chaves em Redis e despachava tarefas Celery de
+inferência (GPU). Medido no DEV: `503` em /harness/start com o handler
+já dentro do INSERT, ou seja, o gate não parou nada.
+
+Consequência operacional: os scripts de harness em `scripts/`
+(staging_e2e_proof.py, staging_scale_bench.py, staging_epi_convergence.py)
+default para ADMIN_EMAIL=test-admin@epi-ci.internal, que o /seed cria com
+role `admin` — passe ADMIN_EMAIL/ADMIN_PASSWORD de um SUPERADMIN. O usuário
+semeado segue `admin` de propósito: promovê-lo a superadmin transformaria o
+vazamento de uma senha de teste em superadmin da plataforma inteira.
 
 Endpoints:
   POST /api/v1/admin/test-console/harness/start   {cameras:N, model_id?}
@@ -26,7 +40,7 @@ from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
 
 from app.core.responses import error, success
-from app.core.tenant import require_admin, require_superadmin
+from app.core.tenant import require_superadmin
 from app.infrastructure.database.connection import DatabasePool
 
 logger = logging.getLogger(__name__)
@@ -204,7 +218,7 @@ def _dispatch_inference_tasks(cameras: list[dict], model_path: str) -> int:
 
 @test_console_bp.post("/harness/start")
 @jwt_required()
-@require_admin
+@require_superadmin
 def harness_start():
     """
     Inicia o harness de teste: registra N câmeras, ativa streams, despacha inferência.
@@ -287,7 +301,7 @@ def harness_start():
 
 @test_console_bp.post("/harness/stop")
 @jwt_required()
-@require_admin
+@require_superadmin
 def harness_stop():
     """Para o harness: desativa streams, remove câmeras de teste do banco."""
     r = _get_redis()
@@ -323,7 +337,7 @@ def harness_stop():
 
 @test_console_bp.get("/harness/status")
 @jwt_required()
-@require_admin
+@require_superadmin
 def harness_status():
     """Retorna estado atual do harness: câmeras ativas, métricas, alertas recentes."""
     r = _get_redis()
@@ -382,7 +396,7 @@ def harness_status():
 
 @test_console_bp.get("/models")
 @jwt_required()
-@require_admin
+@require_superadmin
 def list_models():
     """Lista modelos disponíveis no registry do tenant de teste."""
     try:
@@ -396,7 +410,7 @@ def list_models():
 
 @test_console_bp.get("/evidence")
 @jwt_required()
-@require_admin
+@require_superadmin
 def list_evidence():
     """Lista evidências (chaves R2) geradas durante o teste."""
     limit = min(int(request.args.get("limit", 20)), 100)
