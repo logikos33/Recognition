@@ -94,9 +94,17 @@
  *   - `chave de permissão` → `(requer cameras:configure)` (epi/Cameras.tsx:366)
  * As três estão abaixo, cada uma com prova por mutação NO ARQUIVO REAL (bloco
  * "rodada V1" no fim deste arquivo). Elas acusaram 56 trechos em 25 telas: os
- * 5 das TRÊS telas do mandato deste PR foram traduzidos, e os 51 restantes —
- * 41 pares `arquivo|termo` distintos, em 22 telas — estão congelados um a um
- * em `DEBITO_ESTRUTURAL_V1`.
+ * 5 das TRÊS telas daquele PR foram traduzidos, e os 51 restantes — 41 pares
+ * `arquivo|termo` distintos, em 22 telas — ficaram congelados um a um em
+ * `DEBITO_ESTRUTURAL_V1`.
+ *
+ * RODADA O5 (issue #810): as 8 telas do caminho da RVB que faltavam
+ * (`epi/Acoes`, `epi/AoVivo`, `epi/Cenario`, `epi/EventoDetalhe`,
+ * `epi/Operacoes`, `epi/Relatorios`, `epi/Verificacao`, `modulos/Modulos`)
+ * foram traduzidas: caem 14 pares, sobram 27 em 14 telas — todas FORA do
+ * caminho dos usuários da RVB (admin/superadmin, carga, qualidade, estúdio).
+ * Na mesma rodada o congelamento passou a ser por COTA (`arquivo|termo|N`) —
+ * ver o bloco do `DEBITO_ESTRUTURAL_V1`.
  *
  * ─── ESTRATÉGIA ANTI-FALSO-POSITIVO (texto/JSX) ─────────────────────────
  *
@@ -532,64 +540,78 @@ const DEBITO_DE_OUTRA_FRENTE = [
  * `<span>GET /api/rota-nova</span>` injetado em `epi/Acoes.tsx`, que já tem
  * `GET /api/alerts` congelado, reprova; o mesmo vale para uma chave nova).
  *
- * LIMITE MEDIDO, não hipótese: a chave é `arquivo|termo` SEM contagem, então
- * uma SEGUNDA cópia do MESMO termo já congelado, no mesmo arquivo, passa
- * calada (`<span>GET /api/alerts hoje</span>` em `epi/Acoes.tsx`: 47/47
- * verdes). Não fechado de propósito — 6 dos 41 pares JÁ ocorrem 2 a 6 vezes
- * hoje (`qualidade/GestaoQualidade.tsx|GET /api` aparece 6×), então passar a
- * chave para `arquivo|termo|contagem` reprovaria o CI na hora sem consertar
- * nada. Fecha junto com as telas, na issue #810; o risco residual é jargão
- * DUPLICADO numa tela que já mostra esse mesmo jargão.
+ * FURO FECHADO (M12, issue #810) — a chave era `arquivo|termo` SEM contagem,
+ * então uma SEGUNDA cópia do MESMO termo já congelado, no mesmo arquivo,
+ * passava calada: a régua autorizava exatamente a reincidência que existe para
+ * impedir (medido: `<span>GET /api/alerts hoje</span>` em `epi/Acoes.tsx`,
+ * 47/47 verdes). A chave agora carrega a CONTAGEM — `arquivo|termo|N` — e a
+ * ocorrência N+1 reprova. Era isso que travava o conserto antes: 6 dos 41
+ * pares já ocorriam 2 a 6 vezes, e congelar sem contagem era o único jeito de
+ * o CI ficar verde no PR que criou a lista. Com as contagens MEDIDAS na lista,
+ * o teto é exato por par.
  *
- * NÃO É UM CEMITÉRIO: o teste `o débito congelado ainda descreve achado real`
- * abaixo reprova se um par deixar de casar — quem consertar a tela é obrigado
- * a apagar a linha daqui.
+ * NÃO É UM CEMITÉRIO: o teste `todo par congelado ainda casa com o MESMO
+ * NÚMERO de achados de hoje` abaixo reprova nos DOIS sentidos — contagem 0 quer
+ * dizer que a tela foi consertada (apague a linha), contagem maior quer dizer
+ * jargão novo (conserte a tela).
  *
- * Caminho relativo a `src/`. Formato: `<arquivo>|<termo exato acusado>`.
+ * Caminho relativo a `src/`. Formato: `<arquivo>|<termo exato acusado>|<vezes>`.
  */
 const DEBITO_ESTRUTURAL_V1 = [
-  'app/admin/Auditoria.tsx|GET /v1/admin/audit-log',
-  'app/admin/TenantDetalhe.tsx|/v1/admin/tenants/',
-  'app/admin/TenantDetalhe.tsx|GET /v1/admin/tenants/',
-  'app/admin/Tenants.tsx|GET /v1/admin/tenants',
-  'app/admin/Usuarios.tsx|GET /v1/admin/users',
-  'app/admin/VisaoGeral.tsx|GET /v1/admin/dashboard',
-  'app/carga/Carga.tsx|GET /api',
-  'app/carga/Carga.tsx|GET /api/fueling/events',
-  'app/carga/Carga.tsx|PATCH /sessions/<id>',
-  'app/carga/Carga.tsx|counting:read',
-  'app/carga/Carga.tsx|counting:write',
-  'app/epi/Acoes.tsx|GET /api/alerts',
-  'app/epi/AoVivo.tsx|GET /cameras',
-  'app/epi/AoVivo.tsx|cameras:read',
-  'app/epi/Cenario.tsx|GET /api/cameras/',
-  'app/epi/EventoDetalhe.tsx|GET /api/alerts/',
-  'app/epi/EventoDetalhe.tsx|verification:write',
-  'app/epi/Operacoes.tsx|GET /api/cameras/',
-  'app/epi/Operacoes.tsx|PUT /operations/<id>',
-  'app/epi/Relatorios.tsx|GET /api',
-  'app/epi/Relatorios.tsx|reports:export',
-  'app/epi/Verificacao.tsx|GET /api/verification/queue',
-  'app/epi/Verificacao.tsx|verification:read',
-  'app/epi/Verificacao.tsx|verification:write',
-  'app/estudio/CamerasPorModulo.tsx|GET /api',
-  'app/estudio/Classes.tsx|GET /api',
-  'app/estudio/Modelo.tsx|GET /api/training/models',
-  'app/modulos/Modulos.tsx|GET /api/modules',
-  'app/qualidade/ConfigQualidade.tsx|GET /api',
-  'app/qualidade/GestaoQualidade.tsx|GET /api',
-  'app/qualidade/GestaoQualidade.tsx|GET /v1/quality/gate/pieces/export',
-  'app/qualidade/GestaoQualidade.tsx|reports:export',
-  'app/qualidade/Qualidade.tsx|PATCH /gate/reworks/<id>/complete',
-  'app/qualidade/Qualidade.tsx|quality:write',
-  'app/qualidade/RevisaoQualidade.tsx|GET /api',
-  'app/qualidade/RevisaoQualidade.tsx|GET /inspections',
-  'app/qualidade/RevisaoQualidade.tsx|GET /reference-snapshots/&lt;camera_id&gt;',
-  'app/qualidade/RevisaoQualidade.tsx|PATCH /inspections/<id>/feedback',
-  'app/qualidade/RevisaoQualidade.tsx|verification:read',
-  'app/qualidade/RevisaoQualidade.tsx|verification:write',
-  'modules/admin/pages/AdminAnnouncementsPage.tsx|tenant:uuid',
+  'app/admin/Auditoria.tsx|GET /v1/admin/audit-log|1',
+  'app/admin/TenantDetalhe.tsx|/v1/admin/tenants/|1',
+  'app/admin/TenantDetalhe.tsx|GET /v1/admin/tenants/|1',
+  'app/admin/Tenants.tsx|GET /v1/admin/tenants|1',
+  'app/admin/Usuarios.tsx|GET /v1/admin/users|1',
+  'app/admin/VisaoGeral.tsx|GET /v1/admin/dashboard|1',
+  'app/carga/Carga.tsx|GET /api|1',
+  'app/carga/Carga.tsx|GET /api/fueling/events|2',
+  'app/carga/Carga.tsx|PATCH /sessions/<id>|2',
+  'app/carga/Carga.tsx|counting:read|1',
+  'app/carga/Carga.tsx|counting:write|1',
+  'app/estudio/CamerasPorModulo.tsx|GET /api|1',
+  'app/estudio/Classes.tsx|GET /api|1',
+  'app/estudio/Modelo.tsx|GET /api/training/models|1',
+  'app/qualidade/ConfigQualidade.tsx|GET /api|1',
+  'app/qualidade/GestaoQualidade.tsx|GET /api|6',
+  'app/qualidade/GestaoQualidade.tsx|GET /v1/quality/gate/pieces/export|1',
+  'app/qualidade/GestaoQualidade.tsx|reports:export|1',
+  'app/qualidade/Qualidade.tsx|PATCH /gate/reworks/<id>/complete|1',
+  'app/qualidade/Qualidade.tsx|quality:write|1',
+  'app/qualidade/RevisaoQualidade.tsx|GET /api|1',
+  'app/qualidade/RevisaoQualidade.tsx|GET /inspections|2',
+  'app/qualidade/RevisaoQualidade.tsx|GET /reference-snapshots/&lt;camera_id&gt;|1',
+  'app/qualidade/RevisaoQualidade.tsx|PATCH /inspections/<id>/feedback|1',
+  'app/qualidade/RevisaoQualidade.tsx|verification:read|1',
+  'app/qualidade/RevisaoQualidade.tsx|verification:write|2',
+  'modules/admin/pages/AdminAnnouncementsPage.tsx|tenant:uuid|1',
 ]
+
+/**
+ * `arquivo|termo` → QUANTAS vezes aquele achado é tolerado naquele arquivo.
+ * A contagem é o que fecha o furo M12: sem ela a chave é um passe livre para
+ * o mesmo jargão se repetir à vontade no arquivo já congelado.
+ */
+const TETO_CONGELADO = new Map<string, number>(
+  DEBITO_ESTRUTURAL_V1.map((linha) => {
+    const m = /^(.*)\|(\d+)$/.exec(linha)
+    if (!m) throw new Error(`linha de DEBITO_ESTRUTURAL_V1 sem contagem: ${linha}`)
+    return [m[1], Number(m[2])] as const
+  }),
+)
+
+/** Conta os achados de hoje por `arquivo|termo`, na árvore inteira. */
+function achadosDeHojePorPar(): Map<string, number> {
+  const contagem = new Map<string, number>()
+  for (const arquivo of arquivosVisiveisAoTenant()) {
+    const rel = relDoSrc(arquivo)
+    for (const a of acharJargao(rel, fs.readFileSync(arquivo, 'utf-8'))) {
+      const chave = `${rel}|${a.termo}`
+      contagem.set(chave, (contagem.get(chave) ?? 0) + 1)
+    }
+  }
+  return contagem
+}
 
 function ehDebitoDeOutraFrente(arquivo: string): boolean {
   const rel = path.relative(path.dirname(APP), arquivo).split(path.sep).join('/')
@@ -698,13 +720,22 @@ const TETO_DA_VARREDURA_MS = 30_000
 describe('front novo: sem jargão técnico em texto de cliente', () => {
   it('nenhum termo da régua aparece fora do modo avançado', () => {
     const relatorio: string[] = []
-    const congelados = new Set(DEBITO_ESTRUTURAL_V1)
+    // Quantas vezes cada par JÁ apareceu nesta varredura — o congelamento é por
+    // COTA (`arquivo|termo|N`), não por passe livre: a ocorrência N+1 reprova.
+    const vistos = new Map<string, number>()
     for (const arquivo of arquivosVisiveisAoTenant()) {
       const rel = path.relative(APP, arquivo)
       const codigo = fs.readFileSync(arquivo, 'utf-8')
       for (const a of acharJargao(rel, codigo)) {
-        if (congelados.has(`${relDoSrc(arquivo)}|${a.termo}`)) continue
-        relatorio.push(`${rel}:${a.linha}  [${a.tipo}] "${a.termo}" em "${a.trecho}"  →  use: ${a.sugestao}`)
+        const chave = `${relDoSrc(arquivo)}|${a.termo}`
+        const teto = TETO_CONGELADO.get(chave) ?? 0
+        const ocorrencia = (vistos.get(chave) ?? 0) + 1
+        vistos.set(chave, ocorrencia)
+        if (ocorrencia <= teto) continue
+        const excedente = teto > 0 ? `  (ocorrência ${ocorrencia}; o débito congela só ${teto})` : ''
+        relatorio.push(
+          `${rel}:${a.linha}  [${a.tipo}] "${a.termo}" em "${a.trecho}"  →  use: ${a.sugestao}${excedente}`,
+        )
       }
     }
     expect(
@@ -1157,28 +1188,56 @@ describe('rodada V1: as 3 formas que deixavam jargão servido passar', () => {
  * saber o que falta — e, pior, dá a impressão de dívida maior do que a que
  * existe. Este teste obriga quem consertar a tela a apagar a linha daqui.
  */
-describe('débito estrutural V1: congelado por par, e sem cemitério', () => {
-  it('todo par congelado ainda casa com um achado de hoje', () => {
-    const vivos = new Set<string>()
-    for (const arquivo of arquivosVisiveisAoTenant()) {
-      const rel = relDoSrc(arquivo)
-      for (const a of acharJargao(rel, fs.readFileSync(arquivo, 'utf-8'))) vivos.add(`${rel}|${a.termo}`)
-    }
-    const mortos = DEBITO_ESTRUTURAL_V1.filter((par) => !vivos.has(par))
+describe('débito estrutural V1: congelado por par E por contagem, sem cemitério', () => {
+  it('todo par congelado ainda casa com o MESMO NÚMERO de achados de hoje', () => {
+    const hoje = achadosDeHojePorPar()
+    const divergentes = [...TETO_CONGELADO]
+      .filter(([par, teto]) => (hoje.get(par) ?? 0) !== teto)
+      .map(([par, teto]) => `${par}|${teto}  →  hoje são ${hoje.get(par) ?? 0}`)
     expect(
-      mortos,
-      `pares congelados que não descrevem mais achado nenhum — apague estas ` +
-        `linhas de DEBITO_ESTRUTURAL_V1:\n${mortos.join('\n')}`,
+      divergentes,
+      `linhas de DEBITO_ESTRUTURAL_V1 que não descrevem mais a medida de hoje — ` +
+        `contagem 0 quer dizer conserto feito (apague a linha); contagem maior ` +
+        `quer dizer jargão NOVO (conserte a tela):\n${divergentes.join('\n')}`,
     ).toEqual([])
   }, TETO_DA_VARREDURA_MS)
 
-  it('a lista é a MEDIDA de hoje — 41 pares em 22 telas', () => {
-    expect(DEBITO_ESTRUTURAL_V1.length).toBe(41)
-    expect(new Set(DEBITO_ESTRUTURAL_V1.map((p) => p.split('|')[0])).size).toBe(22)
-    // Nenhuma das 3 telas do mandato deste PR pode estar congelada.
+  it('a lista é a MEDIDA de hoje — 27 pares em 14 telas, nenhuma no caminho da RVB', () => {
+    expect(DEBITO_ESTRUTURAL_V1.length).toBe(27)
+    expect(new Set(DEBITO_ESTRUTURAL_V1.map((p) => p.split('|')[0])).size).toBe(14)
+    // Nenhuma tela do módulo EPI, do seletor de módulos ou das 3 telas do
+    // mandato anterior pode estar congelada: é o caminho que os usuários da
+    // RVB abrem, e a issue #810 é exatamente sobre ele.
     expect(
-      DEBITO_ESTRUTURAL_V1.filter((p) => /epi\/(Dashboard|Cameras|Eventos)\.tsx/.test(p)),
+      DEBITO_ESTRUTURAL_V1.filter((p) => /^app\/(epi|modulos)\//.test(p)),
     ).toEqual([])
+  })
+
+  /**
+   * MEDIDO PELO CÉTICO: este teste NÃO é a prova da cota — ele reimplementa o
+   * corte (`filter`) no próprio corpo, então continua verde mesmo com a cota
+   * do laço principal desligada. Quem fecha o furo M12 de verdade é o teste
+   * acima (`o MESMO NÚMERO de achados`): com a cota mutada e uma segunda
+   * cópia de `GET /api` injetada em `carga/Carga.tsx`, é ele que fica
+   * vermelho. O que ESTE aqui garante — e é real — é que `acharJargao`
+   * devolve UMA entrada por ocorrência, não uma por arquivo: sem isso
+   * nenhuma contagem acima significaria nada.
+   */
+  it('acharJargao conta ocorrência por ocorrência, não uma por arquivo', () => {
+    const codigo =
+      'export const X = () => (<div>\n' +
+      '  <span>GET /api/alerts</span>\n' +
+      '  <span>GET /api/alerts hoje</span>\n' +
+      '</div>)\n'
+    const achados = acharJargao('f.tsx', codigo)
+    expect(achados.map((a) => a.termo)).toEqual(['GET /api/alerts', 'GET /api/alerts'])
+
+    const teto = 1
+    const excedentes = achados.filter((_, i) => i + 1 > teto)
+    expect(
+      excedentes.length,
+      'com teto 1 e duas ocorrências, a segunda tem de sobrar para o relatório',
+    ).toBe(1)
   })
 })
 

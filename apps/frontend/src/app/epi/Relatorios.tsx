@@ -116,10 +116,16 @@ function baixar(href: string, nome: string, revogar = false): void {
   if (revogar) URL.revokeObjectURL(href)
 }
 
+/**
+ * Detalhe do erro em LINGUAGEM DE PRODUTO (issue #810). Devolvia o código cru
+ * (`"500"`), que a tela emendava numa rota (`GET /api/reports/compliance · 500`)
+ * — endereço de API na cara de quem opera a fábrica. O número FICA: é o que o
+ * suporte pede. O que sai é a rota e a etiqueta HTTP.
+ */
 function statusDe(err: unknown): string {
-  if (err instanceof ApiError) return String(err.status)
+  if (err instanceof ApiError) return `o relatório não respondeu (código ${err.status})`
   const m = err instanceof Error ? /HTTP (\d{3})/.exec(err.message) : null
-  return m ? m[1] : 'falhou'
+  return m ? `o relatório não respondeu (código ${m[1]})` : 'o relatório não respondeu'
 }
 
 export function Relatorios() {
@@ -221,9 +227,7 @@ export function Relatorios() {
       setEstadoExport('pronto')
     } catch (err) {
       setEstadoExport('falhou')
-      setErroExport(
-        `GET /api${formato === 'pdf' ? ROTA_COMPLIANCE : ROTA_CSV} · ${statusDe(err)}`,
-      )
+      setErroExport(statusDe(err))
     }
   }, [formato, buscar, intervalo])
 
@@ -242,7 +246,7 @@ export function Relatorios() {
       <div className={s.centro}>
         <AlertTriangle size={36} strokeWidth={1.5} aria-hidden="true" className={s.aviso.nc} />
         <span className={s.centroTitulo}>Falha ao carregar o relatório</span>
-        <span className={s.centroCodigo}>GET /api{ROTA_COMPLIANCE} · {erro}</span>
+        <span className={s.centroCodigo}>{erro}</span>
         <button type="button" className={s.botaoCentro} onClick={() => setTentativa((t) => t + 1)}>
           Tentar novamente
         </button>
@@ -407,7 +411,7 @@ export function Relatorios() {
           {!podeExportar && (
             <span className={s.aviso.neutro}>
               <Lock size={15} strokeWidth={1.7} aria-hidden="true" />
-              Sem permissão para exportar — seu perfil não tem reports:export.
+              Sem permissão para exportar — peça a quem administra o seu acesso.
             </span>
           )}
           {estadoExport === 'pronto' && (
@@ -419,7 +423,7 @@ export function Relatorios() {
           {estadoExport === 'falhou' && erroExport && (
             <span className={s.aviso.nc}>
               <AlertTriangle size={15} strokeWidth={1.7} aria-hidden="true" />
-              Falha ao gerar o export · {erroExport}
+              Não foi possível gerar o arquivo — {erroExport}
             </span>
           )}
         </section>

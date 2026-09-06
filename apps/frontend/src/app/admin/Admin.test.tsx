@@ -35,7 +35,9 @@ describe('Admin (layout + gate)', () => {
     auth.can.mockImplementation((p: string) => p !== 'admin:panel')
     monta()
     expect(screen.getByText('Sem permissão')).toBeTruthy()
-    expect(screen.getByText('admin:panel')).toBeTruthy()
+    // issue #810: o gate segue; a chave crua não é mais servida.
+    expect(screen.getByText(/permissão de abrir o painel de administração/)).toBeTruthy()
+    expect(screen.queryByText('admin:panel')).toBeNull()
     expect(screen.queryByText('conteudo-visao-geral')).toBeNull()
     expect(screen.queryByRole('navigation')).toBeNull()
   })

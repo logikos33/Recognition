@@ -305,7 +305,8 @@ describe('estados da tela', () => {
     vi.mocked(api.get).mockRejectedValueOnce(new Error('Conexão recusada'))
     montar()
     await screen.findByText('Falha ao conectar ao gateway de vídeo')
-    expect(screen.getByText(/CONEXÃO RECUSADA/)).toBeTruthy()
+    expect(screen.getByText('Conexão recusada')).toBeTruthy()
+    expect(screen.queryByText(/GET \/cameras/)).toBeNull()
 
     respondeCameras()
     fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }))
@@ -316,6 +317,7 @@ describe('estados da tela', () => {
     permissoes = []
     montar()
     await screen.findByText('Sem permissão para ver câmeras')
+    expect(screen.queryByText('cameras:read')).toBeNull()
     expect(api.get).not.toHaveBeenCalled()
   })
 

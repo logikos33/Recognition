@@ -26,12 +26,6 @@ export const texto = style({
   lineHeight: 1.55,
 })
 
-export const chave = style({
-  fontFamily: lk.fonte.mono,
-  fontSize: '12.5px',
-  color: lk.cor.brancoSinal,
-})
-
 export const voltar = style({
   fontSize: '13px',
   color: lk.cor.cianoVisao,

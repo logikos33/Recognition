@@ -496,11 +496,12 @@ describe('estados', () => {
     expect(screen.getByRole('link', { name: /Voltar ao dashboard/ })).toBeTruthy()
   })
 
-  it('erro na primeira carga mostra o endereço real e oferece retry', async () => {
+  it('erro na primeira carga mostra o motivo real e oferece retry', async () => {
     get.mockRejectedValueOnce(new Error('Timeout na requisicao'))
     montar()
     expect(await screen.findByText('Não foi possível carregar a fila')).toBeTruthy()
-    expect(screen.getByText(/GET \/api\/verification\/queue/)).toBeTruthy()
+    expect(screen.getByText('Timeout na requisicao')).toBeTruthy()
+    expect(screen.queryByText(/\/api\/verification/)).toBeNull()
 
     get.mockResolvedValue(fila([B]))
     clicar(screen.getByRole('button', { name: 'Tentar novamente' }))
@@ -536,7 +537,7 @@ describe('estados', () => {
 
     const confirmar = screen.getByRole('button', { name: /Confirmar/ })
     expect(confirmar).toHaveProperty('disabled', true)
-    expect(confirmar.getAttribute('title')).toContain('verification:write')
+    expect(confirmar.getAttribute('title')).toBe('Exige a permissão de julgar detecções')
   })
 })
 

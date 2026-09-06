@@ -843,7 +843,7 @@ export function AoVivo() {
         <Video size={36} strokeWidth={1.5} aria-hidden />
         <span className={s.centradoTitulo}>Sem permissão para ver câmeras</span>
         <span className={s.centradoTexto}>
-          Peça a um administrador a permissão <code>cameras:read</code> para acompanhar o ao vivo.
+          Peça a quem administra o seu acesso a permissão de ver as câmeras, para acompanhar o ao vivo.
         </span>
       </div>
     )
@@ -857,7 +857,7 @@ export function AoVivo() {
     return (
       <div className={s.centrado}>
         <span className={s.centradoTitulo}>Falha ao conectar ao gateway de vídeo</span>
-        <span className={s.centradoDetalhe}>GET /cameras · {erro.toUpperCase()}</span>
+        <span className={s.centradoDetalhe}>{erro}</span>
         <button type="button" className={s.acaoPrimaria} onClick={() => void carregar()}>
           Tentar novamente
         </button>
