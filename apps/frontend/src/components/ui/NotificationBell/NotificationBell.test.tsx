@@ -146,3 +146,40 @@ describe('deep-link segue o front que montou o sino', () => {
     expect(navigate).toHaveBeenCalledWith('/novo/epi/eventos?acknowledged=false&kind=violation')
   })
 })
+
+/**
+ * issue #803 — o teto tem de aparecer COMO teto.
+ *
+ * Havia `const count = Math.min(totalSituacoes ?? alerts.length, 99)` antes do
+ * render, e por isso o `count > 99 ? '99+' : count` do badge era código morto.
+ * O badge dizia `99` e o painel dizia `99 pendentes` com 387 situações abertas
+ * (medido no DEV, RVB, 05/09) — não é truncar, é afirmar.
+ *
+ * Reintroduza o clamp (`Math.min(pendentes, 99)`) e os dois primeiros testes
+ * ficam vermelhos: o badge volta a "99" e o painel a "99 pendentes".
+ */
+describe('#803 — badge trunca, painel não mente', () => {
+  it('387 situações: badge mostra "99+" (teto declarado), nunca "99" liso', async () => {
+    get.mockResolvedValue({ data: { alerts: [alerta('a1')], total: 514, total_situacoes: 387 } })
+    montar()
+    const botao = await screen.findByLabelText('Notificações')
+    await waitFor(() => expect(botao.textContent).toBe('99+'))
+  })
+
+  it('387 situações: o painel imprime 387, não o teto do badge', async () => {
+    get.mockResolvedValue({ data: { alerts: [alerta('a1')], total: 514, total_situacoes: 387 } })
+    montar()
+    await abrirPainel()
+    await screen.findByText('387 pendentes')
+    expect(screen.queryByText('99 pendentes')).toBeNull()
+  })
+
+  it('exatamente 99 continua "99" — o "+" só entra quando há mais', async () => {
+    get.mockResolvedValue({ data: { alerts: [alerta('a1')], total: 99, total_situacoes: 99 } })
+    montar()
+    const botao = await screen.findByLabelText('Notificações')
+    await waitFor(() => expect(botao.textContent).toBe('99'))
+    await abrirPainel()
+    await screen.findByText('99 pendentes')
+  })
+})

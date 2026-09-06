@@ -39,6 +39,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { ApiError, api } from '../../services/api'
 import { LogikosLoader } from '../shell/LogikosLoader'
 import * as s from './Relatorios.css'
+import { scoreImpresso } from './scoreConformidade'
 
 // ── Contrato de dados (services/api/app/domain/services/compliance_report_service.py)
 export interface ResumoCompliance {
@@ -430,9 +431,15 @@ export function Relatorios() {
           <div className={s.painel}>
             <div className={s.scoreLinha}>
               {/* `Math.round(null)` é 0, e 0 aqui é o pior número possível:
-                  "conformidade zero" no lugar de "não apurado". Travessão. */}
+                  "conformidade zero" no lugar de "não apurado". Travessão.
+
+                  E `Math.round(99.96)` é 100 — issue #789 nesta tela: desde
+                  que a taxa passou a ser a fórmula do Dashboard (#797), UMA
+                  hora-câmera com violação numa semana dá 99,96 e imprimia
+                  "100" no número que vira PDF de auditoria no R2. Mesmo
+                  `scoreImpresso` do cartão: 100 só para o 100 exato. */}
               <span className={s.score}>
-                {resumo.compliance_rate == null ? '—' : Math.round(resumo.compliance_rate)}
+                {resumo.compliance_rate == null ? '—' : scoreImpresso(resumo.compliance_rate)}
               </span>
               <span className={s.scoreLegenda}>
                 {resumo.compliance_rate == null

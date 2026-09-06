@@ -269,3 +269,108 @@ class TestCompliancePdfUpload:
         data = res.get_json()["data"]
         assert "pdf_url" in data
         assert data["pdf_url"].startswith("https://")
+
+
+# ---------------------------------------------------------------------------
+# 6. ISSUE #797 — a Taxa de Conformidade PELA ROTA, com `_aggregate` de verdade
+# ---------------------------------------------------------------------------
+
+class TestTaxaDeConformidadePelaRota:
+    """O número que o cliente lê sai por `GET /api/reports/compliance` e vira
+    PDF arquivado no R2. Todo teste acima patcha `_aggregate` inteiro — nenhum
+    deles tocava a fórmula, e por isso a inversão da #797 (conformidade
+    derrubando a Taxa de Conformidade) atravessou review e CI.
+
+    Aqui só o I/O é dublado (repositórios, R2, reportlab): a conta é a de
+    produção e o valor é lido do JSON da resposta.
+
+    Semana REAL da RVB medida no DEV (04/08 → 11/08, 168 h): 3.801 alertas EPI,
+    dos quais a grande maioria é EPI EM USO. A fórmula antiga imprimia
+    **0,0 %** — a pior nota possível na semana em que o EPI foi mais usado —
+    enquanto o Dashboard, sobre os mesmos dados, dizia 92 · Conforme.
+    """
+
+    HORAS_VIOLACAO = 31
+    CAMERAS_ATIVAS = 17
+
+    class _AlertRepoFake:
+        def __init__(self, total, horas_violacao):
+            self.total, self.horas_violacao = total, horas_violacao
+
+        def count_in_window(self, *a, **k):
+            return self.total
+
+        def camera_hours_with_violation(self, tenant_id, module_code, since, until=None):
+            return self.horas_violacao
+
+        def count_by_hour(self, *a, **k):
+            return []
+
+        def list_with_filters(self, **k):
+            return {"items": []}
+
+    class _CameraRepoFake:
+        def __init__(self, ativas):
+            self.ativas = ativas
+
+        def count_by_status(self, tenant_id, module_code, status):
+            return self.ativas
+
+    def _pedir(self, client, headers, total_alertas):
+        mock_storage = MagicMock()
+        mock_storage.upload_bytes.return_value = None
+        mock_storage.generate_presigned_download_url.return_value = "https://mock-r2.test/r.pdf"
+        with patch(
+            "app.domain.services.compliance_report_service._get_alert_repo",
+            return_value=self._AlertRepoFake(total_alertas, self.HORAS_VIOLACAO),
+        ), patch(
+            "app.domain.services.compliance_report_service._get_camera_repo",
+            return_value=self._CameraRepoFake(self.CAMERAS_ATIVAS),
+        ), patch(
+            "app.domain.services.compliance_report_service._get_storage",
+            return_value=mock_storage,
+        ), patch(
+            "app.domain.services.compliance_report_service._generate_pdf",
+            return_value=_FAKE_PDF_BYTES,
+        ):
+            return client.get(
+                "/api/reports/compliance?period=semana"
+                "&from=2026-08-04T00:00:00Z&to=2026-08-11T00:00:00Z",
+                headers=headers,
+            )
+
+    def test_semana_de_epi_usado_nao_sai_com_zero_por_cento(
+        self, client, auth_headers_tenant_a
+    ) -> None:
+        res = self._pedir(client, auth_headers_tenant_a, total_alertas=3801)
+        assert res.status_code == 200
+        taxa = res.get_json()["data"]["summary"]["compliance_rate"]
+        assert taxa is not None
+        assert taxa > 90.0, (
+            f"o PDF de auditoria da semana de maior USO de EPI saiu com {taxa}% — "
+            "é a inversão da #797, agora atravessando a rota"
+        )
+
+    def test_a_taxa_da_rota_e_a_MESMA_conta_do_cartao_do_dashboard(
+        self, client, auth_headers_tenant_a
+    ) -> None:
+        """100 × (1 − horas-câmera com violação ÷ (câmeras ativas × horas)).
+
+        Escrita à mão: se as duas telas divergirem de novo, é aqui que fica
+        vermelho.
+        """
+        res = self._pedir(client, auth_headers_tenant_a, total_alertas=3801)
+        horas_camera = self.CAMERAS_ATIVAS * 168.0
+        esperado = round(100.0 * (1 - self.HORAS_VIOLACAO / horas_camera), 2)
+        assert res.get_json()["data"]["summary"]["compliance_rate"] == esperado
+
+    def test_o_acervo_de_conformidade_nao_move_a_taxa(
+        self, client, auth_headers_tenant_a
+    ) -> None:
+        """MESMA violação, 40× mais evento de EPI EM USO: mesma nota."""
+        pouco = self._pedir(client, auth_headers_tenant_a, total_alertas=95)
+        muito = self._pedir(client, auth_headers_tenant_a, total_alertas=3801)
+        assert (
+            pouco.get_json()["data"]["summary"]["compliance_rate"]
+            == muito.get_json()["data"]["summary"]["compliance_rate"]
+        )
