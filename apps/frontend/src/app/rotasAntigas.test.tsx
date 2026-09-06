@@ -122,6 +122,20 @@ describe('endereços antigos com substituta pronta caem no front novo', () => {
       ).toBeTruthy()
     },
   )
+
+  it.each(REDIRECIONADAS_ADMIN.map(([antiga]) => antiga))(
+    '%s: quem NÃO é superadmin continua sendo barrado pelo AdminRoute, como antes',
+    (antiga) => {
+      // Os redirects do Admin ficam DENTRO do `<Route element={<AdminRoute />}>`
+      // justamente para isto: o papel decide primeiro, o redirect depois. Fora
+      // do gate, um operador digitando `/admin/tenants` bateria no
+      // `SemPermissao` do painel novo — que confirma que a rota existe.
+      // `AdminRoute` manda para `/`, que o `RootRedirect` resolve por papel.
+      papel.superadmin = false
+      monta(antiga)
+      expect(screen.getByText('NOVO:/novo/modules')).toBeTruthy()
+    },
+  )
 })
 
 /**
