@@ -29,14 +29,20 @@ Uso (uma linha, ver a issue de provisionamento):
     RVB_TST_EMAILS="fulano@rvb.com.br,ciclana@rvb.com.br" \
     RVB_ANOTADOR_EMAILS="beltrano@rvb.com.br" \
     RVB_SENHA_INICIAL='<senha combinada>' \
+    RVB_EXIGIR_TROCA_SENHA=true \
     python3 scripts/criar_contas_rvb.py
 
 Env opcionais:
     RVB_TENANT_SLUG          slug do tenant (default: rvb)
-    RVB_EXIGIR_TROCA_SENHA   'true' marca force_password_reset. Default false
-                             — ver o aviso impresso e a issue: hoje a troca
-                             só é possível por `POST /api/auth/change-password`
-                             (a TELA de troca ainda não existe).
+    RVB_EXIGIR_TROCA_SENHA   'true' marca force_password_reset — está na linha
+                             de uso acima porque é o que fecha a issue #764:
+                             sem ela a senha combinada no papel vale para
+                             sempre. A TELA de troca EXISTE desde a issue #819
+                             (`apps/frontend/src/app/acesso/Entrar.tsx`): o
+                             403 do primeiro login abre, na própria tela, o
+                             formulário de nova senha. Default segue false
+                             para não mudar o comportamento de quem já
+                             automatizou a chamada.
 """
 import os
 import sys
@@ -174,17 +180,19 @@ def main() -> None:
     print(f"\n{len(criados)} conta(s) criada(s). Senha: a de RVB_SENHA_INICIAL.")
     if EXIGIR_TROCA:
         print(
-            "Troca de senha EXIGIDA: o primeiro login responde 403 "
-            "(password_change_required) até a pessoa trocar a senha em "
-            "POST /api/auth/change-password. A TELA dessa troca ainda não "
-            "existe — sem ela, a pessoa não passa da tela de login."
+            "Troca de senha EXIGIDA: no primeiro login a própria tela abre o "
+            "formulário 'Definir nova senha' (o 403 password_change_required "
+            "é tratado em apps/frontend/src/app/acesso/Entrar.tsx, issue "
+            "#819). A pessoa entra com a senha do papel, escolhe a sua e cai "
+            "direto no produto — sem falar com ninguém."
         )
     else:
         print(
-            "Troca de senha NÃO exigida (default). Motivo: a tela de troca "
-            "ainda não existe; exigir agora travaria a pessoa na tela de "
-            "login. Combine a troca manualmente ou ligue "
-            "RVB_EXIGIR_TROCA_SENHA=true quando a tela existir."
+            "ATENÇÃO: troca de senha NÃO exigida. A senha combinada continua "
+            "valendo para sempre nessas contas — é exatamente a issue #764. "
+            "A tela de troca JÁ EXISTE (issue #819): rode com "
+            "RVB_EXIGIR_TROCA_SENHA=true para que cada pessoa defina a sua "
+            "no primeiro login."
         )
 
 

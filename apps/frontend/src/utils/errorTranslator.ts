@@ -114,6 +114,13 @@ const SILENT_RULES: Array<{ statuses: number[]; pathContains: string }> = [
   // logo abaixo. O toast genérico saía VERMELHO dizendo a coisa errada em
   // cima da instrução certa.
   { statuses: [403], pathContains: '/auth/login' },
+  // Mesma tela, mesmo motivo (#819). `/auth/change-password` tem um chamador
+  // só — o formulário de troca em `app/acesso/Entrar.tsx` — e ele SEMPRE põe a
+  // frase do servidor na sua caixa de erro. Sem esta regra saíam DOIS
+  // vermelhos para o mesmo fato na PRIMEIRA tela do produto (o ToastProvider
+  // mora na raiz, main.tsx:17 — aparece deslogado também). 500 continua
+  // gritando: aí não é dado ruim, é o sistema caído.
+  { statuses: [400, 429], pathContains: '/auth/change-password' },
 ]
 
 export function showErrorToast(status: number, url: string, rawMessage: string) {

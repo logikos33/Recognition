@@ -22,6 +22,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Entrar } from './Entrar'
+import { useToastStore } from '../../components/ui/Toast/useToast'
 
 /** jsdom desta config expõe `localStorage` OCO — ver App.test.tsx. */
 const armazenado = new Map<string, string>()
@@ -76,6 +77,8 @@ const apiFalsa = vi.fn((url: string, init?: RequestInit) => {
   if (path === '/auth/change-password') {
     if (body.current_password !== senhaValida) return json(401, { success: false, error: 'Credenciais inválidas' })
     if (String(body.new_password ?? '').length < 6) return json(400, { success: false, error: 'Senha: mínimo 6 caracteres' })
+    // routes.py:268-269 — repetir a senha temporária "trocaria" sem trocar.
+    if (body.new_password === body.current_password) return json(400, { success: false, error: 'A nova senha precisa ser diferente da atual' })
     senhaValida = String(body.new_password)
     trocaPendente = false
     return json(200, { success: true, message: 'Senha alterada. Faça login com a nova senha.' })
@@ -95,7 +98,10 @@ beforeEach(() => {
   trocaPendente = true
   local.href = '/novo/entrar'
   vi.stubGlobal('fetch', apiFalsa)
+  useToastStore.setState({ toasts: [] })
 })
+
+const toasts = () => useToastStore.getState().toasts
 
 const entrarCom = (senha: string) => {
   fireEvent.change(screen.getByPlaceholderText('voce@empresa.com.br'), {
@@ -164,6 +170,36 @@ describe('senha temporária — a travessia inteira, sem mockar o caminho', () =
     expect(await screen.findByText('Senha: mínimo 6 caracteres')).toBeTruthy()
     expect(localStorage.getItem('token')).toBeNull()
     expect(local.href).toBe('/novo/entrar')
+  })
+
+  /**
+   * UM fato, UM vermelho.
+   *
+   * O PR tirou o vermelho da frase que EXPLICA o pedido justamente porque
+   * dois vermelhos idênticos na mesma tela não dizem qual é o problema. Mas
+   * o segundo vermelho continuava vindo pelo outro lado: `api.ts` dispara
+   * `showErrorToast` em TODO erro que não seja 401 (api.ts:206-208), e o
+   * `ToastProvider` está montado na raiz (`main.tsx:17`), fora do `App` —
+   * ou seja, aparece também na tela de login, deslogado.
+   *
+   * O erro mais provável da segunda-feira é o do meio da régua: a pessoa
+   * repete a senha do papel e o servidor devolve 400 "a nova senha precisa
+   * ser diferente da atual" (auth/routes.py:268-269). O formulário já mostra
+   * essa frase na caixa de erro; o toast flutuante repetia a mesma coisa em
+   * cima, na primeira tela do produto.
+   *
+   * Mesma tranca que já existe para o 409 de /verification e para o 403 de
+   * /auth/login (errorTranslator.ts SILENT_RULES) — quem informa é a tela.
+   */
+  it('erro do servidor na troca sai UMA vez: na caixa da tela, sem toast por cima', async () => {
+    render(<MemoryRouter><Entrar /></MemoryRouter>)
+    entrarCom('senha-do-papel')
+    await trocarPara('senha-do-papel')
+
+    expect(await screen.findByText('A nova senha precisa ser diferente da atual')).toBeTruthy()
+    // O toast é disparado por um `import()` dinâmico — dá tempo a ele.
+    await new Promise((r) => setTimeout(r, 20))
+    expect(toasts()).toHaveLength(0)
   })
 
   it('contraprova: 401 de senha errada NÃO abre a troca (o desvio é do error_code, não do status)', async () => {

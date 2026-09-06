@@ -14,7 +14,7 @@ depois que a migração inteira estiver feita.
 | `SEM-DESENHO` | serve rota que o handoff não desenhou (Fase 0 §3.2) | ⛔ não — espera o design |
 | `INFRA` | não é tela (api, hooks, tipos, tema) | ⛔ caso a caso |
 
-## Situação — 393 arquivos, 66.720 linhas
+## Situação — 393 arquivos, 66.727 linhas
 
 | status | arquivos |
 |---|---:|
@@ -266,7 +266,7 @@ apagado não são a mesma coisa.
 | `src/utils/classCatalogDuplicate.ts` | `INFRA` | — | 37 |
 | `src/utils/classImbalance.ts` | `INFRA` | — | 65 |
 | `src/utils/concurrencyQueue.ts` | `INFRA` | — | 39 |
-| `src/utils/errorTranslator.ts` | `INFRA` | — | 150 |
+| `src/utils/errorTranslator.ts` | `INFRA` | — | 157 |
 | `src/utils/labels.ts` | `INFRA` | — | 253 |
 | `src/utils/perfilEventos.ts` | `INFRA` | — | 148 |
 | `src/utils/rajadas.ts` | `INFRA` | — | 120 |

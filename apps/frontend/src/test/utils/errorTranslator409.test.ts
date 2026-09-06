@@ -33,4 +33,27 @@ describe('toast automático do api.ts', () => {
     expect(toasts()).toHaveLength(1)
     expect(toasts()[0].variant).toBe('error')
   })
+
+  // Mesma regra, outra rota: a troca de senha obrigatória (#819). A prova de
+  // que ela vale no caminho REAL está em `Entrar.travessia.test.tsx`; aqui
+  // ficam os limites, para a regra não virar mordaça.
+  it('cala o 400 de /auth/change-password — a frase já está na caixa da tela', () => {
+    showErrorToast(400, '/auth/change-password', 'A nova senha precisa ser diferente da atual')
+    expect(toasts()).toHaveLength(0)
+  })
+
+  it('cala o 429 de /auth/change-password (limite por conta, também mostrado na tela)', () => {
+    showErrorToast(429, '/auth/change-password', 'Muitas tentativas de login.')
+    expect(toasts()).toHaveLength(0)
+  })
+
+  it('NÃO cala o 500 de /auth/change-password — aí não é dado ruim, é o sistema', () => {
+    showErrorToast(500, '/auth/change-password', 'Erro interno')
+    expect(toasts()).toHaveLength(1)
+  })
+
+  it('NÃO cala 400 de outras rotas (a regra é da troca de senha, não do status)', () => {
+    showErrorToast(400, '/cameras', 'campo obrigatório')
+    expect(toasts()).toHaveLength(1)
+  })
 })
