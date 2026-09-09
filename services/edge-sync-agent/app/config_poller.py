@@ -201,6 +201,11 @@ class ConfigPoller:
         desligada. `is_active` ausente (payload futuro/parcial) é tratado
         como ativo (não trava a cache num campo que hoje é sempre enviado).
 
+        fps_target_map (eixo INFERÊNCIA, ADR-0026): mesmo filtro, mesma
+        regra de ausência. É o que fecha o laço front -> box: o gerador do
+        config do DeepStream lê este mapa e vira `drop-frame-interval` por
+        fonte. Sem ele o fps_target chega no poll e não governa nada.
+
         collection_subtype_map (eixo COLETA, migration 114): mesmo filtro
         ativa+com-canal, mas só entram câmeras com `collection_subtype`
         explicitamente presente no payload — ausência não vira 0 aqui
@@ -217,8 +222,17 @@ class ConfigPoller:
             for cam in active_with_channel
             if cam.get("collection_subtype") is not None
         }
+        fps_target_map = {
+            str(cam["id"]): int(cam["fps_target"])
+            for cam in active_with_channel
+            if cam.get("fps_target") is not None
+        }
         edge_config_cache.write_channel_map(
-            self._cache_path, channel_map, config_version, collection_subtype_map
+            self._cache_path,
+            channel_map,
+            config_version,
+            collection_subtype_map,
+            fps_target_map,
         )
 
     # ── main loop ────────────────────────────────────────────────────────────

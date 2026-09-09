@@ -49,6 +49,12 @@ class ChannelMapCache:
     # convive no MESMO arquivo/cache por ser escrito no mesmo poll. Ausente em
     # arquivos gravados antes desta mudança -> {} (default_factory), nunca None.
     collection_subtype_map: dict[str, int] = field(default_factory=dict)
+    # Eixo INFERÊNCIA (ADR-0026): camera_id -> fps_target. Mesmo motivo do
+    # mapa acima — o valor vem no MESMO poll e o consumidor
+    # (gerar_config_deepstream.py) roda em OUTRO processo, fora do daemon.
+    # É ele que vira `drop-frame-interval` por fonte no config do DeepStream:
+    # sem isto o fps_target do front chega ao box e morre em memória.
+    fps_target_map: dict[str, int] = field(default_factory=dict)
 
 
 def write_channel_map(
@@ -56,6 +62,7 @@ def write_channel_map(
     channel_map: dict[str, int],
     config_version: str,
     collection_subtype_map: dict[str, int] | None = None,
+    fps_target_map: dict[str, int] | None = None,
 ) -> None:
     """Atomically persists *channel_map* (best-effort — NEVER raises).
 
@@ -64,8 +71,9 @@ def write_channel_map(
     channel map won't be picked up by a future process restart, same class
     of "config ruim não derruba o site" discipline as the rest of ADR-0054/56.
 
-    collection_subtype_map (eixo COLETA, migration 114): opcional — None vira
-    {} no arquivo, mesma convenção do channel_map vazio.
+    collection_subtype_map (eixo COLETA, migration 114) e fps_target_map
+    (eixo INFERÊNCIA, ADR-0026): opcionais — None vira {} no arquivo, mesma
+    convenção do channel_map vazio.
     """
     try:
         target = Path(path)
@@ -74,6 +82,7 @@ def write_channel_map(
             "channel_map": channel_map,
             "config_version": config_version,
             "collection_subtype_map": collection_subtype_map or {},
+            "fps_target_map": fps_target_map or {},
         })
         fd, tmp_path = tempfile.mkstemp(dir=str(target.parent), prefix=".config_cache-")
         try:
@@ -118,20 +127,26 @@ def read_channel_map(path: str) -> ChannelMapCache | None:
 
     config_version = str(data.get("config_version") or "")
 
-    collection_subtype_map: dict[str, int] = {}
-    raw_collection_map = data.get("collection_subtype_map")
-    if isinstance(raw_collection_map, dict):
-        for k, v in raw_collection_map.items():
-            try:
-                collection_subtype_map[str(k)] = int(v)
-            except (TypeError, ValueError):
-                logger.warning(
-                    "edge_config_cache_collection_subtype_corrupt path=%s camera=%s value=%r",
-                    path, k, v,
-                )
+    def _mapa_int(chave: str) -> dict[str, int]:
+        """Mapa camera_id->int lido com tolerância: chave ausente ou valor
+        podre não invalida o cache inteiro, só some do mapa (o channel_map
+        que o arquivo já carrega tem de continuar valendo)."""
+        saida: dict[str, int] = {}
+        bruto = data.get(chave)
+        if isinstance(bruto, dict):
+            for k, v in bruto.items():
+                try:
+                    saida[str(k)] = int(v)
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "edge_config_cache_%s_corrupt path=%s camera=%s value=%r",
+                        chave, path, k, v,
+                    )
+        return saida
 
     return ChannelMapCache(
         channel_map=channel_map,
         config_version=config_version,
-        collection_subtype_map=collection_subtype_map,
+        collection_subtype_map=_mapa_int("collection_subtype_map"),
+        fps_target_map=_mapa_int("fps_target_map"),
     )

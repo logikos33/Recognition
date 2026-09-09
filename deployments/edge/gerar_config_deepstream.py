@@ -39,6 +39,33 @@ credencial errada em sequência (CLAUDE.md §Cloud→Edge). Por isso este script
     gerar 29 fontes que vão bater com senha em branco);
   · tem `--cameras` para começar com UMA câmera, como manda o runbook.
 
+⚠️ CADÊNCIA POR CÂMERA — por que NÃO é o `interval` do GIE
+-----------------------------------------------------------
+O front tem `fps_target` POR CÂMERA (ADR-0026) e ele já viaja no
+`GET /api/v1/edge/config/poll`. Mas `[primary-gie] interval=N` é do GIE,
+não da fonte: um único número não honra 18 alvos diferentes. Hoje todas as
+18 da RVB estão em 5, então um interval global "daria certo" — e passaria a
+mentir no dia em que uma câmera pedir 3 e outra 10.
+
+O knob que existe POR FONTE é `drop-frame-interval` do `nvurisrcbin`
+(`gst-inspect-1.0 nvurisrcbin`: "value of 5 means every 5th frame will be
+given by decoder, rest all dropped"). Então:
+
+    drop-frame-interval = round(fps_da_fonte / fps_target)   # por [sourceN]
+    [primary-gie] interval = 0                               # infere o que chegar
+
+Cada câmera entrega o SEU alvo e o GIE infere tudo que lhe entregam. Sai
+exato por câmera, com um GIE só. Limites honestos:
+  · a propriedade é inteira e vai só até 30 → o alvo real é
+    fps_fonte/round(...), não o alvo pedido (5 de 30 = exato; 7 de 30 → 4,3);
+  · dropar é PÓS-DECODE: economiza inferência e todo o resto do pipeline,
+    NÃO economiza decode. Por isso o degrau de 18 câmeras se mede, não se
+    extrapola — ver a tabela do runbook.
+
+`--intervalo` continua existindo como escape hatch: se você passar, ele vai
+pro GIE e o `drop-frame-interval` NÃO é emitido (comportamento antigo,
+global). Sem ele, a cadência vem do banco, por câmera.
+
 O MODELO É PARÂMETRO
 --------------------
 `--infer-config` aponta para o config do nvinfer (engine + labelfile +
@@ -102,14 +129,44 @@ def redigir(url: str) -> str:
     return re.sub(r"://([^:/@]+):[^@]*@", r"://\1:***@", url)
 
 
+DROP_MAX = 30  # teto da propriedade drop-frame-interval do nvurisrcbin
+
+
+def drop_por_fps(fps_fonte: float, fps_alvo: float) -> tuple[int, float]:
+    """`drop-frame-interval` para atingir *fps_alvo* dada uma fonte de *fps_fonte*.
+
+    Devolve (drop, fps_efetivo). `drop=1` = entrega tudo (nenhum frame
+    descartado). O fps_efetivo é o que a câmera VAI entregar de verdade —
+    devolvido junto porque a propriedade é inteira e quase nunca bate o alvo
+    na mosca; quem chama loga o real, não o pedido.
+    """
+    if fps_alvo <= 0 or fps_alvo >= fps_fonte:
+        return 1, fps_fonte
+    drop = min(DROP_MAX, max(1, round(fps_fonte / fps_alvo)))
+    return drop, fps_fonte / drop
+
+
+def _autoteste() -> None:
+    """Check mínimo da derivação — `python3 gerar_config_deepstream.py --autoteste`."""
+    assert drop_por_fps(30, 5) == (6, 5.0)          # o caso da RVB: exato
+    assert drop_por_fps(30, 3) == (10, 3.0)
+    assert drop_por_fps(30, 30) == (1, 30.0)        # alvo == fonte -> não dropa
+    assert drop_por_fps(30, 60) == (1, 30.0)        # alvo acima da fonte -> idem
+    assert drop_por_fps(30, 0) == (1, 30.0)         # alvo ausente/zero -> idem
+    d, ef = drop_por_fps(30, 7)                     # inteiro não bate o alvo
+    assert (d, round(ef, 2)) == (4, 7.5), (d, ef)
+    assert drop_por_fps(30, 0.1)[0] == DROP_MAX     # teto da propriedade
+    print("autoteste OK")
+
+
 def montar_config(
-    fontes: list[tuple[int, str, str]],
+    fontes: list[tuple[int, str, str, int]],
     infer_config: str,
     kitti_dir: str,
     intervalo: int,
     mux_wh: tuple[int, int],
 ) -> str:
-    """Config do `deepstream-app`. `fontes` = [(indice, camera_id, uri)].
+    """Config do `deepstream-app`. `fontes` = [(indice, camera_id, uri, drop)].
 
     Decisões, e por quê:
       · sink type=1 (fakesink): a saída ÚTIL é o dump KITTI, não vídeo. Um
@@ -122,6 +179,9 @@ def montar_config(
         consumir track (ex.: contagem).
       · select-rtp-protocol=4 (TCP): a LAN do gravador perde UDP e o
         DeepStream não reconecta bem de stream truncado.
+      · drop-frame-interval por fonte: é o único lugar do pipeline onde a
+        cadência é POR CÂMERA. Só é emitido quando > 1 (drop=1 é o default
+        do elemento e escrever isso só polui o config).
     """
     blocos = [
         "[application]",
@@ -133,7 +193,7 @@ def montar_config(
         "enable=0",
         "",
     ]
-    for indice, camera_id, uri in fontes:
+    for indice, camera_id, uri, drop in fontes:
         blocos += [
             f"# {camera_id}",
             f"[source{indice}]",
@@ -144,8 +204,10 @@ def montar_config(
             "select-rtp-protocol=4",
             "latency=100",
             "rtsp-reconnect-interval-sec=10",
-            "",
         ]
+        if drop > 1:
+            blocos.append(f"drop-frame-interval={drop}")
+        blocos.append("")
     blocos += [
         "[sink0]",
         "enable=1",
@@ -183,17 +245,34 @@ def main() -> int:
     p.add_argument("--cache", default=CACHE_PADRAO, help="config_cache.json (camera->canal)")
     p.add_argument("--env", default=ENV_PADRAO, help=".env do edge-sync-agent (credencial do gravador)")
     p.add_argument("--saida", default=SAIDA_PADRAO, help="diretório de saída (nasce 0700)")
-    p.add_argument("--infer-config", required=True, help="config do nvinfer (engine+labelfile+parser)")
+    p.add_argument("--infer-config", help="config do nvinfer (engine+labelfile+parser) — obrigatório fora do --autoteste")
     p.add_argument("--kitti-dir", default="/dev/shm/recognition-kitti",
                    help="dump do GIE. /dev/shm = RAM: disco cheio é intertravamento do device")
     p.add_argument("--cameras", default="",
                    help="csv de camera_id para incluir (vazio = todas do cache). COMECE COM UMA.")
     p.add_argument("--subtype", type=int, default=None,
                    help="0=principal 1=substream (default: RECORDER_STREAM_SUBTYPE do .env, ou 0)")
-    p.add_argument("--intervalo", type=int, default=4,
-                   help="interval do primary-gie: infere 1 a cada N+1 frames (default 4)")
+    p.add_argument("--intervalo", type=int, default=None,
+                   help="ESCAPE HATCH: força interval do primary-gie (global, 1 a cada N+1 "
+                        "frames) e NÃO emite drop-frame-interval. Sem isto, a cadência vem "
+                        "do fps_target de cada câmera (default).")
+    p.add_argument("--fps-fonte", type=float, default=30.0,
+                   help="FPS real que o gravador entrega por stream (default 30). É o "
+                        "denominador da conta do drop-frame-interval — se a fonte não for "
+                        "30, o alvo sai errado.")
+    p.add_argument("--fps-alvo", type=float, default=None,
+                   help="força o MESMO fps_target para todas as câmeras, ignorando o banco. "
+                        "Só para medição/degrau; em operação o valor vem do front.")
+    p.add_argument("--autoteste", action="store_true", help="roda o check da derivação e sai")
     p.add_argument("--mux", default="1280x720", help="resolução do streammux (default 1280x720)")
     args = p.parse_args()
+
+    if args.autoteste:
+        _autoteste()
+        return 0
+    if not args.infer_config:
+        logger.error("--infer-config é obrigatório")
+        return 2
 
     cache_path = Path(os.path.expanduser(args.cache))
     env_path = Path(os.path.expanduser(args.env))
@@ -204,6 +283,15 @@ def main() -> int:
 
     cache = json.loads(cache_path.read_text(encoding="utf-8"))
     channel_map: dict[str, int] = {str(k): int(v) for k, v in (cache.get("channel_map") or {}).items()}
+    # fps_target_map: escrito pelo ConfigPoller no MESMO poll do channel_map.
+    # Ausente = cache gravado por um agente anterior a esta mudança — não é
+    # erro, cai no --fps-alvo/--intervalo. Tolerante como o collection_subtype_map.
+    fps_map: dict[str, float] = {}
+    for k, v in (cache.get("fps_target_map") or {}).items():
+        try:
+            fps_map[str(k)] = float(v)
+        except (TypeError, ValueError):
+            logger.warning("fps_target inválido no cache para %s: %r (ignorado)", k, v)
     if not channel_map:
         logger.error(
             "%s tem channel_map vazio — o ConfigPoller ainda não trouxe câmera "
@@ -240,10 +328,30 @@ def main() -> int:
         # que importa porque é ele que o publicador usa para achar a câmera.
         itens = sorted(channel_map.items(), key=lambda kv: kv[1])
 
-    fontes = [
-        (i, camera_id, url_rtsp(host, porta, usuario, senha, canal, subtype))
-        for i, (camera_id, canal) in enumerate(itens)
-    ]
+    # Cadência: --intervalo desliga a derivação (vai global no GIE, jeito antigo);
+    # sem ele, cada fonte ganha o SEU drop-frame-interval e o GIE fica em 0.
+    modo_global = args.intervalo is not None
+    intervalo_gie = args.intervalo if modo_global else 0
+
+    fontes: list[tuple[int, str, str, int]] = []
+    cadencia: list[tuple[int, str, float | None, int, float]] = []
+    for i, (camera_id, canal) in enumerate(itens):
+        alvo = args.fps_alvo if args.fps_alvo is not None else fps_map.get(camera_id)
+        if modo_global or alvo is None:
+            drop, efetivo = 1, args.fps_fonte / (intervalo_gie + 1)
+        else:
+            drop, efetivo = drop_por_fps(args.fps_fonte, alvo)
+        fontes.append((i, camera_id, url_rtsp(host, porta, usuario, senha, canal, subtype), drop))
+        cadencia.append((i, camera_id, alvo, drop, efetivo))
+
+    sem_alvo = [c for _, c, alvo, _, _ in cadencia if alvo is None]
+    if sem_alvo and not modo_global:
+        logger.warning(
+            "%d câmera(s) sem fps_target no cache — vão inferir em TODOS os frames "
+            "(%.1f FPS). Use --fps-alvo, ou atualize o edge-sync-agent para gravar "
+            "fps_target_map no config_cache.json.",
+            len(sem_alvo), args.fps_fonte,
+        )
 
     saida = Path(os.path.expanduser(args.saida))
     saida.mkdir(parents=True, exist_ok=True)
@@ -252,7 +360,7 @@ def main() -> int:
     largura, altura = (int(x) for x in args.mux.lower().split("x"))
     conf_path = saida / f"app_{args.nome}.txt"
     conf_path.write_text(
-        montar_config(fontes, args.infer_config, args.kitti_dir, args.intervalo, (largura, altura)),
+        montar_config(fontes, args.infer_config, args.kitti_dir, intervalo_gie, (largura, altura)),
         encoding="utf-8",
     )
     os.chmod(conf_path, 0o600)  # contém a senha do gravador na URI
@@ -263,15 +371,24 @@ def main() -> int:
     # qualquer um, o outro não.
     fontes_path = saida / f"fontes_{args.nome}.json"
     fontes_path.write_text(
-        json.dumps({str(i): camera_id for i, camera_id, _ in fontes}, indent=2),
+        json.dumps({str(i): camera_id for i, camera_id, _, _ in fontes}, indent=2),
         encoding="utf-8",
     )
     os.chmod(fontes_path, 0o644)
 
     logger.info("gerado %s (0600, %d fontes)", conf_path, len(fontes))
     logger.info("gerado %s", fontes_path)
-    for i, camera_id, uri in fontes:
-        logger.info("  source%-2d %s  %s", i, camera_id, redigir(uri))
+    logger.info(
+        "cadência: %s (fonte %.1f FPS, primary-gie interval=%d)",
+        "--intervalo global (derivação DESLIGADA)" if modo_global else "por câmera, do fps_target",
+        args.fps_fonte, intervalo_gie,
+    )
+    for (i, camera_id, uri, _), (_, _, alvo, drop, efetivo) in zip(fontes, cadencia):
+        logger.info(
+            "  source%-2d %s  alvo=%s drop=%d -> %.1f FPS  %s",
+            i, camera_id, "-" if alvo is None else f"{alvo:g}", drop, efetivo, redigir(uri),
+        )
+    logger.info("carga de inferência total: %.1f FPS", sum(c[4] for c in cadencia))
     logger.warning(
         "NÃO COMMITAR %s (contém a senha do gravador). Confira o canal de UMA "
         "câmera antes de subir as %d — credencial errada em sequência trava a "
